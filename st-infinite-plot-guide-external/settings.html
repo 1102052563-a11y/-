@@ -1,0 +1,154 @@
+<div class="ipg_settings">
+  <div class="inline-drawer">
+    <div class="inline-drawer-toggle inline-drawer-header">
+      <b>Infinite Plot Guide（剧情指引块）</b>
+      <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+    </div>
+    <div class="inline-drawer-content">
+      <label class="checkbox_label" for="ipg_enabled">
+        <input id="ipg_enabled" type="checkbox" class="checkbox">
+        启用剧情指引块
+      </label>
+
+      <div class="flex-container alignItemsCenter ipg_row">
+        <div class="ipg_label">模式</div>
+        <select id="ipg_mode" class="text_pole widthUnset">
+          <option value="external">外部API（独立模型/独立服务）</option>
+          <option value="inject">Prompt 注入（使用主模型token）</option>
+        </select>
+        <div class="ipg_hint opacity50p">推荐：外部API</div>
+      </div>
+
+      <hr class="ipg_hr">
+
+      <div class="flex-container alignItemsCenter ipg_row">
+        <div class="ipg_label">原著/剧本名</div>
+        <input id="ipg_work_title" class="text_pole flex1" placeholder="例：鬼灭之刃 / 咒术回战 / 你的自建剧本">
+      </div>
+
+      <div class="flex-container alignItemsCenter ipg_row">
+        <div class="ipg_label">原著主角名</div>
+        <input id="ipg_canon_mc" class="text_pole flex1" placeholder="例：炭治郎 / 虎杖悠仁">
+      </div>
+
+      <div class="flex-container alignItemsCenter ipg_row">
+        <div class="ipg_label">关键NPC</div>
+        <input id="ipg_key_npcs" class="text_pole flex1" placeholder="逗号分隔：例：五条悟, 伏黑惠, 钉崎野蔷薇">
+      </div>
+
+      <div class="ipg_row">
+        <div class="ipg_label2">原著时间线要点（可选｜越短越省token）</div>
+        <textarea id="ipg_canon_notes" class="text_pole" rows="6"
+          placeholder="建议写成要点：
+- 第1天：主角做A（原因/目标）
+- 第2天：关键NPC做B
+..."></textarea>
+      </div>
+
+      <!-- ============ External API Mode ============ -->
+      <div class="ipg_mode_external">
+        <hr class="ipg_hr">
+
+        <div class="ipg_label2">外部API配置（OpenAI兼容优先）</div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">API URL</div>
+          <input id="ipg_api_url" class="text_pole flex1" placeholder="例：https://你的域名/v1/chat/completions">
+        </div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">API Key</div>
+          <input id="ipg_api_key" type="password" class="text_pole flex1" placeholder="可留空（若服务不需要）">
+        </div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">鉴权Header</div>
+          <input id="ipg_api_header" class="text_pole widthUnset" placeholder="Authorization">
+          <div class="ipg_hint opacity50p">默认 Authorization</div>
+        </div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">Key 前缀</div>
+          <input id="ipg_api_prefix" class="text_pole widthUnset" placeholder="Bearer ">
+          <div class="ipg_hint opacity50p">默认 Bearer （含空格）</div>
+        </div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">model</div>
+          <input id="ipg_api_model" class="text_pole flex1" placeholder="可留空（由服务端默认）">
+        </div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">temperature</div>
+          <input id="ipg_api_temp" type="number" step="0.1" min="0" max="2" class="text_pole widthUnset">
+          <div class="ipg_hint opacity50p">建议 0~0.4</div>
+        </div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">上下文条数</div>
+          <input id="ipg_api_maxmsg" type="number" min="1" max="50" class="text_pole widthUnset">
+          <div class="ipg_hint opacity50p">发给外部API的最近消息数</div>
+        </div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">超时(ms)</div>
+          <input id="ipg_api_timeout" type="number" min="1000" max="120000" class="text_pole widthUnset">
+          <div class="ipg_hint opacity50p">建议 15000~30000</div>
+        </div>
+
+        <label class="checkbox_label ipg_row" for="ipg_api_include_hidden" title="隐藏消息也会被发送给外部API。若你的时间块/结算块是隐藏输出，建议勾选。">
+          <input id="ipg_api_include_hidden" type="checkbox" class="checkbox">
+          发送隐藏消息
+        </label>
+
+        <label class="checkbox_label ipg_row" for="ipg_api_include_system" title="系统消息通常不需要。">
+          <input id="ipg_api_include_system" type="checkbox" class="checkbox">
+          发送系统消息
+        </label>
+
+        <small class="opacity50p">
+          注意：浏览器直连外部API需要你的API允许 CORS（否则会被拦截）。
+          如果不想暴露Key或想绕过CORS，可以把外部API放在本机/内网，或在服务端做一个代理。
+        </small>
+      </div>
+
+      <!-- ============ Inject Mode ============ -->
+      <div class="ipg_mode_inject">
+        <hr class="ipg_hr">
+        <div class="ipg_label2">Prompt 注入参数（仅注入模式生效）</div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">注入位置</div>
+          <select id="ipg_position" class="text_pole widthUnset">
+            <option value="1">In-Chat（靠近末尾，推荐）</option>
+            <option value="0">After Story String（靠前，不推荐）</option>
+          </select>
+          <div class="ipg_hint opacity50p">推荐保持 In-Chat</div>
+        </div>
+
+        <div class="flex-container alignItemsCenter ipg_row">
+          <div class="ipg_label">注入深度</div>
+          <input id="ipg_depth" type="number" min="0" max="99" class="text_pole widthUnset">
+          <div class="ipg_hint opacity50p">0=最后一条消息处插入；数值越大越靠前</div>
+        </div>
+
+        <label class="checkbox_label ipg_row" for="ipg_scan_wi" title="勾选后，这段注入也会参与世界书扫描（通常没必要，会更费token）。">
+          <input id="ipg_scan_wi" type="checkbox" class="checkbox">
+          允许世界书扫描本注入（一般不勾）
+        </label>
+
+        <small class="opacity50p">
+          说明：注入模式使用 <code>setExtensionPrompt</code>，不依赖 Author’s Note。
+        </small>
+      </div>
+
+      <hr class="ipg_hr">
+
+      <div class="flex-container ipg_row gap1">
+        <button id="ipg_apply_now" class="menu_button">保存/应用</button>
+        <button id="ipg_test_now" class="menu_button">测试：把指引追加到最后一条AI回复</button>
+        <button id="ipg_clear_now" class="menu_button">禁用</button>
+      </div>
+    </div>
+  </div>
+</div>
