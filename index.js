@@ -1093,7 +1093,8 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
       if (mode === 'compact') {
         const limit = Math.min(arr.length, 3);
         const picked = arr.slice(0, limit).map(x => String(x ?? '').trim()).filter(Boolean);
-        lines.push(`- **${title}**：${picked.join(' / ')}`);
+        lines.push(`- **${title}**
+${indentForListItem(picked.join(' / '))}`);
       } else {
         // 标准模式：把整个列表合并到同一个模块卡片内（以【1】等为分隔提示）
         const normalized = normalizeNumberedHints(arr);
@@ -1109,7 +1110,8 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
 
       if (mode === 'compact') {
         const short = (text.length > 140 ? text.slice(0, 140) + '…' : text);
-        lines.push(`- **${title}**：${short}`);
+        lines.push(`- **${title}**
+${indentForListItem(short)}`);
       } else {
         // 标准模式：把内容缩进到 list item 内，避免内部列表/编号变成“同级卡片”
         lines.push(`- **${title}**\n${indentForListItem(text)}`);
@@ -1258,13 +1260,11 @@ function ensurePanelBoxPresent(mesKey) {
     attachPanelToggleHandler(existing, mesKey);
     const body = existing.querySelector('.sg-panel-body');
     if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
-    decorateInlineModuleCards(existing);
     return true;
   }
 
   const box = createPanelBoxElement(mesKey, cached.htmlInner, cached.collapsed);
   textEl.appendChild(box);
-  decorateInlineModuleCards(box);
   return true;
 }
 
@@ -1748,73 +1748,12 @@ function clearLegacyZoomArtifacts() {
   } catch { /* ignore */ }
 }
 
-
-function decorateInlineModuleCards(rootEl) {
-  try {
-    const body = rootEl?.querySelector?.('.sg-inline-body') || rootEl;
-    if (!body) return;
-
-    const items = body.querySelectorAll('.sg-inline-body > ul > li');
-    for (const li of items) {
-      if (li.classList.contains('sg-card-decorated')) continue;
-
-      // find title strong (should exist)
-      const strong = li.querySelector(':scope > strong') || li.querySelector('strong');
-      if (!strong) continue;
-
-      // split title into main + suffix (e.g. "标题（备注）")
-      const fullTitle = (strong.textContent || '').trim();
-      let main = fullTitle;
-      let suffix = '';
-      const idx = fullTitle.indexOf('（');
-      if (idx > 0 && fullTitle.endsWith('）')) {
-        main = fullTitle.slice(0, idx).trim();
-        suffix = fullTitle.slice(idx).trim();
-      }
-
-      // rebuild strong content with spans
-      strong.textContent = '';
-      const spanMain = document.createElement('span');
-      spanMain.className = 'sg-title-main';
-      spanMain.textContent = main || fullTitle || '（无标题）';
-      strong.appendChild(spanMain);
-      if (suffix && main) {
-        const spanSuffix = document.createElement('span');
-        spanSuffix.className = 'sg-title-muted';
-        spanSuffix.textContent = suffix;
-        strong.appendChild(spanSuffix);
-      }
-
-      // build head + content wrapper
-      const head = document.createElement('div');
-      head.className = 'sg-card-head';
-      head.appendChild(strong);
-
-      const content = document.createElement('div');
-      content.className = 'sg-card-content';
-
-      // move remaining nodes into content
-      const restNodes = Array.from(li.childNodes).filter(n => n !== strong && !(n.nodeType === 3 && !String(n.textContent || '').trim()));
-      for (const n of restNodes) content.appendChild(n);
-
-      li.innerHTML = '';
-      li.appendChild(head);
-      if (content.childNodes.length) li.appendChild(content);
-
-      li.classList.add('sg-card-decorated');
-    }
-  } catch { /* ignore */ }
-}
-
 function installCardZoomDelegation() {
   // keep old function name for compatibility, but behavior is now "click to shrink/expand"
   if (window.__storyguide_card_toggle_installed) return;
   window.__storyguide_card_toggle_installed = true;
 
   clearLegacyZoomArtifacts();
-
-  // ensure cards are wrapped for proper collapse behavior
-  decorateInlineModuleCards(document);
 
   document.addEventListener('click', (e) => {
     const target = e.target;
@@ -1824,8 +1763,6 @@ function installCardZoomDelegation() {
 
     const card = target.closest('.sg-inline-body > ul > li');
     if (!card) return;
-
-    if (!card.classList.contains('sg-card-decorated')) decorateInlineModuleCards(document);
 
     // if user is selecting text, don't toggle
     try {

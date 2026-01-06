@@ -781,31 +781,41 @@ body.sg-zoom-lock{
 
 
 
-/* v0.7.2 collapse = title only */
-.sg-inline-body > ul > li .sg-card-head{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.sg-inline-body > ul > li .sg-card-content{
-  margin-top: 8px;
-}
-
+/* v0.7.2 card collapse: show only title */
 .sg-inline-body > ul > li.sg-collapsed{
-  max-height: none !important;
-  overflow: visible !important;
+  max-height: none;
+  overflow: hidden;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-right: 34px;
 }
 
 .sg-inline-body > ul > li.sg-collapsed::after{
-  content: none !important;
+  content: "▸";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.65;
+  font-size: 14px;
 }
 
-.sg-inline-body > ul > li.sg-collapsed .sg-card-content{
+.sg-inline-body > ul > li.sg-collapsed > *:not(strong){
   display: none !important;
 }
 
-.sg-inline-body > ul > li.sg-collapsed .sg-title-muted{
-  display: none !important;
+.sg-inline-body > ul > li.sg-collapsed strong{
+  margin: 0 !important;
 }
+
+/* disable old gradient overlay if any */
+.sg-inline-body > ul > li.sg-collapsed::before{
+  /* keep left bar */
+}
+.sg-inline-body > ul > li.sg-collapsed::after{
+  /* arrow defined above */
+}
+
+
+/* v0.7.2 override old gradient */
+.sg-inline-body > ul > li.sg-collapsed::after{background:none !important; height:auto !important;}
