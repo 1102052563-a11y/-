@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.5
+ * v0.7.7
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -108,6 +108,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   mapTopP: 0.95,
   mapMaxTokens: 4096,
   mapStream: false,
+
+  // 地图提示词（可选）
+  mapPromptMode: 'append',     // append | override
+  mapPrompt: '',
   mapMaxLocations: 20,
   mapMaxLinks: 40,
 });
@@ -805,18 +809,32 @@ function buildMapSchema(maxLocations, maxLinks) {
   };
 }
 
+
+function substituteMapVars(input, vars) {
+  let t = String(input || '');
+  const maxLocations = String(vars?.maxLocations ?? '');
+  const maxLinks = String(vars?.maxLinks ?? '');
+  t = t.replace(/\{\{\s*maxLocations\s*\}\}/gi, maxLocations);
+  t = t.replace(/\{\{\s*maxLinks\s*\}\}/gi, maxLinks);
+  return t;
+}
+
 function buildMapPromptMessages(snapshotText) {
   const s = ensureSettings();
   const maxLocations = clampInt(s.mapMaxLocations, 5, 80, DEFAULT_SETTINGS.mapMaxLocations);
   const maxLinks = clampInt(s.mapMaxLinks, 5, 200, DEFAULT_SETTINGS.mapMaxLinks);
 
-  const system = [
+  const mode = String(s.mapPromptMode || 'append');
+  const customRaw = String(s.mapPrompt || '').trim();
+  const custom = customRaw ? substituteMapVars(customRaw, { maxLocations, maxLinks }).trim() : '';
+
+  const baseLines = [
     `---BEGIN PROMPT---`,
     `[System]`,
     `你是“世界地图生成器”。你的任务是：从聊天/设定中提取“地点（locations）+ 连接（links）+ 主角位置（protagonist）”，并输出一份可视化用的 JSON。`,
     ``,
     `[Constraints]`,
-    `1) 不要凭空杜撰地点；如果只能推断，请在 note 标注“推测/不确定”。`,
+    `1) 不要凭空杜撘地点；如果只能推断，请在 note 标注“推测/不确定”。`,
     `2) 坐标系：x,y 都是 0~100 的数字（尽量整数），用于二维示意图，不追求真实比例。`,
     `3) locations 数量 ≤ ${maxLocations}；links 数量 ≤ ${maxLinks}。`,
     `4) protagonist.at 尽量填写 locations.id；如果不确定 at，就用 x/y 直接标注并写 note。`,
@@ -827,8 +845,38 @@ function buildMapPromptMessages(snapshotText) {
     `- locations: {id,name,x,y,type?,note?}[]`,
     `- links: {from,to,label?}[] (可选)`,
     `- protagonist: {name,at?,x?,y?,note?}`,
-    `---END PROMPT---`,
-  ].join('\n');
+  ];
+
+  let system = '';
+
+  if (custom && mode === 'override') {
+    // 覆盖模式：用户自定义 System，但仍自动附加“硬约束 + schema”，保证渲染与解析稳定。
+    system = [
+      `---BEGIN PROMPT---`,
+      `[System]`,
+      custom,
+      ``,
+      `[Hard Constraints]`,
+      `1) 输出必须是 JSON 对象本体（无 Markdown、无代码块、无多余解释）。`,
+      `2) 坐标系：x,y 建议为 0~100 的数字（示意图坐标系）。`,
+      `3) locations 数量 ≤ ${maxLocations}；links 数量 ≤ ${maxLinks}。`,
+      ``,
+      `[Output JSON Schema]`,
+      `- title: string (可选)`,
+      `- locations: {id,name,x,y,type?,note?}[]`,
+      `- links: {from,to,label?}[] (可选)`,
+      `- protagonist: {name,at?,x?,y?,note?}`,
+      `---END PROMPT---`,
+    ].join('\n');
+  } else {
+    // 追加模式（默认）：把用户提示词放在默认提示词后面
+    const lines = [...baseLines];
+    if (custom) {
+      lines.push('', `[User Custom Instructions]`, custom);
+    }
+    lines.push('---END PROMPT---');
+    system = lines.join('\n');
+  }
 
   return [
     { role: 'system', content: system },
@@ -2866,6 +2914,33 @@ function buildModalHtml() {
                 </div>
               </div>
 
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title">地图提示词（可自定义）</div>
+                <div class="sg-hint">可选：用于指导模型如何抽取地点/路线/主角位置。支持变量：{{maxLocations}} / {{maxLinks}}。<br>模式说明：<b>追加</b>＝在默认提示词后追加；<b>覆盖</b>＝用你的提示词替换默认（仍会自动附加 JSON/数量/坐标约束，保证可解析）。</div>
+
+                <div class="sg-grid2" style="margin-top:10px;">
+                  <div class="sg-field">
+                    <label>模式</label>
+                    <select id="sg_mapPromptMode">
+                      <option value="append">追加到默认提示词</option>
+                      <option value="override">覆盖默认提示词</option>
+                    </select>
+                  </div>
+                  <div class="sg-field">
+                    <label>快捷操作</label>
+                    <div class="sg-row sg-inline" style="margin-top:0;">
+                      <button class="menu_button sg-btn" id="sg_mapPromptReset">恢复默认</button>
+                      <button class="menu_button sg-btn" id="sg_mapPromptSave">保存提示词</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="sg-field" style="margin-top:10px;">
+                  <label>提示词内容（留空＝使用默认）</label>
+                  <textarea id="sg_mapPrompt" rows="7" spellcheck="false" placeholder="例如：\n- 优先抽取：国家/城市/村镇/建筑/地标\n- 路线 label 使用：官道/山路/水路/传送阵\n- 主角位置优先写 protagonist.at，除非不确定\n- 地点命名尽量沿用原文/对话里的称呼\n"></textarea>
+                </div>
+              </div>
+
               <div class="sg-map-view" id="sg_map_view"><div class="sg-hint">（尚未生成）</div></div>
               <details class="sg-map-details">
                 <summary>地图JSON</summary>
@@ -2959,6 +3034,20 @@ function ensureModal() {
   });
 
   $('#sg_mapClear').on('click', () => { clearMap().catch(() => void 0); });
+
+  $('#sg_mapPromptReset').on('click', () => {
+    $('#sg_mapPrompt').val('');
+    $('#sg_mapPromptMode').val('append');
+    pullUiToSettings();
+    saveSettings();
+    setStatus('已恢复默认地图提示词（清空自定义）', 'ok');
+  });
+
+  $('#sg_mapPromptSave').on('click', () => {
+    pullUiToSettings();
+    saveSettings();
+    setStatus('已保存地图提示词', 'ok');
+  });
 
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
@@ -3199,7 +3288,9 @@ function pullSettingsToUi() {
   $('#sg_mapApiKey').val(s.customApiKey);
   $('#sg_mapModel').val(s.customModel);
   $('#sg_mapMaxTokens').val(s.customMaxTokens ?? DEFAULT_SETTINGS.customMaxTokens);
-  $('#sg_mapStream').prop('checked', !!s.customStream);
+  
+  $('#sg_mapPromptMode').val(String(s.mapPromptMode || 'append'));
+  $('#sg_mapPrompt').val(String(s.mapPrompt || ''));
 
   // 地图块显示逻辑：跟随最终解析 provider
   const mp = String(s.mapProvider || 'inherit');
@@ -3316,8 +3407,9 @@ function pullUiToSettings() {
   s.customStream = !!sharedStream;
 
   // map settings
-  s.mapProvider = String($('#sg_mapProvider').val() || 'inherit');
-  s.mapPersistToChat = $('#sg_mapPersist').is(':checked');
+  
+  s.mapPromptMode = String($('#sg_mapPromptMode').val() || 'append');
+  s.mapPrompt = String($('#sg_mapPrompt').val() || '');
 
   // modulesJson：先不强行校验（用户可先保存再校验），但会在分析前用默认兜底
   s.modulesJson = String($('#sg_modulesJson').val() || '').trim() || JSON.stringify(DEFAULT_MODULES, null, 2);
