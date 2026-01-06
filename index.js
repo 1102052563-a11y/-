@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.9
+ * v0.7.4
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -100,7 +100,6 @@ const DEFAULT_SETTINGS = Object.freeze({
 const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
-  graph: 'storyguide_relation_graph_mermaid',
 });
 
 let lastReport = null;
@@ -198,32 +197,6 @@ function safeJsonParse(maybeJson) {
   try { return JSON.parse(t); } catch { return null; }
 }
 
-function tryParseJsonAny(maybeJson) {
-  if (maybeJson === undefined || maybeJson === null) return null;
-  let s = String(maybeJson).trim();
-  if (!s) return null;
-  // strip fenced code markers if present
-  s = s.replace(/^```(?:json|javascript|js|text)?/i, '').replace(/```$/i, '').trim();
-  // Fast path
-  try { return JSON.parse(s); } catch { /* ignore */ }
-
-  // Try slice from first { or [
-  const iObj = s.indexOf('{');
-  const iArr = s.indexOf('[');
-  const start = (iObj === -1) ? iArr : (iArr === -1 ? iObj : Math.min(iObj, iArr));
-  if (start === -1) return null;
-
-  const tail = s.slice(start);
-  try { return JSON.parse(tail); } catch { /* ignore */ }
-
-  const open = tail[0];
-  const close = open === '{' ? '}' : (open === '[' ? ']' : '');
-  if (!close) return null;
-  const last = tail.lastIndexOf(close);
-  if (last === -1) return null;
-  try { return JSON.parse(tail.slice(0, last + 1)); } catch { return null; }
-}
-
 function renderMarkdownToHtml(markdown) {
   const { showdown, DOMPurify } = SillyTavern.libs;
   const converter = new showdown.Converter({ simplifiedAutoLink: true, strikethrough: true, tables: true });
@@ -262,282 +235,6 @@ function showPane(name) {
   $('#sg_modal .sg-pane').removeClass('active');
   $(`#sg_pane_${name}`).addClass('active');
 }
-
-// -------------------- relation graph (Mermaid) --------------------
-
-let __sgMermaidPromise = null;
-
-function escapeHtml(str) {
-  return String(str || '').replace(/[&<>"']/g, (ch) => {
-    switch (ch) {
-      case '&': return '&amp;';
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '"': return '&quot;';
-      case '\'': return '&#39;';
-      default: return ch;
-    }
-  });
-}
-
-function isGraphJson(obj) {
-  if (!obj || typeof obj !== 'object') return false;
-  const nodes = obj.nodes;
-  const edges = obj.edges;
-  return Array.isArray(nodes) && Array.isArray(edges);
-}
-
-function safeId(id) {
-  // Mermaid node ids: keep alnum/_; map others to _
-  const s = String(id ?? '').trim();
-  const out = s.replace(/[^a-zA-Z0-9_]/g, '_');
-  return out || ('N_' + Math.random().toString(16).slice(2));
-}
-
-function safeLabel(label) {
-  // Mermaid labels inside [] and edge labels inside | |
-  return String(label ?? '').replace(/[\r\n]+/g, ' ').replace(/\|/g, '/').trim();
-}
-
-function graphJsonToMermaid(graph) {
-  try {
-    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
-    const edges = Array.isArray(graph?.edges) ? graph.edges : [];
-
-    // Map original ids to mermaid-safe ids
-    const idMap = new Map();
-    for (const n of nodes) {
-      const raw = n?.id ?? n?.name ?? '';
-      const sid = safeId(raw);
-      // avoid collisions
-      let finalId = sid;
-      let i = 2;
-      while ([...idMap.values()].includes(finalId)) {
-        finalId = sid + '_' + i;
-        i += 1;
-      }
-      idMap.set(String(raw), finalId);
-      // also map name fallback
-      if (n?.id && n?.name) idMap.set(String(n.name), finalId);
-    }
-
-    // Group by faction if present
-    const groups = new Map();
-    for (const n of nodes) {
-      const fac = safeLabel(n?.faction || '');
-      const k = fac || '';
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(n);
-    }
-
-    const lines = [];
-    lines.push('flowchart TD');
-
-    // Nodes
-    const emitNode = (n) => {
-      const rawId = String(n?.id ?? n?.name ?? '');
-      const mid = idMap.get(rawId) || safeId(rawId);
-      const name = safeLabel(n?.name ?? n?.id ?? mid);
-      // include role/type in a compact way
-      const extra = [n?.role, n?.type].filter(Boolean).map(safeLabel).filter(Boolean);
-      const label = extra.length ? `${name}\n(${extra.join(' / ')})` : name;
-      lines.push(`  ${mid}["${label.replace(/"/g,'\"')}"]`);
-    };
-
-    for (const [fac, arr] of groups.entries()) {
-      if (fac) {
-        const subId = safeId('f_' + fac);
-        lines.push(`  subgraph ${subId}["${fac.replace(/"/g,'\"')}"]`);
-        for (const n of arr) emitNode(n);
-        lines.push('  end');
-      } else {
-        for (const n of arr) emitNode(n);
-      }
-    }
-
-    // Edges
-    const arrowFor = (e) => {
-      const vis = String(e?.visibility || '').toLowerCase();
-      const conf = String(e?.confidence || '').toLowerCase();
-      const pol = String(e?.polarity || '').toLowerCase();
-      const rel = String(e?.relation || '').toLowerCase();
-
-      const isWeak = vis.includes('隐') || vis.includes('私') || conf.includes('低') || conf.includes('不') || conf.includes('未知');
-      const isNeg = pol.includes('neg') || rel.includes('敌') || rel.includes('仇') || rel.includes('对立');
-
-      // Use dashed for weak/hidden; dotted-ish for negative too
-      if (isWeak || isNeg) return '-.->';
-      return '-->';
-    };
-
-    for (const e of edges) {
-      const fromRaw = String(e?.from ?? '');
-      const toRaw = String(e?.to ?? '');
-      if (!fromRaw || !toRaw) continue;
-      const from = idMap.get(fromRaw) || safeId(fromRaw);
-      const to = idMap.get(toRaw) || safeId(toRaw);
-
-      const rel = safeLabel(e?.relation || '');
-      const dir = String(e?.direction || '->');
-
-      const arrow = arrowFor(e);
-
-      if (dir.includes('<') && dir.includes('>')) {
-        // undirected / mutual
-        const connector = arrow === '-->' ? '---' : '-.-';
-        lines.push(`  ${from} ${connector}|"${rel}"| ${to}`);
-      } else if (dir.includes('<-')) {
-        // reverse
-        lines.push(`  ${to} ${arrow}|"${rel}"| ${from}`);
-      } else {
-        // forward
-        lines.push(`  ${from} ${arrow}|"${rel}"| ${to}`);
-      }
-    }
-
-    return lines.join('\n');
-  } catch {
-    // fallback
-    return '';
-  }
-}
-
-function findGraphJsonInLastReport() {
-  const obj = lastReport?.json;
-  if (!obj || typeof obj !== 'object') return null;
-
-  for (const [k, v] of Object.entries(obj)) {
-    let val = v;
-    if (typeof val === 'string') {
-      const parsed = tryParseJsonAny(val);
-      if (parsed) val = parsed;
-    }
-    if (isGraphJson(val)) return { key: k, graph: val };
-  }
-  return null;
-}
-
-function normalizeGraphInput(text) {
-  const t = String(text || '').trim();
-  if (!t) return '';
-  const parsed = tryParseJsonAny(t);
-  if (parsed && isGraphJson(parsed)) {
-    const mm = graphJsonToMermaid(parsed);
-    if (mm) return mm;
-  }
-  return t;
-}
-
-function getRelationGraphTextPreferUi() {
-  const uiRaw = ($('#sg_graphText').length ? String($('#sg_graphText').val() || '') : '');
-  const ui = normalizeGraphInput(uiRaw);
-  if (ui.trim()) return ui.trim();
-
-  const metaRaw = String(getChatMetaValue(META_KEYS.graph) || '');
-  const meta = normalizeGraphInput(metaRaw);
-  if (meta.trim()) return meta.trim();
-
-  const found = findGraphJsonInLastReport();
-  if (found?.graph) {
-    const mm = graphJsonToMermaid(found.graph);
-    if (mm) return mm;
-  }
-  return '';
-}
-
-function loadExternalScript(url) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = url;
-    s.async = true;
-    s.onload = () => resolve(true);
-    s.onerror = () => reject(new Error(`加载脚本失败：${url}`));
-    document.head.appendChild(s);
-  });
-}
-
-async function ensureMermaidLoaded() {
-  if (globalThis.mermaid) return globalThis.mermaid;
-
-  if (__sgMermaidPromise) return await __sgMermaidPromise;
-
-  __sgMermaidPromise = (async () => {
-    const urls = [
-      'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js',
-      'https://unpkg.com/mermaid@10/dist/mermaid.min.js',
-    ];
-
-    let lastErr = null;
-    for (const url of urls) {
-      try {
-        await loadExternalScript(url);
-        if (globalThis.mermaid) return globalThis.mermaid;
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error('Mermaid 未加载（网络/CSP 可能阻止外部脚本）');
-  })();
-
-  return await __sgMermaidPromise;
-}
-
-async function renderRelationGraph() {
-  const $view = $('#sg_graphView');
-  const $src = $('#sg_graphSrc');
-  const $hint = $('#sg_graphHint');
-
-  if (!$view.length) return;
-
-  const code = getRelationGraphTextPreferUi();
-  if ($src.length) $src.text(code || '');
-
-  if (!code) {
-    $view.html('<div class="sg-hint">（未提供关系图谱：请在左侧「原著资料」里填写 Mermaid flowchart，并保存到本聊天）</div>');
-    if ($hint.length) $hint.text('未提供关系图谱');
-    return;
-  }
-
-  if ($hint.length) $hint.text('正在渲染…');
-
-  try {
-    const mermaid = await ensureMermaidLoaded();
-
-    // Initialize once; repeated calls are safe
-    try {
-      mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: 'strict',
-        theme: 'dark',
-      });
-    } catch { /* ignore */ }
-
-    const id = `sg_mermaid_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-
-    // mermaid.render API differs across versions
-    let out = null;
-    try { out = await mermaid.render(id, code); } catch (e) {
-      // some versions need a container node
-      const tmp = document.createElement('div');
-      out = await mermaid.render(id, code, tmp);
-    }
-
-    const svg = (typeof out === 'string') ? out : (out?.svg ?? '');
-    if (!svg) throw new Error('Mermaid 渲染返回空结果');
-
-    $view.html(svg);
-    if ($hint.length) $hint.text('渲染完成 ✅');
-  } catch (e) {
-    console.warn('[StoryGuide] mermaid render failed', e);
-    const msg = escapeHtml(e?.message ?? String(e));
-    $view.html(
-      `<div class="sg-graph-error">
-        Mermaid 渲染失败：${msg}<br><br>
-        已显示源代码（下方可复制）。你也可以把 Mermaid 粘贴到 Mermaid Live Editor 里验证语法。
-      </div>`
-    );
-    if ($hint.length) $hint.text('渲染失败（已显示源代码）');
-  }
-}
-
 
 // -------------------- modules config --------------------
 
@@ -981,8 +678,6 @@ function buildSnapshot() {
 
   const canon = stripHtml(getChatMetaValue(META_KEYS.canon));
   const world = stripHtml(getChatMetaValue(META_KEYS.world));
-  // 关系图谱建议存 Mermaid 代码（不要包代码块），这里不做 stripHtml 以免误伤语法
-  const graph = String(getChatMetaValue(META_KEYS.graph) || '').trim();
 
   const picked = [];
   for (let i = chat.length - 1; i >= 0 && picked.length < maxMessages; i--) {
@@ -1015,10 +710,7 @@ function buildSnapshot() {
     charBlock ? charBlock : `【角色卡】（未获取到/可能是群聊）`,
     ``,
     world ? `【世界观/设定补充】\n${world}\n` : `【世界观/设定补充】（未提供）\n`,
-    canon ? `【原著后续/大纲】\n${canon}\n` : `【原著后续/大纲】（未提供）\n`,    graph ? `【角色关系图谱（Mermaid）】
-${graph}
-` : `【角色关系图谱】（未提供）
-`,
+    canon ? `【原著后续/大纲】\n${canon}\n` : `【原著后续/大纲】（未提供）\n`,
     buildWorldbookBlock(),
     `【聊天记录（最近${picked.length}条）】`,
     picked.length ? picked.join('\n\n') : '（空）'
@@ -1274,54 +966,24 @@ function renderReportMarkdownFromModules(parsedJson, modules) {
   lines.push(`# 剧情指导报告`);
   lines.push('');
 
-  // 当某个字段不是纯文本/字符串数组时（例如输出了对象/嵌套结构），
-  // 直接 String(val) 会变成 "[object Object]"。这里做一次兜底格式化。
-  function toPrettyJson(v) {
-    try { return JSON.stringify(v, null, 2); } catch { return String(v ?? ''); }
-  }
-  function isSimpleList(arr) {
-    return Array.isArray(arr) && arr.every(x => (
-      typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean'
-    ));
-  }
-  function formatTextOrJson(val) {
-    if (val === undefined || val === null) return '';
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      const parsed = ((trimmed.startsWith('{') || trimmed.startsWith('[')) ? tryParseJsonAny(trimmed) : null);
-      if (parsed && typeof parsed === 'object') return '```json\n' + toPrettyJson(parsed) + '\n```';
-      return trimmed;
-    }
-    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
-    // object/array → JSON code block
-    if (typeof val === 'object') return '```json\n' + toPrettyJson(val) + '\n```';
-    return String(val);
-  }
-
   for (const m of modules) {
     const val = parsedJson?.[m.key];
     lines.push(`## ${m.title || m.key}`);
 
     if (m.type === 'list') {
-      // 纯字符串/数字/布尔列表：正常渲染；否则整体用 JSON 展示
-      if (isSimpleList(val)) {
-        const arr = val.map(x => String(x).trim()).filter(Boolean);
-        if (!arr.length) {
-          lines.push('（空）');
-        } else {
-          if (m.key === 'tips') arr.forEach((t, i) => lines.push(`${i + 1}. ${t}`));
-          else arr.forEach(t => lines.push(`- ${t}`));
-        }
-      } else if (Array.isArray(val) && val.length) {
-        lines.push('```json');
-        lines.push(toPrettyJson(val));
-        lines.push('```');
-      } else {
+      const arr = Array.isArray(val) ? val : [];
+      if (!arr.length) {
         lines.push('（空）');
+      } else {
+        // tips 用有序列表更舒服
+        if (m.key === 'tips') {
+          arr.forEach((t, i) => lines.push(`${i + 1}. ${t}`));
+        } else {
+          arr.forEach(t => lines.push(`- ${t}`));
+        }
       }
     } else {
-      const text = formatTextOrJson(val);
-      lines.push(text ? text : '（空）');
+      lines.push(val ? String(val) : '（空）');
     }
     lines.push('');
   }
@@ -1416,45 +1078,13 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
   const lines = [];
   lines.push(`**剧情指导**`);
 
-  function toPrettyJson(v) {
-    try { return JSON.stringify(v, null, 2); } catch { return String(v ?? ''); }
-  }
-  function isSimpleList(arr) {
-    return Array.isArray(arr) && arr.every(x => (
-      typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean'
-    ));
-  }
-  function formatInlineText(val) {
-    if (val === undefined || val === null) return '';
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      const parsed = ((trimmed.startsWith('{') || trimmed.startsWith('[')) ? tryParseJsonAny(trimmed) : null);
-      if (parsed && typeof parsed === 'object') return '```json\n' + toPrettyJson(parsed) + '\n```';
-      return trimmed;
-    }
-    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
-    if (typeof val === 'object') return '```json\n' + toPrettyJson(val) + '\n```';
-    return String(val);
-  }
-
   for (const m of modules) {
     const hasKey = parsedJson && Object.hasOwn(parsedJson, m.key);
     const val = hasKey ? parsedJson[m.key] : undefined;
     const title = m.title || m.key;
 
     if (m.type === 'list') {
-      // 纯字符串/数字/布尔列表：按原逻辑渲染；否则整体用 JSON 代码块
-      if (!isSimpleList(val)) {
-        const text = (Array.isArray(val) && val.length) ? ('```json\n' + toPrettyJson(val) + '\n```') : '';
-        if (!text) {
-          if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空）')}`);
-          continue;
-        }
-        lines.push(`- **${title}**\n${indentForListItem(text)}`);
-        continue;
-      }
-
-      const arr = val.map(x => String(x).trim()).filter(Boolean);
+      const arr = Array.isArray(val) ? val : [];
       if (!arr.length) {
         if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空）')}`);
         continue;
@@ -1472,14 +1102,14 @@ ${indentForListItem(picked.join(' / '))}`);
         lines.push(`- **${title}**\n${indentForListItem(joined)}`);
       }
     } else {
-      const text = formatInlineText(val);
+      const text = (val !== undefined && val !== null) ? String(val).trim() : '';
       if (!text) {
         if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空）')}`);
         continue;
       }
 
       if (mode === 'compact') {
-        const short = (text.startsWith('```') ? text : (text.length > 140 ? text.slice(0, 140) + '…' : text));
+        const short = (text.length > 140 ? text.slice(0, 140) + '…' : text);
         lines.push(`- **${title}**
 ${indentForListItem(short)}`);
       } else {
@@ -1990,9 +1620,74 @@ function findChatInputAnchor() {
   return ta;
 }
 
+const SG_CHAT_POS_KEY = 'storyguide_chat_controls_pos_v1';
+let sgChatPinnedLoaded = false;
+let sgChatPinnedPos = null; // {left, top, pinned}
+let sgChatPinned = false;
+
+function loadPinnedChatPos() {
+  if (sgChatPinnedLoaded) return;
+  sgChatPinnedLoaded = true;
+  try {
+    const raw = localStorage.getItem(SG_CHAT_POS_KEY);
+    if (!raw) return;
+    const j = JSON.parse(raw);
+    if (j && typeof j.left === 'number' && typeof j.top === 'number') {
+      sgChatPinnedPos = { left: j.left, top: j.top, pinned: j.pinned !== false };
+      sgChatPinned = sgChatPinnedPos.pinned;
+    }
+  } catch { /* ignore */ }
+}
+
+function savePinnedChatPos(left, top) {
+  try {
+    sgChatPinnedPos = { left: Number(left) || 0, top: Number(top) || 0, pinned: true };
+    sgChatPinned = true;
+    localStorage.setItem(SG_CHAT_POS_KEY, JSON.stringify(sgChatPinnedPos));
+  } catch { /* ignore */ }
+}
+
+function clearPinnedChatPos() {
+  try {
+    sgChatPinnedPos = null;
+    sgChatPinned = false;
+    localStorage.removeItem(SG_CHAT_POS_KEY);
+  } catch { /* ignore */ }
+}
+
+function clampToViewport(left, top, w, h) {
+  const pad = 8;
+  const L = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
+  const T = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
+  return { left: L, top: T };
+}
+
+function measureWrap(wrap) {
+  const prevVis = wrap.style.visibility;
+  wrap.style.visibility = 'hidden';
+  wrap.style.left = '0px';
+  wrap.style.top = '0px';
+  const w = wrap.offsetWidth || 220;
+  const h = wrap.offsetHeight || 38;
+  wrap.style.visibility = prevVis || 'visible';
+  return { w, h };
+}
+
 function positionChatActionButtons() {
   const wrap = document.getElementById('sg_chat_controls');
   if (!wrap) return;
+
+  loadPinnedChatPos();
+
+  const { w, h } = measureWrap(wrap);
+
+  // If user dragged & pinned position, keep it.
+  if (sgChatPinned && sgChatPinnedPos) {
+    const clamped = clampToViewport(sgChatPinnedPos.left, sgChatPinnedPos.top, w, h);
+    wrap.style.left = `${Math.round(clamped.left)}px`;
+    wrap.style.top = `${Math.round(clamped.top)}px`;
+    return;
+  }
 
   const sendBtn =
     document.querySelector('#send_but') ||
@@ -2007,26 +1702,13 @@ function positionChatActionButtons() {
 
   const rect = sendBtn.getBoundingClientRect();
 
-  // measure
-  const prevVis = wrap.style.visibility;
-  wrap.style.visibility = 'hidden';
-  wrap.style.left = '0px';
-  wrap.style.top = '0px';
-  const w = wrap.offsetWidth || 200;
-  const h = wrap.offsetHeight || 36;
-
   // place to the left of send button, vertically centered
   let left = rect.left - w - 10;
   let top = rect.top + (rect.height - h) / 2;
 
-  // clamp to viewport
-  const pad = 8;
-  left = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
-  top = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
-
-  wrap.style.left = `${Math.round(left)}px`;
-  wrap.style.top = `${Math.round(top)}px`;
-  wrap.style.visibility = prevVis || 'visible';
+  const clamped = clampToViewport(left, top, w, h);
+  wrap.style.left = `${Math.round(clamped.left)}px`;
+  wrap.style.top = `${Math.round(clamped.top)}px`;
 }
 
 let sgChatPosTimer = null;
@@ -2037,7 +1719,6 @@ function schedulePositionChatButtons() {
     try { positionChatActionButtons(); } catch {}
   }, 60);
 }
-
 function ensureChatActionButtons() {
   if (document.getElementById('sg_chat_controls')) {
     schedulePositionChatButtons();
@@ -2049,6 +1730,12 @@ function ensureChatActionButtons() {
 
   const wrap = document.createElement('div');
   wrap.id = 'sg_chat_controls';
+
+  // draggable handle (drag to pin position; double click to reset)
+  const handle = document.createElement('div');
+  handle.className = 'sg-chat-drag-handle';
+  handle.title = '拖动按钮位置（双击复位为自动贴边）';
+  handle.textContent = '⋮⋮';
   wrap.className = 'sg-chat-controls';
 
   const gen = document.createElement('button');
@@ -2095,11 +1782,75 @@ function ensureChatActionButtons() {
     }
   });
 
+  wrap.appendChild(handle);
+
   wrap.appendChild(gen);
   wrap.appendChild(reroll);
 
   // Use fixed positioning to avoid overlapping with send button / different themes.
+  
+  // drag to move (pin position)
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let moved = false;
+
+  const onMove = (ev) => {
+    if (!dragging) return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if (!moved && (Math.abs(dx) + Math.abs(dy) > 4)) moved = true;
+
+    const { w, h } = measureWrap(wrap);
+    const clamped = clampToViewport(startLeft + dx, startTop + dy, w, h);
+    wrap.style.left = `${Math.round(clamped.left)}px`;
+    wrap.style.top = `${Math.round(clamped.top)}px`;
+  };
+
+  const onUp = (ev) => {
+    if (!dragging) return;
+    dragging = false;
+    wrap.classList.remove('is-dragging');
+    try { handle.releasePointerCapture(ev.pointerId); } catch {}
+    window.removeEventListener('pointermove', onMove, true);
+    window.removeEventListener('pointerup', onUp, true);
+    window.removeEventListener('pointercancel', onUp, true);
+
+    if (moved) {
+      const left = parseInt(wrap.style.left || '0', 10);
+      const top = parseInt(wrap.style.top || '0', 10);
+      savePinnedChatPos(left, top);
+    }
+  };
+
+  handle.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    loadPinnedChatPos();
+    dragging = true;
+    moved = false;
+    wrap.classList.add('is-dragging');
+
+    const rect = wrap.getBoundingClientRect();
+    startX = ev.clientX;
+    startY = ev.clientY;
+    startLeft = rect.left;
+    startTop = rect.top;
+
+    try { handle.setPointerCapture(ev.pointerId); } catch {}
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+  });
+
+  handle.addEventListener('dblclick', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    clearPinnedChatPos();
+    schedulePositionChatButtons();
+  });
+
   document.body.appendChild(wrap);
+  loadPinnedChatPos();
 
   // Keep it positioned correctly
   window.addEventListener('resize', schedulePositionChatButtons, { passive: true });
@@ -2288,39 +2039,7 @@ function buildModalHtml() {
             </div>
           </div>
 
-          
           <div class="sg-card">
-            <div class="sg-card-title">原著资料（本聊天）</div>
-            <div class="sg-hint">这里的内容会保存到当前聊天的 metadata，并在「分析当前剧情」时注入给模型。</div>
-
-            <div class="sg-field">
-              <label>世界观/设定补充</label>
-              <textarea id="sg_worldText" rows="4" placeholder="例如：时代背景、势力、修炼体系、关键设定…"></textarea>
-            </div>
-
-            <div class="sg-field">
-              <label>原著后续/大纲</label>
-              <textarea id="sg_canonText" rows="4" placeholder="例如：后续大事件、关键反转、隐藏真相（可按剧透等级写）…"></textarea>
-            </div>
-
-            <div class="sg-field">
-              <label>角色关系图谱（Mermaid flowchart）</label>
-              <textarea id="sg_graphText" rows="7" spellcheck="false" placeholder="flowchart TD
-  %% 例：A --> B 表示关系；A -.-> C 表示弱/隐晦关系
-  A[主角] -->|同盟| B[伙伴]
-  A -.敌对.-> C[反派]
-"></textarea>
-              <div class="sg-hint">推荐用 Mermaid <code>flowchart</code> 语法（不要包代码块）。也支持粘贴“nodes/edges”的 JSON（会自动转 Mermaid）。右侧「图谱」标签可预览；若无法加载 Mermaid，会退化为显示源代码。</div>
-            </div>
-
-            <div class="sg-actions-row">
-              <button class="menu_button sg-btn-primary" id="sg_saveLore">保存到本聊天</button>
-              <button class="menu_button sg-btn" id="sg_insertGraphTpl">插入关系图模板</button>
-              <button class="menu_button sg-btn" id="sg_clearLore">清空</button>
-            </div>
-          </div>
-
-<div class="sg-card">
             <div class="sg-card-title">输出模块（JSON，可自定义字段/提示词）</div>
             <div class="sg-hint">你可以增删模块、改 key/title/type/prompt、控制 panel/inline。保存前可点“校验”。</div>
 
@@ -2399,7 +2118,6 @@ function buildModalHtml() {
               <button class="sg-tab active" id="sg_tab_md">报告</button>
               <button class="sg-tab" id="sg_tab_json">JSON</button>
               <button class="sg-tab" id="sg_tab_src">来源</button>
-              <button class="sg-tab" id="sg_tab_graph">图谱</button>
               <div class="sg-spacer"></div>
               <button class="menu_button sg-btn" id="sg_copyMd" disabled>复制MD</button>
               <button class="menu_button sg-btn" id="sg_copyJson" disabled>复制JSON</button>
@@ -2409,20 +2127,6 @@ function buildModalHtml() {
             <div class="sg-pane active" id="sg_pane_md"><div class="sg-md" id="sg_md">(尚未生成)</div></div>
             <div class="sg-pane" id="sg_pane_json"><pre class="sg-pre" id="sg_json"></pre></div>
             <div class="sg-pane" id="sg_pane_src"><pre class="sg-pre" id="sg_src"></pre></div>
-
-            <div class="sg-pane" id="sg_pane_graph">
-              <div class="sg-graph-toolbar">
-                <button class="menu_button sg-btn" id="sg_graphRender">刷新预览</button>
-                <button class="menu_button sg-btn" id="sg_graphCopy">复制Mermaid</button>
-                <span class="sg-hint" id="sg_graphHint"></span>
-              </div>
-              <div class="sg-graph-wrap" id="sg_graphView"><div class="sg-hint">（未提供关系图谱，或 Mermaid 未加载）</div></div>
-              <details class="sg-graph-details">
-                <summary>查看源代码</summary>
-                <pre class="sg-pre sg-graph-source" id="sg_graphSrc"></pre>
-              </details>
-            </div>
-
           </div>
         </div>
       </div>
@@ -2441,7 +2145,6 @@ function ensureModal() {
   $('#sg_tab_md').on('click', () => showPane('md'));
   $('#sg_tab_json').on('click', () => showPane('json'));
   $('#sg_tab_src').on('click', () => showPane('src'));
-  $('#sg_tab_graph').on('click', () => { showPane('graph'); renderRelationGraph().catch(() => void 0); });
 
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
@@ -2463,68 +2166,6 @@ function ensureModal() {
   $('#sg_saveCanon').on('click', async () => {
     try { await setChatMetaValue(META_KEYS.canon, String($('#sg_canonText').val() || '')); setStatus('已保存：原著后续/大纲（本聊天）', 'ok'); }
     catch (e) { setStatus(`保存失败：${e?.message ?? e}`, 'err'); }
-  });
-
-  // 原著资料（本聊天）：一次性保存 world/canon/graph
-  $('#sg_saveLore').on('click', async () => {
-    try {
-      await setChatMetaValue(META_KEYS.world, String($('#sg_worldText').val() || ''));
-      await setChatMetaValue(META_KEYS.canon, String($('#sg_canonText').val() || ''));
-      await setChatMetaValue(META_KEYS.graph, String($('#sg_graphText').val() || ''));
-      setStatus('已保存：原著资料（本聊天）', 'ok');
-      renderRelationGraph().catch(() => void 0);
-    } catch (e) {
-      setStatus(`保存失败：${e?.message ?? e}`, 'err');
-    }
-  });
-
-  $('#sg_clearLore').on('click', async () => {
-    try {
-      $('#sg_worldText').val('');
-      $('#sg_canonText').val('');
-      $('#sg_graphText').val('');
-      await setChatMetaValue(META_KEYS.world, '');
-      await setChatMetaValue(META_KEYS.canon, '');
-      await setChatMetaValue(META_KEYS.graph, '');
-      setStatus('已清空：原著资料（本聊天）', 'ok');
-      renderRelationGraph().catch(() => void 0);
-    } catch (e) {
-      setStatus(`清空失败：${e?.message ?? e}`, 'err');
-    }
-  });
-
-  $('#sg_insertGraphTpl').on('click', () => {
-    const tpl = [
-      'flowchart TD',
-      '  %% 关系图模板（可按家族/阵营分组）',
-      '  subgraph 阵营A',
-      '    A1[主角]',
-      '    A2[伙伴]',
-      '  end',
-      '  subgraph 阵营B',
-      '    B1[反派]',
-      '    B2[势力首领]',
-      '  end',
-      '',
-      '  A1 -->|同盟| A2',
-      '  A1 -.敌对.-> B1',
-      '  B1 -->|隶属| B2',
-    ].join('\n');
-    const $ta = $('#sg_graphText');
-    if ($ta.length) $ta.val(tpl).trigger('input');
-    setStatus('已插入关系图模板（记得点“保存到本聊天”）', 'ok');
-  });
-
-  // 图谱预览
-  $('#sg_graphRender').on('click', () => renderRelationGraph().catch(() => void 0));
-  $('#sg_graphCopy').on('click', async () => {
-    try {
-      const txt = getRelationGraphTextPreferUi();
-      await navigator.clipboard.writeText(txt || '');
-      setStatus(txt ? '已复制：Mermaid' : '没有可复制的 Mermaid 内容', txt ? 'ok' : 'warn');
-    } catch (e) {
-      setStatus(`复制失败：${e?.message ?? e}`, 'err');
-    }
   });
 
   $('#sg_copyMd').on('click', async () => {
@@ -2734,7 +2375,6 @@ function pullSettingsToUi() {
 
   $('#sg_worldText').val(getChatMetaValue(META_KEYS.world));
   $('#sg_canonText').val(getChatMetaValue(META_KEYS.canon));
-  $('#sg_graphText').val(getChatMetaValue(META_KEYS.graph));
 
   $('#sg_modulesJson').val(String(s.modulesJson || JSON.stringify(DEFAULT_MODULES, null, 2)));
   $('#sg_customSystemPreamble').val(String(s.customSystemPreamble || ''));
