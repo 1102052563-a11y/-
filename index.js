@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.8.7
+ * v0.8.8
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -15,6 +15,7 @@
  * v0.8.3 新增：总结功能支持自定义提示词（system + user 模板，支持占位符）
  * v0.8.6 修复：写入世界书不再依赖 JS 解析 UID（改为在同一段 STscript 管线内用 {{pipe}} 传递 UID），避免误报“无法解析 UID”。
  * v0.8.7 新增：蓝灯索引支持“实时读取蓝灯世界书文件”（无需外部导入 JSON）。
+ * v0.8.8 新增：蓝灯索引匹配支持 LLM 判断，并允许自定义“索引提示词”（system + user 模板）。
  */
 
 const MODULE_NAME = 'storyguide';
@@ -53,6 +54,13 @@ const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor
 
 // 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
 const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
+
+// ===== 蓝灯索引 → 绿灯触发：LLM 索引匹配默认提示词（可自定义） =====
+const DEFAULT_WI_INDEX_SYSTEM_PROMPT = `你是一个“世界书索引匹配器”。\n\n任务：\n- 给定“用户最新输入 + 最近对话上下文”，以及一组候选条目（来自蓝灯世界书，每条包含 title/summary/keywords）。\n- 你需要判断哪些候选条目与当前输入最相关，并输出用于触发世界书的关键词列表。\n\n要求：\n- keywords 尽量从候选条目的 keywords 中选择（这是世界书触发词）。\n- 只选择真正相关的条目；可以返回空数组。\n- 输出中文优先，去重，避免过泛词。`;
+
+const DEFAULT_WI_INDEX_USER_TEMPLATE = `【用户最新输入】\n{{userMessage}}\n\n【最近对话（不含用户本句）】\n{{recentText}}\n\n【候选条目（JSON 数组，含 id/title/summary/keywords）】\n{{candidates}}`;
+
+const WI_INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"keywords": string[], "pickedIds": number[]}。\n- keywords 以候选条目的 keywords 为主（必要时可补充 title 中的专有名词）。\n- pickedIds 为你认为相关的候选条目 id（可空）。`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -144,6 +152,8 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // —— 蓝灯索引 → 绿灯触发 ——
   wiTriggerEnabled: false,
+  // 匹配方式：local=本地相似度（快）；llm=调用模型判断（可自定义提示词）
+  wiTriggerMethod: 'local',
   // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
   wiTriggerLookbackMessages: 20,
   // 最多选择多少条 summary 条目来触发
@@ -158,6 +168,14 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiTriggerInjectStyle: 'hidden',
   wiTriggerTag: 'SG_WI_TRIGGERS',
   wiTriggerDebugLog: false,
+
+  // LLM 索引匹配（仅 wiTriggerMethod=llm 时使用）
+  // 先用本地相似度从蓝灯索引预筛选 TopK 条目，减少 tokens
+  wiIndexPrefilterTopK: 16,
+  wiIndexTemperature: 0.2,
+  wiIndexSystemPrompt: DEFAULT_WI_INDEX_SYSTEM_PROMPT,
+  wiIndexUserTemplate: DEFAULT_WI_INDEX_USER_TEMPLATE,
+  wiIndexMaxSummaryChars: 280,
 
   // 蓝灯索引读取方式：默认“实时读取蓝灯世界书文件”
   // - live：每次触发前会按需拉取蓝灯世界书（带缓存/节流）
@@ -2075,6 +2093,130 @@ function pickRelevantIndexEntries(recentText, candidates, maxEntries, minScore) 
   return scored.slice(0, maxEntries);
 }
 
+function truncateText(s, max) {
+  const t = String(s || '').trim();
+  if (!t) return '';
+  const n = Number(max || 0);
+  if (Number.isFinite(n) && n > 0 && t.length > n) return t.slice(0, n) + '…';
+  return t;
+}
+
+function buildWiIndexCandidatesForLlm(queryText, candidates) {
+  const s = ensureSettings();
+  const topK = clampInt(s.wiIndexPrefilterTopK, 5, 80, 16);
+  const maxSummaryChars = clampInt(s.wiIndexMaxSummaryChars, 80, 1200, 280);
+
+  // prefilter by local similarity, but always keep topK (even if below threshold)
+  const qv = tokenizeForSimilarity(queryText);
+  const scored = [];
+  for (const e of candidates) {
+    const txt = `${e.title || ''}\n${e.summary || ''}\n${(Array.isArray(e.keywords) ? e.keywords.join(' ') : '')}`;
+    const ev = tokenizeForSimilarity(txt);
+    const score = cosineSimilarity(qv, ev);
+    scored.push({ e, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  const picked = scored.slice(0, topK).map((x, idx) => ({
+    id: idx + 1,
+    title: String(x.e?.title || '').trim(),
+    summary: truncateText(String(x.e?.summary || '').trim(), maxSummaryChars),
+    keywords: sanitizeKeywords(x.e?.keywords).slice(0, 80),
+    score: Number.isFinite(x.score) ? Number(x.score.toFixed(3)) : 0,
+  }));
+  return picked;
+}
+
+function getWiIndexSchema() {
+  return {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    type: 'object',
+    additionalProperties: false,
+    required: ['keywords', 'pickedIds'],
+    properties: {
+      keywords: {
+        type: 'array',
+        items: { type: 'string' },
+        minItems: 0,
+        maxItems: 80,
+      },
+      pickedIds: {
+        type: 'array',
+        items: { type: 'number' },
+        minItems: 0,
+        maxItems: 40,
+      },
+    },
+  };
+}
+
+function buildWiIndexPromptMessages({ userMessage, recentText, candidates, lookback, maxEntries } = {}) {
+  const s = ensureSettings();
+  const sys = (String(s.wiIndexSystemPrompt || '').trim() || DEFAULT_WI_INDEX_SYSTEM_PROMPT) + `\n\n` + WI_INDEX_JSON_REQUIREMENT;
+  const tpl = String(s.wiIndexUserTemplate || '').trim() || DEFAULT_WI_INDEX_USER_TEMPLATE;
+  const candText = JSON.stringify(candidates || [], null, 0);
+
+  const user = renderTemplate(tpl, {
+    userMessage: String(userMessage || ''),
+    recentText: String(recentText || ''),
+    candidates: candText,
+    lookback: String(lookback ?? ''),
+    maxEntries: String(maxEntries ?? ''),
+  });
+
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: user },
+  ];
+}
+
+async function pickKeywordsByLlmIndex({ userMessage, recentText, candidates, lookback, maxEntries } = {}) {
+  const s = ensureSettings();
+  const messages = buildWiIndexPromptMessages({ userMessage, recentText, candidates, lookback, maxEntries });
+  const schema = getWiIndexSchema();
+  const temperature = clampFloat(s.wiIndexTemperature, 0, 2, 0.2);
+
+  let outText = '';
+  if (String(s.summaryProvider || 'st') === 'custom') {
+    // reuse summary custom api (独立)
+    outText = await callViaCustom(
+      s.summaryCustomEndpoint,
+      s.summaryCustomApiKey,
+      s.summaryCustomModel,
+      messages,
+      temperature,
+      clampInt(s.summaryCustomMaxTokens, 128, 200000, 2048),
+      0.95,
+      !!s.summaryCustomStream,
+    );
+    // if parse fails, retry once
+    if (!safeJsonParse(outText)) {
+      outText = await fallbackAskJsonCustom(
+        s.summaryCustomEndpoint,
+        s.summaryCustomApiKey,
+        s.summaryCustomModel,
+        messages,
+        temperature,
+        clampInt(s.summaryCustomMaxTokens, 128, 200000, 2048),
+        0.95,
+        !!s.summaryCustomStream,
+      );
+    }
+  } else {
+    const maybe = await callViaSillyTavern(messages, schema, temperature);
+    // some ST returns object
+    if (typeof maybe === 'string') outText = maybe;
+    else outText = JSON.stringify(maybe ?? '');
+    if (!safeJsonParse(outText)) outText = await fallbackAskJson(messages, temperature);
+  }
+
+  const parsed = safeJsonParse(outText);
+  if (!parsed) return { keywords: [], pickedIds: [] };
+
+  const kws = sanitizeKeywords(parsed.keywords).slice(0, 80);
+  const ids = Array.isArray(parsed.pickedIds) ? parsed.pickedIds.map(x => Number(x)).filter(n => Number.isFinite(n) && n >= 1) : [];
+  return { keywords: kws, pickedIds: ids };
+}
+
 async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const s = ensureSettings();
   if (!s.wiTriggerEnabled) return;
@@ -2088,36 +2230,74 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const lastText = String(last.mes ?? last.message ?? '').trim();
   if (!lastText || lastText.startsWith('/')) return;
 
+  const tag = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
+  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
+  const cleanedLast = stripTriggerInjection(lastText, tag).trim();
+  if (!cleanedLast) return;
+
   const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
   const recentText = buildRecentChatText(chat, lookback, true);
-  if (!recentText) return;
+  const queryText = (recentText ? recentText + '\n' : '') + cleanedLast;
 
   const candidates = collectBlueIndexCandidates();
   if (!candidates.length) return;
 
   const maxEntries = clampInt(s.wiTriggerMaxEntries, 1, 20, 4);
   const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
-  const picked = pickRelevantIndexEntries(recentText, candidates, maxEntries, minScore);
-  if (!picked.length) return;
-
   const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
-  const kwSet = new Set();
-  const pickedTitles = [];
-  for (const { e, score } of picked) {
-    pickedTitles.push(`${e.title}（${score.toFixed(2)}）`);
-    for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
-      const kk = String(k || '').trim();
-      if (!kk) continue;
-      kwSet.add(kk);
+
+  const method = String(s.wiTriggerMethod || 'local');
+  let keywords = [];
+  let debugPicked = [];
+
+  if (method === 'llm') {
+    // LLM 判断：先预筛选 TopK，再让模型输出触发词
+    const llmCandidates = buildWiIndexCandidatesForLlm(queryText, candidates);
+    if (!llmCandidates.length) return;
+
+    try {
+      const { keywords: kws, pickedIds } = await pickKeywordsByLlmIndex({
+        userMessage: cleanedLast,
+        recentText,
+        candidates: llmCandidates,
+        lookback,
+        maxEntries,
+      });
+      keywords = (Array.isArray(kws) ? kws : []).slice(0, maxKeywords);
+      if (Array.isArray(pickedIds) && pickedIds.length) {
+        const idSet = new Set(pickedIds.map(x => Number(x)));
+        debugPicked = llmCandidates.filter(e => idSet.has(e.id)).map(e => `${e.title}（id=${e.id}）`);
+      }
+    } catch (e) {
+      // 失败则回退到本地相似度
+      console.warn('[StoryGuide] wiIndex LLM failed, fallback to local:', e);
+      keywords = [];
+    }
+  }
+
+  if (!keywords.length) {
+    // local 相似度（默认）
+    const picked = pickRelevantIndexEntries(queryText, candidates, maxEntries, minScore);
+    if (!picked.length) return;
+
+    const kwSet = new Set();
+    const pickedTitles = [];
+    for (const { e, score } of picked) {
+      pickedTitles.push(`${e.title}（${score.toFixed(2)}）`);
+      for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
+        const kk = String(k || '').trim();
+        if (!kk) continue;
+        kwSet.add(kk);
+        if (kwSet.size >= maxKeywords) break;
+      }
       if (kwSet.size >= maxKeywords) break;
     }
-    if (kwSet.size >= maxKeywords) break;
+    keywords = Array.from(kwSet);
+    debugPicked = pickedTitles;
   }
-  const keywords = Array.from(kwSet);
+
   if (!keywords.length) return;
 
-  const tag = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
-  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
   const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', tag);
   const injected = cleaned + buildTriggerInjection(keywords, tag, style);
   last.mes = injected;
@@ -2131,7 +2311,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   // debug status (only when pane open or explicitly enabled)
   const modalOpen = $('#sg_modal_backdrop').is(':visible');
   if (modalOpen || s.wiTriggerDebugLog) {
-    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : ''}`, 'ok');
+    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${debugPicked.join('；')}` : ''}`, 'ok');
   }
 }
 
@@ -3286,6 +3466,41 @@ function buildModalHtml() {
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">启用“蓝灯索引 → 绿灯触发”（发送消息前自动注入触发词）</label>
               </div>
+              <div class="sg-row sg-inline">
+                <label>匹配方式</label>
+                <select id="sg_wiTriggerMethod" style="min-width:240px">
+                  <option value="local">本地相似度（快）</option>
+                  <option value="llm">LLM 判断（可自定义索引提示词）</option>
+                </select>
+              </div>
+
+              <div class="sg-card sg-subcard" id="sg_wiTrigger_llm_block" style="display:none; margin-top:10px">
+                <div class="sg-field">
+                  <label>索引提示词（System，可选）</label>
+                  <textarea id="sg_wiIndexSystemPrompt" rows="6" placeholder="你是一个世界书索引匹配器..."></textarea>
+                </div>
+                <div class="sg-field" style="margin-top:10px">
+                  <label>对话/候选模板（User，可选）</label>
+                  <textarea id="sg_wiIndexUserTemplate" rows="7" placeholder="{{userMessage}} / {{recentText}} / {{candidates}}"></textarea>
+                  <div class="sg-hint">占位符：<b>{{userMessage}}</b>（用户本句） / <b>{{recentText}}</b>（最近对话） / <b>{{candidates}}</b>（候选条目 JSON） / <b>{{lookback}}</b> / <b>{{maxEntries}}</b></div>
+                </div>
+                <div class="sg-grid2" style="margin-top:10px">
+                  <div class="sg-field">
+                    <label>预筛选 TopK（减少 tokens）</label>
+                    <input id="sg_wiIndexPrefilterTopK" type="number" min="5" max="80" placeholder="16">
+                  </div>
+                  <div class="sg-field">
+                    <label>索引温度</label>
+                    <input id="sg_wiIndexTemperature" type="number" min="0" max="2" step="0.05" placeholder="0.2">
+                  </div>
+                </div>
+                <div class="sg-row sg-inline" style="margin-top:10px">
+                  <label>候选 summary 截断字符</label>
+                  <input id="sg_wiIndexMaxSummaryChars" type="number" min="80" max="1200" placeholder="280" style="width:120px">
+                  <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示词</button>
+                </div>
+                <div class="sg-hint">说明：LLM 模式会复用“总结功能”的 Provider/API（summaryProvider + summaryCustom...），不影响剧情指导的 API。</div>
+              </div>
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label>读取前 N 条消息正文</label>
@@ -3329,7 +3544,8 @@ function buildModalHtml() {
                 <div class="sg-hint" id="sg_blueIndexInfo" style="margin-left:auto">（蓝灯索引：0 条）</div>
               </div>
               <div class="sg-hint">
-                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与最近对话做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。
+                说明：本功能会读取“蓝灯索引”里的每条总结（title/summary/keywords），在你发送消息时挑出最相关的条目，并把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。<br>
+                你可以选择 <b>本地相似度</b>（快、无额外调用）或 <b>LLM 判断</b>（更灵活，可自定义提示词，复用总结功能的 Provider/API）。
               </div>
             </div>
 
@@ -3464,6 +3680,23 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
   });
 
+  // wi trigger method toggle
+  $('#sg_wiTriggerMethod').on('change', () => {
+    const m = String($('#sg_wiTriggerMethod').val() || 'local');
+    $('#sg_wiTrigger_llm_block').toggle(m === 'llm');
+    pullUiToSettings();
+    saveSettings();
+  });
+
+  // wi index prompt reset
+  $('#sg_wiIndexResetPrompt').on('click', () => {
+    $('#sg_wiIndexSystemPrompt').val(DEFAULT_WI_INDEX_SYSTEM_PROMPT);
+    $('#sg_wiIndexUserTemplate').val(DEFAULT_WI_INDEX_USER_TEMPLATE);
+    pullUiToSettings();
+    saveSettings();
+    setStatus('已恢复默认索引提示词 ✅', 'ok');
+  });
+
   // summary prompt reset
   $('#sg_summaryResetPrompt').on('click', () => {
     $('#sg_summarySystemPrompt').val(DEFAULT_SUMMARY_SYSTEM_PROMPT);
@@ -3497,7 +3730,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerMethod, #sg_wiTriggerLookbackMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexPrefilterTopK, #sg_wiIndexTemperature, #sg_wiIndexMaxSummaryChars, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -3778,12 +4011,18 @@ function pullSettingsToUi() {
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
   $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
+  $('#sg_wiTriggerMethod').val(String(s.wiTriggerMethod || 'local'));
   $('#sg_wiTriggerLookbackMessages').val(s.wiTriggerLookbackMessages || 20);
   $('#sg_wiTriggerMaxEntries').val(s.wiTriggerMaxEntries || 4);
   $('#sg_wiTriggerMinScore').val(s.wiTriggerMinScore ?? 0.08);
   $('#sg_wiTriggerMaxKeywords').val(s.wiTriggerMaxKeywords || 24);
   $('#sg_wiTriggerInjectStyle').val(String(s.wiTriggerInjectStyle || 'hidden'));
   $('#sg_wiTriggerDebugLog').prop('checked', !!s.wiTriggerDebugLog);
+  $('#sg_wiIndexSystemPrompt').val(String(s.wiIndexSystemPrompt || DEFAULT_WI_INDEX_SYSTEM_PROMPT));
+  $('#sg_wiIndexUserTemplate').val(String(s.wiIndexUserTemplate || DEFAULT_WI_INDEX_USER_TEMPLATE));
+  $('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 16);
+  $('#sg_wiIndexTemperature').val(s.wiIndexTemperature ?? 0.2);
+  $('#sg_wiIndexMaxSummaryChars').val(s.wiIndexMaxSummaryChars ?? 280);
   $('#sg_wiBlueIndexMode').val(String(s.wiBlueIndexMode || 'live'));
   $('#sg_wiBlueIndexFile').val(String(s.wiBlueIndexFile || ''));
   $('#sg_summaryMaxChars').val(s.summaryMaxCharsPerMessage || 4000);
@@ -3792,6 +4031,7 @@ function pullSettingsToUi() {
   $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
   $('#sg_summaryWorldInfoFile').toggle(String(s.summaryWorldInfoTarget || 'chatbook') === 'file');
   $('#sg_summaryBlueWorldInfoFile').toggle(!!s.summaryToBlueWorldInfo);
+  $('#sg_wiTrigger_llm_block').toggle(String(s.wiTriggerMethod || 'local') === 'llm');
 
   updateBlueIndexInfoLabel();
 
@@ -3957,12 +4197,21 @@ function pullUiToSettings() {
   s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
 
   s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
+  s.wiTriggerMethod = String($('#sg_wiTriggerMethod').val() || s.wiTriggerMethod || 'local');
   s.wiTriggerLookbackMessages = clampInt($('#sg_wiTriggerLookbackMessages').val(), 5, 120, s.wiTriggerLookbackMessages || 20);
   s.wiTriggerMaxEntries = clampInt($('#sg_wiTriggerMaxEntries').val(), 1, 20, s.wiTriggerMaxEntries || 4);
   s.wiTriggerMinScore = clampFloat($('#sg_wiTriggerMinScore').val(), 0, 1, (s.wiTriggerMinScore ?? 0.08));
   s.wiTriggerMaxKeywords = clampInt($('#sg_wiTriggerMaxKeywords').val(), 1, 200, s.wiTriggerMaxKeywords || 24);
   s.wiTriggerInjectStyle = String($('#sg_wiTriggerInjectStyle').val() || s.wiTriggerInjectStyle || 'hidden');
   s.wiTriggerDebugLog = $('#sg_wiTriggerDebugLog').is(':checked');
+
+  // LLM 索引匹配参数（method=llm 时生效）
+  s.wiIndexSystemPrompt = String($('#sg_wiIndexSystemPrompt').val() || '').trim() || DEFAULT_WI_INDEX_SYSTEM_PROMPT;
+  s.wiIndexUserTemplate = String($('#sg_wiIndexUserTemplate').val() || '').trim() || DEFAULT_WI_INDEX_USER_TEMPLATE;
+  s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK || 16);
+  s.wiIndexTemperature = clampFloat($('#sg_wiIndexTemperature').val(), 0, 2, (s.wiIndexTemperature ?? 0.2));
+  s.wiIndexMaxSummaryChars = clampInt($('#sg_wiIndexMaxSummaryChars').val(), 80, 1200, s.wiIndexMaxSummaryChars || 280);
+
   s.wiBlueIndexMode = String($('#sg_wiBlueIndexMode').val() || s.wiBlueIndexMode || 'live');
   s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
