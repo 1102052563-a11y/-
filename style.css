@@ -525,6 +525,42 @@
 }
 
 
+/* v0.7.x world map (experimental) */
+.sg-map-toolbar select{ min-width: 220px; }
+.sg-map-view{
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.22);
+  min-height: 360px;
+}
+.sg-map-title{
+  font-weight: 800;
+  opacity: .92;
+  margin: 0 0 8px;
+}
+.sg-map-svg{
+  width: 100%;
+  height: 420px;
+  display: block;
+}
+.sg-map-bg{ fill: rgba(0,0,0,0.18); stroke: rgba(255,255,255,0.10); stroke-width: 0.4; }
+.sg-map-grid{ stroke: rgba(255,255,255,0.06); stroke-width: 0.2; }
+.sg-map-link-line{ stroke: rgba(120,180,255,0.40); stroke-width: 0.65; }
+.sg-map-link-label{ font-size: 3px; opacity: .9; }
+.sg-map-node-dot{ fill: rgba(255,255,255,0.86); stroke: rgba(0,0,0,0.35); stroke-width: 0.25; }
+.sg-map-node-label{ font-size: 3.2px; opacity: .95; }
+.sg-map-protagonist-star{ fill: rgba(255,200,80,0.95); stroke: rgba(0,0,0,0.35); stroke-width: 0.35; }
+.sg-map-protagonist-label{ font-size: 3.2px; font-weight: 700; opacity: .95; }
+.sg-map-details{ margin-top: 10px; }
+.sg-map-details summary{ cursor: pointer; opacity: .85; user-select: none; }
+
+@media (max-width: 980px){
+  .sg-map-svg{ height: 320px; }
+}
+
+
 /* v0.6.2 hide topbar icon button */
 #sg_topbar_btn{display:none !important;}
 
@@ -897,27 +933,4 @@ body.sg-zoom-lock{
   .sg-tab{
     flex: 1 1 auto;
   }
-}
-
-
-
-/* v0.7.4 draggable chat controls */
-.sg-chat-drag-handle{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 6px;
-  border-radius: 12px;
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: none;
-  opacity: 0.80;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-}
-
-.sg-chat-controls.is-dragging .sg-chat-drag-handle{
-  cursor: grabbing;
-  opacity: 1;
 }

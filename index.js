@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.4
+ * v0.7.3
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -95,15 +95,31 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 额外可自定义提示词“骨架”
   customSystemPreamble: '',     // 附加在默认 system 之后
   customConstraints: '',        // 附加在默认 constraints 之后
+
+  // 世界地图（实验性）：用独立（或继承）API 生成「地点拓扑 + 主角位置」并在面板渲染
+  mapProvider: 'inherit',       // inherit | st | custom
+  mapPersistToChat: true,
+  mapCustomEndpoint: '',
+  mapCustomApiKey: '',
+  mapCustomModel: 'gpt-4o-mini',
+  mapTemperature: 0.35,
+  mapTopP: 0.95,
+  mapMaxTokens: 4096,
+  mapStream: false,
+  mapMaxLocations: 20,
+  mapMaxLinks: 40,
 });
 
 const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
+  map: 'storyguide_world_map',
 });
 
 let lastReport = null;
 let lastJsonText = '';
+let lastMap = null;
+let lastMapJsonText = '';
 let refreshTimer = null;
 let appendTimer = null;
 
@@ -202,6 +218,15 @@ function renderMarkdownToHtml(markdown) {
   const converter = new showdown.Converter({ simplifiedAutoLink: true, strikethrough: true, tables: true });
   const html = converter.makeHtml(markdown || '');
   return DOMPurify.sanitize(html);
+}
+
+function escapeXml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function renderMarkdownInto($el, markdown) { $el.html(renderMarkdownToHtml(markdown)); }
@@ -719,6 +744,113 @@ function buildSnapshot() {
   return { snapshotText, sourceSummary };
 }
 
+// -------------------- world map (experimental) --------------------
+
+function buildMapSchema(maxLocations, maxLinks) {
+  const maxL = clampInt(maxLocations, 5, 80, DEFAULT_SETTINGS.mapMaxLocations);
+  const maxE = clampInt(maxLinks, 5, 200, DEFAULT_SETTINGS.mapMaxLinks);
+
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['locations', 'protagonist'],
+    properties: {
+      title: { type: 'string' },
+      locations: {
+        type: 'array',
+        maxItems: maxL,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['id', 'name', 'x', 'y'],
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            x: { type: 'number' },
+            y: { type: 'number' },
+            type: { type: 'string' },
+            note: { type: 'string' },
+          },
+        },
+      },
+      links: {
+        type: 'array',
+        maxItems: maxE,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['from', 'to'],
+          properties: {
+            from: { type: 'string' },
+            to: { type: 'string' },
+            label: { type: 'string' },
+          },
+        },
+      },
+      protagonist: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          at: { type: 'string' },
+          x: { type: 'number' },
+          y: { type: 'number' },
+          note: { type: 'string' },
+        },
+      },
+    },
+  };
+}
+
+function buildMapPromptMessages(snapshotText) {
+  const s = ensureSettings();
+  const maxLocations = clampInt(s.mapMaxLocations, 5, 80, DEFAULT_SETTINGS.mapMaxLocations);
+  const maxLinks = clampInt(s.mapMaxLinks, 5, 200, DEFAULT_SETTINGS.mapMaxLinks);
+
+  const system = [
+    `---BEGIN PROMPT---`,
+    `[System]`,
+    `你是“世界地图生成器”。你的任务是：从聊天/设定中提取“地点（locations）+ 连接（links）+ 主角位置（protagonist）”，并输出一份可视化用的 JSON。`,
+    ``,
+    `[Constraints]`,
+    `1) 不要凭空杜撰地点；如果只能推断，请在 note 标注“推测/不确定”。`,
+    `2) 坐标系：x,y 都是 0~100 的数字（尽量整数），用于二维示意图，不追求真实比例。`,
+    `3) locations 数量 ≤ ${maxLocations}；links 数量 ≤ ${maxLinks}。`,
+    `4) protagonist.at 尽量填写 locations.id；如果不确定 at，就用 x/y 直接标注并写 note。`,
+    `5) 输出必须是 JSON 对象本体（无 Markdown、无代码块、无多余解释）。`,
+    ``,
+    `[Output JSON Schema]`,
+    `- title: string (可选)`,
+    `- locations: {id,name,x,y,type?,note?}[]`,
+    `- links: {from,to,label?}[] (可选)`,
+    `- protagonist: {name,at?,x?,y?,note?}`,
+    `---END PROMPT---`,
+  ].join('\n');
+
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: snapshotText },
+  ];
+}
+
+function resolveMapProvider() {
+  const s = ensureSettings();
+  let provider = String(s.mapProvider || 'inherit');
+  if (provider === 'inherit') provider = String(s.provider || 'st');
+
+  const useCustom = provider === 'custom';
+  const endpoint = useCustom ? (s.mapCustomEndpoint || s.customEndpoint) : '';
+  const apiKey = useCustom ? (s.mapCustomApiKey || s.customApiKey) : '';
+  const model = useCustom ? (s.mapCustomModel || s.customModel) : '';
+  const temperature = clampFloat(s.mapTemperature, 0, 2, s.temperature ?? DEFAULT_SETTINGS.temperature);
+  const topP = clampFloat(s.mapTopP, 0, 1, s.customTopP ?? DEFAULT_SETTINGS.customTopP);
+  const maxTokens = clampInt(s.mapMaxTokens, 256, 200000, DEFAULT_SETTINGS.mapMaxTokens);
+  const stream = !!s.mapStream;
+
+  return { provider, endpoint, apiKey, model, temperature, topP, maxTokens, stream };
+}
+
 // -------------------- provider=st --------------------
 
 async function callViaSillyTavern(messages, schema, temperature) {
@@ -1049,6 +1181,223 @@ async function runAnalysis() {
     setStatus(`分析失败：${e?.message ?? e}`, 'err');
   } finally {
     $('#sg_analyze').prop('disabled', false);
+  }
+}
+
+// -------------------- map generation --------------------
+
+function normalizeMapJson(raw) {
+  const out = (raw && typeof raw === 'object') ? clone(raw) : {};
+  if (!Array.isArray(out.locations)) out.locations = [];
+  if (!Array.isArray(out.links)) out.links = [];
+  if (!out.protagonist || typeof out.protagonist !== 'object') out.protagonist = { name: '主角' };
+
+  // clamp coords + coerce ids
+  const idSeen = new Set();
+  out.locations = out.locations
+    .filter(x => x && typeof x === 'object')
+    .map((l, idx) => {
+      const id = String(l.id || l.name || `loc_${idx + 1}`);
+      let uniq = id;
+      let k = 2;
+      while (idSeen.has(uniq)) { uniq = `${id}_${k++}`; }
+      idSeen.add(uniq);
+
+      const x = clampFloat(l.x, 0, 100, 50);
+      const y = clampFloat(l.y, 0, 100, 50);
+      return {
+        id: uniq,
+        name: String(l.name || uniq),
+        x,
+        y,
+        type: l.type ? String(l.type) : '',
+        note: l.note ? String(l.note) : '',
+      };
+    });
+
+  out.links = out.links
+    .filter(x => x && typeof x === 'object')
+    .map(e => ({
+      from: String(e.from || ''),
+      to: String(e.to || ''),
+      label: e.label ? String(e.label) : '',
+    }))
+    .filter(e => e.from && e.to);
+
+  out.protagonist.name = String(out.protagonist.name || '主角');
+  if (out.protagonist.at) out.protagonist.at = String(out.protagonist.at);
+  if (out.protagonist.x !== undefined) out.protagonist.x = clampFloat(out.protagonist.x, 0, 100, 50);
+  if (out.protagonist.y !== undefined) out.protagonist.y = clampFloat(out.protagonist.y, 0, 100, 50);
+  if (out.protagonist.note) out.protagonist.note = String(out.protagonist.note);
+
+  // If protagonist.at matches a location, snap to it
+  if (out.protagonist.at) {
+    const loc = out.locations.find(l => l.id === out.protagonist.at) || out.locations.find(l => l.name === out.protagonist.at);
+    if (loc) {
+      out.protagonist.at = loc.id;
+      out.protagonist.x = loc.x;
+      out.protagonist.y = loc.y;
+    }
+  }
+
+  return out;
+}
+
+function makeStarPoints(cx, cy, rOuter, rInner, spikes) {
+  const pts = [];
+  const n = spikes || 5;
+  const step = Math.PI / n;
+  let rot = -Math.PI / 2;
+  for (let i = 0; i < n * 2; i++) {
+    const r = (i % 2 === 0) ? rOuter : rInner;
+    const x = cx + Math.cos(rot) * r;
+    const y = cy + Math.sin(rot) * r;
+    pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+    rot += step;
+  }
+  return pts.join(' ');
+}
+
+function renderMapSvg(mapJson) {
+  const m = normalizeMapJson(mapJson);
+  const locById = new Map(m.locations.map(l => [l.id, l]));
+
+  // background grid
+  const grid = [];
+  for (let i = 0; i <= 100; i += 10) {
+    grid.push(`<line class="sg-map-grid" x1="${i}" y1="0" x2="${i}" y2="100" />`);
+    grid.push(`<line class="sg-map-grid" x1="0" y1="${i}" x2="100" y2="${i}" />`);
+  }
+
+  const links = m.links.map(e => {
+    const a = locById.get(e.from) || m.locations.find(x => x.name === e.from);
+    const b = locById.get(e.to) || m.locations.find(x => x.name === e.to);
+    if (!a || !b) return '';
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const label = e.label ? `<text class="sg-map-link-label" x="${mx.toFixed(2)}" y="${(my - 1.2).toFixed(2)}">${escapeXml(e.label)}</text>` : '';
+    return `
+      <g class="sg-map-link">
+        <line class="sg-map-link-line" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" />
+        ${label}
+      </g>
+    `;
+  }).join('');
+
+  const nodes = m.locations.map(l => {
+    const title = [l.name, l.note].filter(Boolean).join(' — ');
+    const type = l.type ? ` data-type="${escapeXml(l.type)}"` : '';
+    return `
+      <g class="sg-map-node" data-id="${escapeXml(l.id)}"${type}>
+        <circle class="sg-map-node-dot" cx="${l.x}" cy="${l.y}" r="2.2" />
+        <text class="sg-map-node-label" x="${(l.x + 2.8).toFixed(2)}" y="${(l.y + 0.9).toFixed(2)}">${escapeXml(l.name)}</text>
+        ${title ? `<title>${escapeXml(title)}</title>` : ''}
+      </g>
+    `;
+  }).join('');
+
+  const px = clampFloat(m.protagonist.x, 0, 100, 50);
+  const py = clampFloat(m.protagonist.y, 0, 100, 50);
+  const pTitle = [m.protagonist.name, m.protagonist.at ? `@${m.protagonist.at}` : '', m.protagonist.note || ''].filter(Boolean).join(' ');
+  const star = `
+    <g class="sg-map-protagonist">
+      <polygon class="sg-map-protagonist-star" points="${makeStarPoints(px, py, 3.3, 1.6, 5)}" />
+      <text class="sg-map-protagonist-label" x="${(px + 3.8).toFixed(2)}" y="${(py - 2.6).toFixed(2)}">${escapeXml(m.protagonist.name)}</text>
+      ${pTitle ? `<title>${escapeXml(pTitle)}</title>` : ''}
+    </g>
+  `;
+
+  const title = m.title ? `<div class="sg-map-title">${escapeXml(m.title)}</div>` : '';
+  const svg = `
+    ${title}
+    <svg class="sg-map-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label="World Map">
+      <rect class="sg-map-bg" x="0" y="0" width="100" height="100" rx="2" ry="2" />
+      <g class="sg-map-grid-layer">${grid.join('')}</g>
+      <g class="sg-map-links-layer">${links}</g>
+      <g class="sg-map-nodes-layer">${nodes}</g>
+      ${star}
+    </svg>
+  `;
+
+  // sanitize as HTML
+  return SillyTavern.libs?.DOMPurify ? SillyTavern.libs.DOMPurify.sanitize(svg) : svg;
+}
+
+function renderMapToPane(mapJson, rawText) {
+  lastMap = mapJson;
+  lastMapJsonText = rawText || (mapJson ? JSON.stringify(mapJson, null, 2) : '');
+
+  const $json = $('#sg_map_json');
+  const $view = $('#sg_map_view');
+  if ($json.length) $json.text(lastMapJsonText || '');
+  if ($view.length) {
+    if (!mapJson) $view.html('<div class="sg-hint">（尚未生成）</div>');
+    else $view.html(renderMapSvg(mapJson));
+  }
+
+  $('#sg_mapCopyJson').prop('disabled', !Boolean(lastMapJsonText));
+}
+
+async function clearMap() {
+  lastMap = null;
+  lastMapJsonText = '';
+  renderMapToPane(null, '');
+  try { await setChatMetaValue(META_KEYS.map, ''); } catch { /* ignore */ }
+  setStatus('已清空地图', 'ok');
+}
+
+async function runMapGeneration() {
+  const s = ensureSettings();
+  if (!s.enabled) { setStatus('插件未启用', 'warn'); return; }
+
+  setStatus('生成地图中…', 'warn');
+  $('#sg_mapGenerate').prop('disabled', true);
+
+  try {
+    const { snapshotText } = buildSnapshot();
+    const messages = buildMapPromptMessages(snapshotText);
+    const schema = buildMapSchema(s.mapMaxLocations, s.mapMaxLinks);
+
+    const cfg = resolveMapProvider();
+    let jsonText = '';
+
+    if (cfg.provider === 'custom') {
+      jsonText = await callViaCustom(cfg.endpoint, cfg.apiKey, cfg.model, messages, cfg.temperature, cfg.maxTokens, cfg.topP, cfg.stream);
+      const parsedTry = safeJsonParse(jsonText);
+      if (!parsedTry || !parsedTry.locations) {
+        try {
+          jsonText = await fallbackAskJsonCustom(cfg.endpoint, cfg.apiKey, cfg.model, messages, cfg.temperature, cfg.maxTokens, cfg.topP, cfg.stream);
+        } catch { /* ignore */ }
+      }
+    } else {
+      jsonText = await callViaSillyTavern(messages, schema, cfg.temperature);
+      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+      const parsedTry = safeJsonParse(jsonText);
+      if (!parsedTry || !parsedTry.locations) jsonText = await fallbackAskJson(messages, cfg.temperature);
+    }
+
+    const parsed = safeJsonParse(jsonText);
+    if (!parsed) {
+      renderMapToPane(null, String(jsonText || ''));
+      showPane('map');
+      throw new Error('地图输出无法解析为 JSON（已切到地图标签，看看原文/JSON）');
+    }
+
+    const normalized = normalizeMapJson(parsed);
+    const rawPretty = JSON.stringify(normalized, null, 2);
+    renderMapToPane(normalized, rawPretty);
+
+    if (s.mapPersistToChat) {
+      try { await setChatMetaValue(META_KEYS.map, rawPretty); } catch { /* ignore */ }
+    }
+
+    showPane('map');
+    setStatus('地图已生成 ✅', 'ok');
+  } catch (e) {
+    console.error('[StoryGuide] map failed:', e);
+    setStatus(`地图生成失败：${e?.message ?? e}`, 'err');
+  } finally {
+    $('#sg_mapGenerate').prop('disabled', false);
   }
 }
 
@@ -1620,74 +1969,9 @@ function findChatInputAnchor() {
   return ta;
 }
 
-const SG_CHAT_POS_KEY = 'storyguide_chat_controls_pos_v1';
-let sgChatPinnedLoaded = false;
-let sgChatPinnedPos = null; // {left, top, pinned}
-let sgChatPinned = false;
-
-function loadPinnedChatPos() {
-  if (sgChatPinnedLoaded) return;
-  sgChatPinnedLoaded = true;
-  try {
-    const raw = localStorage.getItem(SG_CHAT_POS_KEY);
-    if (!raw) return;
-    const j = JSON.parse(raw);
-    if (j && typeof j.left === 'number' && typeof j.top === 'number') {
-      sgChatPinnedPos = { left: j.left, top: j.top, pinned: j.pinned !== false };
-      sgChatPinned = sgChatPinnedPos.pinned;
-    }
-  } catch { /* ignore */ }
-}
-
-function savePinnedChatPos(left, top) {
-  try {
-    sgChatPinnedPos = { left: Number(left) || 0, top: Number(top) || 0, pinned: true };
-    sgChatPinned = true;
-    localStorage.setItem(SG_CHAT_POS_KEY, JSON.stringify(sgChatPinnedPos));
-  } catch { /* ignore */ }
-}
-
-function clearPinnedChatPos() {
-  try {
-    sgChatPinnedPos = null;
-    sgChatPinned = false;
-    localStorage.removeItem(SG_CHAT_POS_KEY);
-  } catch { /* ignore */ }
-}
-
-function clampToViewport(left, top, w, h) {
-  const pad = 8;
-  const L = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
-  const T = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
-  return { left: L, top: T };
-}
-
-function measureWrap(wrap) {
-  const prevVis = wrap.style.visibility;
-  wrap.style.visibility = 'hidden';
-  wrap.style.left = '0px';
-  wrap.style.top = '0px';
-  const w = wrap.offsetWidth || 220;
-  const h = wrap.offsetHeight || 38;
-  wrap.style.visibility = prevVis || 'visible';
-  return { w, h };
-}
-
 function positionChatActionButtons() {
   const wrap = document.getElementById('sg_chat_controls');
   if (!wrap) return;
-
-  loadPinnedChatPos();
-
-  const { w, h } = measureWrap(wrap);
-
-  // If user dragged & pinned position, keep it.
-  if (sgChatPinned && sgChatPinnedPos) {
-    const clamped = clampToViewport(sgChatPinnedPos.left, sgChatPinnedPos.top, w, h);
-    wrap.style.left = `${Math.round(clamped.left)}px`;
-    wrap.style.top = `${Math.round(clamped.top)}px`;
-    return;
-  }
 
   const sendBtn =
     document.querySelector('#send_but') ||
@@ -1702,13 +1986,26 @@ function positionChatActionButtons() {
 
   const rect = sendBtn.getBoundingClientRect();
 
+  // measure
+  const prevVis = wrap.style.visibility;
+  wrap.style.visibility = 'hidden';
+  wrap.style.left = '0px';
+  wrap.style.top = '0px';
+  const w = wrap.offsetWidth || 200;
+  const h = wrap.offsetHeight || 36;
+
   // place to the left of send button, vertically centered
   let left = rect.left - w - 10;
   let top = rect.top + (rect.height - h) / 2;
 
-  const clamped = clampToViewport(left, top, w, h);
-  wrap.style.left = `${Math.round(clamped.left)}px`;
-  wrap.style.top = `${Math.round(clamped.top)}px`;
+  // clamp to viewport
+  const pad = 8;
+  left = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
+  top = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
+
+  wrap.style.left = `${Math.round(left)}px`;
+  wrap.style.top = `${Math.round(top)}px`;
+  wrap.style.visibility = prevVis || 'visible';
 }
 
 let sgChatPosTimer = null;
@@ -1719,6 +2016,7 @@ function schedulePositionChatButtons() {
     try { positionChatActionButtons(); } catch {}
   }, 60);
 }
+
 function ensureChatActionButtons() {
   if (document.getElementById('sg_chat_controls')) {
     schedulePositionChatButtons();
@@ -1730,12 +2028,6 @@ function ensureChatActionButtons() {
 
   const wrap = document.createElement('div');
   wrap.id = 'sg_chat_controls';
-
-  // draggable handle (drag to pin position; double click to reset)
-  const handle = document.createElement('div');
-  handle.className = 'sg-chat-drag-handle';
-  handle.title = '拖动按钮位置（双击复位为自动贴边）';
-  handle.textContent = '⋮⋮';
   wrap.className = 'sg-chat-controls';
 
   const gen = document.createElement('button');
@@ -1753,8 +2045,7 @@ function ensureChatActionButtons() {
   reroll.innerHTML = '🎲 <span class="sg-chat-label">重Roll</span>';
 
   const setBusy = (busy) => {
-    gen.disabled = busy;
-    reroll.disabled = busy;
+    wrap.querySelectorAll('button.sg-chat-btn').forEach(b => { b.disabled = !!busy; });
     wrap.classList.toggle('is-busy', !!busy);
   };
 
@@ -1782,75 +2073,35 @@ function ensureChatActionButtons() {
     }
   });
 
-  wrap.appendChild(handle);
+  const mapBtn = document.createElement('button');
+  mapBtn.type = 'button';
+  mapBtn.id = 'sg_chat_map';
+  mapBtn.className = 'menu_button sg-chat-btn';
+  mapBtn.title = '生成/刷新世界地图（打开面板→地图标签）';
+  mapBtn.innerHTML = '🗺 <span class="sg-chat-label">地图</span>';
+
+  mapBtn.addEventListener('click', async () => {
+    try {
+      setBusy(true);
+      openModal();
+      showPane('map');
+      pullUiToSettings();
+      saveSettings();
+      await runMapGeneration();
+    } catch (e) {
+      console.warn('[StoryGuide] map generate failed', e);
+    } finally {
+      setBusy(false);
+      schedulePositionChatButtons();
+    }
+  });
 
   wrap.appendChild(gen);
   wrap.appendChild(reroll);
+  wrap.appendChild(mapBtn);
 
   // Use fixed positioning to avoid overlapping with send button / different themes.
-  
-  // drag to move (pin position)
-  let dragging = false;
-  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
-  let moved = false;
-
-  const onMove = (ev) => {
-    if (!dragging) return;
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
-    if (!moved && (Math.abs(dx) + Math.abs(dy) > 4)) moved = true;
-
-    const { w, h } = measureWrap(wrap);
-    const clamped = clampToViewport(startLeft + dx, startTop + dy, w, h);
-    wrap.style.left = `${Math.round(clamped.left)}px`;
-    wrap.style.top = `${Math.round(clamped.top)}px`;
-  };
-
-  const onUp = (ev) => {
-    if (!dragging) return;
-    dragging = false;
-    wrap.classList.remove('is-dragging');
-    try { handle.releasePointerCapture(ev.pointerId); } catch {}
-    window.removeEventListener('pointermove', onMove, true);
-    window.removeEventListener('pointerup', onUp, true);
-    window.removeEventListener('pointercancel', onUp, true);
-
-    if (moved) {
-      const left = parseInt(wrap.style.left || '0', 10);
-      const top = parseInt(wrap.style.top || '0', 10);
-      savePinnedChatPos(left, top);
-    }
-  };
-
-  handle.addEventListener('pointerdown', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    loadPinnedChatPos();
-    dragging = true;
-    moved = false;
-    wrap.classList.add('is-dragging');
-
-    const rect = wrap.getBoundingClientRect();
-    startX = ev.clientX;
-    startY = ev.clientY;
-    startLeft = rect.left;
-    startTop = rect.top;
-
-    try { handle.setPointerCapture(ev.pointerId); } catch {}
-    window.addEventListener('pointermove', onMove, true);
-    window.addEventListener('pointerup', onUp, true);
-    window.addEventListener('pointercancel', onUp, true);
-  });
-
-  handle.addEventListener('dblclick', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    clearPinnedChatPos();
-    schedulePositionChatButtons();
-  });
-
   document.body.appendChild(wrap);
-  loadPinnedChatPos();
 
   // Keep it positioned correctly
   window.addEventListener('resize', schedulePositionChatButtons, { passive: true });
@@ -2116,6 +2367,7 @@ function buildModalHtml() {
 
             <div class="sg-tabs">
               <button class="sg-tab active" id="sg_tab_md">报告</button>
+              <button class="sg-tab" id="sg_tab_map">地图</button>
               <button class="sg-tab" id="sg_tab_json">JSON</button>
               <button class="sg-tab" id="sg_tab_src">来源</button>
               <div class="sg-spacer"></div>
@@ -2125,6 +2377,69 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-pane active" id="sg_pane_md"><div class="sg-md" id="sg_md">(尚未生成)</div></div>
+            <div class="sg-pane" id="sg_pane_map">
+              <div class="sg-row sg-inline sg-map-toolbar">
+                <label style="opacity:.82;">地图 Provider</label>
+                <select id="sg_mapProvider">
+                  <option value="inherit">跟随上方 Provider</option>
+                  <option value="st">使用当前 SillyTavern API</option>
+                  <option value="custom">独立API（自填）</option>
+                </select>
+
+                <label class="sg-check" title="把地图JSON存到本聊天元数据里，切换聊天后也能看到">
+                  <input type="checkbox" id="sg_mapPersist">随聊天保存</label>
+
+                <button class="menu_button sg-btn" id="sg_mapGenerate">生成/刷新地图</button>
+                <button class="menu_button sg-btn" id="sg_mapClear">清空</button>
+                <button class="menu_button sg-btn" id="sg_mapCopyJson" disabled>复制地图JSON</button>
+              </div>
+
+              <div id="sg_map_custom_block" class="sg-card sg-subcard" style="display:none; margin-top:10px;">
+                <div class="sg-card-title">地图独立API 设置（OpenAI Chat Completions 风格）</div>
+
+                <div class="sg-field">
+                  <label>API基础URL（例如 https://api.openai.com/v1 ）</label>
+                  <input id="sg_mapCustomEndpoint" type="text" placeholder="https://xxx.com/v1">
+                </div>
+
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>API Key（可选）</label>
+                    <input id="sg_mapCustomApiKey" type="password" placeholder="可留空">
+                  </div>
+                  <div class="sg-field">
+                    <label>模型（可手填）</label>
+                    <input id="sg_mapCustomModel" type="text" placeholder="gpt-4o-mini">
+                  </div>
+                </div>
+
+                <div class="sg-grid3">
+                  <div class="sg-field">
+                    <label>temperature</label>
+                    <input id="sg_mapTemperature" type="number" step="0.05" min="0" max="2">
+                  </div>
+                  <div class="sg-field">
+                    <label>max_tokens</label>
+                    <input id="sg_mapMaxTokens" type="number" min="256" max="200000" step="1">
+                  </div>
+                  <div class="sg-field">
+                    <label>top_p</label>
+                    <input id="sg_mapTopP" type="number" step="0.01" min="0" max="1">
+                  </div>
+                </div>
+
+                <div class="sg-row sg-inline">
+                  <label class="sg-check"><input type="checkbox" id="sg_mapStream"> stream=true</label>
+                  <span class="sg-hint">（优先走酒馆后端代理；直连会受跨域影响）</span>
+                </div>
+              </div>
+
+              <div class="sg-map-view" id="sg_map_view"><div class="sg-hint">（尚未生成）</div></div>
+              <details class="sg-map-details">
+                <summary>地图JSON</summary>
+                <pre class="sg-pre" id="sg_map_json"></pre>
+              </details>
+            </div>
             <div class="sg-pane" id="sg_pane_json"><pre class="sg-pre" id="sg_json"></pre></div>
             <div class="sg-pane" id="sg_pane_src"><pre class="sg-pre" id="sg_src"></pre></div>
           </div>
@@ -2143,8 +2458,27 @@ function ensureModal() {
   $('#sg_close').on('click', closeModal);
 
   $('#sg_tab_md').on('click', () => showPane('md'));
+  $('#sg_tab_map').on('click', () => showPane('map'));
   $('#sg_tab_json').on('click', () => showPane('json'));
   $('#sg_tab_src').on('click', () => showPane('src'));
+
+  $('#sg_mapProvider').on('change', () => {
+    const p = String($('#sg_mapProvider').val() || 'inherit');
+    $('#sg_map_custom_block').toggle(p === 'custom');
+  });
+
+  $('#sg_mapGenerate').on('click', async () => {
+    pullUiToSettings();
+    saveSettings();
+    await runMapGeneration();
+  });
+
+  $('#sg_mapCopyJson').on('click', async () => {
+    try { await navigator.clipboard.writeText(lastMapJsonText || ''); setStatus('已复制：地图JSON', 'ok'); }
+    catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
+  });
+
+  $('#sg_mapClear').on('click', () => { clearMap().catch(() => void 0); });
 
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
@@ -2203,8 +2537,6 @@ function ensureModal() {
   $('#sg_modelSelect').on('change', () => {
     const id = String($('#sg_modelSelect').val() || '').trim();
     if (id) $('#sg_customModel').val(id);
-  $('#sg_customMaxTokens').val(s.customMaxTokens || 8192);
-  $('#sg_customStream').prop('checked', !!s.customStream);
   });
 
   
@@ -2371,6 +2703,18 @@ function pullSettingsToUi() {
   $('#sg_customApiKey').val(s.customApiKey);
   $('#sg_customModel').val(s.customModel);
 
+  // map settings
+  $('#sg_mapProvider').val(String(s.mapProvider || 'inherit'));
+  $('#sg_mapPersist').prop('checked', !!s.mapPersistToChat);
+  $('#sg_mapCustomEndpoint').val(String(s.mapCustomEndpoint || ''));
+  $('#sg_mapCustomApiKey').val(String(s.mapCustomApiKey || ''));
+  $('#sg_mapCustomModel').val(String(s.mapCustomModel || ''));
+  $('#sg_mapTemperature').val(s.mapTemperature ?? DEFAULT_SETTINGS.mapTemperature);
+  $('#sg_mapMaxTokens').val(s.mapMaxTokens ?? DEFAULT_SETTINGS.mapMaxTokens);
+  $('#sg_mapTopP').val(s.mapTopP ?? DEFAULT_SETTINGS.mapTopP);
+  $('#sg_mapStream').prop('checked', !!s.mapStream);
+  $('#sg_map_custom_block').toggle(String(s.mapProvider || 'inherit') === 'custom');
+
   fillModelSelect(Array.isArray(s.customModelsCache) ? s.customModelsCache : [], s.customModel);
 
   $('#sg_worldText').val(getChatMetaValue(META_KEYS.world));
@@ -2398,6 +2742,23 @@ function pullSettingsToUi() {
 
   $('#sg_custom_block').toggle(s.provider === 'custom');
   updateButtonsEnabled();
+
+  // load persisted map (per chat)
+  try {
+    const txt = String(getChatMetaValue(META_KEYS.map) || '').trim();
+    if (!txt) {
+      renderMapToPane(null, '');
+    } else {
+      const parsed = safeJsonParse(txt);
+      if (parsed) {
+        const normalized = normalizeMapJson(parsed);
+        renderMapToPane(normalized, JSON.stringify(normalized, null, 2));
+      } else {
+        // keep raw in JSON panel for debugging
+        renderMapToPane(null, txt);
+      }
+    }
+  } catch { /* ignore */ }
 }
 
 function updateWorldbookInfoLabel() {
@@ -2455,6 +2816,17 @@ function pullUiToSettings() {
   s.customModel = String($('#sg_customModel').val() || '').trim();
   s.customMaxTokens = clampInt($('#sg_customMaxTokens').val(), 256, 200000, s.customMaxTokens || 8192);
   s.customStream = $('#sg_customStream').is(':checked');
+
+  // map settings
+  s.mapProvider = String($('#sg_mapProvider').val() || 'inherit');
+  s.mapPersistToChat = $('#sg_mapPersist').is(':checked');
+  s.mapCustomEndpoint = String($('#sg_mapCustomEndpoint').val() || '').trim();
+  s.mapCustomApiKey = String($('#sg_mapCustomApiKey').val() || '');
+  s.mapCustomModel = String($('#sg_mapCustomModel').val() || '').trim();
+  s.mapTemperature = clampFloat($('#sg_mapTemperature').val(), 0, 2, s.mapTemperature ?? DEFAULT_SETTINGS.mapTemperature);
+  s.mapMaxTokens = clampInt($('#sg_mapMaxTokens').val(), 256, 200000, s.mapMaxTokens ?? DEFAULT_SETTINGS.mapMaxTokens);
+  s.mapTopP = clampFloat($('#sg_mapTopP').val(), 0, 1, s.mapTopP ?? DEFAULT_SETTINGS.mapTopP);
+  s.mapStream = $('#sg_mapStream').is(':checked');
 
   // modulesJson：先不强行校验（用户可先保存再校验），但会在分析前用默认兜底
   s.modulesJson = String($('#sg_modulesJson').val() || '').trim() || JSON.stringify(DEFAULT_MODULES, null, 2);
@@ -2618,10 +2990,12 @@ function init() {
     open: openModal,
     close: closeModal,
     runAnalysis,
+    runMapGeneration,
     runInlineAppendForLastMessage,
     reapplyAllInlineBoxes,
     buildSnapshot: () => buildSnapshot(),
     getLastReport: () => lastReport,
+    getLastMap: () => lastMap,
     refreshModels,
     _inlineCache: inlineCache,
   };
