@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.6
+ * v0.7.7
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -1089,24 +1089,49 @@ function renderReportMarkdownFromModules(parsedJson, modules) {
   lines.push(`# 剧情指导报告`);
   lines.push('');
 
+  // 当某个字段不是纯文本/字符串数组时（例如输出了对象/嵌套结构），
+  // 直接 String(val) 会变成 "[object Object]"。这里做一次兜底格式化。
+  function toPrettyJson(v) {
+    try { return JSON.stringify(v, null, 2); } catch { return String(v ?? ''); }
+  }
+  function isSimpleList(arr) {
+    return Array.isArray(arr) && arr.every(x => (
+      typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean'
+    ));
+  }
+  function formatTextOrJson(val) {
+    if (val === undefined || val === null) return '';
+    if (typeof val === 'string') return val.trim();
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    // object/array → JSON code block
+    if (typeof val === 'object') return '```json\n' + toPrettyJson(val) + '\n```';
+    return String(val);
+  }
+
   for (const m of modules) {
     const val = parsedJson?.[m.key];
     lines.push(`## ${m.title || m.key}`);
 
     if (m.type === 'list') {
-      const arr = Array.isArray(val) ? val : [];
-      if (!arr.length) {
-        lines.push('（空）');
-      } else {
-        // tips 用有序列表更舒服
-        if (m.key === 'tips') {
-          arr.forEach((t, i) => lines.push(`${i + 1}. ${t}`));
+      // 纯字符串/数字/布尔列表：正常渲染；否则整体用 JSON 展示
+      if (isSimpleList(val)) {
+        const arr = val.map(x => String(x).trim()).filter(Boolean);
+        if (!arr.length) {
+          lines.push('（空）');
         } else {
-          arr.forEach(t => lines.push(`- ${t}`));
+          if (m.key === 'tips') arr.forEach((t, i) => lines.push(`${i + 1}. ${t}`));
+          else arr.forEach(t => lines.push(`- ${t}`));
         }
+      } else if (Array.isArray(val) && val.length) {
+        lines.push('```json');
+        lines.push(toPrettyJson(val));
+        lines.push('```');
+      } else {
+        lines.push('（空）');
       }
     } else {
-      lines.push(val ? String(val) : '（空）');
+      const text = formatTextOrJson(val);
+      lines.push(text ? text : '（空）');
     }
     lines.push('');
   }
@@ -1201,13 +1226,40 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
   const lines = [];
   lines.push(`**剧情指导**`);
 
+  function toPrettyJson(v) {
+    try { return JSON.stringify(v, null, 2); } catch { return String(v ?? ''); }
+  }
+  function isSimpleList(arr) {
+    return Array.isArray(arr) && arr.every(x => (
+      typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean'
+    ));
+  }
+  function formatInlineText(val) {
+    if (val === undefined || val === null) return '';
+    if (typeof val === 'string') return val.trim();
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    if (typeof val === 'object') return '```json\n' + toPrettyJson(val) + '\n```';
+    return String(val);
+  }
+
   for (const m of modules) {
     const hasKey = parsedJson && Object.hasOwn(parsedJson, m.key);
     const val = hasKey ? parsedJson[m.key] : undefined;
     const title = m.title || m.key;
 
     if (m.type === 'list') {
-      const arr = Array.isArray(val) ? val : [];
+      // 纯字符串/数字/布尔列表：按原逻辑渲染；否则整体用 JSON 代码块
+      if (!isSimpleList(val)) {
+        const text = (Array.isArray(val) && val.length) ? ('```json\n' + toPrettyJson(val) + '\n```') : '';
+        if (!text) {
+          if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空）')}`);
+          continue;
+        }
+        lines.push(`- **${title}**\n${indentForListItem(text)}`);
+        continue;
+      }
+
+      const arr = val.map(x => String(x).trim()).filter(Boolean);
       if (!arr.length) {
         if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空）')}`);
         continue;
@@ -1225,7 +1277,7 @@ ${indentForListItem(picked.join(' / '))}`);
         lines.push(`- **${title}**\n${indentForListItem(joined)}`);
       }
     } else {
-      const text = (val !== undefined && val !== null) ? String(val).trim() : '';
+      const text = formatInlineText(val);
       if (!text) {
         if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空）')}`);
         continue;
