@@ -778,3 +778,34 @@ body.sg-zoom-lock{
   overflow: visible !important;
   z-index: auto !important;
 }
+
+
+
+/* v0.7.2 collapse = title only */
+.sg-inline-body > ul > li .sg-card-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sg-inline-body > ul > li .sg-card-content{
+  margin-top: 8px;
+}
+
+.sg-inline-body > ul > li.sg-collapsed{
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.sg-inline-body > ul > li.sg-collapsed::after{
+  content: none !important;
+}
+
+.sg-inline-body > ul > li.sg-collapsed .sg-card-content{
+  display: none !important;
+}
+
+.sg-inline-body > ul > li.sg-collapsed .sg-title-muted{
+  display: none !important;
+}

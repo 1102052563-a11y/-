@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.1
+ * v0.7.2
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -1258,11 +1258,13 @@ function ensurePanelBoxPresent(mesKey) {
     attachPanelToggleHandler(existing, mesKey);
     const body = existing.querySelector('.sg-panel-body');
     if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
+    decorateInlineModuleCards(existing);
     return true;
   }
 
   const box = createPanelBoxElement(mesKey, cached.htmlInner, cached.collapsed);
   textEl.appendChild(box);
+  decorateInlineModuleCards(box);
   return true;
 }
 
@@ -1746,12 +1748,73 @@ function clearLegacyZoomArtifacts() {
   } catch { /* ignore */ }
 }
 
+
+function decorateInlineModuleCards(rootEl) {
+  try {
+    const body = rootEl?.querySelector?.('.sg-inline-body') || rootEl;
+    if (!body) return;
+
+    const items = body.querySelectorAll('.sg-inline-body > ul > li');
+    for (const li of items) {
+      if (li.classList.contains('sg-card-decorated')) continue;
+
+      // find title strong (should exist)
+      const strong = li.querySelector(':scope > strong') || li.querySelector('strong');
+      if (!strong) continue;
+
+      // split title into main + suffix (e.g. "标题（备注）")
+      const fullTitle = (strong.textContent || '').trim();
+      let main = fullTitle;
+      let suffix = '';
+      const idx = fullTitle.indexOf('（');
+      if (idx > 0 && fullTitle.endsWith('）')) {
+        main = fullTitle.slice(0, idx).trim();
+        suffix = fullTitle.slice(idx).trim();
+      }
+
+      // rebuild strong content with spans
+      strong.textContent = '';
+      const spanMain = document.createElement('span');
+      spanMain.className = 'sg-title-main';
+      spanMain.textContent = main || fullTitle || '（无标题）';
+      strong.appendChild(spanMain);
+      if (suffix && main) {
+        const spanSuffix = document.createElement('span');
+        spanSuffix.className = 'sg-title-muted';
+        spanSuffix.textContent = suffix;
+        strong.appendChild(spanSuffix);
+      }
+
+      // build head + content wrapper
+      const head = document.createElement('div');
+      head.className = 'sg-card-head';
+      head.appendChild(strong);
+
+      const content = document.createElement('div');
+      content.className = 'sg-card-content';
+
+      // move remaining nodes into content
+      const restNodes = Array.from(li.childNodes).filter(n => n !== strong && !(n.nodeType === 3 && !String(n.textContent || '').trim()));
+      for (const n of restNodes) content.appendChild(n);
+
+      li.innerHTML = '';
+      li.appendChild(head);
+      if (content.childNodes.length) li.appendChild(content);
+
+      li.classList.add('sg-card-decorated');
+    }
+  } catch { /* ignore */ }
+}
+
 function installCardZoomDelegation() {
   // keep old function name for compatibility, but behavior is now "click to shrink/expand"
   if (window.__storyguide_card_toggle_installed) return;
   window.__storyguide_card_toggle_installed = true;
 
   clearLegacyZoomArtifacts();
+
+  // ensure cards are wrapped for proper collapse behavior
+  decorateInlineModuleCards(document);
 
   document.addEventListener('click', (e) => {
     const target = e.target;
@@ -1761,6 +1824,8 @@ function installCardZoomDelegation() {
 
     const card = target.closest('.sg-inline-body > ul > li');
     if (!card) return;
+
+    if (!card.classList.contains('sg-card-decorated')) decorateInlineModuleCards(document);
 
     // if user is selecting text, don't toggle
     try {
