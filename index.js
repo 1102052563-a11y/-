@@ -1262,39 +1262,432 @@ function makeStarPoints(cx, cy, rOuter, rInner, spikes) {
   return pts.join(' ');
 }
 
-function renderMapSvg(mapJson) {
-  const m = normalizeMapJson(mapJson);
-  const locById = new Map(m.locations.map(l => [l.id, l]));
+function hashStr(str) {
+  const s = String(str || '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0);
+}
 
-  // background grid
-  const grid = [];
-  for (let i = 0; i <= 100; i += 10) {
-    grid.push(`<line class="sg-map-grid" x1="${i}" y1="0" x2="${i}" y2="100" />`);
-    grid.push(`<line class="sg-map-grid" x1="0" y1="${i}" x2="100" y2="${i}" />`);
+function estimateSvgTextWidth(text, fontSize) {
+  const t = String(text || '');
+  const fs = Number(fontSize) || 3.2;
+  let units = 0;
+  for (const ch of t) {
+    // ASCII narrower, CJK wider (rough estimate)
+    units += (ch.charCodeAt(0) <= 0x7f) ? 0.58 : 1.0;
+  }
+  return Math.max(2.5, units * fs * 0.78);
+}
+
+function isMapLayoutDegenerate(locations) {
+  const locs = Array.isArray(locations) ? locations : [];
+  if (locs.length < 4) {
+    // For tiny maps, avoid aggressive auto-layout unless it's clearly unusable.
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    let centerish = 0, n = 0;
+    for (const l of locs) {
+      const x = Number(l?.x); const y = Number(l?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      n++;
+      if (Math.abs(x - 50) < 1.2 && Math.abs(y - 50) < 1.2) centerish++;
+    }
+    if (n < 2) return false;
+    const area = (maxX - minX) * (maxY - minY);
+    if (area < 40) return true;           // almost stacked
+    if (centerish / n > 0.60) return true; // everyone at center default
+    return false;
   }
 
-  const links = m.links.map(e => {
+  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+  let sumX = 0, sumY = 0, n = 0;
+  let centerish = 0;
+  for (const l of locs) {
+    const x = Number(l?.x); const y = Number(l?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    sumX += x; sumY += y; n++;
+    if (Math.abs(x - 50) < 1.2 && Math.abs(y - 50) < 1.2) centerish++;
+  }
+  if (n < 3) return true;
+
+  const area = (maxX - minX) * (maxY - minY);
+  if (area < 260) return true; // clustered
+
+  // std dev check
+  const mx = sumX / n, my = sumY / n;
+  let vx = 0, vy = 0;
+  for (const l of locs) {
+    const x = Number(l?.x); const y = Number(l?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    vx += (x - mx) * (x - mx);
+    vy += (y - my) * (y - my);
+  }
+  vx /= n; vy /= n;
+  if (Math.sqrt(vx) < 6 || Math.sqrt(vy) < 5) return true;
+  if (centerish / n > 0.55) return true;
+
+  return false;
+}
+
+function scaleNodesToFit(nodes, pad) {
+  const p = Number(pad) || 10;
+  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+  for (const n of nodes) {
+    minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x); maxY = Math.max(maxY, n.y);
+  }
+  const w = Math.max(1e-6, maxX - minX);
+  const h = Math.max(1e-6, maxY - minY);
+
+  const sx = (100 - 2 * p) / w;
+  const sy = (100 - 2 * p) / h;
+  const s = Math.min(sx, sy);
+
+  const ox = (100 - w * s) / 2 - minX * s;
+  const oy = (100 - h * s) / 2 - minY * s;
+
+  for (const n of nodes) {
+    n.x = clampFloat(n.x * s + ox, p, 100 - p, 50);
+    n.y = clampFloat(n.y * s + oy, p, 100 - p, 50);
+  }
+}
+
+function runForceLayout(locs, links) {
+  const nodes = locs.map((l, i) => ({
+    id: l.id,
+    x: Number.isFinite(l.x) ? l.x : (50 + (Math.random() - 0.5) * 18),
+    y: Number.isFinite(l.y) ? l.y : (50 + (Math.random() - 0.5) * 18),
+    vx: 0,
+    vy: 0,
+    _i: i,
+  }));
+
+  // jitter if too many identical coords
+  const buckets = new Map();
+  for (const n of nodes) {
+    const k = `${Math.round(n.x)}_${Math.round(n.y)}`;
+    const c = (buckets.get(k) || 0) + 1;
+    buckets.set(k, c);
+    if (c > 1) {
+      n.x += (Math.random() - 0.5) * 6;
+      n.y += (Math.random() - 0.5) * 6;
+    }
+  }
+
+  const idToIdx = new Map(nodes.map((n, idx) => [n.id, idx]));
+  const edges = (Array.isArray(links) ? links : [])
+    .map(e => ({ a: idToIdx.get(e.from), b: idToIdx.get(e.to) }))
+    .filter(e => Number.isInteger(e.a) && Number.isInteger(e.b) && e.a !== e.b);
+
+  const n = nodes.length;
+  const steps = 260;
+  const repK = 120;          // repulsion strength
+  const attrK = 0.040;       // attraction along edges
+  const rest = Math.max(12, Math.min(22, 60 / Math.sqrt(Math.max(1, n)))); // target edge length
+  const centerK = 0.006;     // gentle centering
+  const damp = 0.84;
+
+  for (let it = 0; it < steps; it++) {
+    // repulsion
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = nodes[i], b = nodes[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const d2 = dx * dx + dy * dy + 0.08;
+        const inv = 1 / d2;
+        const f = repK * inv;
+
+        a.vx -= dx * f;
+        a.vy -= dy * f;
+        b.vx += dx * f;
+        b.vy += dy * f;
+      }
+    }
+
+    // attraction (springs)
+    for (const e of edges) {
+      const a = nodes[e.a], b = nodes[e.b];
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      const d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
+      const diff = d - rest;
+      const f = attrK * diff;
+      dx /= d; dy /= d;
+
+      a.vx += dx * f;
+      a.vy += dy * f;
+      b.vx -= dx * f;
+      b.vy -= dy * f;
+    }
+
+    // integrate
+    for (const p of nodes) {
+      // center pull
+      p.vx += (50 - p.x) * centerK;
+      p.vy += (50 - p.y) * centerK;
+
+      p.vx *= damp;
+      p.vy *= damp;
+
+      p.x += p.vx * 0.055;
+      p.y += p.vy * 0.055;
+    }
+  }
+
+  scaleNodesToFit(nodes, 10);
+
+  // write back
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  for (const l of locs) {
+    const p = byId.get(l.id);
+    if (p) { l.x = p.x; l.y = p.y; }
+  }
+}
+
+function autoBeautifyMap(m) {
+  // Deep clone to avoid mutating original
+  const out = normalizeMapJson(m);
+
+  // If layout is degenerate (e.g., all on a line / clustered), auto layout.
+  if (isMapLayoutDegenerate(out.locations)) {
+    runForceLayout(out.locations, out.links);
+    // resnap protagonist if it points to a location
+    if (out.protagonist?.at) {
+      const loc = out.locations.find(l => l.id === out.protagonist.at) || out.locations.find(l => l.name === out.protagonist.at);
+      if (loc) { out.protagonist.x = loc.x; out.protagonist.y = loc.y; }
+    }
+  }
+
+  return out;
+}
+
+function buildSvgLabel({ x, y, text, fontSize, anchor, clsText, clsBg }) {
+  const t = String(text || '');
+  if (!t) return '';
+  const fs = Number(fontSize) || 3.2;
+  const padX = 0.9, padY = 0.55;
+  const w = estimateSvgTextWidth(t, fs);
+  const h = fs + 1.25;
+
+  const a = anchor || 'start';
+  const ta = (a === 'end' || a === 'middle') ? a : 'start';
+
+  let rx;
+  if (ta === 'middle') rx = x - w / 2 - padX;
+  else if (ta === 'end') rx = x - w - padX;
+  else rx = x - padX;
+
+  const ry = y - fs + padY;
+  const rect = `<rect class="${clsBg || 'sg-map-label-bg'}" x="${rx.toFixed(2)}" y="${ry.toFixed(2)}" width="${(w + padX * 2).toFixed(2)}" height="${h.toFixed(2)}" rx="1.2" ry="1.2" />`;
+  const txt = `<text class="${clsText || 'sg-map-label-text'}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="${ta}" dominant-baseline="alphabetic">${escapeXml(t)}</text>`;
+  return `<g class="sg-map-label">${rect}${txt}</g>`;
+}
+
+function computeCurveControl(ax, ay, bx, by, seed) {
+  const mx = (ax + bx) / 2;
+  const my = (ay + by) / 2;
+  let dx = bx - ax;
+  let dy = by - ay;
+  const d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
+  dx /= d; dy /= d;
+  const nx = -dy, ny = dx; // perpendicular
+  const h = hashStr(seed);
+  const bucket = (h % 9) - 4; // -4..4
+  const off = bucket * 1.7;
+  const cx = mx + nx * off;
+  const cy = my + ny * off;
+  return { cx, cy, mx, my };
+}
+
+function makeArrowPolygon(ax, ay, bx, by, cx, cy) {
+  // direction at end of quadratic curve: from control to end
+  let dx = bx - cx;
+  let dy = by - cy;
+  const d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
+  dx /= d; dy /= d;
+  const nx = -dy, ny = dx;
+
+  const len = 1.8;
+  const wid = 0.95;
+  const tipX = bx, tipY = by;
+  const baseX = bx - dx * len;
+  const baseY = by - dy * len;
+
+  const leftX = baseX + nx * wid;
+  const leftY = baseY + ny * wid;
+  const rightX = baseX - nx * wid;
+  const rightY = baseY - ny * wid;
+
+  return `${tipX.toFixed(2)},${tipY.toFixed(2)} ${leftX.toFixed(2)},${leftY.toFixed(2)} ${rightX.toFixed(2)},${rightY.toFixed(2)}`;
+}
+
+function bindMapInteractions() {
+  const svg = document.querySelector('#sg_map_view svg.sg-map-svg');
+  if (!svg) return;
+
+  const viewport = svg.querySelector('.sg-map-viewport');
+  if (!viewport) return;
+
+  // Rebind per render (map changes), but keep one handler instance.
+  if (svg.dataset.sgBound === '1') return;
+  svg.dataset.sgBound = '1';
+
+  svg.style.touchAction = 'none';
+
+  const state = { s: 1, tx: 0, ty: 0, dragging: false, last: null };
+
+  const apply = () => {
+    viewport.setAttribute('transform', `translate(${state.tx.toFixed(2)} ${state.ty.toFixed(2)}) scale(${state.s.toFixed(3)})`);
+  };
+
+  const getPt = (e) => {
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const p = pt.matrixTransform(ctm.inverse());
+    return { x: p.x, y: p.y };
+  };
+
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const p = getPt(e);
+    const oldS = state.s;
+    const factor = (e.deltaY > 0) ? 0.90 : 1.10;
+    const newS = clampFloat(oldS * factor, 0.6, 3.2, 1);
+
+    // keep the world point under cursor stable: p = s*w + t
+    const wx = (p.x - state.tx) / oldS;
+    const wy = (p.y - state.ty) / oldS;
+
+    state.s = newS;
+    state.tx = p.x - wx * newS;
+    state.ty = p.y - wy * newS;
+    apply();
+  }, { passive: false });
+
+  const onMove = (e) => {
+    if (!state.dragging) return;
+    const p = getPt(e);
+    const dx = p.x - state.last.x;
+    const dy = p.y - state.last.y;
+    state.tx += dx;
+    state.ty += dy;
+    state.last = p;
+    apply();
+  };
+
+  const onUp = () => {
+    state.dragging = false;
+    svg.classList.remove('dragging');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+  };
+
+  svg.addEventListener('pointerdown', (e) => {
+    // left button or touch
+    if (e.button !== undefined && e.button !== 0) return;
+    state.dragging = true;
+    svg.classList.add('dragging');
+    state.last = getPt(e);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  });
+
+  svg.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    state.s = 1; state.tx = 0; state.ty = 0;
+    apply();
+  });
+
+  apply();
+}
+
+function renderMapSvg(mapJson) {
+  const m = autoBeautifyMap(mapJson);
+  const locById = new Map(m.locations.map(l => [l.id, l]));
+
+  // background grid (minor + major)
+  const grid = [];
+  for (let i = 0; i <= 100; i += 10) {
+    const cls = (i % 20 === 0) ? 'sg-map-grid sg-map-grid-major' : 'sg-map-grid sg-map-grid-minor';
+    grid.push(`<line class="${cls}" x1="${i}" y1="0" x2="${i}" y2="100" />`);
+    grid.push(`<line class="${cls}" x1="0" y1="${i}" x2="100" y2="${i}" />`);
+  }
+
+  const links = m.links.map((e, idx) => {
     const a = locById.get(e.from) || m.locations.find(x => x.name === e.from);
     const b = locById.get(e.to) || m.locations.find(x => x.name === e.to);
     if (!a || !b) return '';
-    const mx = (a.x + b.x) / 2;
-    const my = (a.y + b.y) / 2;
-    const label = e.label ? `<text class="sg-map-link-label" x="${mx.toFixed(2)}" y="${(my - 1.2).toFixed(2)}">${escapeXml(e.label)}</text>` : '';
+
+    const { cx, cy, mx, my } = computeCurveControl(a.x, a.y, b.x, b.y, `${e.from}|${e.to}|${idx}`);
+    const d = `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} Q ${cx.toFixed(2)} ${cy.toFixed(2)} ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+    const arrowPts = makeArrowPolygon(a.x, a.y, b.x, b.y, cx, cy);
+
+    // label at curve midpoint (slightly lifted)
+    let lx = mx, ly = my - 1.8;
+    const label = e.label ? buildSvgLabel({
+      x: clampFloat(lx, 4, 96, lx),
+      y: clampFloat(ly, 6, 96, ly),
+      text: e.label,
+      fontSize: 3.0,
+      anchor: 'middle',
+      clsText: 'sg-map-link-label-text',
+      clsBg: 'sg-map-link-label-bg',
+    }) : '';
+
+    const title = [e.label, `${a.name} → ${b.name}`].filter(Boolean).join(' ');
     return `
-      <g class="sg-map-link">
-        <line class="sg-map-link-line" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" />
+      <g class="sg-map-link" data-from="${escapeXml(e.from)}" data-to="${escapeXml(e.to)}">
+        <path class="sg-map-link-path" d="${d}" />
+        <polygon class="sg-map-link-arrow" points="${arrowPts}" />
         ${label}
+        ${title ? `<title>${escapeXml(title)}</title>` : ''}
       </g>
     `;
   }).join('');
 
-  const nodes = m.locations.map(l => {
-    const title = [l.name, l.note].filter(Boolean).join(' — ');
+  const nodes = m.locations.map((l) => {
+    const title = [l.name, l.type ? `(${l.type})` : '', l.note].filter(Boolean).join(' ');
     const type = l.type ? ` data-type="${escapeXml(l.type)}"` : '';
+
+    // label placement
+    const fs = 3.25;
+    const w = estimateSvgTextWidth(l.name, fs);
+    let anchor = (l.x > 72) ? 'end' : 'start';
+    let x = (anchor === 'end') ? (l.x - 3.2) : (l.x + 3.2);
+    let y = l.y + ((l.y < 18) ? 5.2 : (l.y > 86 ? -2.6 : 1.8));
+
+    // clamp label inside
+    if (anchor === 'start') x = clampFloat(x, 2.2, 98 - w, x);
+    else x = clampFloat(x, 2.2 + w, 98, x);
+    y = clampFloat(y, 6.0, 96.0, y);
+
+    const label = buildSvgLabel({
+      x, y,
+      text: l.name,
+      fontSize: fs,
+      anchor,
+      clsText: 'sg-map-node-label-text',
+      clsBg: 'sg-map-node-label-bg',
+    });
+
     return `
       <g class="sg-map-node" data-id="${escapeXml(l.id)}"${type}>
-        <circle class="sg-map-node-dot" cx="${l.x}" cy="${l.y}" r="2.2" />
-        <text class="sg-map-node-label" x="${(l.x + 2.8).toFixed(2)}" y="${(l.y + 0.9).toFixed(2)}">${escapeXml(l.name)}</text>
+        <circle class="sg-map-node-ring" cx="${l.x.toFixed(2)}" cy="${l.y.toFixed(2)}" r="3.05" />
+        <circle class="sg-map-node-dot" cx="${l.x.toFixed(2)}" cy="${l.y.toFixed(2)}" r="2.05" />
+        ${label}
         ${title ? `<title>${escapeXml(title)}</title>` : ''}
       </g>
     `;
@@ -1303,23 +1696,54 @@ function renderMapSvg(mapJson) {
   const px = clampFloat(m.protagonist.x, 0, 100, 50);
   const py = clampFloat(m.protagonist.y, 0, 100, 50);
   const pTitle = [m.protagonist.name, m.protagonist.at ? `@${m.protagonist.at}` : '', m.protagonist.note || ''].filter(Boolean).join(' ');
+
+  const starPtsOuter = makeStarPoints(px, py, 3.35, 1.65, 5);
+  const starPtsGlow = makeStarPoints(px, py, 4.45, 2.15, 5);
+
+  // protagonist label placement
+  const pFs = 3.35;
+  const pW = estimateSvgTextWidth(m.protagonist.name, pFs);
+  let pAnchor = (px > 72) ? 'end' : 'start';
+  let pX = (pAnchor === 'end') ? (px - 3.6) : (px + 3.6);
+  let pY = py - 5.1;
+  if (pY < 6) pY = py + 6.0;
+
+  if (pAnchor === 'start') pX = clampFloat(pX, 2.2, 98 - pW, pX);
+  else pX = clampFloat(pX, 2.2 + pW, 98, pX);
+  pY = clampFloat(pY, 6.0, 96.0, pY);
+
+  const pLabel = buildSvgLabel({
+    x: pX, y: pY,
+    text: m.protagonist.name,
+    fontSize: pFs,
+    anchor: pAnchor,
+    clsText: 'sg-map-protagonist-label-text',
+    clsBg: 'sg-map-protagonist-label-bg',
+  });
+
   const star = `
     <g class="sg-map-protagonist">
-      <polygon class="sg-map-protagonist-star" points="${makeStarPoints(px, py, 3.3, 1.6, 5)}" />
-      <text class="sg-map-protagonist-label" x="${(px + 3.8).toFixed(2)}" y="${(py - 2.6).toFixed(2)}">${escapeXml(m.protagonist.name)}</text>
+      <polygon class="sg-map-protagonist-glow" points="${starPtsGlow}" />
+      <polygon class="sg-map-protagonist-star" points="${starPtsOuter}" />
+      ${pLabel}
       ${pTitle ? `<title>${escapeXml(pTitle)}</title>` : ''}
     </g>
   `;
 
   const title = m.title ? `<div class="sg-map-title">${escapeXml(m.title)}</div>` : '';
+  const hint = `<div class="sg-map-interact-hint">滚轮缩放 · 拖拽平移 · 双击重置</div>`;
+
   const svg = `
     ${title}
+    ${hint}
     <svg class="sg-map-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label="World Map">
-      <rect class="sg-map-bg" x="0" y="0" width="100" height="100" rx="2" ry="2" />
-      <g class="sg-map-grid-layer">${grid.join('')}</g>
-      <g class="sg-map-links-layer">${links}</g>
-      <g class="sg-map-nodes-layer">${nodes}</g>
-      ${star}
+      <rect class="sg-map-bg" x="0" y="0" width="100" height="100" rx="2.6" ry="2.6" />
+      <g class="sg-map-viewport">
+        <g class="sg-map-grid-layer">${grid.join('')}</g>
+        <g class="sg-map-links-layer">${links}</g>
+        <g class="sg-map-nodes-layer">${nodes}</g>
+        ${star}
+      </g>
     </svg>
   `;
 
@@ -1337,6 +1761,8 @@ function renderMapToPane(mapJson, rawText) {
   if ($view.length) {
     if (!mapJson) $view.html('<div class="sg-hint">（尚未生成）</div>');
     else $view.html(renderMapSvg(mapJson));
+    // enable pan/zoom and keep handlers one-time bound
+    bindMapInteractions();
   }
 
   $('#sg_mapCopyJson').prop('disabled', !Boolean(lastMapJsonText));
