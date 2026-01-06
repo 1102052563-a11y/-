@@ -647,14 +647,7 @@ body.sg-zoom-lock{
 
 
 
-/* v0.6.9 mobile responsive modal */
-@media (max-width: 680px){
-  .sg-overlay{
-    padding: 10px;
-    align-items: flex-start;
-  }
-
-  .sg-modal{
+.sg-modal{
     width: 98vw;
     height: 96vh;
     border-radius: 14px;
@@ -819,3 +812,89 @@ body.sg-zoom-lock{
 
 /* v0.7.2 override old gradient */
 .sg-inline-body > ul > li.sg-collapsed::after{background:none !important; height:auto !important;}
+
+
+
+/* v0.7.3 mobile responsive modal (fix header hidden / overflow) */
+@media (max-width: 680px){
+  .sg-backdrop{
+    /* avoid centering a tall modal which pushes header offscreen on mobile */
+    align-items: flex-start;
+    justify-content: center;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .sg-modal{
+    width: 98vw;
+    /* prefer dynamic viewport units to avoid "100vh includes URL bar" issues */
+    height: calc(100dvh - 20px);
+    max-height: calc(100dvh - 20px);
+    border-radius: 14px;
+  }
+
+  /* keep header visible even when content scrolls */
+  .sg-modal-head{
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+
+  /* one-column layout on mobile; single scroll area */
+  .sg-modal-body{
+    display: block;
+    grid-template-columns: 1fr !important;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sg-left, .sg-right{
+    overflow: visible;
+    padding: 10px;
+  }
+
+  .sg-left{
+    border-right: none;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+  }
+
+  .sg-grid2, .sg-grid3{
+    grid-template-columns: 1fr !important;
+  }
+
+  .sg-row{
+    gap: 10px;
+  }
+
+  .sg-field, .sg-field-full{
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .sg-model-select{
+    width: 100%;
+  }
+
+  .sg-actions-row{
+    justify-content: stretch;
+  }
+
+  .sg-actions-row .menu_button,
+  .sg-modal button.menu_button,
+  .sg-modal .menu_button.sg-btn,
+  .sg-modal .menu_button.sg-btn-primary{
+    min-width: 0 !important;
+    width: auto !important;
+    flex: 1 1 calc(50% - 10px);
+  }
+
+  .sg-tabs{
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .sg-tab{
+    flex: 1 1 auto;
+  }
+}
