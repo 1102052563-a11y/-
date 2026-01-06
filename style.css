@@ -230,6 +230,25 @@
 .sg-inline-chevron{ margin-left: auto; opacity: .7; }
 .sg-inline-body{ font-size: 0.97rem; opacity: .96; }
 
+/* code blocks inside storyguide boxes */
+.sg-inline-body pre,
+.sg-panel-body pre,
+.sg-md pre{
+  white-space: pre;
+  overflow: auto;
+  max-width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.sg-inline-body code,
+.sg-panel-body code,
+.sg-md code{
+  white-space: pre;
+}
+
+
 /* collapsed state */
 .sg-inline-box.collapsed .sg-inline-body{ display: none; }
 .sg-inline-box.collapsed .sg-inline-chevron{ transform: rotate(-90deg); }
@@ -933,4 +952,23 @@ body.sg-zoom-lock{
 .sg-graph-source{
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   line-height: 1.35;
+}
+
+
+/* StoryGuide codeblock readability */
+.sg-inline-body pre,
+.sg-panel-body pre,
+.sg-md pre {
+  white-space: pre;
+  overflow: auto;
+  max-width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.sg-inline-body code,
+.sg-panel-body code,
+.sg-md code {
+  white-space: pre;
 }

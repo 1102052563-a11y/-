@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.7
+ * v0.7.8
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -196,6 +196,32 @@ function safeJsonParse(maybeJson) {
   const last = t.lastIndexOf('}');
   if (first !== -1 && last !== -1 && last > first) t = t.slice(first, last + 1);
   try { return JSON.parse(t); } catch { return null; }
+}
+
+function tryParseJsonAny(maybeJson) {
+  if (maybeJson === undefined || maybeJson === null) return null;
+  let s = String(maybeJson).trim();
+  if (!s) return null;
+  // strip fenced code markers if present
+  s = s.replace(/^```(?:json|javascript|js|text)?/i, '').replace(/```$/i, '').trim();
+  // Fast path
+  try { return JSON.parse(s); } catch { /* ignore */ }
+
+  // Try slice from first { or [
+  const iObj = s.indexOf('{');
+  const iArr = s.indexOf('[');
+  const start = (iObj === -1) ? iArr : (iArr === -1 ? iObj : Math.min(iObj, iArr));
+  if (start === -1) return null;
+
+  const tail = s.slice(start);
+  try { return JSON.parse(tail); } catch { /* ignore */ }
+
+  const open = tail[0];
+  const close = open === '{' ? '}' : (open === '[' ? ']' : '');
+  if (!close) return null;
+  const last = tail.lastIndexOf(close);
+  if (last === -1) return null;
+  try { return JSON.parse(tail.slice(0, last + 1)); } catch { return null; }
 }
 
 function renderMarkdownToHtml(markdown) {
@@ -1101,7 +1127,12 @@ function renderReportMarkdownFromModules(parsedJson, modules) {
   }
   function formatTextOrJson(val) {
     if (val === undefined || val === null) return '';
-    if (typeof val === 'string') return val.trim();
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      const parsed = ((trimmed.startsWith('{') || trimmed.startsWith('[')) ? tryParseJsonAny(trimmed) : null);
+      if (parsed && typeof parsed === 'object') return '```json\n' + toPrettyJson(parsed) + '\n```';
+      return trimmed;
+    }
     if (typeof val === 'number' || typeof val === 'boolean') return String(val);
     // object/array → JSON code block
     if (typeof val === 'object') return '```json\n' + toPrettyJson(val) + '\n```';
@@ -1236,7 +1267,12 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
   }
   function formatInlineText(val) {
     if (val === undefined || val === null) return '';
-    if (typeof val === 'string') return val.trim();
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      const parsed = ((trimmed.startsWith('{') || trimmed.startsWith('[')) ? tryParseJsonAny(trimmed) : null);
+      if (parsed && typeof parsed === 'object') return '```json\n' + toPrettyJson(parsed) + '\n```';
+      return trimmed;
+    }
     if (typeof val === 'number' || typeof val === 'boolean') return String(val);
     if (typeof val === 'object') return '```json\n' + toPrettyJson(val) + '\n```';
     return String(val);
@@ -1284,7 +1320,7 @@ ${indentForListItem(picked.join(' / '))}`);
       }
 
       if (mode === 'compact') {
-        const short = (text.length > 140 ? text.slice(0, 140) + '…' : text);
+        const short = (text.startsWith('```') ? text : (text.length > 140 ? text.slice(0, 140) + '…' : text));
         lines.push(`- **${title}**
 ${indentForListItem(short)}`);
       } else {
