@@ -898,3 +898,39 @@ body.sg-zoom-lock{
     flex: 1 1 auto;
   }
 }
+
+
+/* v0.7.4 relation graph (Mermaid preview) */
+.sg-graph-toolbar{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.sg-graph-wrap{
+  min-height: 240px;
+  max-height: 62vh;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.sg-graph-error{
+  opacity: 0.9;
+  line-height: 1.45;
+}
+.sg-graph-details{
+  margin-top: 10px;
+}
+.sg-graph-details summary{
+  cursor: pointer;
+  opacity: 0.9;
+  user-select:none;
+  margin-bottom: 8px;
+}
+.sg-graph-source{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  line-height: 1.35;
+}
