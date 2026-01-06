@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.0
+ * v0.7.1
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -1736,56 +1736,22 @@ function ensureChatActionButtons() {
   schedulePositionChatButtons();
 }
 
-// -------------------- card zoom (module item) --------------------
-let sgZoomedCard = null;
-
-function ensureZoomOverlay() {
-  let ov = document.getElementById('sg_zoom_overlay');
-  if (ov) return ov;
-
-  ov = document.createElement('div');
-  ov.id = 'sg_zoom_overlay';
-  ov.className = 'sg-zoom-overlay';
-  ov.addEventListener('click', () => {
-    if (sgZoomedCard) toggleZoomCard(sgZoomedCard, false);
-  });
-  document.body.appendChild(ov);
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && sgZoomedCard) {
-      toggleZoomCard(sgZoomedCard, false);
-    }
-  });
-
-  return ov;
-}
-
-function toggleZoomCard(cardEl, on) {
-  const ov = ensureZoomOverlay();
-
-  // close previous
-  if (sgZoomedCard && sgZoomedCard !== cardEl) {
-    sgZoomedCard.classList.remove('sg-zoomed');
-    sgZoomedCard = null;
-  }
-
-  if (!on) {
-    cardEl.classList.remove('sg-zoomed');
-    sgZoomedCard = null;
-    ov.classList.remove('is-on');
+// -------------------- card toggle (shrink/expand per module card) --------------------
+function clearLegacyZoomArtifacts() {
+  try {
     document.body.classList.remove('sg-zoom-lock');
-    return;
-  }
-
-  cardEl.classList.add('sg-zoomed');
-  sgZoomedCard = cardEl;
-  ov.classList.add('is-on');
-  document.body.classList.add('sg-zoom-lock');
+    document.querySelectorAll('.sg-zoomed').forEach(el => el.classList.remove('sg-zoomed'));
+    const ov = document.getElementById('sg_zoom_overlay');
+    if (ov) ov.remove();
+  } catch { /* ignore */ }
 }
 
 function installCardZoomDelegation() {
-  if (window.__storyguide_zoom_installed) return;
-  window.__storyguide_zoom_installed = true;
+  // keep old function name for compatibility, but behavior is now "click to shrink/expand"
+  if (window.__storyguide_card_toggle_installed) return;
+  window.__storyguide_card_toggle_installed = true;
+
+  clearLegacyZoomArtifacts();
 
   document.addEventListener('click', (e) => {
     const target = e.target;
@@ -1805,10 +1771,10 @@ function installCardZoomDelegation() {
     e.preventDefault();
     e.stopPropagation();
 
-    const on = !card.classList.contains('sg-zoomed');
-    toggleZoomCard(card, on);
+    card.classList.toggle('sg-collapsed');
   }, true);
 }
+
 
 
 function buildModalHtml() {
