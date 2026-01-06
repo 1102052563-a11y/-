@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.5
+ * v0.7.4
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -10,7 +10,6 @@
  * - 插件会根据模块自动生成 JSON Schema（动态字段）并要求模型按该 Schema 输出
  *
  * 兼容：仍然保持 v0.3.x 的“独立API走后端代理 + 抗变量更新覆盖（自动补贴）+ 点击折叠”能力
- * 新增：原著资料（本聊天）+ 角色关系图谱（Mermaid）预览
  */
 
 const MODULE_NAME = 'storyguide';
@@ -40,6 +39,7 @@ const DEFAULT_MODULES = Object.freeze([
   { key: 'next_events', title: '后续将会发生的事', type: 'list', prompt: '接下来最可能发生的事（条目）', maxItems: 6, required: true, panel: true, inline: true },
   { key: 'protagonist_impact', title: '主角行为造成的影响', type: 'text', prompt: '主角行为对剧情/关系/风险造成的改变', required: true, panel: true, inline: false },
   { key: 'tips', title: '给主角的提示（基于原著后续/大纲）', type: 'list', prompt: '给出可执行提示（尽量具体）', maxItems: 4, required: true, panel: true, inline: true },
+  { key: 'character_graph', title: '原著角色关系图谱', type: 'mermaid', prompt: '用 Mermaid 画“角色关系图谱”（flowchart LR）。\n要求：\n1) 只输出 Mermaid 源码（不要解释、不要```包裹）。\n2) 节点为角色/组织，使用简短中文名；可用括号补充别名。\n3) 连线必须标注关系（如：父子/师徒/同盟/敌对/雇佣/暗恋/隶属）。\n4) 控制在 10~35 个节点以内，避免过密；重要角色优先。\n5) 尽量反映“原著当前阶段”的真实关系（可包含隐藏线索但不点破剧透）。\n输出示例：flowchart LR\n  A[主角] -->|师徒| B[导师]', required: true, panel: true, inline: true },
 ]);
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -101,7 +101,6 @@ const DEFAULT_SETTINGS = Object.freeze({
 const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
-  graph: 'storyguide_relation_graph_mermaid',
 });
 
 let lastReport = null;
@@ -201,12 +200,158 @@ function safeJsonParse(maybeJson) {
 
 function renderMarkdownToHtml(markdown) {
   const { showdown, DOMPurify } = SillyTavern.libs;
-  const converter = new showdown.Converter({ simplifiedAutoLink: true, strikethrough: true, tables: true });
+  const converter = new showdown.Converter({ simplifiedAutoLink: true, strikethrough: true, tables: true, ghCodeBlocks: true });
   const html = converter.makeHtml(markdown || '');
   return DOMPurify.sanitize(html);
 }
 
-function renderMarkdownInto($el, markdown) { $el.html(renderMarkdownToHtml(markdown)); }
+function renderMarkdownInto($el, markdown) {
+  $el.html(renderMarkdownToHtml(markdown));
+  try { renderMermaidIn($el[0] || $el); } catch { /* ignore */ }
+
+
+// -------------------- Mermaid diagram support --------------------
+let __sgMermaidLoading = null;
+let __sgMermaidInited = false;
+
+function __sgLoadScript(url) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.async = true;
+    s.onload = () => resolve(true);
+    s.onerror = () => reject(new Error('Failed to load: ' + url));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureMermaid() {
+  if (window.mermaid) {
+    if (!__sgMermaidInited) {
+      try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' }); } catch { /* ignore */ }
+      __sgMermaidInited = true;
+    }
+    return window.mermaid;
+  }
+
+  if (__sgMermaidLoading) return __sgMermaidLoading;
+
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js',
+    'https://unpkg.com/mermaid@10/dist/mermaid.min.js',
+  ];
+
+  __sgMermaidLoading = (async () => {
+    for (const u of urls) {
+      try {
+        await __sgLoadScript(u);
+        if (window.mermaid) break;
+      } catch { /* try next */ }
+    }
+    if (!window.mermaid) throw new Error('Mermaid not available');
+    try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' }); } catch { /* ignore */ }
+    __sgMermaidInited = true;
+    return window.mermaid;
+  })();
+
+  return __sgMermaidLoading;
+}
+
+function normalizeMermaidSource(src) {
+  const s = String(src || '').trim();
+  if (!s) return '';
+  // strip ```mermaid fences if model included them
+  if (s.startsWith('```')) {
+    const lines = s.split('\n');
+    // drop first line
+    lines.shift();
+    // drop last fence
+    if (lines.length && lines[lines.length - 1].trim().startsWith('```')) lines.pop();
+    return lines.join('\n').trim();
+  }
+  return s;
+}
+
+function findMermaidCodeBlocks(rootEl) {
+  if (!rootEl) return [];
+  const codes = Array.from(rootEl.querySelectorAll('pre > code'));
+  return codes.filter(codeEl => {
+    const cls = (codeEl.getAttribute('class') || '').toLowerCase();
+    const txt = (codeEl.textContent || '').trim();
+    if (cls.includes('language-mermaid') || cls.includes('lang-mermaid')) return true;
+    // fallback heuristic
+    if (/^(flowchart|graph)\b/i.test(txt)) return true;
+    return false;
+  });
+}
+
+async function renderMermaidIn(rootEl) {
+  const codeEls = findMermaidCodeBlocks(rootEl);
+  if (!codeEls.length) return;
+
+  let mermaid;
+  try { mermaid = await ensureMermaid(); } catch { mermaid = null; }
+
+  for (const codeEl of codeEls) {
+    const pre = codeEl.closest('pre');
+    if (!pre || pre.dataset.sgMermaidDone === '1') continue;
+    pre.dataset.sgMermaidDone = '1';
+
+    const source = normalizeMermaidSource(codeEl.textContent || '');
+    if (!source) continue;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'sg-mermaid-wrap';
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'sg-mermaid-toolbar';
+
+    const btnCopy = document.createElement('button');
+    btnCopy.className = 'menu_button sg-btn';
+    btnCopy.textContent = '复制图谱源码';
+    btnCopy.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try { await navigator.clipboard.writeText(source); } catch { /* ignore */ }
+    });
+
+    const hint = document.createElement('span');
+    hint.className = 'sg-mermaid-hint';
+    hint.textContent = mermaid ? 'Mermaid 图谱' : '未加载 Mermaid（仅显示源码）';
+
+    toolbar.appendChild(btnCopy);
+    toolbar.appendChild(hint);
+
+    const canvas = document.createElement('div');
+    canvas.className = 'sg-mermaid-canvas';
+
+    if (!mermaid) {
+      const pre2 = document.createElement('pre');
+      pre2.className = 'sg-mermaid-raw';
+      pre2.textContent = source;
+      canvas.appendChild(pre2);
+    } else {
+      canvas.textContent = '渲染中…';
+      try {
+        const id = 'sg_mmd_' + Math.random().toString(36).slice(2);
+        const { svg } = await mermaid.render(id, source);
+        canvas.innerHTML = svg;
+      } catch (err) {
+        const pre2 = document.createElement('pre');
+        pre2.className = 'sg-mermaid-raw';
+        pre2.textContent = source;
+        canvas.innerHTML = '';
+        canvas.appendChild(pre2);
+      }
+    }
+
+    wrap.appendChild(toolbar);
+    wrap.appendChild(canvas);
+
+    pre.replaceWith(wrap);
+  }
+}
+}
 
 function getChatMetaValue(key) {
   const { chatMetadata } = SillyTavern.getContext();
@@ -236,124 +381,6 @@ function showPane(name) {
   $(`#sg_tab_${name}`).addClass('active');
   $('#sg_modal .sg-pane').removeClass('active');
   $(`#sg_pane_${name}`).addClass('active');
-
-
-// -------------------- relation graph (Mermaid) --------------------
-
-let __sgMermaidPromise = null;
-
-function escapeHtml(str) {
-  return String(str || '').replace(/[&<>"']/g, (ch) => {
-    switch (ch) {
-      case '&': return '&amp;';
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '"': return '&quot;';
-      case '\'': return '&#39;';
-      default: return ch;
-    }
-  });
-}
-
-function getRelationGraphTextPreferUi() {
-  const ui = ($('#sg_graphText').length ? String($('#sg_graphText').val() || '').trim() : '');
-  if (ui) return ui;
-  return String(getChatMetaValue(META_KEYS.graph) || '').trim();
-}
-
-function loadExternalScript(url) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = url;
-    s.async = true;
-    s.onload = () => resolve(true);
-    s.onerror = () => reject(new Error(`加载脚本失败：${url}`));
-    document.head.appendChild(s);
-  });
-}
-
-async function ensureMermaidLoaded() {
-  if (globalThis.mermaid) return globalThis.mermaid;
-
-  if (__sgMermaidPromise) return await __sgMermaidPromise;
-
-  __sgMermaidPromise = (async () => {
-    const urls = [
-      'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js',
-      'https://unpkg.com/mermaid@10/dist/mermaid.min.js',
-    ];
-
-    let lastErr = null;
-    for (const url of urls) {
-      try {
-        await loadExternalScript(url);
-        if (globalThis.mermaid) return globalThis.mermaid;
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error('Mermaid 未加载（网络/CSP 可能阻止外部脚本）');
-  })();
-
-  return await __sgMermaidPromise;
-}
-
-async function renderRelationGraph() {
-  const $view = $('#sg_graphView');
-  const $src = $('#sg_graphSrc');
-  const $hint = $('#sg_graphHint');
-
-  if (!$view.length) return;
-
-  const code = getRelationGraphTextPreferUi();
-  if ($src.length) $src.text(code || '');
-
-  if (!code) {
-    $view.html('<div class="sg-hint">（未提供关系图谱：请在左侧「原著资料」里填写 Mermaid flowchart，并保存到本聊天）</div>');
-    if ($hint.length) $hint.text('未提供关系图谱');
-    return;
-  }
-
-  if ($hint.length) $hint.text('正在渲染…');
-
-  try {
-    const mermaid = await ensureMermaidLoaded();
-
-    // Initialize once; repeated calls are safe
-    try {
-      mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: 'strict',
-        theme: 'dark',
-      });
-    } catch { /* ignore */ }
-
-    const id = `sg_mermaid_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-
-    // mermaid.render API differs across versions
-    let out = null;
-    try { out = await mermaid.render(id, code); } catch (e) {
-      // some versions need a container node
-      const tmp = document.createElement('div');
-      out = await mermaid.render(id, code, tmp);
-    }
-
-    const svg = (typeof out === 'string') ? out : (out?.svg ?? '');
-    if (!svg) throw new Error('Mermaid 渲染返回空结果');
-
-    $view.html(svg);
-    if ($hint.length) $hint.text('渲染完成 ✅');
-  } catch (e) {
-    console.warn('[StoryGuide] mermaid render failed', e);
-    const msg = escapeHtml(e?.message ?? String(e));
-    $view.html(
-      `<div class="sg-graph-error">
-        Mermaid 渲染失败：${msg}<br><br>
-        已显示源代码（下方可复制）。你也可以把 Mermaid 粘贴到 Mermaid Live Editor 里验证语法。
-      </div>`
-    );
-    if ($hint.length) $hint.text('渲染失败（已显示源代码）');
-  }
-}
-
 }
 
 // -------------------- modules config --------------------
@@ -373,7 +400,7 @@ function validateAndNormalizeModules(raw) {
     seen.add(key);
 
     const type = String(m.type || 'text').trim();
-    if (type !== 'text' && type !== 'list') return { ok: false, error: `模块 ${key} 的 type 必须是 "text" 或 "list"`, modules: null };
+    if (type !== 'text' && type !== 'list' && type !== 'mermaid') return { ok: false, error: `模块 ${key} 的 type 必须是 "text" / "list" / "mermaid"`, modules: null };
 
     const title = String(m.title || key).trim();
     const prompt = String(m.prompt || '').trim();
@@ -798,8 +825,6 @@ function buildSnapshot() {
 
   const canon = stripHtml(getChatMetaValue(META_KEYS.canon));
   const world = stripHtml(getChatMetaValue(META_KEYS.world));
-  // 关系图谱建议存 Mermaid 代码（不要包代码块），这里不做 stripHtml 以免误伤语法
-  const graph = String(getChatMetaValue(META_KEYS.graph) || '').trim();
 
   const picked = [];
   for (let i = chat.length - 1; i >= 0 && picked.length < maxMessages; i--) {
@@ -832,10 +857,7 @@ function buildSnapshot() {
     charBlock ? charBlock : `【角色卡】（未获取到/可能是群聊）`,
     ``,
     world ? `【世界观/设定补充】\n${world}\n` : `【世界观/设定补充】（未提供）\n`,
-    canon ? `【原著后续/大纲】\n${canon}\n` : `【原著后续/大纲】（未提供）\n`,    graph ? `【角色关系图谱（Mermaid）】
-${graph}
-` : `【角色关系图谱】（未提供）
-`,
+    canon ? `【原著后续/大纲】\n${canon}\n` : `【原著后续/大纲】（未提供）\n`,
     buildWorldbookBlock(),
     `【聊天记录（最近${picked.length}条）】`,
     picked.length ? picked.join('\n\n') : '（空）'
@@ -1208,6 +1230,22 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
     const val = hasKey ? parsedJson[m.key] : undefined;
     const title = m.title || m.key;
 
+    if (m.type === 'mermaid') {
+      const text = (val !== undefined && val !== null) ? String(val).trim() : '';
+      if (!text) {
+        if (showEmpty) lines.push(`- **${title}**
+${indentForListItem('（空）')}`);
+        continue;
+      }
+      // Wrap as fenced mermaid code so we can render it later
+      const fenced = `\`\`\`mermaid
+${text}
+\`\`\``;
+      lines.push(`- **${title}**
+${indentForListItem(fenced)}`);
+      continue;
+    }
+
     if (m.type === 'list') {
       const arr = Array.isArray(val) ? val : [];
       if (!arr.length) {
@@ -1384,12 +1422,16 @@ function ensurePanelBoxPresent(mesKey) {
     setCollapsed(existing, !!cached.collapsed);
     attachPanelToggleHandler(existing, mesKey);
     const body = existing.querySelector('.sg-panel-body');
-    if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
+    if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) {
+      body.innerHTML = cached.htmlInner;
+      try { renderMermaidIn(body); } catch { /* ignore */ }
+    }
     return true;
   }
 
   const box = createPanelBoxElement(mesKey, cached.htmlInner, cached.collapsed);
   textEl.appendChild(box);
+  try { renderMermaidIn(box.querySelector('.sg-panel-body')); } catch { /* ignore */ }
   return true;
 }
 
@@ -1439,12 +1481,16 @@ function ensureInlineBoxPresent(mesKey) {
     attachToggleHandler(existing, mesKey);
     // 更新 body（有时候被覆盖成空壳）
     const body = existing.querySelector('.sg-inline-body');
-    if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
+    if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) {
+      body.innerHTML = cached.htmlInner;
+      try { renderMermaidIn(body); } catch { /* ignore */ }
+    }
     return true;
   }
 
   const box = createInlineBoxElement(mesKey, cached.htmlInner, cached.collapsed);
   textEl.appendChild(box);
+  try { renderMermaidIn(box.querySelector('.sg-inline-body')); } catch { /* ignore */ }
   return true;
 }
 
@@ -2043,39 +2089,7 @@ function buildModalHtml() {
             </div>
           </div>
 
-          
           <div class="sg-card">
-            <div class="sg-card-title">原著资料（本聊天）</div>
-            <div class="sg-hint">这里的内容会保存到当前聊天的 metadata，并在「分析当前剧情」时注入给模型。</div>
-
-            <div class="sg-field">
-              <label>世界观/设定补充</label>
-              <textarea id="sg_worldText" rows="4" placeholder="例如：时代背景、势力、修炼体系、关键设定…"></textarea>
-            </div>
-
-            <div class="sg-field">
-              <label>原著后续/大纲</label>
-              <textarea id="sg_canonText" rows="4" placeholder="例如：后续大事件、关键反转、隐藏真相（可按剧透等级写）…"></textarea>
-            </div>
-
-            <div class="sg-field">
-              <label>角色关系图谱（Mermaid flowchart）</label>
-              <textarea id="sg_graphText" rows="7" spellcheck="false" placeholder="flowchart TD
-  %% 例：A --> B 表示关系；A -.-> C 表示弱/隐晦关系
-  A[主角] -->|同盟| B[伙伴]
-  A -.敌对.-> C[反派]
-"></textarea>
-              <div class="sg-hint">推荐用 Mermaid <code>flowchart</code> 语法（不要包代码块）。右侧「图谱」标签可预览；若无法加载 Mermaid，会退化为显示源代码。</div>
-            </div>
-
-            <div class="sg-actions-row">
-              <button class="menu_button sg-btn-primary" id="sg_saveLore">保存到本聊天</button>
-              <button class="menu_button sg-btn" id="sg_insertGraphTpl">插入关系图模板</button>
-              <button class="menu_button sg-btn" id="sg_clearLore">清空</button>
-            </div>
-          </div>
-
-<div class="sg-card">
             <div class="sg-card-title">输出模块（JSON，可自定义字段/提示词）</div>
             <div class="sg-hint">你可以增删模块、改 key/title/type/prompt、控制 panel/inline。保存前可点“校验”。</div>
 
@@ -2154,7 +2168,6 @@ function buildModalHtml() {
               <button class="sg-tab active" id="sg_tab_md">报告</button>
               <button class="sg-tab" id="sg_tab_json">JSON</button>
               <button class="sg-tab" id="sg_tab_src">来源</button>
-              <button class="sg-tab" id="sg_tab_graph">图谱</button>
               <div class="sg-spacer"></div>
               <button class="menu_button sg-btn" id="sg_copyMd" disabled>复制MD</button>
               <button class="menu_button sg-btn" id="sg_copyJson" disabled>复制JSON</button>
@@ -2164,20 +2177,6 @@ function buildModalHtml() {
             <div class="sg-pane active" id="sg_pane_md"><div class="sg-md" id="sg_md">(尚未生成)</div></div>
             <div class="sg-pane" id="sg_pane_json"><pre class="sg-pre" id="sg_json"></pre></div>
             <div class="sg-pane" id="sg_pane_src"><pre class="sg-pre" id="sg_src"></pre></div>
-
-            <div class="sg-pane" id="sg_pane_graph">
-              <div class="sg-graph-toolbar">
-                <button class="menu_button sg-btn" id="sg_graphRender">刷新预览</button>
-                <button class="menu_button sg-btn" id="sg_graphCopy">复制Mermaid</button>
-                <span class="sg-hint" id="sg_graphHint"></span>
-              </div>
-              <div class="sg-graph-wrap" id="sg_graphView"><div class="sg-hint">（未提供关系图谱，或 Mermaid 未加载）</div></div>
-              <details class="sg-graph-details">
-                <summary>查看源代码</summary>
-                <pre class="sg-pre sg-graph-source" id="sg_graphSrc"></pre>
-              </details>
-            </div>
-
           </div>
         </div>
       </div>
@@ -2196,7 +2195,6 @@ function ensureModal() {
   $('#sg_tab_md').on('click', () => showPane('md'));
   $('#sg_tab_json').on('click', () => showPane('json'));
   $('#sg_tab_src').on('click', () => showPane('src'));
-  $('#sg_tab_graph').on('click', () => { showPane('graph'); renderRelationGraph().catch(() => void 0); });
 
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
@@ -2218,68 +2216,6 @@ function ensureModal() {
   $('#sg_saveCanon').on('click', async () => {
     try { await setChatMetaValue(META_KEYS.canon, String($('#sg_canonText').val() || '')); setStatus('已保存：原著后续/大纲（本聊天）', 'ok'); }
     catch (e) { setStatus(`保存失败：${e?.message ?? e}`, 'err'); }
-  });
-
-  // 原著资料（本聊天）：一次性保存 world/canon/graph
-  $('#sg_saveLore').on('click', async () => {
-    try {
-      await setChatMetaValue(META_KEYS.world, String($('#sg_worldText').val() || ''));
-      await setChatMetaValue(META_KEYS.canon, String($('#sg_canonText').val() || ''));
-      await setChatMetaValue(META_KEYS.graph, String($('#sg_graphText').val() || ''));
-      setStatus('已保存：原著资料（本聊天）', 'ok');
-      renderRelationGraph().catch(() => void 0);
-    } catch (e) {
-      setStatus(`保存失败：${e?.message ?? e}`, 'err');
-    }
-  });
-
-  $('#sg_clearLore').on('click', async () => {
-    try {
-      $('#sg_worldText').val('');
-      $('#sg_canonText').val('');
-      $('#sg_graphText').val('');
-      await setChatMetaValue(META_KEYS.world, '');
-      await setChatMetaValue(META_KEYS.canon, '');
-      await setChatMetaValue(META_KEYS.graph, '');
-      setStatus('已清空：原著资料（本聊天）', 'ok');
-      renderRelationGraph().catch(() => void 0);
-    } catch (e) {
-      setStatus(`清空失败：${e?.message ?? e}`, 'err');
-    }
-  });
-
-  $('#sg_insertGraphTpl').on('click', () => {
-    const tpl = [
-      'flowchart TD',
-      '  %% 关系图模板（可按家族/阵营分组）',
-      '  subgraph 阵营A',
-      '    A1[主角]',
-      '    A2[伙伴]',
-      '  end',
-      '  subgraph 阵营B',
-      '    B1[反派]',
-      '    B2[势力首领]',
-      '  end',
-      '',
-      '  A1 -->|同盟| A2',
-      '  A1 -.敌对.-> B1',
-      '  B1 -->|隶属| B2',
-    ].join('\n');
-    const $ta = $('#sg_graphText');
-    if ($ta.length) $ta.val(tpl).trigger('input');
-    setStatus('已插入关系图模板（记得点“保存到本聊天”）', 'ok');
-  });
-
-  // 图谱预览
-  $('#sg_graphRender').on('click', () => renderRelationGraph().catch(() => void 0));
-  $('#sg_graphCopy').on('click', async () => {
-    try {
-      const txt = getRelationGraphTextPreferUi();
-      await navigator.clipboard.writeText(txt || '');
-      setStatus(txt ? '已复制：Mermaid' : '没有可复制的 Mermaid 内容', txt ? 'ok' : 'warn');
-    } catch (e) {
-      setStatus(`复制失败：${e?.message ?? e}`, 'err');
-    }
   });
 
   $('#sg_copyMd').on('click', async () => {
@@ -2489,7 +2425,6 @@ function pullSettingsToUi() {
 
   $('#sg_worldText').val(getChatMetaValue(META_KEYS.world));
   $('#sg_canonText').val(getChatMetaValue(META_KEYS.canon));
-  $('#sg_graphText').val(getChatMetaValue(META_KEYS.graph));
 
   $('#sg_modulesJson').val(String(s.modulesJson || JSON.stringify(DEFAULT_MODULES, null, 2)));
   $('#sg_customSystemPreamble').val(String(s.customSystemPreamble || ''));
@@ -2738,12 +2673,8 @@ function init() {
     buildSnapshot: () => buildSnapshot(),
     getLastReport: () => lastReport,
     refreshModels,
-    renderRelationGraph,
     _inlineCache: inlineCache,
   };
-
-  // 为了兼容可能的全局调用（例如控制台/其他脚本），也挂到 globalThis
-  globalThis.renderRelationGraph = renderRelationGraph;
 }
 
 init();
