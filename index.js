@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.7
+ * v0.7.4
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -90,44 +90,53 @@ const DEFAULT_SETTINGS = Object.freeze({
   worldbookWindowMessages: 18,
   worldbookJson: '',
 
+  // ===== 总结功能（独立于剧情提示的 API 设置） =====
+  summaryEnabled: false,
+  // 多少“楼层”总结一次（楼层统计方式见 summaryCountMode）
+  summaryEvery: 20,
+  // assistant: 仅统计 AI 回复；all: 统计全部消息（用户+AI）
+  summaryCountMode: 'assistant',
+  // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最近 summaryEvery 段
+  summaryMaxCharsPerMessage: 4000,
+  summaryMaxTotalChars: 24000,
+
+  // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
+  summaryProvider: 'st',
+  summaryTemperature: 0.4,
+  summaryCustomEndpoint: '',
+  summaryCustomApiKey: '',
+  summaryCustomModel: 'gpt-4o-mini',
+  summaryCustomMaxTokens: 2048,
+  summaryCustomStream: false,
+
+  // 总结结果写入世界书（Lorebook / World Info）
+  summaryToWorldInfo: true,
+  // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
+  summaryWorldInfoTarget: 'chatbook',
+  summaryWorldInfoFile: '',
+  summaryWorldInfoCommentPrefix: '剧情总结',
+
   // 模块自定义（JSON 字符串 + 解析备份）
   modulesJson: '',
   // 额外可自定义提示词“骨架”
   customSystemPreamble: '',     // 附加在默认 system 之后
   customConstraints: '',        // 附加在默认 constraints 之后
-
-  // 世界地图（实验性）：用（可继承）API 生成「地点拓扑 + 主角位置」并在面板渲染
-  mapProvider: 'inherit',       // inherit | st | custom
-  mapPersistToChat: true,
-  // 地图生成默认沿用“剧情指导”的 API 配置（endpoint/key/model/max_tokens/stream/top_p）
-  // 仍保留旧字段兼容（不会用于生成；仅用于旧预设导入不报错）
-  mapCustomEndpoint: '',
-  mapCustomApiKey: '',
-  mapCustomModel: 'gpt-4o-mini',
-  mapTemperature: 0.35,
-  mapTopP: 0.95,
-  mapMaxTokens: 4096,
-  mapStream: false,
-
-  // 地图提示词（可选）
-  mapPromptMode: 'append',     // append | override
-  mapPrompt: '',
-  mapMaxLocations: 20,
-  mapMaxLinks: 40,
 });
 
 const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
-  map: 'storyguide_world_map',
+  summaryMeta: 'storyguide_summary_meta',
 });
 
 let lastReport = null;
 let lastJsonText = '';
-let lastMap = null;
-let lastMapJsonText = '';
+let lastSummary = null; // { title, summary, keywords, ... }
+let lastSummaryText = '';
 let refreshTimer = null;
 let appendTimer = null;
+let summaryTimer = null;
+let isSummarizing = false;
 
 // ============== 关键：DOM 追加缓存 & 观察者（抗重渲染） ==============
 /**
@@ -226,15 +235,6 @@ function renderMarkdownToHtml(markdown) {
   return DOMPurify.sanitize(html);
 }
 
-function escapeXml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function renderMarkdownInto($el, markdown) { $el.html(renderMarkdownToHtml(markdown)); }
 
 function getChatMetaValue(key) {
@@ -245,6 +245,35 @@ async function setChatMetaValue(key, value) {
   const ctx = SillyTavern.getContext();
   ctx.chatMetadata[key] = value;
   await ctx.saveMetadata();
+}
+
+// -------------------- summary meta (per chat) --------------------
+function getDefaultSummaryMeta() {
+  return {
+    lastFloor: 0,
+    lastChatLen: 0,
+    history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
+  };
+}
+
+function getSummaryMeta() {
+  const raw = String(getChatMetaValue(META_KEYS.summaryMeta) || '').trim();
+  if (!raw) return getDefaultSummaryMeta();
+  try {
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return getDefaultSummaryMeta();
+    return {
+      ...getDefaultSummaryMeta(),
+      ...data,
+      history: Array.isArray(data.history) ? data.history : [],
+    };
+  } catch {
+    return getDefaultSummaryMeta();
+  }
+}
+
+async function setSummaryMeta(meta) {
+  await setChatMetaValue(META_KEYS.summaryMeta, JSON.stringify(meta ?? getDefaultSummaryMeta()));
 }
 
 function setStatus(text, kind = '') {
@@ -258,6 +287,7 @@ function updateButtonsEnabled() {
   $('#sg_copyMd').prop('disabled', !ok);
   $('#sg_copyJson').prop('disabled', !Boolean(lastJsonText));
   $('#sg_injectTips').prop('disabled', !ok);
+  $('#sg_copySum').prop('disabled', !Boolean(lastSummaryText));
 }
 
 function showPane(name) {
@@ -750,159 +780,6 @@ function buildSnapshot() {
   return { snapshotText, sourceSummary };
 }
 
-// -------------------- world map (experimental) --------------------
-
-function buildMapSchema(maxLocations, maxLinks) {
-  const maxL = clampInt(maxLocations, 5, 80, DEFAULT_SETTINGS.mapMaxLocations);
-  const maxE = clampInt(maxLinks, 5, 200, DEFAULT_SETTINGS.mapMaxLinks);
-
-  return {
-    type: 'object',
-    additionalProperties: false,
-    required: ['locations', 'protagonist'],
-    properties: {
-      title: { type: 'string' },
-      locations: {
-        type: 'array',
-        maxItems: maxL,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['id', 'name', 'x', 'y'],
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string' },
-            x: { type: 'number' },
-            y: { type: 'number' },
-            type: { type: 'string' },
-            note: { type: 'string' },
-          },
-        },
-      },
-      links: {
-        type: 'array',
-        maxItems: maxE,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['from', 'to'],
-          properties: {
-            from: { type: 'string' },
-            to: { type: 'string' },
-            label: { type: 'string' },
-          },
-        },
-      },
-      protagonist: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['name'],
-        properties: {
-          name: { type: 'string' },
-          at: { type: 'string' },
-          x: { type: 'number' },
-          y: { type: 'number' },
-          note: { type: 'string' },
-        },
-      },
-    },
-  };
-}
-
-
-function substituteMapVars(input, vars) {
-  let t = String(input || '');
-  const maxLocations = String(vars?.maxLocations ?? '');
-  const maxLinks = String(vars?.maxLinks ?? '');
-  t = t.replace(/\{\{\s*maxLocations\s*\}\}/gi, maxLocations);
-  t = t.replace(/\{\{\s*maxLinks\s*\}\}/gi, maxLinks);
-  return t;
-}
-
-function buildMapPromptMessages(snapshotText) {
-  const s = ensureSettings();
-  const maxLocations = clampInt(s.mapMaxLocations, 5, 80, DEFAULT_SETTINGS.mapMaxLocations);
-  const maxLinks = clampInt(s.mapMaxLinks, 5, 200, DEFAULT_SETTINGS.mapMaxLinks);
-
-  const mode = String(s.mapPromptMode || 'append');
-  const customRaw = String(s.mapPrompt || '').trim();
-  const custom = customRaw ? substituteMapVars(customRaw, { maxLocations, maxLinks }).trim() : '';
-
-  const baseLines = [
-    `---BEGIN PROMPT---`,
-    `[System]`,
-    `你是“世界地图生成器”。你的任务是：从聊天/设定中提取“地点（locations）+ 连接（links）+ 主角位置（protagonist）”，并输出一份可视化用的 JSON。`,
-    ``,
-    `[Constraints]`,
-    `1) 不要凭空杜撘地点；如果只能推断，请在 note 标注“推测/不确定”。`,
-    `2) 坐标系：x,y 都是 0~100 的数字（尽量整数），用于二维示意图，不追求真实比例。`,
-    `3) locations 数量 ≤ ${maxLocations}；links 数量 ≤ ${maxLinks}。`,
-    `4) protagonist.at 尽量填写 locations.id；如果不确定 at，就用 x/y 直接标注并写 note。`,
-    `5) 输出必须是 JSON 对象本体（无 Markdown、无代码块、无多余解释）。`,
-    ``,
-    `[Output JSON Schema]`,
-    `- title: string (可选)`,
-    `- locations: {id,name,x,y,type?,note?}[]`,
-    `- links: {from,to,label?}[] (可选)`,
-    `- protagonist: {name,at?,x?,y?,note?}`,
-  ];
-
-  let system = '';
-
-  if (custom && mode === 'override') {
-    // 覆盖模式：用户自定义 System，但仍自动附加“硬约束 + schema”，保证渲染与解析稳定。
-    system = [
-      `---BEGIN PROMPT---`,
-      `[System]`,
-      custom,
-      ``,
-      `[Hard Constraints]`,
-      `1) 输出必须是 JSON 对象本体（无 Markdown、无代码块、无多余解释）。`,
-      `2) 坐标系：x,y 建议为 0~100 的数字（示意图坐标系）。`,
-      `3) locations 数量 ≤ ${maxLocations}；links 数量 ≤ ${maxLinks}。`,
-      ``,
-      `[Output JSON Schema]`,
-      `- title: string (可选)`,
-      `- locations: {id,name,x,y,type?,note?}[]`,
-      `- links: {from,to,label?}[] (可选)`,
-      `- protagonist: {name,at?,x?,y?,note?}`,
-      `---END PROMPT---`,
-    ].join('\n');
-  } else {
-    // 追加模式（默认）：把用户提示词放在默认提示词后面
-    const lines = [...baseLines];
-    if (custom) {
-      lines.push('', `[User Custom Instructions]`, custom);
-    }
-    lines.push('---END PROMPT---');
-    system = lines.join('\n');
-  }
-
-  return [
-    { role: 'system', content: system },
-    { role: 'user', content: snapshotText },
-  ];
-}
-
-function resolveMapProvider() {
-  const s = ensureSettings();
-  let provider = String(s.mapProvider || 'inherit');
-  if (provider === 'inherit') provider = String(s.provider || 'st');
-
-  // 地图生成沿用“剧情指导”的 API 设置（同一套 endpoint/key/model/max_tokens/stream/top_p）
-  // 这样用户只需要配置一次，地图与剧情指导保持一致。
-  const useCustom = provider === 'custom';
-  const endpoint = useCustom ? String(s.customEndpoint || '').trim() : '';
-  const apiKey = useCustom ? String(s.customApiKey || '') : '';
-  const model = useCustom ? String(s.customModel || '').trim() : '';
-  const temperature = clampFloat(s.temperature, 0, 2, DEFAULT_SETTINGS.temperature);
-  const topP = clampFloat(s.customTopP, 0, 1, DEFAULT_SETTINGS.customTopP);
-  const maxTokens = clampInt(s.customMaxTokens, 256, 200000, DEFAULT_SETTINGS.customMaxTokens);
-  const stream = !!s.customStream;
-
-  return { provider, endpoint, apiKey, model, temperature, topP, maxTokens, stream };
-}
-
 // -------------------- provider=st --------------------
 
 async function callViaSillyTavern(messages, schema, temperature) {
@@ -1236,647 +1113,354 @@ async function runAnalysis() {
   }
 }
 
-// -------------------- map generation --------------------
+// -------------------- summary (auto + world info) --------------------
 
-function normalizeMapJson(raw) {
-  const out = (raw && typeof raw === 'object') ? clone(raw) : {};
-  if (!Array.isArray(out.locations)) out.locations = [];
-  if (!Array.isArray(out.links)) out.links = [];
-  if (!out.protagonist || typeof out.protagonist !== 'object') out.protagonist = { name: '主角' };
+function isCountableMessage(m) {
+  if (!m) return false;
+  if (m.is_system === true) return false;
+  if (m.is_hidden === true) return false;
+  const txt = String(m.mes ?? '').trim();
+  return Boolean(txt);
+}
 
-  // clamp coords + coerce ids
-  const idSeen = new Set();
-  out.locations = out.locations
-    .filter(x => x && typeof x === 'object')
-    .map((l, idx) => {
-      const id = String(l.id || l.name || `loc_${idx + 1}`);
-      let uniq = id;
-      let k = 2;
-      while (idSeen.has(uniq)) { uniq = `${id}_${k++}`; }
-      idSeen.add(uniq);
+function isCountableAssistantMessage(m) {
+  return isCountableMessage(m) && m.is_user !== true;
+}
 
-      const x = clampFloat(l.x, 0, 100, 50);
-      const y = clampFloat(l.y, 0, 100, 50);
-      return {
-        id: uniq,
-        name: String(l.name || uniq),
-        x,
-        y,
-        type: l.type ? String(l.type) : '',
-        note: l.note ? String(l.note) : '',
-      };
-    });
-
-  out.links = out.links
-    .filter(x => x && typeof x === 'object')
-    .map(e => ({
-      from: String(e.from || ''),
-      to: String(e.to || ''),
-      label: e.label ? String(e.label) : '',
-    }))
-    .filter(e => e.from && e.to);
-
-  out.protagonist.name = String(out.protagonist.name || '主角');
-  if (out.protagonist.at) out.protagonist.at = String(out.protagonist.at);
-  if (out.protagonist.x !== undefined) out.protagonist.x = clampFloat(out.protagonist.x, 0, 100, 50);
-  if (out.protagonist.y !== undefined) out.protagonist.y = clampFloat(out.protagonist.y, 0, 100, 50);
-  if (out.protagonist.note) out.protagonist.note = String(out.protagonist.note);
-
-  // If protagonist.at matches a location, snap to it
-  if (out.protagonist.at) {
-    const loc = out.locations.find(l => l.id === out.protagonist.at) || out.locations.find(l => l.name === out.protagonist.at);
-    if (loc) {
-      out.protagonist.at = loc.id;
-      out.protagonist.x = loc.x;
-      out.protagonist.y = loc.y;
+function computeFloorCount(chat, mode) {
+  const arr = Array.isArray(chat) ? chat : [];
+  let c = 0;
+  for (const m of arr) {
+    if (mode === 'assistant') {
+      if (isCountableAssistantMessage(m)) c++;
+    } else {
+      if (isCountableMessage(m)) c++;
     }
   }
+  return c;
+}
 
+function findStartIndexForLastNFloors(chat, mode, n) {
+  const arr = Array.isArray(chat) ? chat : [];
+  let remaining = Math.max(1, Number(n) || 1);
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const m = arr[i];
+    const hit = (mode === 'assistant') ? isCountableAssistantMessage(m) : isCountableMessage(m);
+    if (!hit) continue;
+    remaining -= 1;
+    if (remaining <= 0) return i;
+  }
+  return 0;
+}
+
+function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars) {
+  const arr = Array.isArray(chat) ? chat : [];
+  const start = Math.max(0, Math.min(arr.length, Number(startIdx) || 0));
+  const perMsg = clampInt(maxCharsPerMessage, 200, 8000, 4000);
+  const totalMax = clampInt(maxTotalChars, 2000, 80000, 24000);
+
+  const parts = [];
+  let total = 0;
+  for (let i = start; i < arr.length; i++) {
+    const m = arr[i];
+    if (!isCountableMessage(m)) continue;
+    const who = m.is_user === true ? '用户' : (m.name || 'AI');
+    let txt = stripHtml(m.mes || '');
+    if (!txt) continue;
+    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '…';
+    const block = `【${who}】${txt}`;
+    if (total + block.length + 2 > totalMax) break;
+    parts.push(block);
+    total += block.length + 2;
+  }
+  return parts.join('\n');
+}
+
+function getSummarySchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      title: { type: 'string' },
+      summary: { type: 'string' },
+      keywords: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['summary', 'keywords'],
+  };
+}
+
+function buildSummaryPromptMessages(chunkText, fromFloor, toFloor) {
+  const sys = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。\n\n输出：只输出 JSON，不要任何多余文字。JSON 结构：{\"title\": string, \"summary\": string, \"keywords\": string[]}。`;
+  const user = `【楼层范围】${fromFloor}-${toFloor}\n\n【对话片段】\n${chunkText}`;
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: user },
+  ];
+}
+
+function sanitizeKeywords(kws) {
+  const out = [];
+  const seen = new Set();
+  for (const k of (Array.isArray(kws) ? kws : [])) {
+    let t = String(k ?? '').trim();
+    if (!t) continue;
+    t = t.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
+    // split by common delimiters
+    const split = t.split(/[,，、;；/|]+/g).map(x => x.trim()).filter(Boolean);
+    for (const s of split) {
+      if (s.length < 2) continue;
+      if (s.length > 24) continue;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+      if (out.length >= 16) return out;
+    }
+  }
   return out;
 }
 
-function makeStarPoints(cx, cy, rOuter, rInner, spikes) {
-  const pts = [];
-  const n = spikes || 5;
-  const step = Math.PI / n;
-  let rot = -Math.PI / 2;
-  for (let i = 0; i < n * 2; i++) {
-    const r = (i % 2 === 0) ? rOuter : rInner;
-    const x = cx + Math.cos(rot) * r;
-    const y = cy + Math.sin(rot) * r;
-    pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
-    rot += step;
-  }
-  return pts.join(' ');
-}
+let cachedSlashExecutor = null;
 
-function hashStr(str) {
-  const s = String(str || '');
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0);
-}
+async function getSlashExecutor() {
+  if (cachedSlashExecutor) return cachedSlashExecutor;
 
-function estimateSvgTextWidth(text, fontSize) {
-  const t = String(text || '');
-  const fs = Number(fontSize) || 3.2;
-  let units = 0;
-  for (const ch of t) {
-    // ASCII narrower, CJK wider (rough estimate)
-    units += (ch.charCodeAt(0) <= 0x7f) ? 0.58 : 1.0;
-  }
-  return Math.max(2.5, units * fs * 0.78);
-}
+  const ctx = SillyTavern.getContext?.();
+  const candidates = [
+    ctx?.processChatSlashCommands,
+    ctx?.executeSlashCommandsOnChatInput,
+    globalThis.processChatSlashCommands,
+    globalThis.executeSlashCommandsOnChatInput,
+  ].filter(fn => typeof fn === 'function');
 
-function isMapLayoutDegenerate(locations) {
-  const locs = Array.isArray(locations) ? locations : [];
-  if (locs.length < 4) {
-    // For tiny maps, avoid aggressive auto-layout unless it's clearly unusable.
-    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-    let centerish = 0, n = 0;
-    for (const l of locs) {
-      const x = Number(l?.x); const y = Number(l?.y);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      minX = Math.min(minX, x); minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-      n++;
-      if (Math.abs(x - 50) < 1.2 && Math.abs(y - 50) < 1.2) centerish++;
-    }
-    if (n < 2) return false;
-    const area = (maxX - minX) * (maxY - minY);
-    if (area < 40) return true;           // almost stacked
-    if (centerish / n > 0.60) return true; // everyone at center default
-    return false;
-  }
-
-  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-  let sumX = 0, sumY = 0, n = 0;
-  let centerish = 0;
-  for (const l of locs) {
-    const x = Number(l?.x); const y = Number(l?.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    minX = Math.min(minX, x); minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-    sumX += x; sumY += y; n++;
-    if (Math.abs(x - 50) < 1.2 && Math.abs(y - 50) < 1.2) centerish++;
-  }
-  if (n < 3) return true;
-
-  const area = (maxX - minX) * (maxY - minY);
-  if (area < 260) return true; // clustered
-
-  // std dev check
-  const mx = sumX / n, my = sumY / n;
-  let vx = 0, vy = 0;
-  for (const l of locs) {
-    const x = Number(l?.x); const y = Number(l?.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    vx += (x - mx) * (x - mx);
-    vy += (y - my) * (y - my);
-  }
-  vx /= n; vy /= n;
-  if (Math.sqrt(vx) < 6 || Math.sqrt(vy) < 5) return true;
-  if (centerish / n > 0.55) return true;
-
-  return false;
-}
-
-function scaleNodesToFit(nodes, pad) {
-  const p = Number(pad) || 10;
-  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-  for (const n of nodes) {
-    minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x); maxY = Math.max(maxY, n.y);
-  }
-  const w = Math.max(1e-6, maxX - minX);
-  const h = Math.max(1e-6, maxY - minY);
-
-  const sx = (100 - 2 * p) / w;
-  const sy = (100 - 2 * p) / h;
-  const s = Math.min(sx, sy);
-
-  const ox = (100 - w * s) / 2 - minX * s;
-  const oy = (100 - h * s) / 2 - minY * s;
-
-  for (const n of nodes) {
-    n.x = clampFloat(n.x * s + ox, p, 100 - p, 50);
-    n.y = clampFloat(n.y * s + oy, p, 100 - p, 50);
-  }
-}
-
-function runForceLayout(locs, links) {
-  const nodes = locs.map((l, i) => ({
-    id: l.id,
-    x: Number.isFinite(l.x) ? l.x : (50 + (Math.random() - 0.5) * 18),
-    y: Number.isFinite(l.y) ? l.y : (50 + (Math.random() - 0.5) * 18),
-    vx: 0,
-    vy: 0,
-    _i: i,
-  }));
-
-  // jitter if too many identical coords
-  const buckets = new Map();
-  for (const n of nodes) {
-    const k = `${Math.round(n.x)}_${Math.round(n.y)}`;
-    const c = (buckets.get(k) || 0) + 1;
-    buckets.set(k, c);
-    if (c > 1) {
-      n.x += (Math.random() - 0.5) * 6;
-      n.y += (Math.random() - 0.5) * 6;
-    }
-  }
-
-  const idToIdx = new Map(nodes.map((n, idx) => [n.id, idx]));
-  const edges = (Array.isArray(links) ? links : [])
-    .map(e => ({ a: idToIdx.get(e.from), b: idToIdx.get(e.to) }))
-    .filter(e => Number.isInteger(e.a) && Number.isInteger(e.b) && e.a !== e.b);
-
-  const n = nodes.length;
-  const steps = 260;
-  const repK = 120;          // repulsion strength
-  const attrK = 0.040;       // attraction along edges
-  const rest = Math.max(12, Math.min(22, 60 / Math.sqrt(Math.max(1, n)))); // target edge length
-  const centerK = 0.006;     // gentle centering
-  const damp = 0.84;
-
-  for (let it = 0; it < steps; it++) {
-    // repulsion
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const a = nodes[i], b = nodes[j];
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        const d2 = dx * dx + dy * dy + 0.08;
-        const inv = 1 / d2;
-        const f = repK * inv;
-
-        a.vx -= dx * f;
-        a.vy -= dy * f;
-        b.vx += dx * f;
-        b.vy += dy * f;
+  if (candidates.length) {
+    cachedSlashExecutor = async (cmd) => {
+      // best-effort signature compatibility
+      for (const fn of candidates) {
+        try { return await fn(cmd); } catch { /* try next */ }
+        try { return await fn(cmd, true); } catch { /* try next */ }
+        try { return await fn(cmd, { quiet: true }); } catch { /* try next */ }
       }
-    }
-
-    // attraction (springs)
-    for (const e of edges) {
-      const a = nodes[e.a], b = nodes[e.b];
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      const d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
-      const diff = d - rest;
-      const f = attrK * diff;
-      dx /= d; dy /= d;
-
-      a.vx += dx * f;
-      a.vy += dy * f;
-      b.vx -= dx * f;
-      b.vy -= dy * f;
-    }
-
-    // integrate
-    for (const p of nodes) {
-      // center pull
-      p.vx += (50 - p.x) * centerK;
-      p.vy += (50 - p.y) * centerK;
-
-      p.vx *= damp;
-      p.vy *= damp;
-
-      p.x += p.vx * 0.055;
-      p.y += p.vy * 0.055;
-    }
+      throw new Error('Slash command executor found but failed to run.');
+    };
+    return cachedSlashExecutor;
   }
-
-  scaleNodesToFit(nodes, 10);
-
-  // write back
-  const byId = new Map(nodes.map(n => [n.id, n]));
-  for (const l of locs) {
-    const p = byId.get(l.id);
-    if (p) { l.x = p.x; l.y = p.y; }
-  }
-}
-
-function autoBeautifyMap(m) {
-  // Deep clone to avoid mutating original
-  const out = normalizeMapJson(m);
-
-  // If layout is degenerate (e.g., all on a line / clustered), auto layout.
-  if (isMapLayoutDegenerate(out.locations)) {
-    runForceLayout(out.locations, out.links);
-    // resnap protagonist if it points to a location
-    if (out.protagonist?.at) {
-      const loc = out.locations.find(l => l.id === out.protagonist.at) || out.locations.find(l => l.name === out.protagonist.at);
-      if (loc) { out.protagonist.x = loc.x; out.protagonist.y = loc.y; }
-    }
-  }
-
-  return out;
-}
-
-function buildSvgLabel({ x, y, text, fontSize, anchor, clsText, clsBg }) {
-  const t = String(text || '');
-  if (!t) return '';
-  const fs = Number(fontSize) || 3.2;
-  const padX = 0.9, padY = 0.55;
-  const w = estimateSvgTextWidth(t, fs);
-  const h = fs + 1.25;
-
-  const a = anchor || 'start';
-  const ta = (a === 'end' || a === 'middle') ? a : 'start';
-
-  let rx;
-  if (ta === 'middle') rx = x - w / 2 - padX;
-  else if (ta === 'end') rx = x - w - padX;
-  else rx = x - padX;
-
-  const ry = y - fs + padY;
-  const rect = `<rect class="${clsBg || 'sg-map-label-bg'}" x="${rx.toFixed(2)}" y="${ry.toFixed(2)}" width="${(w + padX * 2).toFixed(2)}" height="${h.toFixed(2)}" rx="1.2" ry="1.2" />`;
-  const txt = `<text class="${clsText || 'sg-map-label-text'}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="${ta}" dominant-baseline="alphabetic">${escapeXml(t)}</text>`;
-  return `<g class="sg-map-label">${rect}${txt}</g>`;
-}
-
-function computeCurveControl(ax, ay, bx, by, seed) {
-  const mx = (ax + bx) / 2;
-  const my = (ay + by) / 2;
-  let dx = bx - ax;
-  let dy = by - ay;
-  const d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
-  dx /= d; dy /= d;
-  const nx = -dy, ny = dx; // perpendicular
-  const h = hashStr(seed);
-  const bucket = (h % 9) - 4; // -4..4
-  const off = bucket * 1.7;
-  const cx = mx + nx * off;
-  const cy = my + ny * off;
-  return { cx, cy, mx, my };
-}
-
-function makeArrowPolygon(ax, ay, bx, by, cx, cy) {
-  // direction at end of quadratic curve: from control to end
-  let dx = bx - cx;
-  let dy = by - cy;
-  const d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
-  dx /= d; dy /= d;
-  const nx = -dy, ny = dx;
-
-  const len = 1.8;
-  const wid = 0.95;
-  const tipX = bx, tipY = by;
-  const baseX = bx - dx * len;
-  const baseY = by - dy * len;
-
-  const leftX = baseX + nx * wid;
-  const leftY = baseY + ny * wid;
-  const rightX = baseX - nx * wid;
-  const rightY = baseY - ny * wid;
-
-  return `${tipX.toFixed(2)},${tipY.toFixed(2)} ${leftX.toFixed(2)},${leftY.toFixed(2)} ${rightX.toFixed(2)},${rightY.toFixed(2)}`;
-}
-
-function bindMapInteractions() {
-  const svg = document.querySelector('#sg_map_view svg.sg-map-svg');
-  if (!svg) return;
-
-  const viewport = svg.querySelector('.sg-map-viewport');
-  if (!viewport) return;
-
-  // Rebind per render (map changes), but keep one handler instance.
-  if (svg.dataset.sgBound === '1') return;
-  svg.dataset.sgBound = '1';
-
-  svg.style.touchAction = 'none';
-
-  const state = { s: 1, tx: 0, ty: 0, dragging: false, last: null };
-
-  const apply = () => {
-    viewport.setAttribute('transform', `translate(${state.tx.toFixed(2)} ${state.ty.toFixed(2)}) scale(${state.s.toFixed(3)})`);
-  };
-
-  const getPt = (e) => {
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return { x: 0, y: 0 };
-    const p = pt.matrixTransform(ctm.inverse());
-    return { x: p.x, y: p.y };
-  };
-
-  svg.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const p = getPt(e);
-    const oldS = state.s;
-    const factor = (e.deltaY > 0) ? 0.90 : 1.10;
-    const newS = clampFloat(oldS * factor, 0.6, 3.2, 1);
-
-    // keep the world point under cursor stable: p = s*w + t
-    const wx = (p.x - state.tx) / oldS;
-    const wy = (p.y - state.ty) / oldS;
-
-    state.s = newS;
-    state.tx = p.x - wx * newS;
-    state.ty = p.y - wy * newS;
-    apply();
-  }, { passive: false });
-
-  const onMove = (e) => {
-    if (!state.dragging) return;
-    const p = getPt(e);
-    const dx = p.x - state.last.x;
-    const dy = p.y - state.last.y;
-    state.tx += dx;
-    state.ty += dy;
-    state.last = p;
-    apply();
-  };
-
-  const onUp = () => {
-    state.dragging = false;
-    svg.classList.remove('dragging');
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-    window.removeEventListener('pointercancel', onUp);
-  };
-
-  svg.addEventListener('pointerdown', (e) => {
-    // left button or touch
-    if (e.button !== undefined && e.button !== 0) return;
-    state.dragging = true;
-    svg.classList.add('dragging');
-    state.last = getPt(e);
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-  });
-
-  svg.addEventListener('dblclick', (e) => {
-    e.preventDefault();
-    state.s = 1; state.tx = 0; state.ty = 0;
-    apply();
-  });
-
-  apply();
-}
-
-function renderMapSvg(mapJson) {
-  const m = autoBeautifyMap(mapJson);
-  const locById = new Map(m.locations.map(l => [l.id, l]));
-
-  // background grid (minor + major)
-  const grid = [];
-  for (let i = 0; i <= 100; i += 10) {
-    const cls = (i % 20 === 0) ? 'sg-map-grid sg-map-grid-major' : 'sg-map-grid sg-map-grid-minor';
-    grid.push(`<line class="${cls}" x1="${i}" y1="0" x2="${i}" y2="100" />`);
-    grid.push(`<line class="${cls}" x1="0" y1="${i}" x2="100" y2="${i}" />`);
-  }
-
-  const links = m.links.map((e, idx) => {
-    const a = locById.get(e.from) || m.locations.find(x => x.name === e.from);
-    const b = locById.get(e.to) || m.locations.find(x => x.name === e.to);
-    if (!a || !b) return '';
-
-    const { cx, cy, mx, my } = computeCurveControl(a.x, a.y, b.x, b.y, `${e.from}|${e.to}|${idx}`);
-    const d = `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} Q ${cx.toFixed(2)} ${cy.toFixed(2)} ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
-    const arrowPts = makeArrowPolygon(a.x, a.y, b.x, b.y, cx, cy);
-
-    // label at curve midpoint (slightly lifted)
-    let lx = mx, ly = my - 1.8;
-    const label = e.label ? buildSvgLabel({
-      x: clampFloat(lx, 4, 96, lx),
-      y: clampFloat(ly, 6, 96, ly),
-      text: e.label,
-      fontSize: 3.0,
-      anchor: 'middle',
-      clsText: 'sg-map-link-label-text',
-      clsBg: 'sg-map-link-label-bg',
-    }) : '';
-
-    const title = [e.label, `${a.name} → ${b.name}`].filter(Boolean).join(' ');
-    return `
-      <g class="sg-map-link" data-from="${escapeXml(e.from)}" data-to="${escapeXml(e.to)}">
-        <path class="sg-map-link-path" d="${d}" />
-        <polygon class="sg-map-link-arrow" points="${arrowPts}" />
-        ${label}
-        ${title ? `<title>${escapeXml(title)}</title>` : ''}
-      </g>
-    `;
-  }).join('');
-
-  const nodes = m.locations.map((l) => {
-    const title = [l.name, l.type ? `(${l.type})` : '', l.note].filter(Boolean).join(' ');
-    const type = l.type ? ` data-type="${escapeXml(l.type)}"` : '';
-
-    // label placement
-    const fs = 3.25;
-    const w = estimateSvgTextWidth(l.name, fs);
-    let anchor = (l.x > 72) ? 'end' : 'start';
-    let x = (anchor === 'end') ? (l.x - 3.2) : (l.x + 3.2);
-    let y = l.y + ((l.y < 18) ? 5.2 : (l.y > 86 ? -2.6 : 1.8));
-
-    // clamp label inside
-    if (anchor === 'start') x = clampFloat(x, 2.2, 98 - w, x);
-    else x = clampFloat(x, 2.2 + w, 98, x);
-    y = clampFloat(y, 6.0, 96.0, y);
-
-    const label = buildSvgLabel({
-      x, y,
-      text: l.name,
-      fontSize: fs,
-      anchor,
-      clsText: 'sg-map-node-label-text',
-      clsBg: 'sg-map-node-label-bg',
-    });
-
-    return `
-      <g class="sg-map-node" data-id="${escapeXml(l.id)}"${type}>
-        <circle class="sg-map-node-ring" cx="${l.x.toFixed(2)}" cy="${l.y.toFixed(2)}" r="3.05" />
-        <circle class="sg-map-node-dot" cx="${l.x.toFixed(2)}" cy="${l.y.toFixed(2)}" r="2.05" />
-        ${label}
-        ${title ? `<title>${escapeXml(title)}</title>` : ''}
-      </g>
-    `;
-  }).join('');
-
-  const px = clampFloat(m.protagonist.x, 0, 100, 50);
-  const py = clampFloat(m.protagonist.y, 0, 100, 50);
-  const pTitle = [m.protagonist.name, m.protagonist.at ? `@${m.protagonist.at}` : '', m.protagonist.note || ''].filter(Boolean).join(' ');
-
-  const starPtsOuter = makeStarPoints(px, py, 3.35, 1.65, 5);
-  const starPtsGlow = makeStarPoints(px, py, 4.45, 2.15, 5);
-
-  // protagonist label placement
-  const pFs = 3.35;
-  const pW = estimateSvgTextWidth(m.protagonist.name, pFs);
-  let pAnchor = (px > 72) ? 'end' : 'start';
-  let pX = (pAnchor === 'end') ? (px - 3.6) : (px + 3.6);
-  let pY = py - 5.1;
-  if (pY < 6) pY = py + 6.0;
-
-  if (pAnchor === 'start') pX = clampFloat(pX, 2.2, 98 - pW, pX);
-  else pX = clampFloat(pX, 2.2 + pW, 98, pX);
-  pY = clampFloat(pY, 6.0, 96.0, pY);
-
-  const pLabel = buildSvgLabel({
-    x: pX, y: pY,
-    text: m.protagonist.name,
-    fontSize: pFs,
-    anchor: pAnchor,
-    clsText: 'sg-map-protagonist-label-text',
-    clsBg: 'sg-map-protagonist-label-bg',
-  });
-
-  const star = `
-    <g class="sg-map-protagonist">
-      <polygon class="sg-map-protagonist-glow" points="${starPtsGlow}" />
-      <polygon class="sg-map-protagonist-star" points="${starPtsOuter}" />
-      ${pLabel}
-      ${pTitle ? `<title>${escapeXml(pTitle)}</title>` : ''}
-    </g>
-  `;
-
-  const title = m.title ? `<div class="sg-map-title">${escapeXml(m.title)}</div>` : '';
-  const hint = `<div class="sg-map-interact-hint">滚轮缩放 · 拖拽平移 · 双击重置</div>`;
-
-  const svg = `
-    ${title}
-    ${hint}
-    <svg class="sg-map-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label="World Map">
-      <rect class="sg-map-bg" x="0" y="0" width="100" height="100" rx="2.6" ry="2.6" />
-      <g class="sg-map-viewport">
-        <g class="sg-map-grid-layer">${grid.join('')}</g>
-        <g class="sg-map-links-layer">${links}</g>
-        <g class="sg-map-nodes-layer">${nodes}</g>
-        ${star}
-      </g>
-    </svg>
-  `;
-
-  // sanitize as HTML
-  return SillyTavern.libs?.DOMPurify ? SillyTavern.libs.DOMPurify.sanitize(svg) : svg;
-}
-
-function renderMapToPane(mapJson, rawText) {
-  lastMap = mapJson;
-  lastMapJsonText = rawText || (mapJson ? JSON.stringify(mapJson, null, 2) : '');
-
-  const $json = $('#sg_map_json');
-  const $view = $('#sg_map_view');
-  if ($json.length) $json.text(lastMapJsonText || '');
-  if ($view.length) {
-    if (!mapJson) $view.html('<div class="sg-hint">（尚未生成）</div>');
-    else $view.html(renderMapSvg(mapJson));
-    // enable pan/zoom and keep handlers one-time bound
-    bindMapInteractions();
-  }
-
-  $('#sg_mapCopyJson').prop('disabled', !Boolean(lastMapJsonText));
-}
-
-async function clearMap() {
-  lastMap = null;
-  lastMapJsonText = '';
-  renderMapToPane(null, '');
-  try { await setChatMetaValue(META_KEYS.map, ''); } catch { /* ignore */ }
-  setStatus('已清空地图', 'ok');
-}
-
-async function runMapGeneration() {
-  const s = ensureSettings();
-  if (!s.enabled) { setStatus('插件未启用', 'warn'); return; }
-
-  setStatus('生成地图中…', 'warn');
-  $('#sg_mapGenerate').prop('disabled', true);
 
   try {
-    const { snapshotText } = buildSnapshot();
-    const messages = buildMapPromptMessages(snapshotText);
-    const schema = buildMapSchema(s.mapMaxLocations, s.mapMaxLinks);
+    const mod = await import(/* webpackIgnore: true */ '/script.js');
+    const modFns = [
+      mod?.processChatSlashCommands,
+      mod?.executeSlashCommandsOnChatInput,
+    ].filter(fn => typeof fn === 'function');
+    if (modFns.length) {
+      cachedSlashExecutor = async (cmd) => {
+        for (const fn of modFns) {
+          try { return await fn(cmd); } catch { /* try next */ }
+          try { return await fn(cmd, true); } catch { /* try next */ }
+        }
+        throw new Error('Slash command executor from /script.js failed to run.');
+      };
+      return cachedSlashExecutor;
+    }
+  } catch {
+    // ignore
+  }
 
-    const cfg = resolveMapProvider();
+  cachedSlashExecutor = null;
+  throw new Error('未找到可用的 STscript/SlashCommand 执行函数（无法自动写入世界书）。');
+}
+
+async function execSlash(cmd) {
+  const exec = await getSlashExecutor();
+  return await exec(String(cmd || '').trim());
+}
+
+function extractUid(text) {
+  const t = String(text || '');
+  const m = t.match(/\b(\d{1,8})\b/);
+  if (!m) return null;
+  return Number.parseInt(m[1], 10);
+}
+
+function quoteSlashValue(v) {
+  const s = String(v ?? '').replace(/"/g, '\\"');
+  return `"${s}"`;
+}
+
+async function resolveSummaryTargetWorldInfoFile() {
+  const s = ensureSettings();
+  if (String(s.summaryWorldInfoTarget || 'chatbook') === 'file') {
+    const f = String(s.summaryWorldInfoFile || '').trim();
+    if (!f) throw new Error('summaryWorldInfoTarget=file 时必须填写世界书文件名。');
+    return f;
+  }
+  // chatbook
+  const out = await execSlash('/getchatbook');
+  const firstLine = String(out || '').split(/\r?\n/)[0].trim();
+  if (!firstLine) throw new Error('无法获取当前聊天绑定世界书（/getchatbook 返回为空）。');
+  return firstLine;
+}
+
+async function writeSummaryToWorldInfo(rec, meta) {
+  const s = ensureSettings();
+  const kws = sanitizeKeywords(rec.keywords);
+  const file = await resolveSummaryTargetWorldInfoFile();
+  const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
+  const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const title = String(rec.title || '').trim() || `${prefix}`;
+  const comment = `${title}${range ? `（${range}）` : ''}`;
+
+  const content = String(rec.summary || '').replace(/\s*\n+\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  const firstKey = kws[0] || prefix;
+
+  // 1) create entry
+  const outCreate = await execSlash(`/createentry file=${quoteSlashValue(file)} key=${quoteSlashValue(firstKey)} ${content}`);
+  const uid = extractUid(outCreate);
+  if (!uid) throw new Error(`创建世界书条目失败：无法解析 UID（返回：${String(outCreate || '').slice(0, 120)}...）`);
+
+  // 2) set fields (绿灯启用：disable=0)
+  await execSlash(`/setentryfield file=${quoteSlashValue(file)} uid=${uid} field=key ${kws.join(',')}`);
+  await execSlash(`/setentryfield file=${quoteSlashValue(file)} uid=${uid} field=comment ${comment}`);
+  await execSlash(`/setentryfield file=${quoteSlashValue(file)} uid=${uid} field=disable 0`);
+
+  // store link
+  rec.worldInfo = { file, uid };
+  if (meta && Array.isArray(meta.history) && meta.history.length) {
+    meta.history[meta.history.length - 1] = rec;
+    await setSummaryMeta(meta);
+  }
+  return { file, uid };
+}
+
+async function runSummary({ reason = 'manual' } = {}) {
+  const s = ensureSettings();
+  const ctx = SillyTavern.getContext();
+
+  if (reason === 'auto' && !s.enabled) return;
+
+  if (isSummarizing) return;
+  isSummarizing = true;
+  setStatus('总结中…', 'warn');
+
+  try {
+    const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+    const mode = String(s.summaryCountMode || 'assistant');
+    const floorNow = computeFloorCount(chat, mode);
+
+    let meta = getSummaryMeta();
+    if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
+
+    // choose range
+    let startIdx = 0;
+    let fromFloor = 1;
+    const toFloor = floorNow;
+
+    if (reason === 'auto' && meta.lastChatLen > 0 && meta.lastChatLen < chat.length) {
+      startIdx = meta.lastChatLen;
+      fromFloor = Math.max(1, Number(meta.lastFloor || 0) + 1);
+    } else {
+      startIdx = findStartIndexForLastNFloors(chat, mode, s.summaryEvery || 20);
+      fromFloor = Math.max(1, toFloor - (Number(s.summaryEvery) || 20) + 1);
+    }
+
+    const chunkText = buildSummaryChunkText(chat, startIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
+    if (!chunkText) {
+      setStatus('没有可总结的内容（片段为空）', 'warn');
+      return;
+    }
+
+    const messages = buildSummaryPromptMessages(chunkText, fromFloor, toFloor);
+    const schema = getSummarySchema();
+
     let jsonText = '';
-
-    if (cfg.provider === 'custom') {
-      jsonText = await callViaCustom(cfg.endpoint, cfg.apiKey, cfg.model, messages, cfg.temperature, cfg.maxTokens, cfg.topP, cfg.stream);
+    if (String(s.summaryProvider || 'st') === 'custom') {
+      jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream);
       const parsedTry = safeJsonParse(jsonText);
-      if (!parsedTry || !parsedTry.locations) {
-        try {
-          jsonText = await fallbackAskJsonCustom(cfg.endpoint, cfg.apiKey, cfg.model, messages, cfg.temperature, cfg.maxTokens, cfg.topP, cfg.stream);
-        } catch { /* ignore */ }
+      if (!parsedTry || !parsedTry.summary) {
+        try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream); }
+        catch { /* ignore */ }
       }
     } else {
-      jsonText = await callViaSillyTavern(messages, schema, cfg.temperature);
+      jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature);
       if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
       const parsedTry = safeJsonParse(jsonText);
-      if (!parsedTry || !parsedTry.locations) jsonText = await fallbackAskJson(messages, cfg.temperature);
+      if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
     }
 
     const parsed = safeJsonParse(jsonText);
-    if (!parsed) {
-      renderMapToPane(null, String(jsonText || ''));
-      showPane('map');
-      throw new Error('地图输出无法解析为 JSON（已切到地图标签，看看原文/JSON）');
+    if (!parsed || !parsed.summary) throw new Error('总结输出无法解析为 JSON。');
+
+    const keywords = sanitizeKeywords(parsed.keywords);
+    const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+    const title = String(parsed.title || '').trim() || `${prefix}`;
+    const summary = String(parsed.summary || '').trim();
+
+    const rec = {
+      title,
+      summary,
+      keywords,
+      createdAt: Date.now(),
+      range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: Math.max(0, chat.length - 1) },
+    };
+
+    meta.history = Array.isArray(meta.history) ? meta.history : [];
+    meta.history.push(rec);
+    if (meta.history.length > 120) meta.history = meta.history.slice(-120);
+    meta.lastFloor = toFloor;
+    meta.lastChatLen = chat.length;
+    await setSummaryMeta(meta);
+
+    updateSummaryInfoLabel();
+    renderSummaryPaneFromMeta();
+
+    // world info write
+    if (s.summaryToWorldInfo) {
+      try {
+        await writeSummaryToWorldInfo(rec, meta);
+        setStatus('总结完成 ✅（已写入世界书）', 'ok');
+      } catch (e) {
+        console.warn('[StoryGuide] write summary to world info failed:', e);
+        setStatus(`总结完成，但写入世界书失败：${e?.message ?? e}`, 'warn');
+      }
+    } else {
+      setStatus('总结完成 ✅', 'ok');
     }
-
-    const normalized = normalizeMapJson(parsed);
-    const rawPretty = JSON.stringify(normalized, null, 2);
-    renderMapToPane(normalized, rawPretty);
-
-    if (s.mapPersistToChat) {
-      try { await setChatMetaValue(META_KEYS.map, rawPretty); } catch { /* ignore */ }
-    }
-
-    showPane('map');
-    setStatus('地图已生成 ✅', 'ok');
-  } catch (e) {
-    console.error('[StoryGuide] map failed:', e);
-    setStatus(`地图生成失败：${e?.message ?? e}`, 'err');
   } finally {
-    $('#sg_mapGenerate').prop('disabled', false);
+    isSummarizing = false;
+    updateButtonsEnabled();
   }
+}
+
+function scheduleAutoSummary(reason = '') {
+  const s = ensureSettings();
+  if (!s.enabled) return;
+  if (!s.summaryEnabled) return;
+  const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
+  if (summaryTimer) clearTimeout(summaryTimer);
+  summaryTimer = setTimeout(() => {
+    summaryTimer = null;
+    maybeAutoSummary(reason).catch(() => void 0);
+  }, delay);
+}
+
+async function maybeAutoSummary(reason = '') {
+  const s = ensureSettings();
+  if (!s.enabled) return;
+  if (!s.summaryEnabled) return;
+  if (isSummarizing) return;
+
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const mode = String(s.summaryCountMode || 'assistant');
+  const every = clampInt(s.summaryEvery, 1, 200, 20);
+  const floorNow = computeFloorCount(chat, mode);
+  if (floorNow <= 0) return;
+  if (floorNow % every !== 0) return;
+
+  const meta = getSummaryMeta();
+  const last = Number(meta?.lastFloor || 0);
+  if (floorNow <= last) return;
+
+  await runSummary({ reason: 'auto' });
 }
 
 // -------------------- inline append (dynamic modules) --------------------
@@ -2272,8 +1856,9 @@ function scheduleInlineAppend() {
 
 // -------------------- models refresh (custom) --------------------
 
-function fillModelSelectFor($sel, modelIds, selected) {
-  if (!$sel || !$sel.length) return;
+function fillModelSelect(modelIds, selected) {
+  const $sel = $('#sg_modelSelect');
+  if (!$sel.length) return;
   $sel.empty();
   $sel.append(`<option value="">（选择模型）</option>`);
   (modelIds || []).forEach(id => {
@@ -2283,11 +1868,6 @@ function fillModelSelectFor($sel, modelIds, selected) {
     if (selected && id === selected) opt.selected = true;
     $sel.append(opt);
   });
-}
-
-function fillModelSelectAll(modelIds, selected) {
-  fillModelSelectFor($('#sg_modelSelect'), modelIds, selected);
-  fillModelSelectFor($('#sg_mapModelSelect'), modelIds, selected);
 }
 
 async function refreshModels() {
@@ -2339,7 +1919,7 @@ async function refreshModels() {
 
     s.customModelsCache = ids;
     saveSettings();
-    fillModelSelectAll(ids, s.customModel);
+    fillModelSelect(ids, s.customModel);
     setStatus(`已刷新模型：${ids.length} 个（后端代理）`, 'ok');
     return;
   } catch (e) {
@@ -2381,7 +1961,7 @@ async function refreshModels() {
 
     s.customModelsCache = ids;
     saveSettings();
-    fillModelSelectAll(ids, s.customModel);
+    fillModelSelect(ids, s.customModel);
     setStatus(`已刷新模型：${ids.length} 个（直连 fallback）`, 'ok');
   } catch (e) {
     setStatus(`刷新模型失败：${e?.message ?? e}`, 'err');
@@ -2451,9 +2031,74 @@ function findChatInputAnchor() {
   return ta;
 }
 
+const SG_CHAT_POS_KEY = 'storyguide_chat_controls_pos_v1';
+let sgChatPinnedLoaded = false;
+let sgChatPinnedPos = null; // {left, top, pinned}
+let sgChatPinned = false;
+
+function loadPinnedChatPos() {
+  if (sgChatPinnedLoaded) return;
+  sgChatPinnedLoaded = true;
+  try {
+    const raw = localStorage.getItem(SG_CHAT_POS_KEY);
+    if (!raw) return;
+    const j = JSON.parse(raw);
+    if (j && typeof j.left === 'number' && typeof j.top === 'number') {
+      sgChatPinnedPos = { left: j.left, top: j.top, pinned: j.pinned !== false };
+      sgChatPinned = sgChatPinnedPos.pinned;
+    }
+  } catch { /* ignore */ }
+}
+
+function savePinnedChatPos(left, top) {
+  try {
+    sgChatPinnedPos = { left: Number(left) || 0, top: Number(top) || 0, pinned: true };
+    sgChatPinned = true;
+    localStorage.setItem(SG_CHAT_POS_KEY, JSON.stringify(sgChatPinnedPos));
+  } catch { /* ignore */ }
+}
+
+function clearPinnedChatPos() {
+  try {
+    sgChatPinnedPos = null;
+    sgChatPinned = false;
+    localStorage.removeItem(SG_CHAT_POS_KEY);
+  } catch { /* ignore */ }
+}
+
+function clampToViewport(left, top, w, h) {
+  const pad = 8;
+  const L = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
+  const T = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
+  return { left: L, top: T };
+}
+
+function measureWrap(wrap) {
+  const prevVis = wrap.style.visibility;
+  wrap.style.visibility = 'hidden';
+  wrap.style.left = '0px';
+  wrap.style.top = '0px';
+  const w = wrap.offsetWidth || 220;
+  const h = wrap.offsetHeight || 38;
+  wrap.style.visibility = prevVis || 'visible';
+  return { w, h };
+}
+
 function positionChatActionButtons() {
   const wrap = document.getElementById('sg_chat_controls');
   if (!wrap) return;
+
+  loadPinnedChatPos();
+
+  const { w, h } = measureWrap(wrap);
+
+  // If user dragged & pinned position, keep it.
+  if (sgChatPinned && sgChatPinnedPos) {
+    const clamped = clampToViewport(sgChatPinnedPos.left, sgChatPinnedPos.top, w, h);
+    wrap.style.left = `${Math.round(clamped.left)}px`;
+    wrap.style.top = `${Math.round(clamped.top)}px`;
+    return;
+  }
 
   const sendBtn =
     document.querySelector('#send_but') ||
@@ -2468,26 +2113,13 @@ function positionChatActionButtons() {
 
   const rect = sendBtn.getBoundingClientRect();
 
-  // measure
-  const prevVis = wrap.style.visibility;
-  wrap.style.visibility = 'hidden';
-  wrap.style.left = '0px';
-  wrap.style.top = '0px';
-  const w = wrap.offsetWidth || 200;
-  const h = wrap.offsetHeight || 36;
-
   // place to the left of send button, vertically centered
   let left = rect.left - w - 10;
   let top = rect.top + (rect.height - h) / 2;
 
-  // clamp to viewport
-  const pad = 8;
-  left = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
-  top = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
-
-  wrap.style.left = `${Math.round(left)}px`;
-  wrap.style.top = `${Math.round(top)}px`;
-  wrap.style.visibility = prevVis || 'visible';
+  const clamped = clampToViewport(left, top, w, h);
+  wrap.style.left = `${Math.round(clamped.left)}px`;
+  wrap.style.top = `${Math.round(clamped.top)}px`;
 }
 
 let sgChatPosTimer = null;
@@ -2498,7 +2130,6 @@ function schedulePositionChatButtons() {
     try { positionChatActionButtons(); } catch {}
   }, 60);
 }
-
 function ensureChatActionButtons() {
   if (document.getElementById('sg_chat_controls')) {
     schedulePositionChatButtons();
@@ -2510,6 +2141,12 @@ function ensureChatActionButtons() {
 
   const wrap = document.createElement('div');
   wrap.id = 'sg_chat_controls';
+
+  // draggable handle (drag to pin position; double click to reset)
+  const handle = document.createElement('div');
+  handle.className = 'sg-chat-drag-handle';
+  handle.title = '拖动按钮位置（双击复位为自动贴边）';
+  handle.textContent = '⋮⋮';
   wrap.className = 'sg-chat-controls';
 
   const gen = document.createElement('button');
@@ -2527,7 +2164,8 @@ function ensureChatActionButtons() {
   reroll.innerHTML = '🎲 <span class="sg-chat-label">重Roll</span>';
 
   const setBusy = (busy) => {
-    wrap.querySelectorAll('button.sg-chat-btn').forEach(b => { b.disabled = !!busy; });
+    gen.disabled = busy;
+    reroll.disabled = busy;
     wrap.classList.toggle('is-busy', !!busy);
   };
 
@@ -2555,35 +2193,75 @@ function ensureChatActionButtons() {
     }
   });
 
-  const mapBtn = document.createElement('button');
-  mapBtn.type = 'button';
-  mapBtn.id = 'sg_chat_map';
-  mapBtn.className = 'menu_button sg-chat-btn';
-  mapBtn.title = '生成/刷新世界地图（打开面板→地图标签）';
-  mapBtn.innerHTML = '🗺 <span class="sg-chat-label">地图</span>';
-
-  mapBtn.addEventListener('click', async () => {
-    try {
-      setBusy(true);
-      openModal();
-      showPane('map');
-      pullUiToSettings();
-      saveSettings();
-      await runMapGeneration();
-    } catch (e) {
-      console.warn('[StoryGuide] map generate failed', e);
-    } finally {
-      setBusy(false);
-      schedulePositionChatButtons();
-    }
-  });
+  wrap.appendChild(handle);
 
   wrap.appendChild(gen);
   wrap.appendChild(reroll);
-  wrap.appendChild(mapBtn);
 
   // Use fixed positioning to avoid overlapping with send button / different themes.
+  
+  // drag to move (pin position)
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let moved = false;
+
+  const onMove = (ev) => {
+    if (!dragging) return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if (!moved && (Math.abs(dx) + Math.abs(dy) > 4)) moved = true;
+
+    const { w, h } = measureWrap(wrap);
+    const clamped = clampToViewport(startLeft + dx, startTop + dy, w, h);
+    wrap.style.left = `${Math.round(clamped.left)}px`;
+    wrap.style.top = `${Math.round(clamped.top)}px`;
+  };
+
+  const onUp = (ev) => {
+    if (!dragging) return;
+    dragging = false;
+    wrap.classList.remove('is-dragging');
+    try { handle.releasePointerCapture(ev.pointerId); } catch {}
+    window.removeEventListener('pointermove', onMove, true);
+    window.removeEventListener('pointerup', onUp, true);
+    window.removeEventListener('pointercancel', onUp, true);
+
+    if (moved) {
+      const left = parseInt(wrap.style.left || '0', 10);
+      const top = parseInt(wrap.style.top || '0', 10);
+      savePinnedChatPos(left, top);
+    }
+  };
+
+  handle.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    loadPinnedChatPos();
+    dragging = true;
+    moved = false;
+    wrap.classList.add('is-dragging');
+
+    const rect = wrap.getBoundingClientRect();
+    startX = ev.clientX;
+    startY = ev.clientY;
+    startLeft = rect.left;
+    startTop = rect.top;
+
+    try { handle.setPointerCapture(ev.pointerId); } catch {}
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+  });
+
+  handle.addEventListener('dblclick', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    clearPinnedChatPos();
+    schedulePositionChatButtons();
+  });
+
   document.body.appendChild(wrap);
+  loadPinnedChatPos();
 
   // Keep it positioned correctly
   window.addEventListener('resize', schedulePositionChatButtons, { passive: true });
@@ -2837,6 +2515,92 @@ function buildModalHtml() {
             <div class="sg-hint" id="sg_worldbookInfo">（未导入世界书）</div>
           </div>
 
+          <div class="sg-card">
+            <div class="sg-card-title">自动总结（写入世界书）</div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryEnabled">启用自动总结</label>
+              <span>每</span>
+              <input id="sg_summaryEvery" type="number" min="1" max="200" style="width:90px">
+              <span>层</span>
+              <select id="sg_summaryCountMode">
+                <option value="assistant">按 AI 回复计数</option>
+                <option value="all">按全部消息计数</option>
+              </select>
+            </div>
+
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>总结 Provider</label>
+                <select id="sg_summaryProvider">
+                  <option value="st">使用酒馆当前连接的模型</option>
+                  <option value="custom">使用独立 OpenAI 兼容 API</option>
+                </select>
+              </div>
+              <div class="sg-field">
+                <label>总结 Temperature</label>
+                <input id="sg_summaryTemperature" type="number" min="0" max="2" step="0.1">
+              </div>
+            </div>
+
+            <div class="sg-card sg-subcard" id="sg_summary_custom_block" style="display:none">
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>独立API基础URL</label>
+                  <input id="sg_summaryCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
+                </div>
+                <div class="sg-field">
+                  <label>API Key</label>
+                  <input id="sg_summaryCustomApiKey" type="password" placeholder="sk-...">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>模型ID</label>
+                  <input id="sg_summaryCustomModel" type="text" placeholder="gpt-4o-mini">
+                </div>
+                <div class="sg-field">
+                  <label>Max Tokens</label>
+                  <input id="sg_summaryCustomMaxTokens" type="number" min="128" max="200000">
+                </div>
+              </div>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryCustomStream">stream（若支持）</label>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用）</label>
+              <select id="sg_summaryWorldInfoTarget">
+                <option value="chatbook">写入当前聊天绑定世界书</option>
+                <option value="file">写入指定世界书文件名</option>
+              </select>
+              <input id="sg_summaryWorldInfoFile" type="text" placeholder="Target=file 时填写世界书文件名" style="flex:1; min-width: 220px;">
+            </div>
+
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>条目标题前缀（comment）</label>
+                <input id="sg_summaryWorldInfoCommentPrefix" type="text" placeholder="剧情总结">
+              </div>
+              <div class="sg-field">
+                <label>限制：每条消息最多字符 / 总字符</label>
+                <div class="sg-row" style="margin-top:0">
+                  <input id="sg_summaryMaxChars" type="number" min="200" max="8000" style="width:110px">
+                  <input id="sg_summaryMaxTotalChars" type="number" min="2000" max="80000" style="width:120px">
+                </div>
+              </div>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
+              <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
+              <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
+            </div>
+
+            <div class="sg-hint">
+              自动总结会按“每 N 层”触发；每次输出会生成 <b>摘要</b> + <b>关键词</b>，并可自动创建世界书条目（disable=0 绿灯启用，关键词写入 key 作为触发词）。
+            </div>
+          </div>
+
 
 
 
@@ -2849,106 +2613,20 @@ function buildModalHtml() {
 
             <div class="sg-tabs">
               <button class="sg-tab active" id="sg_tab_md">报告</button>
-              <button class="sg-tab" id="sg_tab_map">地图</button>
               <button class="sg-tab" id="sg_tab_json">JSON</button>
               <button class="sg-tab" id="sg_tab_src">来源</button>
+              <button class="sg-tab" id="sg_tab_sum">总结</button>
               <div class="sg-spacer"></div>
               <button class="menu_button sg-btn" id="sg_copyMd" disabled>复制MD</button>
               <button class="menu_button sg-btn" id="sg_copyJson" disabled>复制JSON</button>
+              <button class="menu_button sg-btn" id="sg_copySum" disabled>复制总结</button>
               <button class="menu_button sg-btn" id="sg_injectTips" disabled>注入提示</button>
             </div>
 
             <div class="sg-pane active" id="sg_pane_md"><div class="sg-md" id="sg_md">(尚未生成)</div></div>
-            <div class="sg-pane" id="sg_pane_map">
-              <div class="sg-row sg-inline sg-map-toolbar">
-                <label style="opacity:.82;">地图 Provider</label>
-                <select id="sg_mapProvider">
-                  <option value="inherit">跟随上方 Provider</option>
-                  <option value="st">使用当前 SillyTavern API</option>
-                  <option value="custom">独立API（使用上方设置）</option>
-                </select>
-
-                <label class="sg-check" title="把地图JSON存到本聊天元数据里，切换聊天后也能看到">
-                  <input type="checkbox" id="sg_mapPersist">随聊天保存</label>
-
-                <button class="menu_button sg-btn" id="sg_mapGenerate">生成/刷新地图</button>
-                <button class="menu_button sg-btn" id="sg_mapClear">清空</button>
-                <button class="menu_button sg-btn" id="sg_mapCopyJson" disabled>复制地图JSON</button>
-              </div>
-
-              <div id="sg_map_custom_block" class="sg-card sg-subcard" style="display:none; margin-top:10px;">
-                <div class="sg-card-title">地图 API 设置（与剧情指导共用）</div>
-
-                <div class="sg-field">
-                  <label>API基础URL（例如 https://api.openai.com/v1 ）</label>
-                  <input id="sg_mapEndpoint" type="text" placeholder="https://xxx.com/v1">
-                  <div class="sg-hint">这里与上方“独立API”共用同一套设置；任意一处修改都会同步。</div>
-                </div>
-
-                <div class="sg-grid2">
-                  <div class="sg-field">
-                    <label>API Key（可选）</label>
-                    <input id="sg_mapApiKey" type="password" placeholder="可留空">
-                  </div>
-                  <div class="sg-field">
-                    <label>模型（可手填）</label>
-                    <input id="sg_mapModel" type="text" placeholder="gpt-4o-mini">
-                  </div>
-                </div>
-
-                <div class="sg-row sg-inline">
-                  <button class="menu_button sg-btn" id="sg_mapRefreshModels">检查/刷新模型</button>
-                  <select id="sg_mapModelSelect" class="sg-model-select">
-                    <option value="">（选择模型）</option>
-                  </select>
-                </div>
-
-                <div class="sg-row">
-                  <div class="sg-field sg-field-full">
-                    <label>最大回复token数（max_tokens）</label>
-                    <input id="sg_mapMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如：60000">
-                    <label class="sg-check" style="margin-top:8px;">
-                      <input type="checkbox" id="sg_mapStream"> 使用流式返回（stream=true）
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title">地图提示词（可自定义）</div>
-                <div class="sg-hint">可选：用于指导模型如何抽取地点/路线/主角位置。支持变量：{{maxLocations}} / {{maxLinks}}。<br>模式说明：<b>追加</b>＝在默认提示词后追加；<b>覆盖</b>＝用你的提示词替换默认（仍会自动附加 JSON/数量/坐标约束，保证可解析）。</div>
-
-                <div class="sg-grid2" style="margin-top:10px;">
-                  <div class="sg-field">
-                    <label>模式</label>
-                    <select id="sg_mapPromptMode">
-                      <option value="append">追加到默认提示词</option>
-                      <option value="override">覆盖默认提示词</option>
-                    </select>
-                  </div>
-                  <div class="sg-field">
-                    <label>快捷操作</label>
-                    <div class="sg-row sg-inline" style="margin-top:0;">
-                      <button class="menu_button sg-btn" id="sg_mapPromptReset">恢复默认</button>
-                      <button class="menu_button sg-btn" id="sg_mapPromptSave">保存提示词</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="sg-field" style="margin-top:10px;">
-                  <label>提示词内容（留空＝使用默认）</label>
-                  <textarea id="sg_mapPrompt" rows="7" spellcheck="false" placeholder="例如：\n- 优先抽取：国家/城市/村镇/建筑/地标\n- 路线 label 使用：官道/山路/水路/传送阵\n- 主角位置优先写 protagonist.at，除非不确定\n- 地点命名尽量沿用原文/对话里的称呼\n"></textarea>
-                </div>
-              </div>
-
-              <div class="sg-map-view" id="sg_map_view"><div class="sg-hint">（尚未生成）</div></div>
-              <details class="sg-map-details">
-                <summary>地图JSON</summary>
-                <pre class="sg-pre" id="sg_map_json"></pre>
-              </details>
-            </div>
             <div class="sg-pane" id="sg_pane_json"><pre class="sg-pre" id="sg_json"></pre></div>
             <div class="sg-pane" id="sg_pane_src"><pre class="sg-pre" id="sg_src"></pre></div>
+            <div class="sg-pane" id="sg_pane_sum"><div class="sg-md" id="sg_sum">(尚未生成)</div></div>
           </div>
         </div>
       </div>
@@ -2965,89 +2643,9 @@ function ensureModal() {
   $('#sg_close').on('click', closeModal);
 
   $('#sg_tab_md').on('click', () => showPane('md'));
-  $('#sg_tab_map').on('click', () => showPane('map'));
   $('#sg_tab_json').on('click', () => showPane('json'));
   $('#sg_tab_src').on('click', () => showPane('src'));
-
-  // 地图 API 复用“剧情指导”的同一套独立API配置。
-  // 显示/隐藏规则：看“地图 Provider”最终解析后的 provider。
-  const toggleMapCustomBlock = () => {
-    const mp = String($('#sg_mapProvider').val() || 'inherit');
-    const main = String($('#sg_provider').val() || 'st');
-    const resolved = (mp === 'inherit') ? main : mp;
-    $('#sg_map_custom_block').toggle(resolved === 'custom');
-  };
-
-  const syncVal = (src, dst) => {
-    const $s = $(src); const $d = $(dst);
-    if (!$s.length || !$d.length) return;
-    const v = $s.val();
-    if ($d.val() !== v) $d.val(v);
-  };
-  const syncChecked = (src, dst) => {
-    const $s = $(src); const $d = $(dst);
-    if (!$s.length || !$d.length) return;
-    const v = $s.is(':checked');
-    if ($d.is(':checked') !== v) $d.prop('checked', v);
-  };
-
-  // 双向同步：上方独立API块 <-> 地图独立API块
-  $('#sg_customEndpoint').on('input', () => syncVal('#sg_customEndpoint', '#sg_mapEndpoint'));
-  $('#sg_mapEndpoint').on('input', () => syncVal('#sg_mapEndpoint', '#sg_customEndpoint'));
-
-  $('#sg_customApiKey').on('input', () => syncVal('#sg_customApiKey', '#sg_mapApiKey'));
-  $('#sg_mapApiKey').on('input', () => syncVal('#sg_mapApiKey', '#sg_customApiKey'));
-
-  $('#sg_customModel').on('input', () => syncVal('#sg_customModel', '#sg_mapModel'));
-  $('#sg_mapModel').on('input', () => syncVal('#sg_mapModel', '#sg_customModel'));
-
-  $('#sg_customMaxTokens').on('input', () => syncVal('#sg_customMaxTokens', '#sg_mapMaxTokens'));
-  $('#sg_mapMaxTokens').on('input', () => syncVal('#sg_mapMaxTokens', '#sg_customMaxTokens'));
-
-  $('#sg_customStream').on('change', () => syncChecked('#sg_customStream', '#sg_mapStream'));
-  $('#sg_mapStream').on('change', () => syncChecked('#sg_mapStream', '#sg_customStream'));
-
-  $('#sg_mapProvider').on('change', () => toggleMapCustomBlock());
-
-  $('#sg_mapGenerate').on('click', async () => {
-    pullUiToSettings();
-    saveSettings();
-    await runMapGeneration();
-  });
-
-  $('#sg_mapRefreshModels').on('click', async () => {
-    pullUiToSettings(); saveSettings();
-    await refreshModels();
-  });
-
-  $('#sg_mapModelSelect').on('change', () => {
-    const id = String($('#sg_mapModelSelect').val() || '').trim();
-    if (!id) return;
-    $('#sg_mapModel').val(id);
-    $('#sg_customModel').val(id);
-    $('#sg_modelSelect').val(id);
-  });
-
-  $('#sg_mapCopyJson').on('click', async () => {
-    try { await navigator.clipboard.writeText(lastMapJsonText || ''); setStatus('已复制：地图JSON', 'ok'); }
-    catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
-  });
-
-  $('#sg_mapClear').on('click', () => { clearMap().catch(() => void 0); });
-
-  $('#sg_mapPromptReset').on('click', () => {
-    $('#sg_mapPrompt').val('');
-    $('#sg_mapPromptMode').val('append');
-    pullUiToSettings();
-    saveSettings();
-    setStatus('已恢复默认地图提示词（清空自定义）', 'ok');
-  });
-
-  $('#sg_mapPromptSave').on('click', () => {
-    pullUiToSettings();
-    saveSettings();
-    setStatus('已保存地图提示词', 'ok');
-  });
+  $('#sg_tab_sum').on('click', () => showPane('sum'));
 
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
@@ -3081,6 +2679,11 @@ function ensureModal() {
     catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
   });
 
+  $('#sg_copySum').on('click', async () => {
+    try { await navigator.clipboard.writeText(lastSummaryText || ''); setStatus('已复制：总结', 'ok'); }
+    catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
+  });
+
   $('#sg_injectTips').on('click', () => {
     const tips = Array.isArray(lastReport?.json?.tips) ? lastReport.json.tips : [];
     const spoiler = ensureSettings().spoilerLevel;
@@ -3096,7 +2699,49 @@ function ensureModal() {
   $('#sg_provider').on('change', () => {
     const provider = String($('#sg_provider').val());
     $('#sg_custom_block').toggle(provider === 'custom');
-    toggleMapCustomBlock();
+  });
+
+  // summary provider toggle
+  $('#sg_summaryProvider').on('change', () => {
+    const p = String($('#sg_summaryProvider').val() || 'st');
+    $('#sg_summary_custom_block').toggle(p === 'custom');
+    pullUiToSettings(); saveSettings();
+  });
+
+  $('#sg_summaryWorldInfoTarget').on('change', () => {
+    const t = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
+    $('#sg_summaryWorldInfoFile').toggle(t === 'file');
+    pullUiToSettings(); saveSettings();
+  });
+
+  // summary actions
+  $('#sg_summarizeNow').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      await runSummary({ reason: 'manual' });
+    } catch (e) {
+      setStatus(`总结失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_resetSummaryState').on('click', async () => {
+    try {
+      const meta = getDefaultSummaryMeta();
+      await setSummaryMeta(meta);
+      updateSummaryInfoLabel();
+      renderSummaryPaneFromMeta();
+      setStatus('已重置本聊天总结进度 ✅', 'ok');
+    } catch (e) {
+      setStatus(`重置失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  // auto-save summary settings
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryInfoLabel();
   });
 
   $('#sg_refreshModels').on('click', async () => {
@@ -3106,14 +2751,10 @@ function ensureModal() {
 
   $('#sg_modelSelect').on('change', () => {
     const id = String($('#sg_modelSelect').val() || '').trim();
-    if (!id) return;
-    $('#sg_customModel').val(id);
-    $('#sg_mapModel').val(id);
-    $('#sg_mapModelSelect').val(id);
+    if (id) $('#sg_customModel').val(id);
+  $('#sg_customMaxTokens').val(s.customMaxTokens || 8192);
+  $('#sg_customStream').prop('checked', !!s.customStream);
   });
-
-  // 初次计算一次（避免刚打开时地图块显示状态不对）
-  toggleMapCustomBlock();
 
   
   // presets actions
@@ -3278,26 +2919,8 @@ function pullSettingsToUi() {
   $('#sg_customEndpoint').val(s.customEndpoint);
   $('#sg_customApiKey').val(s.customApiKey);
   $('#sg_customModel').val(s.customModel);
-  $('#sg_customMaxTokens').val(s.customMaxTokens ?? DEFAULT_SETTINGS.customMaxTokens);
-  $('#sg_customStream').prop('checked', !!s.customStream);
 
-  // map settings
-  $('#sg_mapProvider').val(String(s.mapProvider || 'inherit'));
-  $('#sg_mapPersist').prop('checked', !!s.mapPersistToChat);
-  $('#sg_mapEndpoint').val(s.customEndpoint);
-  $('#sg_mapApiKey').val(s.customApiKey);
-  $('#sg_mapModel').val(s.customModel);
-  $('#sg_mapMaxTokens').val(s.customMaxTokens ?? DEFAULT_SETTINGS.customMaxTokens);
-  
-  $('#sg_mapPromptMode').val(String(s.mapPromptMode || 'append'));
-  $('#sg_mapPrompt').val(String(s.mapPrompt || ''));
-
-  // 地图块显示逻辑：跟随最终解析 provider
-  const mp = String(s.mapProvider || 'inherit');
-  const resolved = (mp === 'inherit') ? String(s.provider || 'st') : mp;
-  $('#sg_map_custom_block').toggle(resolved === 'custom');
-
-  fillModelSelectAll(Array.isArray(s.customModelsCache) ? s.customModelsCache : [], s.customModel);
+  fillModelSelect(Array.isArray(s.customModelsCache) ? s.customModelsCache : [], s.customModel);
 
   $('#sg_worldText').val(getChatMetaValue(META_KEYS.world));
   $('#sg_canonText').val(getChatMetaValue(META_KEYS.canon));
@@ -3323,24 +2946,32 @@ function pullSettingsToUi() {
   }
 
   $('#sg_custom_block').toggle(s.provider === 'custom');
-  updateButtonsEnabled();
 
-  // load persisted map (per chat)
-  try {
-    const txt = String(getChatMetaValue(META_KEYS.map) || '').trim();
-    if (!txt) {
-      renderMapToPane(null, '');
-    } else {
-      const parsed = safeJsonParse(txt);
-      if (parsed) {
-        const normalized = normalizeMapJson(parsed);
-        renderMapToPane(normalized, JSON.stringify(normalized, null, 2));
-      } else {
-        // keep raw in JSON panel for debugging
-        renderMapToPane(null, txt);
-      }
-    }
-  } catch { /* ignore */ }
+  // summary
+  $('#sg_summaryEnabled').prop('checked', !!s.summaryEnabled);
+  $('#sg_summaryEvery').val(s.summaryEvery);
+  $('#sg_summaryCountMode').val(String(s.summaryCountMode || 'assistant'));
+  $('#sg_summaryProvider').val(String(s.summaryProvider || 'st'));
+  $('#sg_summaryTemperature').val(s.summaryTemperature);
+  $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
+  $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
+  $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
+  $('#sg_summaryCustomMaxTokens').val(s.summaryCustomMaxTokens || 2048);
+  $('#sg_summaryCustomStream').prop('checked', !!s.summaryCustomStream);
+  $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
+  $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
+  $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
+  $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
+  $('#sg_summaryMaxChars').val(s.summaryMaxCharsPerMessage || 4000);
+  $('#sg_summaryMaxTotalChars').val(s.summaryMaxTotalChars || 24000);
+
+  $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
+  $('#sg_summaryWorldInfoFile').toggle(String(s.summaryWorldInfoTarget || 'chatbook') === 'file');
+
+  updateSummaryInfoLabel();
+  renderSummaryPaneFromMeta();
+
+  updateButtonsEnabled();
 }
 
 function updateWorldbookInfoLabel() {
@@ -3369,6 +3000,55 @@ function updateWorldbookInfoLabel() {
   }
 }
 
+function formatSummaryMetaHint(meta) {
+  const last = Number(meta?.lastFloor || 0);
+  const count = Array.isArray(meta?.history) ? meta.history.length : 0;
+  if (!last && !count) return '（未生成）';
+  return `已生成 ${count} 次｜上次触发层：${last}`;
+}
+
+function updateSummaryInfoLabel() {
+  const $info = $('#sg_summaryInfo');
+  if (!$info.length) return;
+  try {
+    const meta = getSummaryMeta();
+    $info.text(formatSummaryMetaHint(meta));
+  } catch {
+    $info.text('（总结状态解析失败）');
+  }
+}
+
+function renderSummaryPaneFromMeta() {
+  const $el = $('#sg_sum');
+  if (!$el.length) return;
+
+  const meta = getSummaryMeta();
+  const hist = Array.isArray(meta.history) ? meta.history : [];
+
+  if (!hist.length) {
+    lastSummary = null;
+    lastSummaryText = '';
+    $el.html('(尚未生成)');
+    updateButtonsEnabled();
+    return;
+  }
+
+  const last = hist[hist.length - 1];
+  lastSummary = last;
+  lastSummaryText = String(last?.summary || '');
+
+  const md = hist.slice(-12).reverse().map((h, idx) => {
+    const title = String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '剧情总结'} #${hist.length - idx}`);
+    const kws = Array.isArray(h.keywords) ? h.keywords : [];
+    const when = h.createdAt ? new Date(h.createdAt).toLocaleString() : '';
+    const range = h?.range ? `（${h.range.fromFloor}-${h.range.toFloor}）` : '';
+    return `### ${title} ${range}\n\n- 时间：${when}\n- 关键词：${kws.join('、') || '（无）'}\n\n${h.summary || ''}`;
+  }).join('\n\n---\n\n');
+
+  renderMarkdownInto($el, md);
+  updateButtonsEnabled();
+}
+
 
 function pullUiToSettings() {
   const s = ensureSettings();
@@ -3393,23 +3073,11 @@ function pullUiToSettings() {
   s.inlineModulesSource = String($('#sg_inlineModulesSource').val() || 'inline');
   s.inlineShowEmpty = $('#sg_inlineShowEmpty').is(':checked');
 
-  // 共享：独立API设置（剧情指导 + 地图共用）
-  const sharedEndpoint = String($('#sg_customEndpoint').val() || $('#sg_mapEndpoint').val() || '').trim();
-  const sharedApiKey = String($('#sg_customApiKey').val() || $('#sg_mapApiKey').val() || '');
-  const sharedModel = String($('#sg_customModel').val() || $('#sg_mapModel').val() || '').trim();
-  const sharedMaxTokensRaw = $('#sg_customMaxTokens').val() || $('#sg_mapMaxTokens').val();
-  const sharedStream = ($('#sg_customStream').length ? $('#sg_customStream').is(':checked') : false) || ($('#sg_mapStream').length ? $('#sg_mapStream').is(':checked') : false);
-
-  s.customEndpoint = sharedEndpoint;
-  s.customApiKey = sharedApiKey;
-  s.customModel = sharedModel;
-  s.customMaxTokens = clampInt(sharedMaxTokensRaw, 256, 200000, s.customMaxTokens || DEFAULT_SETTINGS.customMaxTokens);
-  s.customStream = !!sharedStream;
-
-  // map settings
-  
-  s.mapPromptMode = String($('#sg_mapPromptMode').val() || 'append');
-  s.mapPrompt = String($('#sg_mapPrompt').val() || '');
+  s.customEndpoint = String($('#sg_customEndpoint').val() || '').trim();
+  s.customApiKey = String($('#sg_customApiKey').val() || '');
+  s.customModel = String($('#sg_customModel').val() || '').trim();
+  s.customMaxTokens = clampInt($('#sg_customMaxTokens').val(), 256, 200000, s.customMaxTokens || 8192);
+  s.customStream = $('#sg_customStream').is(':checked');
 
   // modulesJson：先不强行校验（用户可先保存再校验），但会在分析前用默认兜底
   s.modulesJson = String($('#sg_modulesJson').val() || '').trim() || JSON.stringify(DEFAULT_MODULES, null, 2);
@@ -3423,6 +3091,24 @@ function pullUiToSettings() {
   s.worldbookMode = String($('#sg_worldbookMode').val() || 'active');
   s.worldbookMaxChars = clampInt($('#sg_worldbookMaxChars').val(), 500, 50000, s.worldbookMaxChars || 6000);
   s.worldbookWindowMessages = clampInt($('#sg_worldbookWindowMessages').val(), 5, 80, s.worldbookWindowMessages || 18);
+
+  // summary
+  s.summaryEnabled = $('#sg_summaryEnabled').is(':checked');
+  s.summaryEvery = clampInt($('#sg_summaryEvery').val(), 1, 200, s.summaryEvery || 20);
+  s.summaryCountMode = String($('#sg_summaryCountMode').val() || 'assistant');
+  s.summaryProvider = String($('#sg_summaryProvider').val() || 'st');
+  s.summaryTemperature = clampFloat($('#sg_summaryTemperature').val(), 0, 2, s.summaryTemperature || 0.4);
+  s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
+  s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
+  s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
+  s.summaryCustomMaxTokens = clampInt($('#sg_summaryCustomMaxTokens').val(), 128, 200000, s.summaryCustomMaxTokens || 2048);
+  s.summaryCustomStream = $('#sg_summaryCustomStream').is(':checked');
+  s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
+  s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
+  s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
+  s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
+  s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
+  s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
 }
 
 function openModal() {
@@ -3542,10 +3228,13 @@ function setupEventListeners() {
     eventSource.on(event_types.MESSAGE_RECEIVED, () => {
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
+      // 自动总结（独立功能）
+      scheduleAutoSummary('msg_received');
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
       // 禁止自动生成：不在发送消息时自动刷新面板
+      scheduleAutoSummary('msg_sent');
     });
   });
 }
@@ -3573,12 +3262,11 @@ function init() {
     open: openModal,
     close: closeModal,
     runAnalysis,
-    runMapGeneration,
+    runSummary,
     runInlineAppendForLastMessage,
     reapplyAllInlineBoxes,
     buildSnapshot: () => buildSnapshot(),
     getLastReport: () => lastReport,
-    getLastMap: () => lastMap,
     refreshModels,
     _inlineCache: inlineCache,
   };
