@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.8.3
+ * v0.9.0
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -10,9 +10,6 @@
  * - 插件会根据模块自动生成 JSON Schema（动态字段）并要求模型按该 Schema 输出
  *
  * 兼容：仍然保持 v0.3.x 的“独立API走后端代理 + 抗变量更新覆盖（自动补贴）+ 点击折叠”能力
- *
- * v0.8.2 修复：兼容 SlashCommand 返回 [object Object] 的情况（自动解析 UID / 文本输出）
- * v0.8.3 新增：总结功能支持自定义提示词（system + user 模板，支持占位符）
  */
 
 const MODULE_NAME = 'storyguide';
@@ -43,14 +40,6 @@ const DEFAULT_MODULES = Object.freeze([
   { key: 'protagonist_impact', title: '主角行为造成的影响', type: 'text', prompt: '主角行为对剧情/关系/风险造成的改变', required: true, panel: true, inline: false },
   { key: 'tips', title: '给主角的提示（基于原著后续/大纲）', type: 'list', prompt: '给出可执行提示（尽量具体）', maxItems: 4, required: true, panel: true, inline: true },
 ]);
-
-// ===== 总结提示词默认值（可在面板中自定义） =====
-const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
-
-const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\n\n【对话片段】\n{{chunk}}`;
-
-// 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
-const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -99,66 +88,22 @@ const DEFAULT_SETTINGS = Object.freeze({
   worldbookMode: 'active', // active | all
   worldbookMaxChars: 6000,
   worldbookWindowMessages: 18,
+
+  // 图谱/地图（角色关系/地点结构）
+  graphInject: false,
+  graphAllowMapUpdate: false,
+  graphMaxChars: 4000,
+
+  // 外部世界信息源（可选，用于自动建图/替代世界书）
+  worldSourceEnabled: false,
+  worldSourceUrl: '',
+  worldSourceMethod: 'GET', // GET | POST
+  worldSourceHeadersJson: '',
+  worldSourceMaxChars: 8000,
+  worldSourceInjectToAnalysis: false,
+  worldSourceCache: '',
+  worldSourceLastFetchedAt: 0,
   worldbookJson: '',
-
-  // ===== 总结功能（独立于剧情提示的 API 设置） =====
-  summaryEnabled: false,
-  // 多少“楼层”总结一次（楼层统计方式见 summaryCountMode）
-  summaryEvery: 20,
-  // assistant: 仅统计 AI 回复；all: 统计全部消息（用户+AI）
-  summaryCountMode: 'assistant',
-  // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最近 summaryEvery 段
-  summaryMaxCharsPerMessage: 4000,
-  summaryMaxTotalChars: 24000,
-
-  // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
-  summaryProvider: 'st',
-  summaryTemperature: 0.4,
-
-  // 自定义总结提示词（可选）
-  // - system：决定总结风格/重点
-  // - userTemplate：决定如何把楼层范围/对话片段塞给模型（支持占位符）
-  summarySystemPrompt: DEFAULT_SUMMARY_SYSTEM_PROMPT,
-  summaryUserTemplate: DEFAULT_SUMMARY_USER_TEMPLATE,
-  summaryCustomEndpoint: '',
-  summaryCustomApiKey: '',
-  summaryCustomModel: 'gpt-4o-mini',
-  summaryCustomMaxTokens: 2048,
-  summaryCustomStream: false,
-
-  // 总结结果写入世界书（Lorebook / World Info）
-  // —— 绿灯世界书（关键词触发）——
-  summaryToWorldInfo: true,
-  // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
-  summaryWorldInfoTarget: 'chatbook',
-  summaryWorldInfoFile: '',
-  summaryWorldInfoCommentPrefix: '剧情总结',
-
-  // —— 蓝灯世界书（常开索引：给本插件做检索用）——
-  // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个。
-  summaryToBlueWorldInfo: false,
-  summaryBlueWorldInfoFile: '',
-  summaryBlueWorldInfoCommentPrefix: '剧情总结',
-
-  // —— 蓝灯索引 → 绿灯触发 ——
-  wiTriggerEnabled: false,
-  // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
-  wiTriggerLookbackMessages: 20,
-  // 最多选择多少条 summary 条目来触发
-  wiTriggerMaxEntries: 4,
-  // 相关度阈值（0~1，越大越严格）
-  wiTriggerMinScore: 0.08,
-  // 最多注入多少个触发词（去重后）
-  wiTriggerMaxKeywords: 24,
-  // 注入模式：appendToUser = 追加到用户消息末尾
-  wiTriggerInjectMode: 'appendToUser',
-  // 注入样式：hidden=HTML 注释隐藏；plain=直接文本（更稳）
-  wiTriggerInjectStyle: 'hidden',
-  wiTriggerTag: 'SG_WI_TRIGGERS',
-  wiTriggerDebugLog: false,
-
-  // 蓝灯索引缓存（可选：用于检索；每条为 {title, summary, keywords, range?}）
-  summaryBlueIndex: [],
 
   // 模块自定义（JSON 字符串 + 解析备份）
   modulesJson: '',
@@ -170,17 +115,13 @@ const DEFAULT_SETTINGS = Object.freeze({
 const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
-  summaryMeta: 'storyguide_summary_meta',
+  graph: 'storyguide_graph_data',
 });
 
 let lastReport = null;
 let lastJsonText = '';
-let lastSummary = null; // { title, summary, keywords, ... }
-let lastSummaryText = '';
 let refreshTimer = null;
 let appendTimer = null;
-let summaryTimer = null;
-let isSummarizing = false;
 
 // ============== 关键：DOM 追加缓存 & 观察者（抗重渲染） ==============
 /**
@@ -251,6 +192,26 @@ function stripHtml(input) {
   return String(input).replace(/<[^>]*>/g, '').replace(/\s+\n/g, '\n').trim();
 }
 
+function escapeHtml(text) {
+  const s = String(text ?? '');
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+
+function stripCodeFences(text) {
+  const t = String(text ?? '').trim();
+  const m = t.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (m && m[1]) return String(m[1]).trim();
+  return t;
+}
+
+
+
 function clampInt(v, min, max, fallback) {
   const n = Number.parseInt(v, 10);
   if (Number.isFinite(n)) return Math.min(max, Math.max(min, n));
@@ -260,15 +221,6 @@ function clampFloat(v, min, max, fallback) {
   const n = Number.parseFloat(v);
   if (Number.isFinite(n)) return Math.min(max, Math.max(min, n));
   return fallback;
-}
-
-// 简易模板替换：支持 {{fromFloor}} / {{toFloor}} / {{chunk}} 等占位符
-function renderTemplate(tpl, vars = {}) {
-  const str = String(tpl ?? '');
-  return str.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => {
-    const v = vars?.[k];
-    return v == null ? '' : String(v);
-  });
 }
 
 function safeJsonParse(maybeJson) {
@@ -300,35 +252,6 @@ async function setChatMetaValue(key, value) {
   await ctx.saveMetadata();
 }
 
-// -------------------- summary meta (per chat) --------------------
-function getDefaultSummaryMeta() {
-  return {
-    lastFloor: 0,
-    lastChatLen: 0,
-    history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
-  };
-}
-
-function getSummaryMeta() {
-  const raw = String(getChatMetaValue(META_KEYS.summaryMeta) || '').trim();
-  if (!raw) return getDefaultSummaryMeta();
-  try {
-    const data = JSON.parse(raw);
-    if (!data || typeof data !== 'object') return getDefaultSummaryMeta();
-    return {
-      ...getDefaultSummaryMeta(),
-      ...data,
-      history: Array.isArray(data.history) ? data.history : [],
-    };
-  } catch {
-    return getDefaultSummaryMeta();
-  }
-}
-
-async function setSummaryMeta(meta) {
-  await setChatMetaValue(META_KEYS.summaryMeta, JSON.stringify(meta ?? getDefaultSummaryMeta()));
-}
-
 function setStatus(text, kind = '') {
   const $s = $('#sg_status');
   $s.removeClass('ok err warn').addClass(kind || '');
@@ -340,7 +263,6 @@ function updateButtonsEnabled() {
   $('#sg_copyMd').prop('disabled', !ok);
   $('#sg_copyJson').prop('disabled', !Boolean(lastJsonText));
   $('#sg_injectTips').prop('disabled', !ok);
-  $('#sg_copySum').prop('disabled', !Boolean(lastSummaryText));
 }
 
 function showPane(name) {
@@ -647,6 +569,951 @@ function buildWorldbookBlock() {
   if (!info.text) return '';
   return `\n【世界书/World Info（已导入：${info.importedEntries}条，本次注入：${info.injectedEntries}条，约${info.injectedTokens} tokens）】\n${info.text}\n`;
 }
+
+// -------------------- graph/map (per-chat metadata) --------------------
+
+function defaultGraphData() {
+  return {
+    nodes: [],
+    edges: [],
+    currentNodeId: '',
+    backgroundImage: '',
+    canvas: { width: 1400, height: 900 }
+  };
+}
+
+function getGraphData() {
+  const raw = getChatMetaValue(META_KEYS.graph);
+  if (!raw) return defaultGraphData();
+  try {
+    const j = JSON.parse(String(raw));
+    if (!j || typeof j !== 'object') return defaultGraphData();
+    if (!Array.isArray(j.nodes)) j.nodes = [];
+    if (!Array.isArray(j.edges)) j.edges = [];
+    if (!j.canvas || typeof j.canvas !== 'object') j.canvas = { width: 1400, height: 900 };
+    if (!Number.isFinite(Number(j.canvas.width))) j.canvas.width = 1400;
+    if (!Number.isFinite(Number(j.canvas.height))) j.canvas.height = 900;
+    j.currentNodeId = String(j.currentNodeId || '');
+    j.backgroundImage = String(j.backgroundImage || '');
+    return j;
+  } catch {
+    return defaultGraphData();
+  }
+}
+
+let graphSaveTimer = null;
+function saveGraphDataDebounced(data) {
+  const payload = JSON.stringify(data);
+  if (graphSaveTimer) clearTimeout(graphSaveTimer);
+  graphSaveTimer = setTimeout(() => {
+    graphSaveTimer = null;
+    setChatMetaValue(META_KEYS.graph, payload).catch(() => {});
+  }, 450);
+}
+
+function setGraphData(data) {
+  const d = data || defaultGraphData();
+  saveGraphDataDebounced(d);
+  updateGraphInfoLabel();
+
+  // world source
+  $('#sg_worldSourceEnabled').prop('checked', !!s.worldSourceEnabled);
+  $('#sg_worldSourceInjectToAnalysis').prop('checked', !!s.worldSourceInjectToAnalysis);
+  $('#sg_worldSourceUrl').val(s.worldSourceUrl || '');
+  $('#sg_worldSourceMethod').val((s.worldSourceMethod || 'GET').toUpperCase());
+  $('#sg_worldSourceHeadersJson').val(s.worldSourceHeadersJson || '');
+  $('#sg_worldSourceMaxChars').val(s.worldSourceMaxChars || DEFAULT_SETTINGS.worldSourceMaxChars);
+  updateWorldSourceInfoLabel();
+
+  if (isGraphModalOpen()) renderGraphModal();
+}
+
+function upsertNode(nodes, patch) {
+  const id = String(patch.id || '').trim();
+  if (!id) return;
+  let n = nodes.find(x => String(x.id) === id);
+  if (!n) {
+    n = { id, name: id, type: 'character', parentId: '', x: 200, y: 200, description: '' };
+    nodes.push(n);
+  }
+  for (const k of ['name','type','parentId','description']) {
+    if (Object.hasOwn(patch, k)) n[k] = String(patch[k] ?? '');
+  }
+  if (Object.hasOwn(patch, 'x')) n.x = Number(patch.x);
+  if (Object.hasOwn(patch, 'y')) n.y = Number(patch.y);
+  if (Object.hasOwn(patch, 'coords')) {
+    const t = String(patch.coords || '');
+    const mm = t.split(',').map(v => Number(v.trim()));
+    if (mm.length >= 2 && Number.isFinite(mm[0]) && Number.isFinite(mm[1])) { n.x = mm[0]; n.y = mm[1]; }
+  }
+  if (!Number.isFinite(n.x)) n.x = 200;
+  if (!Number.isFinite(n.y)) n.y = 200;
+}
+
+function removeNode(nodes, id) {
+  const i = nodes.findIndex(x => String(x.id) === String(id));
+  if (i !== -1) nodes.splice(i, 1);
+}
+
+function upsertEdge(edges, patch) {
+  const from = String(patch.from || patch.source || '').trim();
+  const to = String(patch.to || patch.target || '').trim();
+  if (!from || !to) return;
+  const label = String(patch.label || '').trim();
+  let e = edges.find(x => String(x.from) === from && String(x.to) === to && String(x.label||'') === label);
+  if (!e) edges.push({ from, to, label });
+}
+
+function removeEdge(edges, patch) {
+  const from = String(patch.from || patch.source || '').trim();
+  const to = String(patch.to || patch.target || '').trim();
+  const label = String(patch.label || '').trim();
+  for (let i = edges.length - 1; i >= 0; i--) {
+    const e = edges[i];
+    if (String(e.from) === from && String(e.to) === to) {
+      if (!label || String(e.label||'') === label) edges.splice(i, 1);
+    }
+  }
+}
+
+function applyGraphUpdates(updates) {
+  if (!Array.isArray(updates) || updates.length === 0) return 0;
+  const g = getGraphData();
+  let changed = 0;
+
+  for (const u0 of updates) {
+    const u = (u0 && typeof u0 === 'object') ? u0 : null;
+    if (!u) continue;
+    const op = String(u.op || u.action || '').trim().toLowerCase();
+
+    if (op === 'add_or_update' || op === 'upsert' || op === 'add_or_update_node' || op === 'node') {
+      upsertNode(g.nodes, u);
+      changed++;
+      continue;
+    }
+    if (op === 'remove' || op === 'remove_node' || op === 'delete_node') {
+      removeNode(g.nodes, u.id);
+      // 同时移除相关边
+      const id = String(u.id || '');
+      g.edges = g.edges.filter(e => String(e.from) !== id && String(e.to) !== id);
+      if (g.currentNodeId === id) g.currentNodeId = '';
+      changed++;
+      continue;
+    }
+    if (op === 'add_or_update_edge' || op === 'edge' || op === 'add_edge' || op === 'upsert_edge') {
+      upsertEdge(g.edges, u);
+      changed++;
+      continue;
+    }
+    if (op === 'remove_edge' || op === 'delete_edge') {
+      removeEdge(g.edges, u);
+      changed++;
+      continue;
+    }
+    if (op === 'set_current' || op === 'set_current_node' || op === 'current') {
+      const id = String(u.id || u.nodeId || u.currentNodeId || '').trim();
+      if (id) {
+        g.currentNodeId = id;
+        changed++;
+      }
+      continue;
+    }
+    if (op === 'set_background' || op === 'background') {
+      const bg = String(u.url || u.backgroundImage || u.bg || '').trim();
+      if (bg !== String(g.backgroundImage || '')) {
+        g.backgroundImage = bg;
+        changed++;
+      }
+      continue;
+    }
+
+    // 兼容：TheWorld 风格里 coords/parentId 等也在 add_or_update 里，这里已处理
+  }
+
+  if (changed) setGraphData(g);
+  return changed;
+}
+
+function extractUpdatesFromText(text) {
+  const t = String(text || '');
+  const out = [];
+  const re1 = /<MapUpdate>\s*([\s\S]+?)\s*<\/MapUpdate>/ig;
+  const re2 = /<GraphUpdate>\s*([\s\S]+?)\s*<\/GraphUpdate>/ig;
+
+  const grab = (re) => {
+    let m;
+    while ((m = re.exec(t))) {
+      const body = String(m[1] || '').trim();
+      try {
+        const j = JSON.parse(body);
+        if (Array.isArray(j)) out.push(...j);
+      } catch { /* ignore */ }
+    }
+  };
+  grab(re1); grab(re2);
+  return out;
+}
+
+function walkStrings(obj, fn) {
+  if (!obj) return;
+  if (typeof obj === 'string') { fn(obj); return; }
+  if (Array.isArray(obj)) { obj.forEach(v => walkStrings(v, fn)); return; }
+  if (typeof obj === 'object') {
+    for (const k of Object.keys(obj)) walkStrings(obj[k], fn);
+  }
+}
+
+function maybeProcessGraphUpdateFromOutput(rawText, parsedObj) {
+  const s = ensureSettings();
+  if (!s.graphAllowMapUpdate) return 0;
+
+  let updates = extractUpdatesFromText(rawText);
+  if (parsedObj) {
+    walkStrings(parsedObj, (str) => { updates = updates.concat(extractUpdatesFromText(str)); });
+    // 也支持显式字段：map_update / graph_update（数组）
+    if (Array.isArray(parsedObj.map_update)) updates = updates.concat(parsedObj.map_update);
+    if (Array.isArray(parsedObj.graph_update)) updates = updates.concat(parsedObj.graph_update);
+  }
+  updates = updates.filter(x => x && typeof x === 'object');
+  return applyGraphUpdates(updates);
+}
+
+function buildGraphBlock() {
+  const s = ensureSettings();
+  if (!s.graphInject) return '';
+
+  const g = getGraphData();
+  const maxChars = clampInt(s.graphMaxChars, 500, 50000, DEFAULT_SETTINGS.graphMaxChars);
+
+  const nodes = Array.isArray(g.nodes) ? g.nodes : [];
+  const edges = Array.isArray(g.edges) ? g.edges : [];
+
+  const current = nodes.find(n => String(n.id) === String(g.currentNodeId));
+  const header = `【图谱/地图（节点：${nodes.length}，关系：${edges.length}，当前位置：${current ? current.name : '未设置'}）】`;
+
+  const lines = [header];
+  // 简要列出节点
+  const maxList = Math.min(nodes.length, 60);
+  for (let i = 0; i < maxList; i++) {
+    const n = nodes[i];
+    const type = n.type ? `#${n.type}` : '';
+    const parent = n.parentId ? ` parent=${n.parentId}` : '';
+    lines.push(`- ${n.id}（${n.name}）${type}${parent}`);
+  }
+  if (nodes.length > maxList) lines.push(`- …（省略 ${nodes.length - maxList} 个节点）`);
+
+  // 简要列出关系
+  if (edges.length) {
+    lines.push(`\n【关系】`);
+    const maxE = Math.min(edges.length, 80);
+    for (let i = 0; i < maxE; i++) {
+      const e = edges[i];
+      const label = e.label ? `（${e.label}）` : '';
+      lines.push(`- ${e.from} → ${e.to}${label}`);
+    }
+    if (edges.length > maxE) lines.push(`- …（省略 ${edges.length - maxE} 条关系）`);
+  }
+
+  let text = lines.join('\n');
+  if (text.length > maxChars) text = text.slice(0, maxChars) + '…';
+  return `\n${text}\n`;
+}
+
+
+
+// -------------------- external world source --------------------
+
+function parseHeadersJson(text) {
+  const t = String(text ?? '').trim();
+  if (!t) return {};
+  try {
+    const j = JSON.parse(t);
+    if (j && typeof j === 'object' && !Array.isArray(j)) return j;
+  } catch { /* ignore */ }
+  return null; // invalid
+}
+
+function formatTime(ts) {
+  const n = Number(ts || 0);
+  if (!n) return '未刷新';
+  const d = new Date(n);
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function updateWorldSourceInfoLabel() {
+  const $info = $('#sg_worldSourceInfo');
+  if (!$info.length) return;
+  const s = ensureSettings();
+  const len = (s.worldSourceCache ? String(s.worldSourceCache).length : 0);
+  const t = formatTime(s.worldSourceLastFetchedAt);
+  const url = s.worldSourceUrl ? ` · ${s.worldSourceUrl}` : '';
+  $info.text(`上次刷新：${t} · ${len} 字符${url}`);
+}
+
+function buildWorldSourceBlock() {
+  const s = ensureSettings();
+  if (!s.worldSourceEnabled || !s.worldSourceInjectToAnalysis) return '';
+  const url = String(s.worldSourceUrl || '').trim();
+  const maxChars = clampInt(s.worldSourceMaxChars, 500, 200000, DEFAULT_SETTINGS.worldSourceMaxChars);
+  const raw = String(s.worldSourceCache || '').trim();
+
+  if (!raw) return `【外部世界信息】（未刷新）\n`;
+  const text = raw.length > maxChars ? raw.slice(0, maxChars) + '…' : raw;
+  return `【外部世界信息${url ? `（${url}）` : ''}】\n${text}\n`;
+}
+
+function getWorldSourceTextForMapGen() {
+  const s = ensureSettings();
+  if (!s.worldSourceEnabled) return '';
+  const maxChars = clampInt(s.worldSourceMaxChars, 500, 200000, DEFAULT_SETTINGS.worldSourceMaxChars);
+  const raw = String(s.worldSourceCache || '').trim();
+  if (!raw) return '';
+  return raw.length > maxChars ? raw.slice(0, maxChars) + '…' : raw;
+}
+
+async function fetchWorldSourceNow() {
+  const s = ensureSettings();
+  if (!s.worldSourceUrl) throw new Error('请填写世界信息源 URL');
+  const url = String(s.worldSourceUrl || '').trim();
+  const method = String(s.worldSourceMethod || 'GET').toUpperCase();
+
+  const headersObj = parseHeadersJson(s.worldSourceHeadersJson);
+  if (headersObj === null) throw new Error('请求头 JSON 格式不正确');
+
+  const headers = { ...headersObj };
+  if (!headers.Accept) headers.Accept = 'application/json, text/plain, */*';
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      mode: 'cors',
+      credentials: 'omit',
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    const err = new Error(`世界信息源请求失败: HTTP ${res.status} ${res.statusText}\n${text}`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const ct = String(res.headers.get('content-type') || '');
+  let text = '';
+  if (ct.includes('application/json')) {
+    const j = await res.json().catch(() => null);
+    text = JSON.stringify(j ?? {}, null, 2);
+  } else {
+    text = await res.text().catch(() => '');
+  }
+
+  const maxChars = clampInt(s.worldSourceMaxChars, 500, 200000, DEFAULT_SETTINGS.worldSourceMaxChars);
+  if (text.length > maxChars) text = text.slice(0, maxChars) + '…';
+
+  s.worldSourceCache = text;
+  s.worldSourceLastFetchedAt = Date.now();
+  saveSettings();
+
+  updateWorldSourceInfoLabel();
+  return text;
+}
+
+function clearWorldSourceCache() {
+  const s = ensureSettings();
+  s.worldSourceCache = '';
+  s.worldSourceLastFetchedAt = 0;
+  saveSettings();
+  updateWorldSourceInfoLabel();
+}
+
+// -------------------- graph UI --------------------
+
+let sgGraphBackdrop = null;
+let sgGraphUi = {
+  scale: 1,
+  tx: 0,
+  ty: 0,
+  selectedId: '',
+};
+
+function isGraphModalOpen() {
+  return !!(sgGraphBackdrop && document.body.contains(sgGraphBackdrop));
+}
+
+function closeGraphModal() {
+  if (sgGraphBackdrop && sgGraphBackdrop.parentNode) sgGraphBackdrop.parentNode.removeChild(sgGraphBackdrop);
+  sgGraphBackdrop = null;
+}
+
+function openGraphModal() {
+  if (isGraphModalOpen()) return;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sg-graph-backdrop';
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) closeGraphModal();
+  });
+
+  const modal = document.createElement('div');
+  modal.className = 'sg-graph-modal';
+  modal.innerHTML = `
+    <div class="sg-graph-head">
+      <div class="sg-graph-title">图谱 / 地图</div>
+      <div class="sg-graph-mini" id="sg_graph_head_info"></div>
+      <div class="sg-graph-toolbar">
+        <button class="menu_button sg-btn" id="sg_graph_fit">适配</button>
+        <button class="menu_button sg-btn" id="sg_graph_reset">重置视图</button>
+        <button class="menu_button sg-btn" id="sg_graph_add_node">+ 节点</button>
+        <button class="menu_button sg-btn" id="sg_graph_add_edge">+ 关系</button>
+        <button class="menu_button sg-btn" id="sg_graph_close">关闭</button>
+      </div>
+    </div>
+    <div class="sg-graph-body">
+      <div class="sg-graph-side">
+        <div class="sg-graph-field">
+          <label>搜索</label>
+          <input id="sg_graph_search" type="text" placeholder="输入 id / 名称…">
+        </div>
+        <div class="sg-graph-field">
+          <label>选中节点</label>
+          <select id="sg_graph_select"></select>
+        </div>
+        <div class="sg-graph-field">
+          <label>名称</label>
+          <input id="sg_graph_name" type="text">
+        </div>
+        <div class="sg-graph-field">
+          <label>类型</label>
+          <select id="sg_graph_type">
+            <option value="character">角色</option>
+            <option value="location">地点</option>
+            <option value="faction">组织/势力</option>
+            <option value="item">物品</option>
+            <option value="event">事件</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="sg-graph-field">
+          <label>父节点ID（可空，用于地点层级）</label>
+          <input id="sg_graph_parent" type="text" placeholder="例如：city_alpha">
+        </div>
+        <div class="sg-graph-field">
+          <label>描述</label>
+          <textarea id="sg_graph_desc" rows="4"></textarea>
+        </div>
+        <div class="sg-row sg-inline">
+          <button class="menu_button sg-btn" id="sg_graph_set_current">设为当前位置</button>
+          <button class="menu_button sg-btn" id="sg_graph_delete">删除节点</button>
+        </div>
+
+        <div class="sg-graph-mini" style="margin-top:10px;">
+          小技巧：拖动节点可改坐标；鼠标滚轮缩放；拖动画布平移。<br>
+          AI 更新：在任意输出字段里包含 <code>&lt;MapUpdate&gt;[...]&lt;/MapUpdate&gt;</code> 即可更新。
+        </div>
+
+        <div class="sg-graph-list" id="sg_graph_list"></div>
+      </div>
+
+      <div class="sg-graph-canvas">
+        <div class="sg-graph-viewport" id="sg_graph_viewport">
+          <div class="sg-graph-scene" id="sg_graph_scene">
+            <div class="sg-graph-bg" id="sg_graph_bg"></div>
+            <svg class="sg-graph-svg" id="sg_graph_svg"></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+  sgGraphBackdrop = backdrop;
+
+  // wire
+  modal.querySelector('#sg_graph_close').addEventListener('click', closeGraphModal);
+  modal.querySelector('#sg_graph_fit').addEventListener('click', () => fitGraphToBounds());
+  modal.querySelector('#sg_graph_reset').addEventListener('click', () => resetGraphView());
+  modal.querySelector('#sg_graph_add_node').addEventListener('click', () => addGraphNodePrompt());
+  modal.querySelector('#sg_graph_add_edge').addEventListener('click', () => addGraphEdgePrompt());
+
+  const viewport = modal.querySelector('#sg_graph_viewport');
+  viewport.addEventListener('wheel', (e) => onGraphWheel(e), { passive: false });
+  viewport.addEventListener('pointerdown', (e) => onGraphPanStart(e));
+
+  modal.querySelector('#sg_graph_search').addEventListener('input', () => renderGraphModal());
+  modal.querySelector('#sg_graph_select').addEventListener('change', (e) => {
+    sgGraphUi.selectedId = String(e.target.value || '');
+    renderGraphModal();
+  });
+
+  const saveField = () => saveSelectedNodeFromFields();
+  ['#sg_graph_name','#sg_graph_type','#sg_graph_parent','#sg_graph_desc'].forEach(sel => {
+    modal.querySelector(sel).addEventListener('change', saveField);
+    modal.querySelector(sel).addEventListener('blur', saveField);
+  });
+
+  modal.querySelector('#sg_graph_set_current').addEventListener('click', () => {
+    const g = getGraphData();
+    if (!sgGraphUi.selectedId) return;
+    g.currentNodeId = sgGraphUi.selectedId;
+    setGraphData(g);
+    renderGraphModal();
+  });
+
+  modal.querySelector('#sg_graph_delete').addEventListener('click', () => {
+    if (!sgGraphUi.selectedId) return;
+    if (!confirm(`删除节点 ${sgGraphUi.selectedId}？（相关关系也会删除）`)) return;
+    const g = getGraphData();
+    const id = sgGraphUi.selectedId;
+    g.nodes = g.nodes.filter(n => String(n.id) !== id);
+    g.edges = g.edges.filter(e => String(e.from) !== id && String(e.to) !== id);
+    if (g.currentNodeId === id) g.currentNodeId = '';
+    sgGraphUi.selectedId = '';
+    setGraphData(g);
+    renderGraphModal();
+  });
+
+  resetGraphView(true);
+  renderGraphModal();
+}
+
+function resetGraphView(keepSelection = false) {
+  sgGraphUi.scale = 1;
+  sgGraphUi.tx = 0;
+  sgGraphUi.ty = 0;
+  if (!keepSelection) sgGraphUi.selectedId = '';
+  applyGraphTransform();
+}
+
+function applyGraphTransform() {
+  if (!isGraphModalOpen()) return;
+  const scene = document.getElementById('sg_graph_scene');
+  if (!scene) return;
+  scene.style.transform = `translate(${sgGraphUi.tx}px, ${sgGraphUi.ty}px) scale(${sgGraphUi.scale})`;
+}
+
+function screenToWorld(x, y) {
+  return {
+    x: (x - sgGraphUi.tx) / sgGraphUi.scale,
+    y: (y - sgGraphUi.ty) / sgGraphUi.scale
+  };
+}
+
+let panState = null;
+function onGraphPanStart(ev) {
+  // only when clicking background (not node)
+  const target = ev.target;
+  if (target && target.classList && target.classList.contains('sg-graph-node')) return;
+  const viewport = document.getElementById('sg_graph_viewport');
+  if (!viewport) return;
+  ev.preventDefault();
+  panState = { x: ev.clientX, y: ev.clientY, tx: sgGraphUi.tx, ty: sgGraphUi.ty, pid: ev.pointerId };
+  viewport.classList.add('is-panning');
+  viewport.setPointerCapture?.(ev.pointerId);
+  window.addEventListener('pointermove', onGraphPanMove, true);
+  window.addEventListener('pointerup', onGraphPanEnd, true);
+  window.addEventListener('pointercancel', onGraphPanEnd, true);
+}
+
+function onGraphPanMove(ev) {
+  if (!panState) return;
+  const dx = ev.clientX - panState.x;
+  const dy = ev.clientY - panState.y;
+  sgGraphUi.tx = panState.tx + dx;
+  sgGraphUi.ty = panState.ty + dy;
+  applyGraphTransform();
+}
+
+function onGraphPanEnd(ev) {
+  if (!panState) return;
+  const viewport = document.getElementById('sg_graph_viewport');
+  viewport?.classList.remove('is-panning');
+  try { viewport?.releasePointerCapture?.(panState.pid); } catch {}
+  panState = null;
+  window.removeEventListener('pointermove', onGraphPanMove, true);
+  window.removeEventListener('pointerup', onGraphPanEnd, true);
+  window.removeEventListener('pointercancel', onGraphPanEnd, true);
+}
+
+function onGraphWheel(ev) {
+  ev.preventDefault();
+  const delta = ev.deltaY;
+  const factor = delta > 0 ? 0.9 : 1.1;
+  const oldScale = sgGraphUi.scale;
+  let newScale = oldScale * factor;
+  newScale = Math.min(2.6, Math.max(0.35, newScale));
+
+  const rect = ev.currentTarget.getBoundingClientRect();
+  const px = ev.clientX - rect.left;
+  const py = ev.clientY - rect.top;
+
+  // zoom around pointer
+  const wx = (px - sgGraphUi.tx) / oldScale;
+  const wy = (py - sgGraphUi.ty) / oldScale;
+  sgGraphUi.scale = newScale;
+  sgGraphUi.tx = px - wx * newScale;
+  sgGraphUi.ty = py - wy * newScale;
+
+  applyGraphTransform();
+}
+
+function fitGraphToBounds() {
+  if (!isGraphModalOpen()) return;
+  const g = getGraphData();
+  const nodes = g.nodes || [];
+  if (!nodes.length) { resetGraphView(true); return; }
+
+  const viewport = document.getElementById('sg_graph_viewport');
+  const scene = document.getElementById('sg_graph_scene');
+  if (!viewport || !scene) return;
+
+  const rect = viewport.getBoundingClientRect();
+  const pad = 40;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const x = Number(n.x), y = Number(n.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  }
+  if (!Number.isFinite(minX)) { resetGraphView(true); return; }
+
+  const bw = Math.max(80, maxX - minX + 160);
+  const bh = Math.max(80, maxY - minY + 160);
+
+  const sx = (rect.width - pad * 2) / bw;
+  const sy = (rect.height - pad * 2) / bh;
+  const scale = Math.min(2.3, Math.max(0.35, Math.min(sx, sy)));
+
+  sgGraphUi.scale = scale;
+  sgGraphUi.tx = pad - (minX - 80) * scale;
+  sgGraphUi.ty = pad - (minY - 80) * scale;
+
+  applyGraphTransform();
+}
+
+function addGraphNodePrompt() {
+  const id = prompt('新节点 ID（英文/数字/下划线，唯一）', `node_${Date.now()}`);
+  if (!id) return;
+  const name = prompt('节点名称（显示用）', id) || id;
+  const type = prompt('类型（character/location/faction/item/event/other）', 'character') || 'character';
+
+  const g = getGraphData();
+  const exists = g.nodes.find(n => String(n.id) === String(id));
+  if (exists) { alert('该 ID 已存在'); return; }
+
+  // place at viewport center
+  const viewport = document.getElementById('sg_graph_viewport');
+  const rect = viewport ? viewport.getBoundingClientRect() : { width: 800, height: 500 };
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  const w = screenToWorld(cx, cy);
+
+  g.nodes.push({ id: String(id), name: String(name), type: String(type), parentId: '', x: w.x, y: w.y, description: '' });
+  sgGraphUi.selectedId = String(id);
+  setGraphData(g);
+  renderGraphModal();
+}
+
+function addGraphEdgePrompt() {
+  const input = prompt('新增关系：格式  sourceId -> targetId : 标签(可选)\n例如：alice -> bob : 兄妹', '');
+  if (!input) return;
+
+  const m = input.match(/^\s*([^\s\-:>]+)\s*->\s*([^\s:]+)\s*(?::\s*(.+))?$/);
+  if (!m) { alert('格式不正确'); return; }
+
+  const from = String(m[1] || '').trim();
+  const to = String(m[2] || '').trim();
+  const label = String(m[3] || '').trim();
+
+  const g = getGraphData();
+  upsertEdge(g.edges, { from, to, label });
+  setGraphData(g);
+  renderGraphModal();
+}
+
+function saveSelectedNodeFromFields() {
+  if (!isGraphModalOpen()) return;
+  if (!sgGraphUi.selectedId) return;
+
+  const g = getGraphData();
+  const n = g.nodes.find(x => String(x.id) === String(sgGraphUi.selectedId));
+  if (!n) return;
+
+  const $ = (id) => document.getElementById(id);
+  const name = $('sg_graph_name')?.value ?? '';
+  const type = $('sg_graph_type')?.value ?? 'character';
+  const parentId = $('sg_graph_parent')?.value ?? '';
+  const desc = $('sg_graph_desc')?.value ?? '';
+
+  n.name = String(name);
+  n.type = String(type);
+  n.parentId = String(parentId);
+  n.description = String(desc);
+
+  setGraphData(g);
+}
+
+function renderGraphModal() {
+  if (!isGraphModalOpen()) return;
+  const modal = sgGraphBackdrop.querySelector('.sg-graph-modal');
+  if (!modal) return;
+
+  const g = getGraphData();
+  const nodes = g.nodes || [];
+  const edges = g.edges || [];
+
+  // header info
+  const current = nodes.find(n => String(n.id) === String(g.currentNodeId));
+  modal.querySelector('#sg_graph_head_info').textContent = `节点 ${nodes.length} · 关系 ${edges.length} · 当前位置：${current ? current.name : '未设置'}`;
+
+  // background
+  const bg = modal.querySelector('#sg_graph_bg');
+  if (bg) bg.style.backgroundImage = g.backgroundImage ? `url(${g.backgroundImage})` : 'none';
+
+  // search
+  const q = String(modal.querySelector('#sg_graph_search').value || '').trim().toLowerCase();
+  const filtered = q ? nodes.filter(n => String(n.id).toLowerCase().includes(q) || String(n.name||'').toLowerCase().includes(q)) : nodes;
+
+  // select options
+  const sel = modal.querySelector('#sg_graph_select');
+  const keep = sgGraphUi.selectedId;
+  sel.innerHTML = `<option value="">（未选择）</option>` + filtered.slice(0, 400).map(n => `<option value="${escapeHtml(n.id)}">${escapeHtml(n.id)}（${escapeHtml(n.name||'')}）</option>`).join('');
+  if (keep && filtered.some(n => String(n.id) === keep)) sel.value = keep;
+  else if (!keep && filtered.length) { /* keep none */ }
+
+  // side list (quick click)
+  const list = modal.querySelector('#sg_graph_list');
+  list.innerHTML = filtered.slice(0, 120).map(n => {
+    const tag = n.type ? `#${escapeHtml(n.type)}` : '';
+    return `<div class="sg-graph-item" data-id="${escapeHtml(n.id)}"><b>${escapeHtml(n.name||n.id)}</b> <span class="sg-muted">${escapeHtml(n.id)}</span> <span class="sg-muted">${tag}</span></div>`;
+  }).join('');
+  list.querySelectorAll('.sg-graph-item').forEach(el => {
+    el.addEventListener('click', () => {
+      sgGraphUi.selectedId = el.getAttribute('data-id') || '';
+      renderGraphModal();
+    });
+  });
+
+  // fill fields
+  const node = nodes.find(n => String(n.id) === String(sgGraphUi.selectedId));
+  modal.querySelector('#sg_graph_name').value = node ? String(node.name||'') : '';
+  modal.querySelector('#sg_graph_type').value = node ? String(node.type||'character') : 'character';
+  modal.querySelector('#sg_graph_parent').value = node ? String(node.parentId||'') : '';
+  modal.querySelector('#sg_graph_desc').value = node ? String(node.description||'') : '';
+
+  // render scene size
+  const scene = modal.querySelector('#sg_graph_scene');
+  const W = Number(g.canvas?.width) || 1400;
+  const H = Number(g.canvas?.height) || 900;
+  scene.style.width = `${W}px`;
+  scene.style.height = `${H}px`;
+
+  // nodes
+  // remove old node divs (keep bg + svg)
+  [...scene.querySelectorAll('.sg-graph-node')].forEach(el => el.remove());
+
+  for (const n of nodes) {
+    const el = document.createElement('div');
+    el.className = 'sg-graph-node';
+    el.dataset.id = String(n.id);
+    el.dataset.type = String(n.type || 'other');
+    el.textContent = String(n.name || n.id);
+    el.style.left = `${Number(n.x) || 0}px`;
+    el.style.top = `${Number(n.y) || 0}px`;
+    if (String(n.id) === String(g.currentNodeId)) el.classList.add('is-current');
+    scene.appendChild(el);
+
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sgGraphUi.selectedId = String(n.id);
+      renderGraphModal();
+    });
+
+    enableNodeDrag(el);
+  }
+
+  // edges (SVG)
+  const svg = modal.querySelector('#sg_graph_svg');
+  svg.setAttribute('width', String(W));
+  svg.setAttribute('height', String(H));
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  const nodeById = new Map(nodes.map(n => [String(n.id), n]));
+  const edgeEls = [];
+
+  for (const e of edges) {
+    const a = nodeById.get(String(e.from));
+    const b = nodeById.get(String(e.to));
+    if (!a || !b) continue;
+
+    const x1 = Number(a.x) || 0;
+    const y1 = Number(a.y) || 0;
+    const x2 = Number(b.x) || 0;
+    const y2 = Number(b.y) || 0;
+
+    edgeEls.push(`<line class="sg-graph-edge" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"></line>`);
+
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    if (e.label) {
+      edgeEls.push(`<text class="sg-graph-edge-label" x="${mx}" y="${my - 6}" text-anchor="middle">${escapeHtml(String(e.label))}</text>`);
+    }
+  }
+
+  svg.innerHTML = edgeEls.join('');
+
+  applyGraphTransform();
+}
+
+function enableNodeDrag(el) {
+  let dragging = false;
+  let start = null;
+  let moved = false;
+
+  const onMove = (ev) => {
+    if (!dragging || !start) return;
+    const dx = (ev.clientX - start.sx) / sgGraphUi.scale;
+    const dy = (ev.clientY - start.sy) / sgGraphUi.scale;
+    if (!moved && (Math.abs(dx) + Math.abs(dy) > 2)) moved = true;
+
+    const nx = start.x + dx;
+    const ny = start.y + dy;
+
+    el.style.left = `${nx}px`;
+    el.style.top = `${ny}px`;
+
+    // update in data and rerender edges only (fast)
+    const g = getGraphData();
+    const n = g.nodes.find(n => String(n.id) === String(el.dataset.id));
+    if (n) { n.x = nx; n.y = ny; saveGraphDataDebounced(g); }
+    renderGraphEdgesOnly();
+  };
+
+  const onUp = (ev) => {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove('is-dragging');
+    try { el.releasePointerCapture(ev.pointerId); } catch {}
+    window.removeEventListener('pointermove', onMove, true);
+    window.removeEventListener('pointerup', onUp, true);
+    window.removeEventListener('pointercancel', onUp, true);
+  };
+
+  el.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    dragging = true;
+    moved = false;
+    el.classList.add('is-dragging');
+    try { el.setPointerCapture(ev.pointerId); } catch {}
+
+    const g = getGraphData();
+    const n = g.nodes.find(n => String(n.id) === String(el.dataset.id));
+    start = {
+      sx: ev.clientX,
+      sy: ev.clientY,
+      x: Number(n?.x) || 0,
+      y: Number(n?.y) || 0
+    };
+
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+  });
+}
+
+function renderGraphEdgesOnly() {
+  if (!isGraphModalOpen()) return;
+  const modal = sgGraphBackdrop.querySelector('.sg-graph-modal');
+  if (!modal) return;
+
+  const g = getGraphData();
+  const nodes = g.nodes || [];
+  const edges = g.edges || [];
+  const W = Number(g.canvas?.width) || 1400;
+  const H = Number(g.canvas?.height) || 900;
+
+  const svg = modal.querySelector('#sg_graph_svg');
+  if (!svg) return;
+  svg.setAttribute('width', String(W));
+  svg.setAttribute('height', String(H));
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  const nodeById = new Map(nodes.map(n => [String(n.id), n]));
+  const edgeEls = [];
+
+  for (const e of edges) {
+    const a = nodeById.get(String(e.from));
+    const b = nodeById.get(String(e.to));
+    if (!a || !b) continue;
+
+    const x1 = Number(a.x) || 0;
+    const y1 = Number(a.y) || 0;
+    const x2 = Number(b.x) || 0;
+    const y2 = Number(b.y) || 0;
+
+    edgeEls.push(`<line class="sg-graph-edge" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"></line>`);
+
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    if (e.label) {
+      edgeEls.push(`<text class="sg-graph-edge-label" x="${mx}" y="${my - 6}" text-anchor="middle">${escapeHtml(String(e.label))}</text>`);
+    }
+  }
+  svg.innerHTML = edgeEls.join('');
+}
+
+function updateGraphInfoLabel() {
+  const $info = $('#sg_graphInfo');
+  if (!$info.length) return;
+  const g = getGraphData();
+  const nodes = Array.isArray(g.nodes) ? g.nodes : [];
+  const edges = Array.isArray(g.edges) ? g.edges : [];
+  const current = nodes.find(n => String(n.id) === String(g.currentNodeId));
+  const curText = current ? `，当前位置：${current.name}` : '';
+  $info.text(`图谱：${nodes.length} 节点 / ${edges.length} 关系${curText}`);
+}
+
+function parseGraphJson(text) {
+  const t = String(text || '').trim();
+  if (!t) return defaultGraphData();
+  let j = null;
+  try { j = JSON.parse(t); } catch { j = null; }
+  if (!j || typeof j !== 'object') return defaultGraphData();
+  // 兼容：只有 nodes/edges 的对象
+  if (!Array.isArray(j.nodes)) j.nodes = [];
+  if (!Array.isArray(j.edges)) j.edges = [];
+  if (!j.canvas) j.canvas = { width: 1400, height: 900 };
+  j.backgroundImage = String(j.backgroundImage || '');
+  j.currentNodeId = String(j.currentNodeId || '');
+  return j;
+}
+
+function exportGraphJson() {
+  const g = getGraphData();
+  const txt = JSON.stringify(g, null, 2);
+  const blob = new Blob([txt], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `storyguide-graph-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+
 function getModules(mode /* panel|append */) {
   const s = ensureSettings();
   const rawText = String(s.modulesJson || '').trim();
@@ -826,11 +1693,102 @@ function buildSnapshot() {
     world ? `【世界观/设定补充】\n${world}\n` : `【世界观/设定补充】（未提供）\n`,
     canon ? `【原著后续/大纲】\n${canon}\n` : `【原著后续/大纲】（未提供）\n`,
     buildWorldbookBlock(),
+    buildGraphBlock(),
+    buildWorldSourceBlock(),
     `【聊天记录（最近${picked.length}条）】`,
     picked.length ? picked.join('\n\n') : '（空）'
   ].join('\n');
 
   return { snapshotText, sourceSummary };
+}
+
+
+
+async function runGraphAutoGenerate() {
+  const s = ensureSettings();
+  if (!s.enabled) { setStatus('插件未启用', 'warn'); return; }
+
+  // If enabled but no cache, try fetch once
+  if (s.worldSourceEnabled && !String(s.worldSourceCache || '').trim() && String(s.worldSourceUrl || '').trim()) {
+    try { await fetchWorldSourceNow(); } catch { /* ignore */ }
+  }
+
+  setStatus('正在生成地图/图谱…', 'warn');
+  $('#sg_autogenGraph').prop('disabled', true);
+
+  try {
+    const { snapshotText } = buildSnapshot();
+    const worldSrc = getWorldSourceTextForMapGen();
+    const g = getGraphData();
+
+    const nodesSummary = (g.nodes || []).slice(0, 80).map(n => `- ${n.id} | ${n.name || ''} | ${n.type || ''} | parent:${n.parentId || ''}`).join('\n');
+    const edgesSummary = (g.edges || []).slice(0, 120).map(e => `- ${e.from} -> ${e.to}${e.label ? ` : ${e.label}` : ''}`).join('\n');
+    const graphSummary = `【已有图谱（用于增量更新，避免重复造ID）】\n节点(${(g.nodes||[]).length}):\n${nodesSummary || '（空）'}\n\n关系(${(g.edges||[]).length}):\n${edgesSummary || '（空）'}\n\n当前节点: ${g.currentNodeId || '（未设置）'}\n`;
+
+    const maxPromptChars = 16000;
+    const snap = String(snapshotText || '');
+    const snapCut = snap.length > maxPromptChars ? snap.slice(snap.length - maxPromptChars) : snap;
+
+    const worldBlock = worldSrc ? `【外部世界信息（可选）】\n${worldSrc}\n` : `【外部世界信息（可选）】（无）\n`;
+
+    const system = [
+      '你是“地图/关系图谱生成器”。',
+      '你的任务：基于输入信息，生成 SillyTavern 插件可执行的 MapUpdate 指令数组，用于构建“地点地图 + 角色关系网”。',
+      '',
+      '输出要求（非常重要）：',
+      '1) 只输出一个 <MapUpdate>...</MapUpdate> 块，块内是 JSON 数组；不要输出任何额外文字、解释、代码块标记。',
+      '2) 每个节点必须有稳定 id（仅小写字母/数字/下划线），并尽量复用【已有图谱】里存在的 id。',
+      '3) 节点字段建议：id,name,type,parentId,x,y,description。（x,y 为像素坐标，范围建议 x:0-1400, y:0-900）',
+      '4) 关系用 from,to,label。label 简短如：亲属/敌对/同盟/雇佣/追捕/师徒。',
+      '5) 数量控制：<= 25 个节点，<= 40 条关系。优先“关键地点 + 关键人物 + 关键势力”。',
+      '6) 如果能推断玩家当前位置，请设置一个 set_current 操作：{"op":"set_current","id":"node_id"}。',
+      '',
+      '允许的 op：add_or_update_node / remove_node / add_or_update_edge / remove_edge / set_current。',
+    ].join('\n');
+
+    const user = [
+      worldBlock,
+      graphSummary,
+      '【聊天 + 设定（截取）】',
+      snapCut,
+      '',
+      '请输出 MapUpdate：'
+    ].join('\n');
+
+    const messages = [
+      { role: 'system', content: system },
+      { role: 'user', content: user }
+    ];
+
+    let outText = '';
+    if (s.provider === 'custom') {
+      outText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
+    } else {
+      outText = await callViaSillyTavern(messages, null, s.temperature);
+      if (typeof outText !== 'string') outText = JSON.stringify(outText ?? '');
+    }
+
+    const updates = extractUpdatesFromText(outText);
+    if (!updates.length) {
+      // fallback: try parse as raw json array
+      const raw = stripCodeFences(String(outText || ''));
+      let j = null;
+      try { j = JSON.parse(raw); } catch { j = null; }
+      if (Array.isArray(j)) updates.push(...j);
+    }
+
+    if (!updates.length) {
+      throw new Error('未检测到 <MapUpdate> 指令。请检查模型是否严格按要求输出。');
+    }
+
+    const changed = applyGraphUpdates(updates);
+    updateGraphInfoLabel();
+    if (isGraphModalOpen()) renderGraphModal();
+
+    setStatus(`地图/图谱已更新：${changed} 项变更 ✅`, 'ok');
+  } finally {
+    $('#sg_autogenGraph').prop('disabled', false);
+  }
 }
 
 // -------------------- provider=st --------------------
@@ -1136,6 +2094,8 @@ async function runAnalysis() {
     }
 
     const parsed = safeJsonParse(jsonText);
+
+    try { maybeProcessGraphUpdateFromOutput(String(jsonText||''), parsed); } catch { /* ignore */ }
     lastJsonText = (parsed ? JSON.stringify(parsed, null, 2) : String(jsonText || ''));
 
     $('#sg_json').text(lastJsonText);
@@ -1163,791 +2123,6 @@ async function runAnalysis() {
     setStatus(`分析失败：${e?.message ?? e}`, 'err');
   } finally {
     $('#sg_analyze').prop('disabled', false);
-  }
-}
-
-// -------------------- summary (auto + world info) --------------------
-
-function isCountableMessage(m) {
-  if (!m) return false;
-  if (m.is_system === true) return false;
-  if (m.is_hidden === true) return false;
-  const txt = String(m.mes ?? '').trim();
-  return Boolean(txt);
-}
-
-function isCountableAssistantMessage(m) {
-  return isCountableMessage(m) && m.is_user !== true;
-}
-
-function computeFloorCount(chat, mode) {
-  const arr = Array.isArray(chat) ? chat : [];
-  let c = 0;
-  for (const m of arr) {
-    if (mode === 'assistant') {
-      if (isCountableAssistantMessage(m)) c++;
-    } else {
-      if (isCountableMessage(m)) c++;
-    }
-  }
-  return c;
-}
-
-function findStartIndexForLastNFloors(chat, mode, n) {
-  const arr = Array.isArray(chat) ? chat : [];
-  let remaining = Math.max(1, Number(n) || 1);
-  for (let i = arr.length - 1; i >= 0; i--) {
-    const m = arr[i];
-    const hit = (mode === 'assistant') ? isCountableAssistantMessage(m) : isCountableMessage(m);
-    if (!hit) continue;
-    remaining -= 1;
-    if (remaining <= 0) return i;
-  }
-  return 0;
-}
-
-function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars) {
-  const arr = Array.isArray(chat) ? chat : [];
-  const start = Math.max(0, Math.min(arr.length, Number(startIdx) || 0));
-  const perMsg = clampInt(maxCharsPerMessage, 200, 8000, 4000);
-  const totalMax = clampInt(maxTotalChars, 2000, 80000, 24000);
-
-  const parts = [];
-  let total = 0;
-  for (let i = start; i < arr.length; i++) {
-    const m = arr[i];
-    if (!isCountableMessage(m)) continue;
-    const who = m.is_user === true ? '用户' : (m.name || 'AI');
-    let txt = stripHtml(m.mes || '');
-    if (!txt) continue;
-    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '…';
-    const block = `【${who}】${txt}`;
-    if (total + block.length + 2 > totalMax) break;
-    parts.push(block);
-    total += block.length + 2;
-  }
-  return parts.join('\n');
-}
-
-function getSummarySchema() {
-  return {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      title: { type: 'string' },
-      summary: { type: 'string' },
-      keywords: { type: 'array', items: { type: 'string' } },
-    },
-    required: ['summary', 'keywords'],
-  };
-}
-
-function buildSummaryPromptMessages(chunkText, fromFloor, toFloor) {
-  const s = ensureSettings();
-
-  // system prompt
-  let sys = String(s.summarySystemPrompt || '').trim();
-  if (!sys) sys = DEFAULT_SUMMARY_SYSTEM_PROMPT;
-  // 强制追加 JSON 结构要求，避免用户自定义提示词导致解析失败
-  sys = sys + '\n\n' + SUMMARY_JSON_REQUIREMENT;
-
-  // user template (supports placeholders)
-  let tpl = String(s.summaryUserTemplate || '').trim();
-  if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
-  let user = renderTemplate(tpl, {
-    fromFloor: String(fromFloor),
-    toFloor: String(toFloor),
-    chunk: String(chunkText || ''),
-  });
-  // 如果用户模板里没有包含 chunk，占位补回去，防止误配导致无内容
-  if (!/{{\s*chunk\s*}}/i.test(tpl) && !String(user).includes(String(chunkText || '').slice(0, 12))) {
-    user = String(user || '').trim() + `\n\n【对话片段】\n${chunkText}`;
-  }
-  return [
-    { role: 'system', content: sys },
-    { role: 'user', content: user },
-  ];
-}
-
-function sanitizeKeywords(kws) {
-  const out = [];
-  const seen = new Set();
-  for (const k of (Array.isArray(kws) ? kws : [])) {
-    let t = String(k ?? '').trim();
-    if (!t) continue;
-    t = t.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
-    // split by common delimiters
-    const split = t.split(/[,，、;；/|]+/g).map(x => x.trim()).filter(Boolean);
-    for (const s of split) {
-      if (s.length < 2) continue;
-      if (s.length > 24) continue;
-      if (seen.has(s)) continue;
-      seen.add(s);
-      out.push(s);
-      if (out.length >= 16) return out;
-    }
-  }
-  return out;
-}
-
-function appendToBlueIndexCache(rec) {
-  const s = ensureSettings();
-  const item = {
-    title: String(rec?.title || '').trim(),
-    summary: String(rec?.summary || '').trim(),
-    keywords: sanitizeKeywords(rec?.keywords),
-    createdAt: Number(rec?.createdAt) || Date.now(),
-    range: rec?.range ?? undefined,
-  };
-  if (!item.summary) return;
-  if (!item.title) item.title = item.keywords?.[0] ? `条目：${item.keywords[0]}` : '条目';
-  const arr = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
-  // de-dup (only check recent items)
-  for (let i = arr.length - 1; i >= 0 && i >= arr.length - 10; i--) {
-    const prev = arr[i];
-    if (!prev) continue;
-    if (String(prev.title || '') === item.title && String(prev.summary || '') === item.summary) {
-      return;
-    }
-  }
-  arr.push(item);
-  // keep bounded
-  if (arr.length > 600) arr.splice(0, arr.length - 600);
-  s.summaryBlueIndex = arr;
-  saveSettings();
-  updateBlueIndexInfoLabel();
-}
-
-let cachedSlashExecutor = null;
-
-async function getSlashExecutor() {
-  if (cachedSlashExecutor) return cachedSlashExecutor;
-
-  const ctx = SillyTavern.getContext?.();
-  // SillyTavern has renamed / refactored slash command executors multiple times.
-  // We support a broad set of known entry points (newest first), and then best-effort
-  // call them with compatible signatures.
-  const candidates = [
-    // Newer ST versions expose this via getContext()
-    ctx?.executeSlashCommandsWithOptions,
-    ctx?.executeSlashCommands,
-    ctx?.processChatSlashCommands,
-    ctx?.executeSlashCommandsOnChatInput,
-
-    // Some builds expose the parser/executor objects
-    ctx?.SlashCommandParser?.executeSlashCommandsWithOptions,
-    ctx?.SlashCommandParser?.execute,
-    globalThis.SlashCommandParser?.executeSlashCommandsWithOptions,
-    globalThis.SlashCommandParser?.execute,
-
-    // Global fallbacks
-    globalThis.executeSlashCommandsWithOptions,
-    globalThis.executeSlashCommands,
-    globalThis.processChatSlashCommands,
-    globalThis.executeSlashCommandsOnChatInput,
-  ].filter(fn => typeof fn === 'function');
-
-  if (candidates.length) {
-    cachedSlashExecutor = async (cmd) => {
-      // best-effort signature compatibility
-      for (const fn of candidates) {
-        // common signatures:
-        // - fn(text)
-        // - fn(text, boolean)
-        // - fn(text, { quiet, silent, execute, ... })
-        // - fn({ input: text, ... })
-        try { return await fn(cmd); } catch { /* try next */ }
-        try { return await fn(cmd, true); } catch { /* try next */ }
-        try { return await fn(cmd, { quiet: true, silent: true }); } catch { /* try next */ }
-        try { return await fn(cmd, { shouldDisplayMessage: false, quiet: true, silent: true }); } catch { /* try next */ }
-        try { return await fn({ input: cmd, quiet: true, silent: true }); } catch { /* try next */ }
-        try { return await fn({ command: cmd, quiet: true, silent: true }); } catch { /* try next */ }
-      }
-      throw new Error('Slash command executor found but failed to run.');
-    };
-    return cachedSlashExecutor;
-  }
-
-  try {
-    const mod = await import(/* webpackIgnore: true */ '/script.js');
-    const modFns = [
-      mod?.executeSlashCommandsWithOptions,
-      mod?.executeSlashCommands,
-      mod?.processChatSlashCommands,
-      mod?.executeSlashCommandsOnChatInput,
-    ].filter(fn => typeof fn === 'function');
-    if (modFns.length) {
-      cachedSlashExecutor = async (cmd) => {
-        for (const fn of modFns) {
-          try { return await fn(cmd); } catch { /* try next */ }
-          try { return await fn(cmd, true); } catch { /* try next */ }
-          try { return await fn(cmd, { quiet: true, silent: true }); } catch { /* try next */ }
-        }
-        throw new Error('Slash command executor from /script.js failed to run.');
-      };
-      return cachedSlashExecutor;
-    }
-  } catch {
-    // ignore
-  }
-
-  cachedSlashExecutor = null;
-  throw new Error('未找到可用的 STscript/SlashCommand 执行函数（无法自动写入世界书）。');
-}
-
-async function execSlash(cmd) {
-  const exec = await getSlashExecutor();
-  return await exec(String(cmd || '').trim());
-}
-
-function safeStringifyShort(v, maxLen = 260) {
-  try {
-    const s = (typeof v === 'string') ? v : JSON.stringify(v);
-    if (!s) return '';
-    return s.length > maxLen ? (s.slice(0, maxLen) + '...') : s;
-  } catch {
-    try {
-      const s = String(v);
-      if (!s) return '';
-      return s.length > maxLen ? (s.slice(0, maxLen) + '...') : s;
-    } catch {
-      return '';
-    }
-  }
-}
-
-/**
- * 兼容不同版本 SlashCommand 执行器的返回值形态：
- * - string
- * - number/boolean
- * - array
- * - object（常见字段：text/output/message/result/value/data/html...）
- */
-function slashOutputToText(out, seen = new Set()) {
-  if (out == null) return '';
-  const t = typeof out;
-  if (t === 'string') return out;
-  if (t === 'number' || t === 'boolean') return String(out);
-
-  if (Array.isArray(out)) {
-    return out.map(x => slashOutputToText(x, seen)).filter(Boolean).join('\n');
-  }
-
-  if (t === 'object') {
-    if (seen.has(out)) return '';
-    seen.add(out);
-
-    // common fields in different ST builds
-    const common = ['text', 'output', 'message', 'content', 'result', 'value', 'data', 'html', 'return', 'payload', 'response'];
-    for (const k of common) {
-      if (Object.hasOwn(out, k)) {
-        const s = slashOutputToText(out[k], seen);
-        if (s) return s;
-      }
-    }
-
-    // any non-empty string field
-    for (const v of Object.values(out)) {
-      if (typeof v === 'string' && v.trim()) return v;
-    }
-
-    return '';
-  }
-
-  try { return String(out); } catch { return ''; }
-}
-
-/**
- * 从 SlashCommand 输出中提取世界书条目 UID
- * - 支持 text / object / array 多种形态
- * - 支持 uid=123、UID:123、以及返回对象里直接包含 uid 字段
- */
-function extractUid(out, seen = new Set()) {
-  if (out == null) return null;
-
-  const t = typeof out;
-
-  if (t === 'number') {
-    const n = Math.trunc(out);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
-
-  if (t === 'string') {
-    const s = out;
-    const m1 = s.match(/\buid\s*[:=]\s*(\d{1,12})\b/i);
-    if (m1) return Number.parseInt(m1[1], 10);
-    const m2 = s.match(/\b(\d{1,12})\b/);
-    if (m2) return Number.parseInt(m2[1], 10);
-    return null;
-  }
-
-  if (Array.isArray(out)) {
-    for (const it of out) {
-      const r = extractUid(it, seen);
-      if (r) return r;
-    }
-    return null;
-  }
-
-  if (t === 'object') {
-    if (seen.has(out)) return null;
-    seen.add(out);
-
-    // direct uid/id fields
-    const directKeys = ['uid', 'id', 'entryId', 'entry_id', 'worldInfoUid', 'worldinfoUid'];
-    for (const k of directKeys) {
-      if (Object.hasOwn(out, k)) {
-        const n = Number(out[k]);
-        if (Number.isFinite(n) && n > 0) return Math.trunc(n);
-      }
-    }
-
-    // nested containers
-    const nestedKeys = ['result', 'data', 'value', 'output', 'return', 'payload', 'response', 'entry'];
-    for (const k of nestedKeys) {
-      if (Object.hasOwn(out, k)) {
-        const r = extractUid(out[k], seen);
-        if (r) return r;
-      }
-    }
-
-    // scan all values (shallow + recursion)
-    for (const v of Object.values(out)) {
-      const r = extractUid(v, seen);
-      if (r) return r;
-    }
-
-    // fallback: parse from textified output
-    const s = slashOutputToText(out, seen);
-    if (s) return extractUid(s, seen);
-
-    return null;
-  }
-
-  // fallback
-  return extractUid(String(out), seen);
-}
-
-function quoteSlashValue(v) {
-  const s = String(v ?? '').replace(/"/g, '\\"');
-  return `"${s}"`;
-}
-
-async function resolveWorldInfoFile({ target = 'chatbook', file = '' } = {}) {
-  const t = String(target || 'chatbook');
-  if (t === 'file') {
-    const f = String(file || '').trim();
-    if (!f) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
-    return f;
-  }
-
-  // chatbook
-  const out = await execSlash('/getchatbook');
-  const txt = slashOutputToText(out);
-  const firstLineRaw = String(txt || '').split(/\r?\n/)[0].trim();
-  if (!firstLineRaw) throw new Error(`无法获取当前聊天绑定世界书（/getchatbook 返回为空，返回：${safeStringifyShort(out)}）。`);
-  // try extract a json filename if present
-  const m = firstLineRaw.match(/([^\s]+\.json)\b/i);
-  return m ? m[1] : firstLineRaw;
-}
-
-async function writeSummaryToWorldInfoEntry(rec, meta, {
-  target = 'file',
-  file = '',
-  commentPrefix = '剧情总结',
-  constant = 0,
-} = {}) {
-  const kws = sanitizeKeywords(rec.keywords);
-  const f = await resolveWorldInfoFile({ target, file });
-  const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
-  const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
-  const title = String(rec.title || '').trim() || `${prefix}`;
-  const comment = `${title}${range ? `（${range}）` : ''}`;
-
-  const content = String(rec.summary || '').replace(/\s*\n+\s*/g, ' ').replace(/\s+/g, ' ').trim();
-  const firstKey = kws[0] || prefix;
-
-  // 1) create entry
-  const outCreate = await execSlash(`/createentry file=${quoteSlashValue(f)} key=${quoteSlashValue(firstKey)} ${content}`);
-  const uid = extractUid(outCreate);
-  if (!uid) throw new Error(`创建世界书条目失败：无法解析 UID（返回：${safeStringifyShort(outCreate)}）`);
-
-  // 2) set fields
-  await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=key ${quoteSlashValue(kws.join(','))}`);
-  await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=comment ${quoteSlashValue(comment)}`);
-  await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=disable 0`);
-  if (Number(constant) === 1) {
-    // 蓝灯：常开
-    await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=constant 1`);
-  } else {
-    // 绿灯：不常开
-    await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=constant 0`);
-  }
-
-  // store link
-  const keyName = (Number(constant) === 1) ? 'worldInfoBlue' : 'worldInfoGreen';
-  rec[keyName] = { file: f, uid };
-  if (meta && Array.isArray(meta.history) && meta.history.length) {
-    meta.history[meta.history.length - 1] = rec;
-    await setSummaryMeta(meta);
-  }
-  return { file: f, uid };
-}
-
-async function runSummary({ reason = 'manual' } = {}) {
-  const s = ensureSettings();
-  const ctx = SillyTavern.getContext();
-
-  if (reason === 'auto' && !s.enabled) return;
-
-  if (isSummarizing) return;
-  isSummarizing = true;
-  setStatus('总结中…', 'warn');
-
-  try {
-    const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-    const mode = String(s.summaryCountMode || 'assistant');
-    const floorNow = computeFloorCount(chat, mode);
-
-    let meta = getSummaryMeta();
-    if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
-
-    // choose range
-    let startIdx = 0;
-    let fromFloor = 1;
-    const toFloor = floorNow;
-
-    if (reason === 'auto' && meta.lastChatLen > 0 && meta.lastChatLen < chat.length) {
-      startIdx = meta.lastChatLen;
-      fromFloor = Math.max(1, Number(meta.lastFloor || 0) + 1);
-    } else {
-      startIdx = findStartIndexForLastNFloors(chat, mode, s.summaryEvery || 20);
-      fromFloor = Math.max(1, toFloor - (Number(s.summaryEvery) || 20) + 1);
-    }
-
-    const chunkText = buildSummaryChunkText(chat, startIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
-    if (!chunkText) {
-      setStatus('没有可总结的内容（片段为空）', 'warn');
-      return;
-    }
-
-    const messages = buildSummaryPromptMessages(chunkText, fromFloor, toFloor);
-    const schema = getSummarySchema();
-
-    let jsonText = '';
-    if (String(s.summaryProvider || 'st') === 'custom') {
-      jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream);
-      const parsedTry = safeJsonParse(jsonText);
-      if (!parsedTry || !parsedTry.summary) {
-        try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream); }
-        catch { /* ignore */ }
-      }
-    } else {
-      jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature);
-      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-      const parsedTry = safeJsonParse(jsonText);
-      if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
-    }
-
-    const parsed = safeJsonParse(jsonText);
-    if (!parsed || !parsed.summary) throw new Error('总结输出无法解析为 JSON。');
-
-    const keywords = sanitizeKeywords(parsed.keywords);
-    const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
-    const title = String(parsed.title || '').trim() || `${prefix}`;
-    const summary = String(parsed.summary || '').trim();
-
-    const rec = {
-      title,
-      summary,
-      keywords,
-      createdAt: Date.now(),
-      range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: Math.max(0, chat.length - 1) },
-    };
-
-    meta.history = Array.isArray(meta.history) ? meta.history : [];
-    meta.history.push(rec);
-    if (meta.history.length > 120) meta.history = meta.history.slice(-120);
-    meta.lastFloor = toFloor;
-    meta.lastChatLen = chat.length;
-    await setSummaryMeta(meta);
-
-    updateSummaryInfoLabel();
-    renderSummaryPaneFromMeta();
-
-    // 额外：把每次总结同步进“蓝灯索引缓存”（用于检索触发绿灯）
-    try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
-
-    // world info write
-    if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
-      const ok = [];
-      const err = [];
-
-      if (s.summaryToWorldInfo) {
-        try {
-          await writeSummaryToWorldInfoEntry(rec, meta, {
-            target: String(s.summaryWorldInfoTarget || 'chatbook'),
-            file: String(s.summaryWorldInfoFile || ''),
-            commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
-            constant: 0,
-          });
-          ok.push('绿灯世界书');
-        } catch (e) {
-          console.warn('[StoryGuide] write green world info failed:', e);
-          err.push(`绿灯世界书：${e?.message ?? e}`);
-        }
-      }
-
-      if (s.summaryToBlueWorldInfo) {
-        try {
-          await writeSummaryToWorldInfoEntry(rec, meta, {
-            target: 'file',
-            file: String(s.summaryBlueWorldInfoFile || ''),
-            commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
-            constant: 1,
-          });
-          ok.push('蓝灯世界书');
-        } catch (e) {
-          console.warn('[StoryGuide] write blue world info failed:', e);
-          err.push(`蓝灯世界书：${e?.message ?? e}`);
-        }
-      }
-
-      if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ')}）`, 'ok');
-      else setStatus(`总结完成 ✅（写入失败：${err.join('；')}）`, 'warn');
-    } else {
-      setStatus('总结完成 ✅', 'ok');
-    }
-  } finally {
-    isSummarizing = false;
-    updateButtonsEnabled();
-  }
-}
-
-function scheduleAutoSummary(reason = '') {
-  const s = ensureSettings();
-  if (!s.enabled) return;
-  if (!s.summaryEnabled) return;
-  const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
-  if (summaryTimer) clearTimeout(summaryTimer);
-  summaryTimer = setTimeout(() => {
-    summaryTimer = null;
-    maybeAutoSummary(reason).catch(() => void 0);
-  }, delay);
-}
-
-async function maybeAutoSummary(reason = '') {
-  const s = ensureSettings();
-  if (!s.enabled) return;
-  if (!s.summaryEnabled) return;
-  if (isSummarizing) return;
-
-  const ctx = SillyTavern.getContext();
-  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-  const mode = String(s.summaryCountMode || 'assistant');
-  const every = clampInt(s.summaryEvery, 1, 200, 20);
-  const floorNow = computeFloorCount(chat, mode);
-  if (floorNow <= 0) return;
-  if (floorNow % every !== 0) return;
-
-  const meta = getSummaryMeta();
-  const last = Number(meta?.lastFloor || 0);
-  if (floorNow <= last) return;
-
-  await runSummary({ reason: 'auto' });
-}
-
-// -------------------- 蓝灯索引 → 绿灯触发（发送消息时注入触发词） --------------------
-
-function escapeRegExp(str) {
-  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function stripTriggerInjection(text, tag = 'SG_WI_TRIGGERS') {
-  const t = String(text || '');
-  const et = escapeRegExp(tag);
-  // remove all existing injections of this tag (safe)
-  const reComment = new RegExp(`\\n?\\s*<!--\\s*${et}\\b[\\s\\S]*?-->`, 'g');
-  const rePlain = new RegExp(`\\n?\\s*\\[${et}\\][^\\n]*\\n?`, 'g');
-  return t.replace(reComment, '').replace(rePlain, '').trimEnd();
-}
-
-function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden') {
-  const kws = sanitizeKeywords(Array.isArray(keywords) ? keywords : []);
-  if (!kws.length) return '';
-  if (String(style || 'hidden') === 'plain') {
-    // Visible but most reliable for world-info scan.
-    return `\n\n[${tag}] ${kws.join(' ')}\n`;
-  }
-  // Hidden comment: put each keyword on its own line, so substring match is very likely to hit.
-  const body = kws.join('\n');
-  return `\n\n<!--${tag}\n${body}\n-->`;
-}
-
-function tokenizeForSimilarity(text) {
-  const s = String(text || '').toLowerCase();
-  const tokens = new Map();
-
-  function add(tok, w = 1) {
-    if (!tok) return;
-    const k = String(tok).trim();
-    if (!k) return;
-    tokens.set(k, (tokens.get(k) || 0) + w);
-  }
-
-  // latin words
-  const latin = s.match(/[a-z0-9_]{2,}/g) || [];
-  for (const w of latin) add(w, 1);
-
-  // CJK sequences -> bigrams (better than single-char)
-  const cjkSeqs = s.match(/[\u4e00-\u9fff]{2,}/g) || [];
-  for (const seq of cjkSeqs) {
-    // include short full seq for exact hits
-    if (seq.length <= 6) add(seq, 2);
-    for (let i = 0; i < seq.length - 1; i++) {
-      add(seq.slice(i, i + 2), 1);
-    }
-  }
-
-  return tokens;
-}
-
-function cosineSimilarity(mapA, mapB) {
-  if (!mapA?.size || !mapB?.size) return 0;
-  // iterate smaller
-  const small = mapA.size <= mapB.size ? mapA : mapB;
-  const large = mapA.size <= mapB.size ? mapB : mapA;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (const v of mapA.values()) normA += v * v;
-  for (const v of mapB.values()) normB += v * v;
-  if (!normA || !normB) return 0;
-  for (const [k, va] of small.entries()) {
-    const vb = large.get(k);
-    if (vb) dot += va * vb;
-  }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-function buildRecentChatText(chat, lookback, excludeLast = true) {
-  const msgs = [];
-  const arr = Array.isArray(chat) ? chat : [];
-  let i = arr.length - 1;
-  if (excludeLast) i -= 1;
-  for (; i >= 0 && msgs.length < lookback; i--) {
-    const m = arr[i];
-    if (!m) continue;
-    if (m.is_system === true) continue;
-    const t = stripHtml(m.mes ?? m.message ?? '');
-    if (t) msgs.push(t);
-  }
-  return msgs.reverse().join('\n');
-}
-
-function collectBlueIndexCandidates() {
-  const s = ensureSettings();
-  const meta = getSummaryMeta();
-  const out = [];
-  const seen = new Set();
-
-  const fromMeta = Array.isArray(meta?.history) ? meta.history : [];
-  for (const r of fromMeta) {
-    const title = String(r?.title || '').trim();
-    const summary = String(r?.summary || '').trim();
-    const keywords = sanitizeKeywords(r?.keywords);
-    if (!summary) continue;
-    const key = `${title}__${summary.slice(0, 24)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'), summary, keywords });
-  }
-
-  const fromImported = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
-  for (const r of fromImported) {
-    const title = String(r?.title || '').trim();
-    const summary = String(r?.summary || '').trim();
-    const keywords = sanitizeKeywords(r?.keywords);
-    if (!summary) continue;
-    const key = `${title}__${summary.slice(0, 24)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'), summary, keywords });
-  }
-
-  return out;
-}
-
-function pickRelevantIndexEntries(recentText, candidates, maxEntries, minScore) {
-  const recentVec = tokenizeForSimilarity(recentText);
-  const scored = [];
-  for (const e of candidates) {
-    const txt = `${e.title || ''}\n${e.summary || ''}\n${(Array.isArray(e.keywords) ? e.keywords.join(' ') : '')}`;
-    const vec = tokenizeForSimilarity(txt);
-    const score = cosineSimilarity(recentVec, vec);
-    if (score >= minScore) scored.push({ e, score });
-  }
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, maxEntries);
-}
-
-async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
-  const s = ensureSettings();
-  if (!s.wiTriggerEnabled) return;
-
-  const ctx = SillyTavern.getContext();
-  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-  if (!chat.length) return;
-
-  const last = chat[chat.length - 1];
-  if (!last || last.is_user !== true) return; // only on user send
-  const lastText = String(last.mes ?? last.message ?? '').trim();
-  if (!lastText || lastText.startsWith('/')) return;
-
-  const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
-  const recentText = buildRecentChatText(chat, lookback, true);
-  if (!recentText) return;
-
-  const candidates = collectBlueIndexCandidates();
-  if (!candidates.length) return;
-
-  const maxEntries = clampInt(s.wiTriggerMaxEntries, 1, 20, 4);
-  const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
-  const picked = pickRelevantIndexEntries(recentText, candidates, maxEntries, minScore);
-  if (!picked.length) return;
-
-  const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
-  const kwSet = new Set();
-  const pickedTitles = [];
-  for (const { e, score } of picked) {
-    pickedTitles.push(`${e.title}（${score.toFixed(2)}）`);
-    for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
-      const kk = String(k || '').trim();
-      if (!kk) continue;
-      kwSet.add(kk);
-      if (kwSet.size >= maxKeywords) break;
-    }
-    if (kwSet.size >= maxKeywords) break;
-  }
-  const keywords = Array.from(kwSet);
-  if (!keywords.length) return;
-
-  const tag = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
-  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
-  const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', tag);
-  const injected = cleaned + buildTriggerInjection(keywords, tag, style);
-  last.mes = injected;
-
-  // try save
-  try {
-    if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
-    else if (typeof ctx.saveChat === 'function') ctx.saveChat();
-  } catch { /* ignore */ }
-
-  // debug status (only when pane open or explicitly enabled)
-  const modalOpen = $('#sg_modal_backdrop').is(':visible');
-  if (modalOpen || s.wiTriggerDebugLog) {
-    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : ''}`, 'ok');
   }
 }
 
@@ -2299,6 +2474,7 @@ async function runInlineAppendForLastMessage(opts = {}) {
     }
 
     const parsed = safeJsonParse(jsonText);
+    try { maybeProcessGraphUpdateFromOutput(String(jsonText||''), parsed); } catch { /* ignore */ }
     if (!parsed) {
       // 解析失败：也把原文追加到聊天末尾，避免“有输出但看不到”
       const raw = String(jsonText || '').trim();
@@ -3003,158 +3179,94 @@ function buildModalHtml() {
             <div class="sg-hint" id="sg_worldbookInfo">（未导入世界书）</div>
           </div>
 
+
+
+
+          
+
+
           <div class="sg-card">
-            <div class="sg-card-title">自动总结（写入世界书）</div>
+            <div class="sg-card-title">图谱 / 地图（角色关系 & 地点结构）</div>
 
-            <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryEnabled">启用自动总结</label>
-              <span>每</span>
-              <input id="sg_summaryEvery" type="number" min="1" max="200" style="width:90px">
-              <span>层</span>
-              <select id="sg_summaryCountMode">
-                <option value="assistant">按 AI 回复计数</option>
-                <option value="all">按全部消息计数</option>
-              </select>
+            <div class="sg-row sg-grid2">
+              <label class="sg-check"><input type="checkbox" id="sg_graphInject">在分析输入中注入图谱摘要</label>
+              <label class="sg-check"><input type="checkbox" id="sg_graphAllowMapUpdate">允许从输出中读取 &lt;MapUpdate&gt; 更新图谱</label>
             </div>
 
-            <div class="sg-grid2">
+            <div class="sg-row sg-grid2">
               <div class="sg-field">
-                <label>总结 Provider</label>
-                <select id="sg_summaryProvider">
-                  <option value="st">使用酒馆当前连接的模型</option>
-                  <option value="custom">使用独立 OpenAI 兼容 API</option>
-                </select>
+                <label>图谱最大注入字符</label>
+                <input id="sg_graphMaxChars" type="number" min="500" max="50000">
               </div>
               <div class="sg-field">
-                <label>总结 Temperature</label>
-                <input id="sg_summaryTemperature" type="number" min="0" max="2" step="0.1">
-              </div>
-            </div>
-
-            <div class="sg-card sg-subcard">
-              <div class="sg-field">
-                <label>自定义总结提示词（System，可选）</label>
-                <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON）"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>对话片段模板（User，可选）</label>
-                <textarea id="sg_summaryUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
-              </div>
-              <div class="sg-row sg-inline">
-                <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示词</button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}}。插件会强制要求输出 JSON：{title, summary, keywords[]}。</div>
-              </div>
-            </div>
-
-            <div class="sg-card sg-subcard" id="sg_summary_custom_block" style="display:none">
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>独立API基础URL</label>
-                  <input id="sg_summaryCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
-                </div>
-                <div class="sg-field">
-                  <label>API Key</label>
-                  <input id="sg_summaryCustomApiKey" type="password" placeholder="sk-...">
-                </div>
-              </div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>模型ID</label>
-                  <input id="sg_summaryCustomModel" type="text" placeholder="gpt-4o-mini">
-                </div>
-                <div class="sg-field">
-                  <label>Max Tokens</label>
-                  <input id="sg_summaryCustomMaxTokens" type="number" min="128" max="200000">
-                </div>
-              </div>
-              <label class="sg-check"><input type="checkbox" id="sg_summaryCustomStream">stream（若支持）</label>
-            </div>
-
-            <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用）</label>
-              <select id="sg_summaryWorldInfoTarget">
-                <option value="chatbook">写入当前聊天绑定世界书</option>
-                <option value="file">写入指定世界书文件名</option>
-              </select>
-              <input id="sg_summaryWorldInfoFile" type="text" placeholder="Target=file 时填写世界书文件名" style="flex:1; min-width: 220px;">
-            </div>
-
-            <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo">同时写入蓝灯世界书（常开索引）</label>
-              <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
-            </div>
-
-            <div class="sg-grid2">
-              <div class="sg-field">
-                <label>条目标题前缀（comment）</label>
-                <input id="sg_summaryWorldInfoCommentPrefix" type="text" placeholder="剧情总结">
-              </div>
-              <div class="sg-field">
-                <label>限制：每条消息最多字符 / 总字符</label>
-                <div class="sg-row" style="margin-top:0">
-                  <input id="sg_summaryMaxChars" type="number" min="200" max="8000" style="width:110px">
-                  <input id="sg_summaryMaxTotalChars" type="number" min="2000" max="80000" style="width:120px">
-                </div>
-              </div>
-            </div>
-
-            <div class="sg-card sg-subcard">
-              <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">启用“蓝灯索引 → 绿灯触发”（发送消息前自动注入触发词）</label>
-              </div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>读取前 N 条消息正文</label>
-                  <input id="sg_wiTriggerLookbackMessages" type="number" min="5" max="120" placeholder="20">
-                </div>
-                <div class="sg-field">
-                  <label>最多触发条目数</label>
-                  <input id="sg_wiTriggerMaxEntries" type="number" min="1" max="20" placeholder="4">
-                </div>
-              </div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>相关度阈值（0~1）</label>
-                  <input id="sg_wiTriggerMinScore" type="number" min="0" max="1" step="0.01" placeholder="0.08">
-                </div>
-                <div class="sg-field">
-                  <label>最多注入触发词</label>
-                  <input id="sg_wiTriggerMaxKeywords" type="number" min="1" max="200" placeholder="24">
-                </div>
-              </div>
-              <div class="sg-row sg-inline">
-                <label>注入方式</label>
-                <select id="sg_wiTriggerInjectStyle" style="min-width:200px">
-                  <option value="hidden">隐藏注释（推荐）</option>
-                  <option value="plain">普通文本（更稳）</option>
-                </select>
-              </div>
-              <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerDebugLog">调试：状态栏显示命中条目/触发词</label>
-                <button class="menu_button sg-btn" id="sg_importBlueIndex">导入蓝灯世界书JSON</button>
-                <button class="menu_button sg-btn" id="sg_clearBlueIndex">清空蓝灯索引</button>
-                <div class="sg-hint" id="sg_blueIndexInfo" style="margin-left:auto">（蓝灯索引：0 条）</div>
-              </div>
-              <div class="sg-hint">
-                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与最近对话做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。
+                <label>背景图URL（可选）</label>
+                <input id="sg_graphBg" type="text" placeholder="https://...">
               </div>
             </div>
 
             <div class="sg-row sg-inline">
-              <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
-              <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
-              <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
+              <button class="menu_button sg-btn" id="sg_openGraph">打开图谱面板</button>
+              <button class="menu_button sg-btn" id="sg_autogenGraph">AI生成地图</button>
+              <button class="menu_button sg-btn" id="sg_extractGraphFromWorldbook">从世界书提取</button>
+              <button class="menu_button sg-btn" id="sg_importGraph">导入图谱JSON</button>
+              <button class="menu_button sg-btn" id="sg_exportGraph">导出图谱JSON</button>
+              <button class="menu_button sg-btn" id="sg_clearGraph">清空图谱</button>
             </div>
 
-            <div class="sg-hint">
-              自动总结会按“每 N 层”触发；每次输出会生成 <b>摘要</b> + <b>关键词</b>，并可自动创建世界书条目（disable=0 绿灯启用，关键词写入 key 作为触发词）。
-            </div>
+            <div class="sg-hint" id="sg_graphInfo">（图谱：0 节点 / 0 关系）</div>
+            <div class="sg-hint sg-muted">提示：你可以把角色当“节点”，把“亲属/敌对/同盟”等当“关系”。也可以把地点做成树状层级（world → region → city → room）。</div>
           </div>
 
 
+          <div class="sg-card">
+            <div class="sg-card-title">外部世界信息源（可选，用于自动建图/替代世界书）</div>
 
+            <div class="sg-row sg-grid2">
+              <label class="sg-check"><input type="checkbox" id="sg_worldSourceEnabled">启用外部世界信息源</label>
+              <label class="sg-check"><input type="checkbox" id="sg_worldSourceInjectToAnalysis">在分析输入中注入外部世界信息</label>
+            </div>
 
-          <div class="sg-status" id="sg_status"></div>
+            <div class="sg-row sg-grid2">
+              <div class="sg-field">
+                <label>世界信息源 URL</label>
+                <input id="sg_worldSourceUrl" type="text" placeholder="http://127.0.0.1:1234/world 或 https://...">
+              </div>
+              <div class="sg-field">
+                <label>请求方式</label>
+                <select id="sg_worldSourceMethod">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="sg-row">
+              <div class="sg-field">
+                <label>请求头（JSON，可选）</label>
+                <textarea id="sg_worldSourceHeadersJson" rows="3" placeholder='{"Authorization":"Bearer xxx","X-Token":"..."}'></textarea>
+              </div>
+            </div>
+
+            <div class="sg-row sg-grid2">
+              <div class="sg-field">
+                <label>最大读取字符</label>
+                <input id="sg_worldSourceMaxChars" type="number" min="500" max="200000">
+              </div>
+              <div class="sg-field">
+                <label>缓存状态</label>
+                <div class="sg-hint" id="sg_worldSourceInfo">（未刷新）</div>
+              </div>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <button class="menu_button sg-btn" id="sg_worldSourceFetch">刷新世界信息</button>
+              <button class="menu_button sg-btn" id="sg_worldSourceClear">清空缓存</button>
+            </div>
+
+            <div class="sg-hint sg-muted">说明：此功能会由插件在浏览器内向你填写的 URL 发起请求，然后把返回内容交给模型用于“自动生成地图”。若无法访问，多半是 CORS/HTTPS 混用问题；建议让你的世界信息服务开启 CORS 或通过同域转发。</div>
+          </div>
+
+<div class="sg-status" id="sg_status"></div>
         </div>
 
         <div class="sg-right">
@@ -3165,18 +3277,15 @@ function buildModalHtml() {
               <button class="sg-tab active" id="sg_tab_md">报告</button>
               <button class="sg-tab" id="sg_tab_json">JSON</button>
               <button class="sg-tab" id="sg_tab_src">来源</button>
-              <button class="sg-tab" id="sg_tab_sum">总结</button>
               <div class="sg-spacer"></div>
               <button class="menu_button sg-btn" id="sg_copyMd" disabled>复制MD</button>
               <button class="menu_button sg-btn" id="sg_copyJson" disabled>复制JSON</button>
-              <button class="menu_button sg-btn" id="sg_copySum" disabled>复制总结</button>
               <button class="menu_button sg-btn" id="sg_injectTips" disabled>注入提示</button>
             </div>
 
             <div class="sg-pane active" id="sg_pane_md"><div class="sg-md" id="sg_md">(尚未生成)</div></div>
             <div class="sg-pane" id="sg_pane_json"><pre class="sg-pre" id="sg_json"></pre></div>
             <div class="sg-pane" id="sg_pane_src"><pre class="sg-pre" id="sg_src"></pre></div>
-            <div class="sg-pane" id="sg_pane_sum"><div class="sg-md" id="sg_sum">(尚未生成)</div></div>
           </div>
         </div>
       </div>
@@ -3195,7 +3304,6 @@ function ensureModal() {
   $('#sg_tab_md').on('click', () => showPane('md'));
   $('#sg_tab_json').on('click', () => showPane('json'));
   $('#sg_tab_src').on('click', () => showPane('src'));
-  $('#sg_tab_sum').on('click', () => showPane('sum'));
 
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
@@ -3229,11 +3337,6 @@ function ensureModal() {
     catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
   });
 
-  $('#sg_copySum').on('click', async () => {
-    try { await navigator.clipboard.writeText(lastSummaryText || ''); setStatus('已复制：总结', 'ok'); }
-    catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
-  });
-
   $('#sg_injectTips').on('click', () => {
     const tips = Array.isArray(lastReport?.json?.tips) ? lastReport.json.tips : [];
     const spoiler = ensureSettings().spoilerLevel;
@@ -3251,66 +3354,6 @@ function ensureModal() {
     $('#sg_custom_block').toggle(provider === 'custom');
   });
 
-  // summary provider toggle
-  $('#sg_summaryProvider').on('change', () => {
-    const p = String($('#sg_summaryProvider').val() || 'st');
-    $('#sg_summary_custom_block').toggle(p === 'custom');
-    pullUiToSettings(); saveSettings();
-  });
-
-  $('#sg_summaryWorldInfoTarget').on('change', () => {
-    const t = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
-    $('#sg_summaryWorldInfoFile').toggle(t === 'file');
-    pullUiToSettings(); saveSettings();
-  });
-
-  $('#sg_summaryToBlueWorldInfo').on('change', () => {
-    const checked = $('#sg_summaryToBlueWorldInfo').is(':checked');
-    $('#sg_summaryBlueWorldInfoFile').toggle(!!checked);
-    pullUiToSettings(); saveSettings();
-    updateBlueIndexInfoLabel();
-  });
-
-  // summary prompt reset
-  $('#sg_summaryResetPrompt').on('click', () => {
-    $('#sg_summarySystemPrompt').val(DEFAULT_SUMMARY_SYSTEM_PROMPT);
-    $('#sg_summaryUserTemplate').val(DEFAULT_SUMMARY_USER_TEMPLATE);
-    pullUiToSettings();
-    saveSettings();
-    setStatus('已恢复默认总结提示词 ✅', 'ok');
-  });
-
-  // summary actions
-  $('#sg_summarizeNow').on('click', async () => {
-    try {
-      pullUiToSettings();
-      saveSettings();
-      await runSummary({ reason: 'manual' });
-    } catch (e) {
-      setStatus(`总结失败：${e?.message ?? e}`, 'err');
-    }
-  });
-
-  $('#sg_resetSummaryState').on('click', async () => {
-    try {
-      const meta = getDefaultSummaryMeta();
-      await setSummaryMeta(meta);
-      updateSummaryInfoLabel();
-      renderSummaryPaneFromMeta();
-      setStatus('已重置本聊天总结进度 ✅', 'ok');
-    } catch (e) {
-      setStatus(`重置失败：${e?.message ?? e}`, 'err');
-    }
-  });
-
-  // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
-    pullUiToSettings();
-    saveSettings();
-    updateSummaryInfoLabel();
-    updateBlueIndexInfoLabel();
-  });
-
   $('#sg_refreshModels').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await refreshModels();
@@ -3319,37 +3362,8 @@ function ensureModal() {
   $('#sg_modelSelect').on('change', () => {
     const id = String($('#sg_modelSelect').val() || '').trim();
     if (id) $('#sg_customModel').val(id);
-  });
-
-  // 蓝灯索引导入/清空
-  $('#sg_importBlueIndex').on('click', async () => {
-    try {
-      const file = await pickFile('.json,application/json');
-      if (!file) return;
-      const txt = await readFileText(file);
-      const entries = parseWorldbookJson(txt);
-      const s = ensureSettings();
-      // 仅保留必要字段
-      s.summaryBlueIndex = entries.map(e => ({
-        title: String(e.title || '').trim() || (e.keys?.[0] ? `条目：${e.keys[0]}` : '条目'),
-        summary: String(e.content || '').trim(),
-        keywords: Array.isArray(e.keys) ? e.keys.slice(0, 80) : [],
-        importedAt: Date.now(),
-      })).filter(x => x.summary);
-      saveSettings();
-      updateBlueIndexInfoLabel();
-      setStatus(`蓝灯索引已导入 ✅（${s.summaryBlueIndex.length} 条）`, s.summaryBlueIndex.length ? 'ok' : 'warn');
-    } catch (e) {
-      setStatus(`导入蓝灯索引失败：${e?.message ?? e}`, 'err');
-    }
-  });
-
-  $('#sg_clearBlueIndex').on('click', () => {
-    const s = ensureSettings();
-    s.summaryBlueIndex = [];
-    saveSettings();
-    updateBlueIndexInfoLabel();
-    setStatus('已清空蓝灯索引', 'ok');
+  $('#sg_customMaxTokens').val(s.customMaxTokens || 8192);
+  $('#sg_customStream').prop('checked', !!s.customStream);
   });
 
   
@@ -3413,6 +3427,7 @@ function ensureModal() {
       saveSettings();
 
       updateWorldbookInfoLabel();
+
       setStatus('世界书已导入 ✅', entries.length ? 'ok' : 'warn');
     } catch (e) {
       setStatus(`导入世界书失败：${e?.message ?? e}`, 'err');
@@ -3449,6 +3464,186 @@ function ensureModal() {
     saveSettings();
     updateWorldbookInfoLabel();
   });
+
+
+  // graph/map actions
+  $('#sg_openGraph').on('click', () => {
+    try { openGraphModal(); } catch (e) { setStatus(`打开图谱失败：${e?.message ?? e}`, 'err'); }
+  });
+
+  $('#sg_extractGraphFromWorldbook').on('click', async () => {
+    try {
+      const s = ensureSettings();
+      if (!s.worldbookJson) {
+        setStatus('请先在上方导入世界书 JSON（或绑定世界书）', 'warn');
+        return;
+      }
+      const entries = parseWorldbookJson(s.worldbookJson);
+      if (!entries.length) {
+        setStatus('世界书为空，无法提取', 'warn');
+        return;
+      }
+
+      const g = defaultGraphData();
+      const W = Number(g.canvas?.width) || 1400;
+      const H = Number(g.canvas?.height) || 900;
+
+      // 1) 读取 [MapNode:ID]
+      for (const e of entries) {
+        const name = String(e.name || '');
+        const m = name.match(/\[MapNode:(.*?)\]/);
+        if (!m) continue;
+        const id = String(m[1] || '').trim();
+        if (!id) continue;
+
+        let data = {};
+        try { data = JSON.parse(String(e.content || '{}')); } catch { data = {}; }
+
+        const displayName = String(data.name || data.title || data.label || id);
+        const type = String(data.type || 'location');
+        const parentId = String(data.parentId || data.parent || '');
+
+        // TheWorld coords 通常是 0-1000（代表百分比*10），这里换算到画布像素
+        let x = 200, y = 200;
+        if (typeof data.coords === 'string') {
+          const mm = data.coords.split(',').map(v => Number(v.trim()));
+          if (mm.length >= 2 && Number.isFinite(mm[0]) && Number.isFinite(mm[1])) {
+            x = (mm[0] / 1000) * W;
+            y = (mm[1] / 1000) * H;
+          }
+        }
+        if (Number.isFinite(data.x) && Number.isFinite(data.y)) {
+          x = Number(data.x); y = Number(data.y);
+        }
+
+        g.nodes.push({
+          id,
+          name: displayName,
+          type,
+          parentId,
+          x,
+          y,
+          description: String(data.description || data.desc || '')
+        });
+      }
+
+      // 2) 尝试解析 [TheWorld:Locator] 里的当前位置
+      const locator = entries.find(e => String(e.name||'') === '[TheWorld:Locator]');
+      if (locator && locator.content) {
+        const content = String(locator.content);
+        const pm = content.match(/Path:.*?\(([^)]+)\)\s*$/m);
+        if (pm && pm[1]) g.currentNodeId = String(pm[1]).trim();
+        const cm = content.match(/current_location_id\s*[:=]\s*([A-Za-z0-9_\-]+)/i);
+        if (!g.currentNodeId && cm && cm[1]) g.currentNodeId = String(cm[1]).trim();
+      }
+
+      await setChatMetaValue(META_KEYS.graph, JSON.stringify(g));
+      updateGraphInfoLabel();
+      if (isGraphModalOpen()) renderGraphModal();
+      setStatus(`已从世界书提取图谱：${g.nodes.length} 节点`, 'ok');
+    } catch (e) {
+      setStatus(`提取失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+
+  $('#sg_importGraph').on('click', async () => {
+    try {
+      const file = await pickFile('.json,application/json');
+      if (!file) return;
+      const txt = await readFileText(file);
+      const g = parseGraphJson(txt);
+      await setChatMetaValue(META_KEYS.graph, JSON.stringify(g));
+      updateGraphInfoLabel();
+      if (isGraphModalOpen()) renderGraphModal();
+      setStatus('图谱已导入 ✅', 'ok');
+    } catch (e) {
+      setStatus(`导入图谱失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_exportGraph').on('click', () => {
+    try { exportGraphJson(); } catch (e) { setStatus(`导出图谱失败：${e?.message ?? e}`, 'err'); }
+  });
+
+  $('#sg_clearGraph').on('click', async () => {
+    if (!confirm('清空本聊天的图谱/地图？')) return;
+    try {
+      await setChatMetaValue(META_KEYS.graph, JSON.stringify(defaultGraphData()));
+      updateGraphInfoLabel();
+      if (isGraphModalOpen()) renderGraphModal();
+      setStatus('已清空图谱', 'ok');
+    } catch (e) {
+      setStatus(`清空失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_graphBg').on('change', () => {
+    try {
+      const g = getGraphData();
+      g.backgroundImage = String($('#sg_graphBg').val() || '').trim();
+      setGraphData(g);
+    } catch { /* ignore */ }
+  });
+
+
+  $('#sg_graphInject, #sg_graphAllowMapUpdate').on('change', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
+  $('#sg_graphMaxChars').on('input', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
+
+
+
+  // world source actions
+  $('#sg_worldSourceFetch').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      setStatus('正在刷新世界信息…', 'warn');
+      await fetchWorldSourceNow();
+      setStatus('已刷新世界信息 ✅', 'ok');
+    } catch (e) {
+      setStatus(`刷新失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_worldSourceClear').on('click', () => {
+    clearWorldSourceCache();
+    setStatus('已清空世界信息缓存', 'ok');
+  });
+
+  $('#sg_worldSourceEnabled, #sg_worldSourceInjectToAnalysis, #sg_worldSourceMethod').on('change', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateWorldSourceInfoLabel();
+  });
+
+  $('#sg_worldSourceUrl, #sg_worldSourceHeadersJson').on('change blur', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateWorldSourceInfoLabel();
+  });
+
+  $('#sg_worldSourceMaxChars').on('input', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateWorldSourceInfoLabel();
+  });
+
+  // graph: AI auto generate map
+  $('#sg_autogenGraph').on('click', async () => {
+    try {
+      await runGraphAutoGenerate();
+    } catch (e) {
+      setStatus(`生成失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+
 
 // modules json actions
   $('#sg_validateModules').on('click', () => {
@@ -3541,55 +3736,21 @@ function pullSettingsToUi() {
     $('#sg_worldbookInfo').text('（未导入世界书）');
   }
 
-  $('#sg_custom_block').toggle(s.provider === 'custom');
+  
+  // graph/map
+  $('#sg_graphInject').prop('checked', !!s.graphInject);
+  $('#sg_graphAllowMapUpdate').prop('checked', !!s.graphAllowMapUpdate);
+  $('#sg_graphMaxChars').val(s.graphMaxChars);
 
-  // summary
-  $('#sg_summaryEnabled').prop('checked', !!s.summaryEnabled);
-  $('#sg_summaryEvery').val(s.summaryEvery);
-  $('#sg_summaryCountMode').val(String(s.summaryCountMode || 'assistant'));
-  $('#sg_summaryProvider').val(String(s.summaryProvider || 'st'));
-  $('#sg_summaryTemperature').val(s.summaryTemperature);
-  $('#sg_summarySystemPrompt').val(String(s.summarySystemPrompt || DEFAULT_SUMMARY_SYSTEM_PROMPT));
-  $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || DEFAULT_SUMMARY_USER_TEMPLATE));
-  $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
-  $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
-  $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
-  $('#sg_summaryCustomMaxTokens').val(s.summaryCustomMaxTokens || 2048);
-  $('#sg_summaryCustomStream').prop('checked', !!s.summaryCustomStream);
-  $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
-  $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
-  $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
-  $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
-  $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
-  $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
-  $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
-  $('#sg_wiTriggerLookbackMessages').val(s.wiTriggerLookbackMessages || 20);
-  $('#sg_wiTriggerMaxEntries').val(s.wiTriggerMaxEntries || 4);
-  $('#sg_wiTriggerMinScore').val(s.wiTriggerMinScore ?? 0.08);
-  $('#sg_wiTriggerMaxKeywords').val(s.wiTriggerMaxKeywords || 24);
-  $('#sg_wiTriggerInjectStyle').val(String(s.wiTriggerInjectStyle || 'hidden'));
-  $('#sg_wiTriggerDebugLog').prop('checked', !!s.wiTriggerDebugLog);
-  $('#sg_summaryMaxChars').val(s.summaryMaxCharsPerMessage || 4000);
-  $('#sg_summaryMaxTotalChars').val(s.summaryMaxTotalChars || 24000);
+  try {
+    const g = getGraphData();
+    $('#sg_graphBg').val(String(g.backgroundImage || ''));
+  } catch { $('#sg_graphBg').val(''); }
 
-  $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
-  $('#sg_summaryWorldInfoFile').toggle(String(s.summaryWorldInfoTarget || 'chatbook') === 'file');
-  $('#sg_summaryBlueWorldInfoFile').toggle(!!s.summaryToBlueWorldInfo);
+  updateGraphInfoLabel();
 
-  updateBlueIndexInfoLabel();
-
-  updateSummaryInfoLabel();
-  renderSummaryPaneFromMeta();
-
+$('#sg_custom_block').toggle(s.provider === 'custom');
   updateButtonsEnabled();
-}
-
-function updateBlueIndexInfoLabel() {
-  const $info = $('#sg_blueIndexInfo');
-  if (!$info.length) return;
-  const s = ensureSettings();
-  const count = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex.length : 0;
-  $info.text(`（蓝灯索引：${count} 条）`);
 }
 
 function updateWorldbookInfoLabel() {
@@ -3616,55 +3777,6 @@ function updateWorldbookInfoLabel() {
   } catch {
     $info.text('（世界书信息解析失败）');
   }
-}
-
-function formatSummaryMetaHint(meta) {
-  const last = Number(meta?.lastFloor || 0);
-  const count = Array.isArray(meta?.history) ? meta.history.length : 0;
-  if (!last && !count) return '（未生成）';
-  return `已生成 ${count} 次｜上次触发层：${last}`;
-}
-
-function updateSummaryInfoLabel() {
-  const $info = $('#sg_summaryInfo');
-  if (!$info.length) return;
-  try {
-    const meta = getSummaryMeta();
-    $info.text(formatSummaryMetaHint(meta));
-  } catch {
-    $info.text('（总结状态解析失败）');
-  }
-}
-
-function renderSummaryPaneFromMeta() {
-  const $el = $('#sg_sum');
-  if (!$el.length) return;
-
-  const meta = getSummaryMeta();
-  const hist = Array.isArray(meta.history) ? meta.history : [];
-
-  if (!hist.length) {
-    lastSummary = null;
-    lastSummaryText = '';
-    $el.html('(尚未生成)');
-    updateButtonsEnabled();
-    return;
-  }
-
-  const last = hist[hist.length - 1];
-  lastSummary = last;
-  lastSummaryText = String(last?.summary || '');
-
-  const md = hist.slice(-12).reverse().map((h, idx) => {
-    const title = String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '剧情总结'} #${hist.length - idx}`);
-    const kws = Array.isArray(h.keywords) ? h.keywords : [];
-    const when = h.createdAt ? new Date(h.createdAt).toLocaleString() : '';
-    const range = h?.range ? `（${h.range.fromFloor}-${h.range.toFloor}）` : '';
-    return `### ${title} ${range}\n\n- 时间：${when}\n- 关键词：${kws.join('、') || '（无）'}\n\n${h.summary || ''}`;
-  }).join('\n\n---\n\n');
-
-  renderMarkdownInto($el, md);
-  updateButtonsEnabled();
 }
 
 
@@ -3710,35 +3822,31 @@ function pullUiToSettings() {
   s.worldbookMaxChars = clampInt($('#sg_worldbookMaxChars').val(), 500, 50000, s.worldbookMaxChars || 6000);
   s.worldbookWindowMessages = clampInt($('#sg_worldbookWindowMessages').val(), 5, 80, s.worldbookWindowMessages || 18);
 
-  // summary
-  s.summaryEnabled = $('#sg_summaryEnabled').is(':checked');
-  s.summaryEvery = clampInt($('#sg_summaryEvery').val(), 1, 200, s.summaryEvery || 20);
-  s.summaryCountMode = String($('#sg_summaryCountMode').val() || 'assistant');
-  s.summaryProvider = String($('#sg_summaryProvider').val() || 'st');
-  s.summaryTemperature = clampFloat($('#sg_summaryTemperature').val(), 0, 2, s.summaryTemperature || 0.4);
-  s.summarySystemPrompt = String($('#sg_summarySystemPrompt').val() || '').trim() || DEFAULT_SUMMARY_SYSTEM_PROMPT;
-  s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || DEFAULT_SUMMARY_USER_TEMPLATE;
-  s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
-  s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
-  s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
-  s.summaryCustomMaxTokens = clampInt($('#sg_summaryCustomMaxTokens').val(), 128, 200000, s.summaryCustomMaxTokens || 2048);
-  s.summaryCustomStream = $('#sg_summaryCustomStream').is(':checked');
-  s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
-  s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
-  s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
-  s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
-  s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
-  s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
+  // graph/map
+  s.graphInject = $('#sg_graphInject').is(':checked');
+  s.graphAllowMapUpdate = $('#sg_graphAllowMapUpdate').is(':checked');
+  s.graphMaxChars = clampInt($('#sg_graphMaxChars').val(), 500, 50000, s.graphMaxChars || 4000);
 
-  s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
-  s.wiTriggerLookbackMessages = clampInt($('#sg_wiTriggerLookbackMessages').val(), 5, 120, s.wiTriggerLookbackMessages || 20);
-  s.wiTriggerMaxEntries = clampInt($('#sg_wiTriggerMaxEntries').val(), 1, 20, s.wiTriggerMaxEntries || 4);
-  s.wiTriggerMinScore = clampFloat($('#sg_wiTriggerMinScore').val(), 0, 1, (s.wiTriggerMinScore ?? 0.08));
-  s.wiTriggerMaxKeywords = clampInt($('#sg_wiTriggerMaxKeywords').val(), 1, 200, s.wiTriggerMaxKeywords || 24);
-  s.wiTriggerInjectStyle = String($('#sg_wiTriggerInjectStyle').val() || s.wiTriggerInjectStyle || 'hidden');
-  s.wiTriggerDebugLog = $('#sg_wiTriggerDebugLog').is(':checked');
-  s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
-  s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
+  // background image stored in per-chat graph data
+  try {
+    const g = getGraphData();
+    const bg = String($('#sg_graphBg').val() || '').trim();
+    if (bg !== String(g.backgroundImage || '')) {
+      g.backgroundImage = bg;
+      setGraphData(g);
+    }
+  } catch { /* ignore */ }
+
+
+  // world source
+  s.worldSourceEnabled = $('#sg_worldSourceEnabled').is(':checked');
+  s.worldSourceInjectToAnalysis = $('#sg_worldSourceInjectToAnalysis').is(':checked');
+  s.worldSourceUrl = String($('#sg_worldSourceUrl').val() || '').trim();
+  s.worldSourceMethod = String($('#sg_worldSourceMethod').val() || 'GET').toUpperCase();
+  s.worldSourceHeadersJson = String($('#sg_worldSourceHeadersJson').val() || '').trim();
+  s.worldSourceMaxChars = clampInt($('#sg_worldSourceMaxChars').val(), 500, 200000, s.worldSourceMaxChars || DEFAULT_SETTINGS.worldSourceMaxChars);
+
+
 }
 
 function openModal() {
@@ -3858,15 +3966,10 @@ function setupEventListeners() {
     eventSource.on(event_types.MESSAGE_RECEIVED, () => {
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
-      // 自动总结（独立功能）
-      scheduleAutoSummary('msg_received');
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
       // 禁止自动生成：不在发送消息时自动刷新面板
-      // 蓝灯索引 → 绿灯触发（尽量在生成前完成）
-      maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
-      scheduleAutoSummary('msg_sent');
     });
   });
 }
@@ -3894,7 +3997,6 @@ function init() {
     open: openModal,
     close: closeModal,
     runAnalysis,
-    runSummary,
     runInlineAppendForLastMessage,
     reapplyAllInlineBoxes,
     buildSnapshot: () => buildSnapshot(),
