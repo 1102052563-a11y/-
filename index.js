@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.3
+ * v0.7.5
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -10,6 +10,7 @@
  * - 插件会根据模块自动生成 JSON Schema（动态字段）并要求模型按该 Schema 输出
  *
  * 兼容：仍然保持 v0.3.x 的“独立API走后端代理 + 抗变量更新覆盖（自动补贴）+ 点击折叠”能力
+ * 新增：原著资料（本聊天）+ 角色关系图谱（Mermaid）预览
  */
 
 const MODULE_NAME = 'storyguide';
@@ -2737,8 +2738,12 @@ function init() {
     buildSnapshot: () => buildSnapshot(),
     getLastReport: () => lastReport,
     refreshModels,
+    renderRelationGraph,
     _inlineCache: inlineCache,
   };
+
+  // 为了兼容可能的全局调用（例如控制台/其他脚本），也挂到 globalThis
+  globalThis.renderRelationGraph = renderRelationGraph;
 }
 
 init();
