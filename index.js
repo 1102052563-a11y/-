@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.8.1
+ * v0.8.3
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -11,7 +11,8 @@
  *
  * 兼容：仍然保持 v0.3.x 的“独立API走后端代理 + 抗变量更新覆盖（自动补贴）+ 点击折叠”能力
  *
- * v0.8.1 修复：兼容新版 SillyTavern 的 SlashCommand 执行入口（用于自动写入世界书）
+ * v0.8.2 修复：兼容 SlashCommand 返回 [object Object] 的情况（自动解析 UID / 文本输出）
+ * v0.8.3 新增：总结功能支持自定义提示词（system + user 模板，支持占位符）
  */
 
 const MODULE_NAME = 'storyguide';
@@ -42,6 +43,14 @@ const DEFAULT_MODULES = Object.freeze([
   { key: 'protagonist_impact', title: '主角行为造成的影响', type: 'text', prompt: '主角行为对剧情/关系/风险造成的改变', required: true, panel: true, inline: false },
   { key: 'tips', title: '给主角的提示（基于原著后续/大纲）', type: 'list', prompt: '给出可执行提示（尽量具体）', maxItems: 4, required: true, panel: true, inline: true },
 ]);
+
+// ===== 总结提示词默认值（可在面板中自定义） =====
+const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
+
+const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\n\n【对话片段】\n{{chunk}}`;
+
+// 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
+const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -105,6 +114,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
   summaryTemperature: 0.4,
+
+  // 自定义总结提示词（可选）
+  // - system：决定总结风格/重点
+  // - userTemplate：决定如何把楼层范围/对话片段塞给模型（支持占位符）
+  summarySystemPrompt: DEFAULT_SUMMARY_SYSTEM_PROMPT,
+  summaryUserTemplate: DEFAULT_SUMMARY_USER_TEMPLATE,
   summaryCustomEndpoint: '',
   summaryCustomApiKey: '',
   summaryCustomModel: 'gpt-4o-mini',
@@ -112,11 +127,38 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryCustomStream: false,
 
   // 总结结果写入世界书（Lorebook / World Info）
+  // —— 绿灯世界书（关键词触发）——
   summaryToWorldInfo: true,
   // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
   summaryWorldInfoTarget: 'chatbook',
   summaryWorldInfoFile: '',
   summaryWorldInfoCommentPrefix: '剧情总结',
+
+  // —— 蓝灯世界书（常开索引：给本插件做检索用）——
+  // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个。
+  summaryToBlueWorldInfo: false,
+  summaryBlueWorldInfoFile: '',
+  summaryBlueWorldInfoCommentPrefix: '剧情总结',
+
+  // —— 蓝灯索引 → 绿灯触发 ——
+  wiTriggerEnabled: false,
+  // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
+  wiTriggerLookbackMessages: 20,
+  // 最多选择多少条 summary 条目来触发
+  wiTriggerMaxEntries: 4,
+  // 相关度阈值（0~1，越大越严格）
+  wiTriggerMinScore: 0.08,
+  // 最多注入多少个触发词（去重后）
+  wiTriggerMaxKeywords: 24,
+  // 注入模式：appendToUser = 追加到用户消息末尾
+  wiTriggerInjectMode: 'appendToUser',
+  // 注入样式：hidden=HTML 注释隐藏；plain=直接文本（更稳）
+  wiTriggerInjectStyle: 'hidden',
+  wiTriggerTag: 'SG_WI_TRIGGERS',
+  wiTriggerDebugLog: false,
+
+  // 蓝灯索引缓存（可选：用于检索；每条为 {title, summary, keywords, range?}）
+  summaryBlueIndex: [],
 
   // 模块自定义（JSON 字符串 + 解析备份）
   modulesJson: '',
@@ -218,6 +260,15 @@ function clampFloat(v, min, max, fallback) {
   const n = Number.parseFloat(v);
   if (Number.isFinite(n)) return Math.min(max, Math.max(min, n));
   return fallback;
+}
+
+// 简易模板替换：支持 {{fromFloor}} / {{toFloor}} / {{chunk}} 等占位符
+function renderTemplate(tpl, vars = {}) {
+  const str = String(tpl ?? '');
+  return str.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => {
+    const v = vars?.[k];
+    return v == null ? '' : String(v);
+  });
 }
 
 function safeJsonParse(maybeJson) {
@@ -1192,8 +1243,26 @@ function getSummarySchema() {
 }
 
 function buildSummaryPromptMessages(chunkText, fromFloor, toFloor) {
-  const sys = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。\n\n输出：只输出 JSON，不要任何多余文字。JSON 结构：{\"title\": string, \"summary\": string, \"keywords\": string[]}。`;
-  const user = `【楼层范围】${fromFloor}-${toFloor}\n\n【对话片段】\n${chunkText}`;
+  const s = ensureSettings();
+
+  // system prompt
+  let sys = String(s.summarySystemPrompt || '').trim();
+  if (!sys) sys = DEFAULT_SUMMARY_SYSTEM_PROMPT;
+  // 强制追加 JSON 结构要求，避免用户自定义提示词导致解析失败
+  sys = sys + '\n\n' + SUMMARY_JSON_REQUIREMENT;
+
+  // user template (supports placeholders)
+  let tpl = String(s.summaryUserTemplate || '').trim();
+  if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
+  let user = renderTemplate(tpl, {
+    fromFloor: String(fromFloor),
+    toFloor: String(toFloor),
+    chunk: String(chunkText || ''),
+  });
+  // 如果用户模板里没有包含 chunk，占位补回去，防止误配导致无内容
+  if (!/{{\s*chunk\s*}}/i.test(tpl) && !String(user).includes(String(chunkText || '').slice(0, 12))) {
+    user = String(user || '').trim() + `\n\n【对话片段】\n${chunkText}`;
+  }
   return [
     { role: 'system', content: sys },
     { role: 'user', content: user },
@@ -1219,6 +1288,34 @@ function sanitizeKeywords(kws) {
     }
   }
   return out;
+}
+
+function appendToBlueIndexCache(rec) {
+  const s = ensureSettings();
+  const item = {
+    title: String(rec?.title || '').trim(),
+    summary: String(rec?.summary || '').trim(),
+    keywords: sanitizeKeywords(rec?.keywords),
+    createdAt: Number(rec?.createdAt) || Date.now(),
+    range: rec?.range ?? undefined,
+  };
+  if (!item.summary) return;
+  if (!item.title) item.title = item.keywords?.[0] ? `条目：${item.keywords[0]}` : '条目';
+  const arr = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
+  // de-dup (only check recent items)
+  for (let i = arr.length - 1; i >= 0 && i >= arr.length - 10; i--) {
+    const prev = arr[i];
+    if (!prev) continue;
+    if (String(prev.title || '') === item.title && String(prev.summary || '') === item.summary) {
+      return;
+    }
+  }
+  arr.push(item);
+  // keep bounded
+  if (arr.length > 600) arr.splice(0, arr.length - 600);
+  s.summaryBlueIndex = arr;
+  saveSettings();
+  updateBlueIndexInfoLabel();
 }
 
 let cachedSlashExecutor = null;
@@ -1303,11 +1400,132 @@ async function execSlash(cmd) {
   return await exec(String(cmd || '').trim());
 }
 
-function extractUid(text) {
-  const t = String(text || '');
-  const m = t.match(/\b(\d{1,8})\b/);
-  if (!m) return null;
-  return Number.parseInt(m[1], 10);
+function safeStringifyShort(v, maxLen = 260) {
+  try {
+    const s = (typeof v === 'string') ? v : JSON.stringify(v);
+    if (!s) return '';
+    return s.length > maxLen ? (s.slice(0, maxLen) + '...') : s;
+  } catch {
+    try {
+      const s = String(v);
+      if (!s) return '';
+      return s.length > maxLen ? (s.slice(0, maxLen) + '...') : s;
+    } catch {
+      return '';
+    }
+  }
+}
+
+/**
+ * 兼容不同版本 SlashCommand 执行器的返回值形态：
+ * - string
+ * - number/boolean
+ * - array
+ * - object（常见字段：text/output/message/result/value/data/html...）
+ */
+function slashOutputToText(out, seen = new Set()) {
+  if (out == null) return '';
+  const t = typeof out;
+  if (t === 'string') return out;
+  if (t === 'number' || t === 'boolean') return String(out);
+
+  if (Array.isArray(out)) {
+    return out.map(x => slashOutputToText(x, seen)).filter(Boolean).join('\n');
+  }
+
+  if (t === 'object') {
+    if (seen.has(out)) return '';
+    seen.add(out);
+
+    // common fields in different ST builds
+    const common = ['text', 'output', 'message', 'content', 'result', 'value', 'data', 'html', 'return', 'payload', 'response'];
+    for (const k of common) {
+      if (Object.hasOwn(out, k)) {
+        const s = slashOutputToText(out[k], seen);
+        if (s) return s;
+      }
+    }
+
+    // any non-empty string field
+    for (const v of Object.values(out)) {
+      if (typeof v === 'string' && v.trim()) return v;
+    }
+
+    return '';
+  }
+
+  try { return String(out); } catch { return ''; }
+}
+
+/**
+ * 从 SlashCommand 输出中提取世界书条目 UID
+ * - 支持 text / object / array 多种形态
+ * - 支持 uid=123、UID:123、以及返回对象里直接包含 uid 字段
+ */
+function extractUid(out, seen = new Set()) {
+  if (out == null) return null;
+
+  const t = typeof out;
+
+  if (t === 'number') {
+    const n = Math.trunc(out);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  if (t === 'string') {
+    const s = out;
+    const m1 = s.match(/\buid\s*[:=]\s*(\d{1,12})\b/i);
+    if (m1) return Number.parseInt(m1[1], 10);
+    const m2 = s.match(/\b(\d{1,12})\b/);
+    if (m2) return Number.parseInt(m2[1], 10);
+    return null;
+  }
+
+  if (Array.isArray(out)) {
+    for (const it of out) {
+      const r = extractUid(it, seen);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  if (t === 'object') {
+    if (seen.has(out)) return null;
+    seen.add(out);
+
+    // direct uid/id fields
+    const directKeys = ['uid', 'id', 'entryId', 'entry_id', 'worldInfoUid', 'worldinfoUid'];
+    for (const k of directKeys) {
+      if (Object.hasOwn(out, k)) {
+        const n = Number(out[k]);
+        if (Number.isFinite(n) && n > 0) return Math.trunc(n);
+      }
+    }
+
+    // nested containers
+    const nestedKeys = ['result', 'data', 'value', 'output', 'return', 'payload', 'response', 'entry'];
+    for (const k of nestedKeys) {
+      if (Object.hasOwn(out, k)) {
+        const r = extractUid(out[k], seen);
+        if (r) return r;
+      }
+    }
+
+    // scan all values (shallow + recursion)
+    for (const v of Object.values(out)) {
+      const r = extractUid(v, seen);
+      if (r) return r;
+    }
+
+    // fallback: parse from textified output
+    const s = slashOutputToText(out, seen);
+    if (s) return extractUid(s, seen);
+
+    return null;
+  }
+
+  // fallback
+  return extractUid(String(out), seen);
 }
 
 function quoteSlashValue(v) {
@@ -1315,26 +1533,34 @@ function quoteSlashValue(v) {
   return `"${s}"`;
 }
 
-async function resolveSummaryTargetWorldInfoFile() {
-  const s = ensureSettings();
-  if (String(s.summaryWorldInfoTarget || 'chatbook') === 'file') {
-    const f = String(s.summaryWorldInfoFile || '').trim();
-    if (!f) throw new Error('summaryWorldInfoTarget=file 时必须填写世界书文件名。');
+async function resolveWorldInfoFile({ target = 'chatbook', file = '' } = {}) {
+  const t = String(target || 'chatbook');
+  if (t === 'file') {
+    const f = String(file || '').trim();
+    if (!f) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
     return f;
   }
+
   // chatbook
   const out = await execSlash('/getchatbook');
-  const firstLine = String(out || '').split(/\r?\n/)[0].trim();
-  if (!firstLine) throw new Error('无法获取当前聊天绑定世界书（/getchatbook 返回为空）。');
-  return firstLine;
+  const txt = slashOutputToText(out);
+  const firstLineRaw = String(txt || '').split(/\r?\n/)[0].trim();
+  if (!firstLineRaw) throw new Error(`无法获取当前聊天绑定世界书（/getchatbook 返回为空，返回：${safeStringifyShort(out)}）。`);
+  // try extract a json filename if present
+  const m = firstLineRaw.match(/([^\s]+\.json)\b/i);
+  return m ? m[1] : firstLineRaw;
 }
 
-async function writeSummaryToWorldInfo(rec, meta) {
-  const s = ensureSettings();
+async function writeSummaryToWorldInfoEntry(rec, meta, {
+  target = 'file',
+  file = '',
+  commentPrefix = '剧情总结',
+  constant = 0,
+} = {}) {
   const kws = sanitizeKeywords(rec.keywords);
-  const file = await resolveSummaryTargetWorldInfoFile();
+  const f = await resolveWorldInfoFile({ target, file });
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
-  const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
   const title = String(rec.title || '').trim() || `${prefix}`;
   const comment = `${title}${range ? `（${range}）` : ''}`;
 
@@ -1342,22 +1568,30 @@ async function writeSummaryToWorldInfo(rec, meta) {
   const firstKey = kws[0] || prefix;
 
   // 1) create entry
-  const outCreate = await execSlash(`/createentry file=${quoteSlashValue(file)} key=${quoteSlashValue(firstKey)} ${content}`);
+  const outCreate = await execSlash(`/createentry file=${quoteSlashValue(f)} key=${quoteSlashValue(firstKey)} ${content}`);
   const uid = extractUid(outCreate);
-  if (!uid) throw new Error(`创建世界书条目失败：无法解析 UID（返回：${String(outCreate || '').slice(0, 120)}...）`);
+  if (!uid) throw new Error(`创建世界书条目失败：无法解析 UID（返回：${safeStringifyShort(outCreate)}）`);
 
-  // 2) set fields (绿灯启用：disable=0)
-  await execSlash(`/setentryfield file=${quoteSlashValue(file)} uid=${uid} field=key ${kws.join(',')}`);
-  await execSlash(`/setentryfield file=${quoteSlashValue(file)} uid=${uid} field=comment ${comment}`);
-  await execSlash(`/setentryfield file=${quoteSlashValue(file)} uid=${uid} field=disable 0`);
+  // 2) set fields
+  await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=key ${quoteSlashValue(kws.join(','))}`);
+  await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=comment ${quoteSlashValue(comment)}`);
+  await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=disable 0`);
+  if (Number(constant) === 1) {
+    // 蓝灯：常开
+    await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=constant 1`);
+  } else {
+    // 绿灯：不常开
+    await execSlash(`/setentryfield file=${quoteSlashValue(f)} uid=${uid} field=constant 0`);
+  }
 
   // store link
-  rec.worldInfo = { file, uid };
+  const keyName = (Number(constant) === 1) ? 'worldInfoBlue' : 'worldInfoGreen';
+  rec[keyName] = { file: f, uid };
   if (meta && Array.isArray(meta.history) && meta.history.length) {
     meta.history[meta.history.length - 1] = rec;
     await setSummaryMeta(meta);
   }
-  return { file, uid };
+  return { file: f, uid };
 }
 
 async function runSummary({ reason = 'manual' } = {}) {
@@ -1441,15 +1675,46 @@ async function runSummary({ reason = 'manual' } = {}) {
     updateSummaryInfoLabel();
     renderSummaryPaneFromMeta();
 
+    // 额外：把每次总结同步进“蓝灯索引缓存”（用于检索触发绿灯）
+    try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
+
     // world info write
-    if (s.summaryToWorldInfo) {
-      try {
-        await writeSummaryToWorldInfo(rec, meta);
-        setStatus('总结完成 ✅（已写入世界书）', 'ok');
-      } catch (e) {
-        console.warn('[StoryGuide] write summary to world info failed:', e);
-        setStatus(`总结完成，但写入世界书失败：${e?.message ?? e}`, 'warn');
+    if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
+      const ok = [];
+      const err = [];
+
+      if (s.summaryToWorldInfo) {
+        try {
+          await writeSummaryToWorldInfoEntry(rec, meta, {
+            target: String(s.summaryWorldInfoTarget || 'chatbook'),
+            file: String(s.summaryWorldInfoFile || ''),
+            commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
+            constant: 0,
+          });
+          ok.push('绿灯世界书');
+        } catch (e) {
+          console.warn('[StoryGuide] write green world info failed:', e);
+          err.push(`绿灯世界书：${e?.message ?? e}`);
+        }
       }
+
+      if (s.summaryToBlueWorldInfo) {
+        try {
+          await writeSummaryToWorldInfoEntry(rec, meta, {
+            target: 'file',
+            file: String(s.summaryBlueWorldInfoFile || ''),
+            commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
+            constant: 1,
+          });
+          ok.push('蓝灯世界书');
+        } catch (e) {
+          console.warn('[StoryGuide] write blue world info failed:', e);
+          err.push(`蓝灯世界书：${e?.message ?? e}`);
+        }
+      }
+
+      if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ')}）`, 'ok');
+      else setStatus(`总结完成 ✅（写入失败：${err.join('；')}）`, 'warn');
     } else {
       setStatus('总结完成 ✅', 'ok');
     }
@@ -1490,6 +1755,200 @@ async function maybeAutoSummary(reason = '') {
   if (floorNow <= last) return;
 
   await runSummary({ reason: 'auto' });
+}
+
+// -------------------- 蓝灯索引 → 绿灯触发（发送消息时注入触发词） --------------------
+
+function escapeRegExp(str) {
+  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripTriggerInjection(text, tag = 'SG_WI_TRIGGERS') {
+  const t = String(text || '');
+  const et = escapeRegExp(tag);
+  // remove all existing injections of this tag (safe)
+  const reComment = new RegExp(`\\n?\\s*<!--\\s*${et}\\b[\\s\\S]*?-->`, 'g');
+  const rePlain = new RegExp(`\\n?\\s*\\[${et}\\][^\\n]*\\n?`, 'g');
+  return t.replace(reComment, '').replace(rePlain, '').trimEnd();
+}
+
+function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden') {
+  const kws = sanitizeKeywords(Array.isArray(keywords) ? keywords : []);
+  if (!kws.length) return '';
+  if (String(style || 'hidden') === 'plain') {
+    // Visible but most reliable for world-info scan.
+    return `\n\n[${tag}] ${kws.join(' ')}\n`;
+  }
+  // Hidden comment: put each keyword on its own line, so substring match is very likely to hit.
+  const body = kws.join('\n');
+  return `\n\n<!--${tag}\n${body}\n-->`;
+}
+
+function tokenizeForSimilarity(text) {
+  const s = String(text || '').toLowerCase();
+  const tokens = new Map();
+
+  function add(tok, w = 1) {
+    if (!tok) return;
+    const k = String(tok).trim();
+    if (!k) return;
+    tokens.set(k, (tokens.get(k) || 0) + w);
+  }
+
+  // latin words
+  const latin = s.match(/[a-z0-9_]{2,}/g) || [];
+  for (const w of latin) add(w, 1);
+
+  // CJK sequences -> bigrams (better than single-char)
+  const cjkSeqs = s.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  for (const seq of cjkSeqs) {
+    // include short full seq for exact hits
+    if (seq.length <= 6) add(seq, 2);
+    for (let i = 0; i < seq.length - 1; i++) {
+      add(seq.slice(i, i + 2), 1);
+    }
+  }
+
+  return tokens;
+}
+
+function cosineSimilarity(mapA, mapB) {
+  if (!mapA?.size || !mapB?.size) return 0;
+  // iterate smaller
+  const small = mapA.size <= mapB.size ? mapA : mapB;
+  const large = mapA.size <= mapB.size ? mapB : mapA;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (const v of mapA.values()) normA += v * v;
+  for (const v of mapB.values()) normB += v * v;
+  if (!normA || !normB) return 0;
+  for (const [k, va] of small.entries()) {
+    const vb = large.get(k);
+    if (vb) dot += va * vb;
+  }
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function buildRecentChatText(chat, lookback, excludeLast = true) {
+  const msgs = [];
+  const arr = Array.isArray(chat) ? chat : [];
+  let i = arr.length - 1;
+  if (excludeLast) i -= 1;
+  for (; i >= 0 && msgs.length < lookback; i--) {
+    const m = arr[i];
+    if (!m) continue;
+    if (m.is_system === true) continue;
+    const t = stripHtml(m.mes ?? m.message ?? '');
+    if (t) msgs.push(t);
+  }
+  return msgs.reverse().join('\n');
+}
+
+function collectBlueIndexCandidates() {
+  const s = ensureSettings();
+  const meta = getSummaryMeta();
+  const out = [];
+  const seen = new Set();
+
+  const fromMeta = Array.isArray(meta?.history) ? meta.history : [];
+  for (const r of fromMeta) {
+    const title = String(r?.title || '').trim();
+    const summary = String(r?.summary || '').trim();
+    const keywords = sanitizeKeywords(r?.keywords);
+    if (!summary) continue;
+    const key = `${title}__${summary.slice(0, 24)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'), summary, keywords });
+  }
+
+  const fromImported = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
+  for (const r of fromImported) {
+    const title = String(r?.title || '').trim();
+    const summary = String(r?.summary || '').trim();
+    const keywords = sanitizeKeywords(r?.keywords);
+    if (!summary) continue;
+    const key = `${title}__${summary.slice(0, 24)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'), summary, keywords });
+  }
+
+  return out;
+}
+
+function pickRelevantIndexEntries(recentText, candidates, maxEntries, minScore) {
+  const recentVec = tokenizeForSimilarity(recentText);
+  const scored = [];
+  for (const e of candidates) {
+    const txt = `${e.title || ''}\n${e.summary || ''}\n${(Array.isArray(e.keywords) ? e.keywords.join(' ') : '')}`;
+    const vec = tokenizeForSimilarity(txt);
+    const score = cosineSimilarity(recentVec, vec);
+    if (score >= minScore) scored.push({ e, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, maxEntries);
+}
+
+async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
+  const s = ensureSettings();
+  if (!s.wiTriggerEnabled) return;
+
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  if (!chat.length) return;
+
+  const last = chat[chat.length - 1];
+  if (!last || last.is_user !== true) return; // only on user send
+  const lastText = String(last.mes ?? last.message ?? '').trim();
+  if (!lastText || lastText.startsWith('/')) return;
+
+  const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
+  const recentText = buildRecentChatText(chat, lookback, true);
+  if (!recentText) return;
+
+  const candidates = collectBlueIndexCandidates();
+  if (!candidates.length) return;
+
+  const maxEntries = clampInt(s.wiTriggerMaxEntries, 1, 20, 4);
+  const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
+  const picked = pickRelevantIndexEntries(recentText, candidates, maxEntries, minScore);
+  if (!picked.length) return;
+
+  const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
+  const kwSet = new Set();
+  const pickedTitles = [];
+  for (const { e, score } of picked) {
+    pickedTitles.push(`${e.title}（${score.toFixed(2)}）`);
+    for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
+      const kk = String(k || '').trim();
+      if (!kk) continue;
+      kwSet.add(kk);
+      if (kwSet.size >= maxKeywords) break;
+    }
+    if (kwSet.size >= maxKeywords) break;
+  }
+  const keywords = Array.from(kwSet);
+  if (!keywords.length) return;
+
+  const tag = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
+  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
+  const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', tag);
+  const injected = cleaned + buildTriggerInjection(keywords, tag, style);
+  last.mes = injected;
+
+  // try save
+  try {
+    if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
+    else if (typeof ctx.saveChat === 'function') ctx.saveChat();
+  } catch { /* ignore */ }
+
+  // debug status (only when pane open or explicitly enabled)
+  const modalOpen = $('#sg_modal_backdrop').is(':visible');
+  if (modalOpen || s.wiTriggerDebugLog) {
+    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : ''}`, 'ok');
+  }
 }
 
 // -------------------- inline append (dynamic modules) --------------------
@@ -2572,6 +3031,21 @@ function buildModalHtml() {
               </div>
             </div>
 
+            <div class="sg-card sg-subcard">
+              <div class="sg-field">
+                <label>自定义总结提示词（System，可选）</label>
+                <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON）"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>对话片段模板（User，可选）</label>
+                <textarea id="sg_summaryUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
+              </div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示词</button>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}}。插件会强制要求输出 JSON：{title, summary, keywords[]}。</div>
+              </div>
+            </div>
+
             <div class="sg-card sg-subcard" id="sg_summary_custom_block" style="display:none">
               <div class="sg-grid2">
                 <div class="sg-field">
@@ -2605,6 +3079,11 @@ function buildModalHtml() {
               <input id="sg_summaryWorldInfoFile" type="text" placeholder="Target=file 时填写世界书文件名" style="flex:1; min-width: 220px;">
             </div>
 
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo">同时写入蓝灯世界书（常开索引）</label>
+              <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
+            </div>
+
             <div class="sg-grid2">
               <div class="sg-field">
                 <label>条目标题前缀（comment）</label>
@@ -2616,6 +3095,48 @@ function buildModalHtml() {
                   <input id="sg_summaryMaxChars" type="number" min="200" max="8000" style="width:110px">
                   <input id="sg_summaryMaxTotalChars" type="number" min="2000" max="80000" style="width:120px">
                 </div>
+              </div>
+            </div>
+
+            <div class="sg-card sg-subcard">
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">启用“蓝灯索引 → 绿灯触发”（发送消息前自动注入触发词）</label>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>读取前 N 条消息正文</label>
+                  <input id="sg_wiTriggerLookbackMessages" type="number" min="5" max="120" placeholder="20">
+                </div>
+                <div class="sg-field">
+                  <label>最多触发条目数</label>
+                  <input id="sg_wiTriggerMaxEntries" type="number" min="1" max="20" placeholder="4">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>相关度阈值（0~1）</label>
+                  <input id="sg_wiTriggerMinScore" type="number" min="0" max="1" step="0.01" placeholder="0.08">
+                </div>
+                <div class="sg-field">
+                  <label>最多注入触发词</label>
+                  <input id="sg_wiTriggerMaxKeywords" type="number" min="1" max="200" placeholder="24">
+                </div>
+              </div>
+              <div class="sg-row sg-inline">
+                <label>注入方式</label>
+                <select id="sg_wiTriggerInjectStyle" style="min-width:200px">
+                  <option value="hidden">隐藏注释（推荐）</option>
+                  <option value="plain">普通文本（更稳）</option>
+                </select>
+              </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerDebugLog">调试：状态栏显示命中条目/触发词</label>
+                <button class="menu_button sg-btn" id="sg_importBlueIndex">导入蓝灯世界书JSON</button>
+                <button class="menu_button sg-btn" id="sg_clearBlueIndex">清空蓝灯索引</button>
+                <div class="sg-hint" id="sg_blueIndexInfo" style="margin-left:auto">（蓝灯索引：0 条）</div>
+              </div>
+              <div class="sg-hint">
+                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与最近对话做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。
               </div>
             </div>
 
@@ -2743,6 +3264,22 @@ function ensureModal() {
     pullUiToSettings(); saveSettings();
   });
 
+  $('#sg_summaryToBlueWorldInfo').on('change', () => {
+    const checked = $('#sg_summaryToBlueWorldInfo').is(':checked');
+    $('#sg_summaryBlueWorldInfoFile').toggle(!!checked);
+    pullUiToSettings(); saveSettings();
+    updateBlueIndexInfoLabel();
+  });
+
+  // summary prompt reset
+  $('#sg_summaryResetPrompt').on('click', () => {
+    $('#sg_summarySystemPrompt').val(DEFAULT_SUMMARY_SYSTEM_PROMPT);
+    $('#sg_summaryUserTemplate').val(DEFAULT_SUMMARY_USER_TEMPLATE);
+    pullUiToSettings();
+    saveSettings();
+    setStatus('已恢复默认总结提示词 ✅', 'ok');
+  });
+
   // summary actions
   $('#sg_summarizeNow').on('click', async () => {
     try {
@@ -2767,10 +3304,11 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
+    updateBlueIndexInfoLabel();
   });
 
   $('#sg_refreshModels').on('click', async () => {
@@ -2781,8 +3319,37 @@ function ensureModal() {
   $('#sg_modelSelect').on('change', () => {
     const id = String($('#sg_modelSelect').val() || '').trim();
     if (id) $('#sg_customModel').val(id);
-  $('#sg_customMaxTokens').val(s.customMaxTokens || 8192);
-  $('#sg_customStream').prop('checked', !!s.customStream);
+  });
+
+  // 蓝灯索引导入/清空
+  $('#sg_importBlueIndex').on('click', async () => {
+    try {
+      const file = await pickFile('.json,application/json');
+      if (!file) return;
+      const txt = await readFileText(file);
+      const entries = parseWorldbookJson(txt);
+      const s = ensureSettings();
+      // 仅保留必要字段
+      s.summaryBlueIndex = entries.map(e => ({
+        title: String(e.title || '').trim() || (e.keys?.[0] ? `条目：${e.keys[0]}` : '条目'),
+        summary: String(e.content || '').trim(),
+        keywords: Array.isArray(e.keys) ? e.keys.slice(0, 80) : [],
+        importedAt: Date.now(),
+      })).filter(x => x.summary);
+      saveSettings();
+      updateBlueIndexInfoLabel();
+      setStatus(`蓝灯索引已导入 ✅（${s.summaryBlueIndex.length} 条）`, s.summaryBlueIndex.length ? 'ok' : 'warn');
+    } catch (e) {
+      setStatus(`导入蓝灯索引失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_clearBlueIndex').on('click', () => {
+    const s = ensureSettings();
+    s.summaryBlueIndex = [];
+    saveSettings();
+    updateBlueIndexInfoLabel();
+    setStatus('已清空蓝灯索引', 'ok');
   });
 
   
@@ -2982,6 +3549,8 @@ function pullSettingsToUi() {
   $('#sg_summaryCountMode').val(String(s.summaryCountMode || 'assistant'));
   $('#sg_summaryProvider').val(String(s.summaryProvider || 'st'));
   $('#sg_summaryTemperature').val(s.summaryTemperature);
+  $('#sg_summarySystemPrompt').val(String(s.summarySystemPrompt || DEFAULT_SUMMARY_SYSTEM_PROMPT));
+  $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || DEFAULT_SUMMARY_USER_TEMPLATE));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -2991,16 +3560,36 @@ function pullSettingsToUi() {
   $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
   $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
+  $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
+  $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
+  $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
+  $('#sg_wiTriggerLookbackMessages').val(s.wiTriggerLookbackMessages || 20);
+  $('#sg_wiTriggerMaxEntries').val(s.wiTriggerMaxEntries || 4);
+  $('#sg_wiTriggerMinScore').val(s.wiTriggerMinScore ?? 0.08);
+  $('#sg_wiTriggerMaxKeywords').val(s.wiTriggerMaxKeywords || 24);
+  $('#sg_wiTriggerInjectStyle').val(String(s.wiTriggerInjectStyle || 'hidden'));
+  $('#sg_wiTriggerDebugLog').prop('checked', !!s.wiTriggerDebugLog);
   $('#sg_summaryMaxChars').val(s.summaryMaxCharsPerMessage || 4000);
   $('#sg_summaryMaxTotalChars').val(s.summaryMaxTotalChars || 24000);
 
   $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
   $('#sg_summaryWorldInfoFile').toggle(String(s.summaryWorldInfoTarget || 'chatbook') === 'file');
+  $('#sg_summaryBlueWorldInfoFile').toggle(!!s.summaryToBlueWorldInfo);
+
+  updateBlueIndexInfoLabel();
 
   updateSummaryInfoLabel();
   renderSummaryPaneFromMeta();
 
   updateButtonsEnabled();
+}
+
+function updateBlueIndexInfoLabel() {
+  const $info = $('#sg_blueIndexInfo');
+  if (!$info.length) return;
+  const s = ensureSettings();
+  const count = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex.length : 0;
+  $info.text(`（蓝灯索引：${count} 条）`);
 }
 
 function updateWorldbookInfoLabel() {
@@ -3127,6 +3716,8 @@ function pullUiToSettings() {
   s.summaryCountMode = String($('#sg_summaryCountMode').val() || 'assistant');
   s.summaryProvider = String($('#sg_summaryProvider').val() || 'st');
   s.summaryTemperature = clampFloat($('#sg_summaryTemperature').val(), 0, 2, s.summaryTemperature || 0.4);
+  s.summarySystemPrompt = String($('#sg_summarySystemPrompt').val() || '').trim() || DEFAULT_SUMMARY_SYSTEM_PROMPT;
+  s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || DEFAULT_SUMMARY_USER_TEMPLATE;
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
@@ -3136,6 +3727,16 @@ function pullUiToSettings() {
   s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
   s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
   s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
+  s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
+  s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
+
+  s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
+  s.wiTriggerLookbackMessages = clampInt($('#sg_wiTriggerLookbackMessages').val(), 5, 120, s.wiTriggerLookbackMessages || 20);
+  s.wiTriggerMaxEntries = clampInt($('#sg_wiTriggerMaxEntries').val(), 1, 20, s.wiTriggerMaxEntries || 4);
+  s.wiTriggerMinScore = clampFloat($('#sg_wiTriggerMinScore').val(), 0, 1, (s.wiTriggerMinScore ?? 0.08));
+  s.wiTriggerMaxKeywords = clampInt($('#sg_wiTriggerMaxKeywords').val(), 1, 200, s.wiTriggerMaxKeywords || 24);
+  s.wiTriggerInjectStyle = String($('#sg_wiTriggerInjectStyle').val() || s.wiTriggerInjectStyle || 'hidden');
+  s.wiTriggerDebugLog = $('#sg_wiTriggerDebugLog').is(':checked');
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
   s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
 }
@@ -3263,6 +3864,8 @@ function setupEventListeners() {
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
       // 禁止自动生成：不在发送消息时自动刷新面板
+      // 蓝灯索引 → 绿灯触发（尽量在生成前完成）
+      maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
       scheduleAutoSummary('msg_sent');
     });
   });
