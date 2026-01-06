@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.4
+ * v0.8.1
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -10,6 +10,8 @@
  * - 插件会根据模块自动生成 JSON Schema（动态字段）并要求模型按该 Schema 输出
  *
  * 兼容：仍然保持 v0.3.x 的“独立API走后端代理 + 抗变量更新覆盖（自动补贴）+ 点击折叠”能力
+ *
+ * v0.8.1 修复：兼容新版 SillyTavern 的 SlashCommand 执行入口（用于自动写入世界书）
  */
 
 const MODULE_NAME = 'storyguide';
@@ -1225,9 +1227,25 @@ async function getSlashExecutor() {
   if (cachedSlashExecutor) return cachedSlashExecutor;
 
   const ctx = SillyTavern.getContext?.();
+  // SillyTavern has renamed / refactored slash command executors multiple times.
+  // We support a broad set of known entry points (newest first), and then best-effort
+  // call them with compatible signatures.
   const candidates = [
+    // Newer ST versions expose this via getContext()
+    ctx?.executeSlashCommandsWithOptions,
+    ctx?.executeSlashCommands,
     ctx?.processChatSlashCommands,
     ctx?.executeSlashCommandsOnChatInput,
+
+    // Some builds expose the parser/executor objects
+    ctx?.SlashCommandParser?.executeSlashCommandsWithOptions,
+    ctx?.SlashCommandParser?.execute,
+    globalThis.SlashCommandParser?.executeSlashCommandsWithOptions,
+    globalThis.SlashCommandParser?.execute,
+
+    // Global fallbacks
+    globalThis.executeSlashCommandsWithOptions,
+    globalThis.executeSlashCommands,
     globalThis.processChatSlashCommands,
     globalThis.executeSlashCommandsOnChatInput,
   ].filter(fn => typeof fn === 'function');
@@ -1236,9 +1254,17 @@ async function getSlashExecutor() {
     cachedSlashExecutor = async (cmd) => {
       // best-effort signature compatibility
       for (const fn of candidates) {
+        // common signatures:
+        // - fn(text)
+        // - fn(text, boolean)
+        // - fn(text, { quiet, silent, execute, ... })
+        // - fn({ input: text, ... })
         try { return await fn(cmd); } catch { /* try next */ }
         try { return await fn(cmd, true); } catch { /* try next */ }
-        try { return await fn(cmd, { quiet: true }); } catch { /* try next */ }
+        try { return await fn(cmd, { quiet: true, silent: true }); } catch { /* try next */ }
+        try { return await fn(cmd, { shouldDisplayMessage: false, quiet: true, silent: true }); } catch { /* try next */ }
+        try { return await fn({ input: cmd, quiet: true, silent: true }); } catch { /* try next */ }
+        try { return await fn({ command: cmd, quiet: true, silent: true }); } catch { /* try next */ }
       }
       throw new Error('Slash command executor found but failed to run.');
     };
@@ -1248,6 +1274,8 @@ async function getSlashExecutor() {
   try {
     const mod = await import(/* webpackIgnore: true */ '/script.js');
     const modFns = [
+      mod?.executeSlashCommandsWithOptions,
+      mod?.executeSlashCommands,
       mod?.processChatSlashCommands,
       mod?.executeSlashCommandsOnChatInput,
     ].filter(fn => typeof fn === 'function');
@@ -1256,6 +1284,7 @@ async function getSlashExecutor() {
         for (const fn of modFns) {
           try { return await fn(cmd); } catch { /* try next */ }
           try { return await fn(cmd, true); } catch { /* try next */ }
+          try { return await fn(cmd, { quiet: true, silent: true }); } catch { /* try next */ }
         }
         throw new Error('Slash command executor from /script.js failed to run.');
       };
