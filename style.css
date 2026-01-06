@@ -648,65 +648,71 @@ body.sg-zoom-lock{
 
 
 /* v0.6.9 mobile responsive modal */
-@media (max-width: 760px){
-  .sg-modal-overlay{
+@media (max-width: 680px){
+  .sg-overlay{
     padding: 10px;
     align-items: flex-start;
-    justify-content: center;
   }
 
   .sg-modal{
-    width: 96vw;
-    height: 92vh;
+    width: 98vw;
+    height: 96vh;
     border-radius: 14px;
   }
 
-  /* turn two-column layout into single scroll */
+  /* one-column layout on mobile; single scroll area */
   .sg-modal-body{
-    display: block !important;
-    overflow: auto !important;
+    display: block;
+    grid-template-columns: 1fr !important;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .sg-left, .sg-right{
-    overflow: visible !important;
-    padding: 10px !important;
+    overflow: visible;
+    padding: 10px;
   }
 
   .sg-left{
-    border-right: none !important;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    padding-bottom: 14px !important;
-    margin-bottom: 10px;
+    border-right: none;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
   }
 
-  /* grids in cards -> single column */
-  .sg-grid2{ grid-template-columns: 1fr !important; }
-  .sg-grid3{ grid-template-columns: 1fr !important; }
-
-  /* tabs + buttons */
-  .sg-tabs{
-    flex-wrap: wrap;
-    gap: 8px;
+  .sg-grid2, .sg-grid3{
+    grid-template-columns: 1fr !important;
   }
 
+  .sg-row{
+    gap: 10px;
+  }
+
+  .sg-field, .sg-field-full{
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .sg-model-select{
+    width: 100%;
+  }
+
+  .sg-actions-row{
+    justify-content: stretch;
+  }
+
+  .sg-actions-row .menu_button,
   .sg-modal button.menu_button,
   .sg-modal .menu_button.sg-btn,
   .sg-modal .menu_button.sg-btn-primary{
     min-width: 0 !important;
     width: auto !important;
-    max-width: 100%;
+    flex: 1 1 calc(50% - 10px);
   }
 
-  .sg-actions-row{
-    justify-content: flex-start !important;
+  .sg-tabs{
+    flex-wrap: wrap;
+    gap: 8px;
   }
-
-  .sg-field input[type="text"],
-  .sg-field input[type="password"],
-  .sg-field input[type="number"],
-  .sg-field select,
-  .sg-field textarea{
-    width: 100%;
-    box-sizing: border-box;
+  .sg-tab{
+    flex: 1 1 auto;
   }
 }
