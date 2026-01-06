@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.6.9
+ * v0.7.0
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -113,6 +113,7 @@ let appendTimer = null;
  * mesKey 优先用 DOM 的 mesid（如果拿不到则用 chatIndex）
  */
 const inlineCache = new Map();
+const panelCache = new Map(); // <mesKey, { htmlInner, collapsed, createdAt }>
 let chatDomObserver = null;
 let bodyDomObserver = null;
 let reapplyTimer = null;
@@ -740,6 +741,25 @@ async function fallbackAskJson(messages, temperature) {
   throw new Error('fallback 失败：缺少 generateRaw/generateQuietPrompt');
 }
 
+async function fallbackAskJsonCustom(apiBaseUrl, apiKey, model, messages, temperature, maxTokens, topP, stream) {
+  const retry = clone(messages);
+  retry.unshift({ role: 'system', content: `再次强调：只输出 JSON 对象本体，不要任何额外文字，不要代码块。` });
+  return await callViaCustom(apiBaseUrl, apiKey, model, retry, temperature, maxTokens, topP, stream);
+}
+
+function hasAnyModuleKey(obj, modules) {
+  if (!obj || typeof obj !== 'object') return false;
+  for (const m of modules || []) {
+    const k = m?.key;
+    if (k && Object.prototype.hasOwnProperty.call(obj, k)) return true;
+  }
+  return false;
+}
+
+
+
+// -------------------- custom provider
+
 // -------------------- custom provider (proxy-first) --------------------
 
 function normalizeBaseUrl(input) {
@@ -989,6 +1009,11 @@ async function runAnalysis() {
     let jsonText = '';
     if (s.provider === 'custom') {
       jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
+      const parsedTry = safeJsonParse(jsonText);
+      if (!parsedTry || !hasAnyModuleKey(parsedTry, modules)) {
+        try { jsonText = await fallbackAskJsonCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream); }
+        catch { /* ignore */ }
+      }
     } else {
       jsonText = await callViaSillyTavern(messages, schema, s.temperature);
       if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
@@ -1002,11 +1027,19 @@ async function runAnalysis() {
     $('#sg_json').text(lastJsonText);
     $('#sg_src').text(JSON.stringify(sourceSummary, null, 2));
 
-    if (!parsed) { showPane('json'); throw new Error('模型输出无法解析为 JSON（已切到 JSON 标签，看看原文）'); }
+    if (!parsed) {
+      // 同步原文到聊天末尾（解析失败时也不至于“聊天里看不到”）
+      try { syncPanelOutputToChat(String(jsonText || lastJsonText || ''), true); } catch { /* ignore */ }
+      showPane('json');
+      throw new Error('模型输出无法解析为 JSON（已切到 JSON 标签，看看原文）');
+    }
 
     const md = renderReportMarkdownFromModules(parsed, modules);
     lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
     renderMarkdownInto($('#sg_md'), md);
+
+    // 同步面板报告到聊天末尾
+    try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
 
     updateButtonsEnabled();
     showPane('md');
@@ -1166,6 +1199,103 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed) {
   return box;
 }
 
+
+function attachPanelToggleHandler(boxEl, mesKey) {
+  if (!boxEl) return;
+  const head = boxEl.querySelector('.sg-panel-head');
+  if (!head) return;
+  if (head.dataset.sgBound === '1') return;
+  head.dataset.sgBound = '1';
+
+  head.addEventListener('click', (e) => {
+    if (e.target && (e.target.closest('a'))) return;
+
+    const cur = boxEl.classList.contains('collapsed');
+    const next = !cur;
+    setCollapsed(boxEl, next);
+
+    const cached = panelCache.get(String(mesKey));
+    if (cached) {
+      cached.collapsed = next;
+      panelCache.set(String(mesKey), cached);
+    }
+  });
+}
+
+function createPanelBoxElement(mesKey, htmlInner, collapsed) {
+  const box = document.createElement('div');
+  box.className = 'sg-panel-box';
+  box.dataset.sgMesKey = String(mesKey);
+
+  box.innerHTML = `
+    <div class="sg-panel-head" title="点击折叠/展开（面板分析结果）">
+      <span class="sg-inline-badge">🧭</span>
+      <span class="sg-inline-title">剧情指导</span>
+      <span class="sg-inline-sub">（面板报告）</span>
+      <span class="sg-inline-chevron">▾</span>
+    </div>
+    <div class="sg-panel-body">${htmlInner}</div>
+  `.trim();
+
+  setCollapsed(box, !!collapsed);
+  attachPanelToggleHandler(box, mesKey);
+  return box;
+}
+
+function ensurePanelBoxPresent(mesKey) {
+  const cached = panelCache.get(String(mesKey));
+  if (!cached) return false;
+
+  const mesEl = findMesElementByKey(mesKey);
+  if (!mesEl) return false;
+
+  const textEl = mesEl.querySelector('.mes_text');
+  if (!textEl) return false;
+
+  const existing = textEl.querySelector('.sg-panel-box');
+  if (existing) {
+    setCollapsed(existing, !!cached.collapsed);
+    attachPanelToggleHandler(existing, mesKey);
+    const body = existing.querySelector('.sg-panel-body');
+    if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
+    return true;
+  }
+
+  const box = createPanelBoxElement(mesKey, cached.htmlInner, cached.collapsed);
+  textEl.appendChild(box);
+  return true;
+}
+
+
+function syncPanelOutputToChat(markdownOrText, asCodeBlock = false) {
+  const ref = getLastAssistantMessageRef();
+  if (!ref) return false;
+
+  const mesKey = ref.mesKey;
+
+  let md = String(markdownOrText || '').trim();
+  if (!md) return false;
+
+  if (asCodeBlock) {
+    // show raw output safely
+    md = '```text\n' + md + '\n```';
+  }
+
+  const htmlInner = renderMarkdownToHtml(md);
+  panelCache.set(String(mesKey), { htmlInner, collapsed: false, createdAt: Date.now() });
+
+  requestAnimationFrame(() => { ensurePanelBoxPresent(mesKey); });
+
+  // anti-overwrite reapply (same idea as inline)
+  setTimeout(() => ensurePanelBoxPresent(mesKey), 800);
+  setTimeout(() => ensurePanelBoxPresent(mesKey), 1800);
+  setTimeout(() => ensurePanelBoxPresent(mesKey), 3500);
+  setTimeout(() => ensurePanelBoxPresent(mesKey), 6500);
+
+  return true;
+}
+
+
 function ensureInlineBoxPresent(mesKey) {
   const cached = inlineCache.get(String(mesKey));
   if (!cached) return false;
@@ -1206,6 +1336,9 @@ function reapplyAllInlineBoxes(reason = '') {
   if (!s.enabled) return;
   for (const [mesKey] of inlineCache.entries()) {
     ensureInlineBoxPresent(mesKey);
+  }
+  for (const [mesKey] of panelCache.entries()) {
+    ensurePanelBoxPresent(mesKey);
   }
 }
 
@@ -1252,6 +1385,11 @@ async function runInlineAppendForLastMessage(opts = {}) {
     let jsonText = '';
     if (s.provider === 'custom') {
       jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
+      const parsedTry = safeJsonParse(jsonText);
+      if (!parsedTry || !hasAnyModuleKey(parsedTry, modules)) {
+        try { jsonText = await fallbackAskJsonCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream); }
+        catch { /* ignore */ }
+      }
     } else {
       jsonText = await callViaSillyTavern(messages, schema, s.temperature);
       if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
@@ -1260,7 +1398,21 @@ async function runInlineAppendForLastMessage(opts = {}) {
     }
 
     const parsed = safeJsonParse(jsonText);
-    if (!parsed) return;
+    if (!parsed) {
+      // 解析失败：也把原文追加到聊天末尾，避免“有输出但看不到”
+      const raw = String(jsonText || '').trim();
+      const rawMd = raw ? ('```text\n' + raw + '\n```') : '（空）';
+      const mdFail = `**剧情指导（解析失败）**\n\n${rawMd}`;
+      const htmlInnerFail = renderMarkdownToHtml(mdFail);
+
+      inlineCache.set(String(mesKey), { htmlInner: htmlInnerFail, collapsed: false, createdAt: Date.now() });
+      requestAnimationFrame(() => { ensureInlineBoxPresent(mesKey); });
+      setTimeout(() => ensureInlineBoxPresent(mesKey), 800);
+      setTimeout(() => ensureInlineBoxPresent(mesKey), 1800);
+      setTimeout(() => ensureInlineBoxPresent(mesKey), 3500);
+      setTimeout(() => ensureInlineBoxPresent(mesKey), 6500);
+      return;
+    }
 
     const md = buildInlineMarkdownFromModules(parsed, modules, s.appendMode, !!s.inlineShowEmpty);
     const htmlInner = renderMarkdownToHtml(md);

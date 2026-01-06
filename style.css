@@ -716,3 +716,26 @@ body.sg-zoom-lock{
     flex: 1 1 auto;
   }
 }
+
+
+/* v0.7.0 panel report box appended to messages */
+.sg-panel-box{
+  margin-top: 12px;
+  padding: 10px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(180,255,200,0.26);
+  background: rgba(180,255,200,0.06);
+}
+.sg-panel-head{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.sg-panel-body{ font-size: 0.97rem; opacity: .96; }
+
+/* collapsed state */
+.sg-panel-box.collapsed .sg-panel-body{ display: none; }
+.sg-panel-box.collapsed .sg-inline-chevron{ transform: rotate(-90deg); }
