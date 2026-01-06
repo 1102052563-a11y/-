@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.8
+ * v0.7.9
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -280,10 +280,169 @@ function escapeHtml(str) {
   });
 }
 
+function isGraphJson(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  const nodes = obj.nodes;
+  const edges = obj.edges;
+  return Array.isArray(nodes) && Array.isArray(edges);
+}
+
+function safeId(id) {
+  // Mermaid node ids: keep alnum/_; map others to _
+  const s = String(id ?? '').trim();
+  const out = s.replace(/[^a-zA-Z0-9_]/g, '_');
+  return out || ('N_' + Math.random().toString(16).slice(2));
+}
+
+function safeLabel(label) {
+  // Mermaid labels inside [] and edge labels inside | |
+  return String(label ?? '').replace(/[\r\n]+/g, ' ').replace(/\|/g, '/').trim();
+}
+
+function graphJsonToMermaid(graph) {
+  try {
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+
+    // Map original ids to mermaid-safe ids
+    const idMap = new Map();
+    for (const n of nodes) {
+      const raw = n?.id ?? n?.name ?? '';
+      const sid = safeId(raw);
+      // avoid collisions
+      let finalId = sid;
+      let i = 2;
+      while ([...idMap.values()].includes(finalId)) {
+        finalId = sid + '_' + i;
+        i += 1;
+      }
+      idMap.set(String(raw), finalId);
+      // also map name fallback
+      if (n?.id && n?.name) idMap.set(String(n.name), finalId);
+    }
+
+    // Group by faction if present
+    const groups = new Map();
+    for (const n of nodes) {
+      const fac = safeLabel(n?.faction || '');
+      const k = fac || '';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(n);
+    }
+
+    const lines = [];
+    lines.push('flowchart TD');
+
+    // Nodes
+    const emitNode = (n) => {
+      const rawId = String(n?.id ?? n?.name ?? '');
+      const mid = idMap.get(rawId) || safeId(rawId);
+      const name = safeLabel(n?.name ?? n?.id ?? mid);
+      // include role/type in a compact way
+      const extra = [n?.role, n?.type].filter(Boolean).map(safeLabel).filter(Boolean);
+      const label = extra.length ? `${name}\n(${extra.join(' / ')})` : name;
+      lines.push(`  ${mid}["${label.replace(/"/g,'\"')}"]`);
+    };
+
+    for (const [fac, arr] of groups.entries()) {
+      if (fac) {
+        const subId = safeId('f_' + fac);
+        lines.push(`  subgraph ${subId}["${fac.replace(/"/g,'\"')}"]`);
+        for (const n of arr) emitNode(n);
+        lines.push('  end');
+      } else {
+        for (const n of arr) emitNode(n);
+      }
+    }
+
+    // Edges
+    const arrowFor = (e) => {
+      const vis = String(e?.visibility || '').toLowerCase();
+      const conf = String(e?.confidence || '').toLowerCase();
+      const pol = String(e?.polarity || '').toLowerCase();
+      const rel = String(e?.relation || '').toLowerCase();
+
+      const isWeak = vis.includes('隐') || vis.includes('私') || conf.includes('低') || conf.includes('不') || conf.includes('未知');
+      const isNeg = pol.includes('neg') || rel.includes('敌') || rel.includes('仇') || rel.includes('对立');
+
+      // Use dashed for weak/hidden; dotted-ish for negative too
+      if (isWeak || isNeg) return '-.->';
+      return '-->';
+    };
+
+    for (const e of edges) {
+      const fromRaw = String(e?.from ?? '');
+      const toRaw = String(e?.to ?? '');
+      if (!fromRaw || !toRaw) continue;
+      const from = idMap.get(fromRaw) || safeId(fromRaw);
+      const to = idMap.get(toRaw) || safeId(toRaw);
+
+      const rel = safeLabel(e?.relation || '');
+      const dir = String(e?.direction || '->');
+
+      const arrow = arrowFor(e);
+
+      if (dir.includes('<') && dir.includes('>')) {
+        // undirected / mutual
+        const connector = arrow === '-->' ? '---' : '-.-';
+        lines.push(`  ${from} ${connector}|"${rel}"| ${to}`);
+      } else if (dir.includes('<-')) {
+        // reverse
+        lines.push(`  ${to} ${arrow}|"${rel}"| ${from}`);
+      } else {
+        // forward
+        lines.push(`  ${from} ${arrow}|"${rel}"| ${to}`);
+      }
+    }
+
+    return lines.join('\n');
+  } catch {
+    // fallback
+    return '';
+  }
+}
+
+function findGraphJsonInLastReport() {
+  const obj = lastReport?.json;
+  if (!obj || typeof obj !== 'object') return null;
+
+  for (const [k, v] of Object.entries(obj)) {
+    let val = v;
+    if (typeof val === 'string') {
+      const parsed = tryParseJsonAny(val);
+      if (parsed) val = parsed;
+    }
+    if (isGraphJson(val)) return { key: k, graph: val };
+  }
+  return null;
+}
+
+function normalizeGraphInput(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  const parsed = tryParseJsonAny(t);
+  if (parsed && isGraphJson(parsed)) {
+    const mm = graphJsonToMermaid(parsed);
+    if (mm) return mm;
+  }
+  return t;
+}
+
 function getRelationGraphTextPreferUi() {
-  const ui = ($('#sg_graphText').length ? String($('#sg_graphText').val() || '').trim() : '');
-  if (ui) return ui;
-  return String(getChatMetaValue(META_KEYS.graph) || '').trim();
+  const uiRaw = ($('#sg_graphText').length ? String($('#sg_graphText').val() || '') : '');
+  const ui = normalizeGraphInput(uiRaw);
+  if (ui.trim()) return ui.trim();
+
+  const metaRaw = String(getChatMetaValue(META_KEYS.graph) || '');
+  const meta = normalizeGraphInput(metaRaw);
+  if (meta.trim()) return meta.trim();
+
+  const found = findGraphJsonInLastReport();
+  if (found?.graph) {
+    const mm = graphJsonToMermaid(found.graph);
+    if (mm) return mm;
+  }
+  return '';
 }
 
 function loadExternalScript(url) {
@@ -2151,7 +2310,7 @@ function buildModalHtml() {
   A[主角] -->|同盟| B[伙伴]
   A -.敌对.-> C[反派]
 "></textarea>
-              <div class="sg-hint">推荐用 Mermaid <code>flowchart</code> 语法（不要包代码块）。右侧「图谱」标签可预览；若无法加载 Mermaid，会退化为显示源代码。</div>
+              <div class="sg-hint">推荐用 Mermaid <code>flowchart</code> 语法（不要包代码块）。也支持粘贴“nodes/edges”的 JSON（会自动转 Mermaid）。右侧「图谱」标签可预览；若无法加载 Mermaid，会退化为显示源代码。</div>
             </div>
 
             <div class="sg-actions-row">
