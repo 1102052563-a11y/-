@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.7.3
+ * v0.7.5
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -96,9 +96,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   customSystemPreamble: '',     // 附加在默认 system 之后
   customConstraints: '',        // 附加在默认 constraints 之后
 
-  // 世界地图（实验性）：用独立（或继承）API 生成「地点拓扑 + 主角位置」并在面板渲染
+  // 世界地图（实验性）：用（可继承）API 生成「地点拓扑 + 主角位置」并在面板渲染
   mapProvider: 'inherit',       // inherit | st | custom
   mapPersistToChat: true,
+  // 地图生成默认沿用“剧情指导”的 API 配置（endpoint/key/model/max_tokens/stream/top_p）
+  // 仍保留旧字段兼容（不会用于生成；仅用于旧预设导入不报错）
   mapCustomEndpoint: '',
   mapCustomApiKey: '',
   mapCustomModel: 'gpt-4o-mini',
@@ -839,14 +841,16 @@ function resolveMapProvider() {
   let provider = String(s.mapProvider || 'inherit');
   if (provider === 'inherit') provider = String(s.provider || 'st');
 
+  // 地图生成沿用“剧情指导”的 API 设置（同一套 endpoint/key/model/max_tokens/stream/top_p）
+  // 这样用户只需要配置一次，地图与剧情指导保持一致。
   const useCustom = provider === 'custom';
-  const endpoint = useCustom ? (s.mapCustomEndpoint || s.customEndpoint) : '';
-  const apiKey = useCustom ? (s.mapCustomApiKey || s.customApiKey) : '';
-  const model = useCustom ? (s.mapCustomModel || s.customModel) : '';
-  const temperature = clampFloat(s.mapTemperature, 0, 2, s.temperature ?? DEFAULT_SETTINGS.temperature);
-  const topP = clampFloat(s.mapTopP, 0, 1, s.customTopP ?? DEFAULT_SETTINGS.customTopP);
-  const maxTokens = clampInt(s.mapMaxTokens, 256, 200000, DEFAULT_SETTINGS.mapMaxTokens);
-  const stream = !!s.mapStream;
+  const endpoint = useCustom ? String(s.customEndpoint || '').trim() : '';
+  const apiKey = useCustom ? String(s.customApiKey || '') : '';
+  const model = useCustom ? String(s.customModel || '').trim() : '';
+  const temperature = clampFloat(s.temperature, 0, 2, DEFAULT_SETTINGS.temperature);
+  const topP = clampFloat(s.customTopP, 0, 1, DEFAULT_SETTINGS.customTopP);
+  const maxTokens = clampInt(s.customMaxTokens, 256, 200000, DEFAULT_SETTINGS.customMaxTokens);
+  const stream = !!s.customStream;
 
   return { provider, endpoint, apiKey, model, temperature, topP, maxTokens, stream };
 }
@@ -1794,9 +1798,8 @@ function scheduleInlineAppend() {
 
 // -------------------- models refresh (custom) --------------------
 
-function fillModelSelect(modelIds, selected) {
-  const $sel = $('#sg_modelSelect');
-  if (!$sel.length) return;
+function fillModelSelectFor($sel, modelIds, selected) {
+  if (!$sel || !$sel.length) return;
   $sel.empty();
   $sel.append(`<option value="">（选择模型）</option>`);
   (modelIds || []).forEach(id => {
@@ -1806,6 +1809,11 @@ function fillModelSelect(modelIds, selected) {
     if (selected && id === selected) opt.selected = true;
     $sel.append(opt);
   });
+}
+
+function fillModelSelectAll(modelIds, selected) {
+  fillModelSelectFor($('#sg_modelSelect'), modelIds, selected);
+  fillModelSelectFor($('#sg_mapModelSelect'), modelIds, selected);
 }
 
 async function refreshModels() {
@@ -1857,7 +1865,7 @@ async function refreshModels() {
 
     s.customModelsCache = ids;
     saveSettings();
-    fillModelSelect(ids, s.customModel);
+    fillModelSelectAll(ids, s.customModel);
     setStatus(`已刷新模型：${ids.length} 个（后端代理）`, 'ok');
     return;
   } catch (e) {
@@ -1899,7 +1907,7 @@ async function refreshModels() {
 
     s.customModelsCache = ids;
     saveSettings();
-    fillModelSelect(ids, s.customModel);
+    fillModelSelectAll(ids, s.customModel);
     setStatus(`已刷新模型：${ids.length} 个（直连 fallback）`, 'ok');
   } catch (e) {
     setStatus(`刷新模型失败：${e?.message ?? e}`, 'err');
@@ -2383,7 +2391,7 @@ function buildModalHtml() {
                 <select id="sg_mapProvider">
                   <option value="inherit">跟随上方 Provider</option>
                   <option value="st">使用当前 SillyTavern API</option>
-                  <option value="custom">独立API（自填）</option>
+                  <option value="custom">独立API（使用上方设置）</option>
                 </select>
 
                 <label class="sg-check" title="把地图JSON存到本聊天元数据里，切换聊天后也能看到">
@@ -2395,42 +2403,40 @@ function buildModalHtml() {
               </div>
 
               <div id="sg_map_custom_block" class="sg-card sg-subcard" style="display:none; margin-top:10px;">
-                <div class="sg-card-title">地图独立API 设置（OpenAI Chat Completions 风格）</div>
+                <div class="sg-card-title">地图 API 设置（与剧情指导共用）</div>
 
                 <div class="sg-field">
                   <label>API基础URL（例如 https://api.openai.com/v1 ）</label>
-                  <input id="sg_mapCustomEndpoint" type="text" placeholder="https://xxx.com/v1">
+                  <input id="sg_mapEndpoint" type="text" placeholder="https://xxx.com/v1">
+                  <div class="sg-hint">这里与上方“独立API”共用同一套设置；任意一处修改都会同步。</div>
                 </div>
 
                 <div class="sg-grid2">
                   <div class="sg-field">
                     <label>API Key（可选）</label>
-                    <input id="sg_mapCustomApiKey" type="password" placeholder="可留空">
+                    <input id="sg_mapApiKey" type="password" placeholder="可留空">
                   </div>
                   <div class="sg-field">
                     <label>模型（可手填）</label>
-                    <input id="sg_mapCustomModel" type="text" placeholder="gpt-4o-mini">
-                  </div>
-                </div>
-
-                <div class="sg-grid3">
-                  <div class="sg-field">
-                    <label>temperature</label>
-                    <input id="sg_mapTemperature" type="number" step="0.05" min="0" max="2">
-                  </div>
-                  <div class="sg-field">
-                    <label>max_tokens</label>
-                    <input id="sg_mapMaxTokens" type="number" min="256" max="200000" step="1">
-                  </div>
-                  <div class="sg-field">
-                    <label>top_p</label>
-                    <input id="sg_mapTopP" type="number" step="0.01" min="0" max="1">
+                    <input id="sg_mapModel" type="text" placeholder="gpt-4o-mini">
                   </div>
                 </div>
 
                 <div class="sg-row sg-inline">
-                  <label class="sg-check"><input type="checkbox" id="sg_mapStream"> stream=true</label>
-                  <span class="sg-hint">（优先走酒馆后端代理；直连会受跨域影响）</span>
+                  <button class="menu_button sg-btn" id="sg_mapRefreshModels">检查/刷新模型</button>
+                  <select id="sg_mapModelSelect" class="sg-model-select">
+                    <option value="">（选择模型）</option>
+                  </select>
+                </div>
+
+                <div class="sg-row">
+                  <div class="sg-field sg-field-full">
+                    <label>最大回复token数（max_tokens）</label>
+                    <input id="sg_mapMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如：60000">
+                    <label class="sg-check" style="margin-top:8px;">
+                      <input type="checkbox" id="sg_mapStream"> 使用流式返回（stream=true）
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -2462,15 +2468,63 @@ function ensureModal() {
   $('#sg_tab_json').on('click', () => showPane('json'));
   $('#sg_tab_src').on('click', () => showPane('src'));
 
-  $('#sg_mapProvider').on('change', () => {
-    const p = String($('#sg_mapProvider').val() || 'inherit');
-    $('#sg_map_custom_block').toggle(p === 'custom');
-  });
+  // 地图 API 复用“剧情指导”的同一套独立API配置。
+  // 显示/隐藏规则：看“地图 Provider”最终解析后的 provider。
+  const toggleMapCustomBlock = () => {
+    const mp = String($('#sg_mapProvider').val() || 'inherit');
+    const main = String($('#sg_provider').val() || 'st');
+    const resolved = (mp === 'inherit') ? main : mp;
+    $('#sg_map_custom_block').toggle(resolved === 'custom');
+  };
+
+  const syncVal = (src, dst) => {
+    const $s = $(src); const $d = $(dst);
+    if (!$s.length || !$d.length) return;
+    const v = $s.val();
+    if ($d.val() !== v) $d.val(v);
+  };
+  const syncChecked = (src, dst) => {
+    const $s = $(src); const $d = $(dst);
+    if (!$s.length || !$d.length) return;
+    const v = $s.is(':checked');
+    if ($d.is(':checked') !== v) $d.prop('checked', v);
+  };
+
+  // 双向同步：上方独立API块 <-> 地图独立API块
+  $('#sg_customEndpoint').on('input', () => syncVal('#sg_customEndpoint', '#sg_mapEndpoint'));
+  $('#sg_mapEndpoint').on('input', () => syncVal('#sg_mapEndpoint', '#sg_customEndpoint'));
+
+  $('#sg_customApiKey').on('input', () => syncVal('#sg_customApiKey', '#sg_mapApiKey'));
+  $('#sg_mapApiKey').on('input', () => syncVal('#sg_mapApiKey', '#sg_customApiKey'));
+
+  $('#sg_customModel').on('input', () => syncVal('#sg_customModel', '#sg_mapModel'));
+  $('#sg_mapModel').on('input', () => syncVal('#sg_mapModel', '#sg_customModel'));
+
+  $('#sg_customMaxTokens').on('input', () => syncVal('#sg_customMaxTokens', '#sg_mapMaxTokens'));
+  $('#sg_mapMaxTokens').on('input', () => syncVal('#sg_mapMaxTokens', '#sg_customMaxTokens'));
+
+  $('#sg_customStream').on('change', () => syncChecked('#sg_customStream', '#sg_mapStream'));
+  $('#sg_mapStream').on('change', () => syncChecked('#sg_mapStream', '#sg_customStream'));
+
+  $('#sg_mapProvider').on('change', () => toggleMapCustomBlock());
 
   $('#sg_mapGenerate').on('click', async () => {
     pullUiToSettings();
     saveSettings();
     await runMapGeneration();
+  });
+
+  $('#sg_mapRefreshModels').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await refreshModels();
+  });
+
+  $('#sg_mapModelSelect').on('change', () => {
+    const id = String($('#sg_mapModelSelect').val() || '').trim();
+    if (!id) return;
+    $('#sg_mapModel').val(id);
+    $('#sg_customModel').val(id);
+    $('#sg_modelSelect').val(id);
   });
 
   $('#sg_mapCopyJson').on('click', async () => {
@@ -2527,6 +2581,7 @@ function ensureModal() {
   $('#sg_provider').on('change', () => {
     const provider = String($('#sg_provider').val());
     $('#sg_custom_block').toggle(provider === 'custom');
+    toggleMapCustomBlock();
   });
 
   $('#sg_refreshModels').on('click', async () => {
@@ -2536,8 +2591,14 @@ function ensureModal() {
 
   $('#sg_modelSelect').on('change', () => {
     const id = String($('#sg_modelSelect').val() || '').trim();
-    if (id) $('#sg_customModel').val(id);
+    if (!id) return;
+    $('#sg_customModel').val(id);
+    $('#sg_mapModel').val(id);
+    $('#sg_mapModelSelect').val(id);
   });
+
+  // 初次计算一次（避免刚打开时地图块显示状态不对）
+  toggleMapCustomBlock();
 
   
   // presets actions
@@ -2702,20 +2763,24 @@ function pullSettingsToUi() {
   $('#sg_customEndpoint').val(s.customEndpoint);
   $('#sg_customApiKey').val(s.customApiKey);
   $('#sg_customModel').val(s.customModel);
+  $('#sg_customMaxTokens').val(s.customMaxTokens ?? DEFAULT_SETTINGS.customMaxTokens);
+  $('#sg_customStream').prop('checked', !!s.customStream);
 
   // map settings
   $('#sg_mapProvider').val(String(s.mapProvider || 'inherit'));
   $('#sg_mapPersist').prop('checked', !!s.mapPersistToChat);
-  $('#sg_mapCustomEndpoint').val(String(s.mapCustomEndpoint || ''));
-  $('#sg_mapCustomApiKey').val(String(s.mapCustomApiKey || ''));
-  $('#sg_mapCustomModel').val(String(s.mapCustomModel || ''));
-  $('#sg_mapTemperature').val(s.mapTemperature ?? DEFAULT_SETTINGS.mapTemperature);
-  $('#sg_mapMaxTokens').val(s.mapMaxTokens ?? DEFAULT_SETTINGS.mapMaxTokens);
-  $('#sg_mapTopP').val(s.mapTopP ?? DEFAULT_SETTINGS.mapTopP);
-  $('#sg_mapStream').prop('checked', !!s.mapStream);
-  $('#sg_map_custom_block').toggle(String(s.mapProvider || 'inherit') === 'custom');
+  $('#sg_mapEndpoint').val(s.customEndpoint);
+  $('#sg_mapApiKey').val(s.customApiKey);
+  $('#sg_mapModel').val(s.customModel);
+  $('#sg_mapMaxTokens').val(s.customMaxTokens ?? DEFAULT_SETTINGS.customMaxTokens);
+  $('#sg_mapStream').prop('checked', !!s.customStream);
 
-  fillModelSelect(Array.isArray(s.customModelsCache) ? s.customModelsCache : [], s.customModel);
+  // 地图块显示逻辑：跟随最终解析 provider
+  const mp = String(s.mapProvider || 'inherit');
+  const resolved = (mp === 'inherit') ? String(s.provider || 'st') : mp;
+  $('#sg_map_custom_block').toggle(resolved === 'custom');
+
+  fillModelSelectAll(Array.isArray(s.customModelsCache) ? s.customModelsCache : [], s.customModel);
 
   $('#sg_worldText').val(getChatMetaValue(META_KEYS.world));
   $('#sg_canonText').val(getChatMetaValue(META_KEYS.canon));
@@ -2811,22 +2876,22 @@ function pullUiToSettings() {
   s.inlineModulesSource = String($('#sg_inlineModulesSource').val() || 'inline');
   s.inlineShowEmpty = $('#sg_inlineShowEmpty').is(':checked');
 
-  s.customEndpoint = String($('#sg_customEndpoint').val() || '').trim();
-  s.customApiKey = String($('#sg_customApiKey').val() || '');
-  s.customModel = String($('#sg_customModel').val() || '').trim();
-  s.customMaxTokens = clampInt($('#sg_customMaxTokens').val(), 256, 200000, s.customMaxTokens || 8192);
-  s.customStream = $('#sg_customStream').is(':checked');
+  // 共享：独立API设置（剧情指导 + 地图共用）
+  const sharedEndpoint = String($('#sg_customEndpoint').val() || $('#sg_mapEndpoint').val() || '').trim();
+  const sharedApiKey = String($('#sg_customApiKey').val() || $('#sg_mapApiKey').val() || '');
+  const sharedModel = String($('#sg_customModel').val() || $('#sg_mapModel').val() || '').trim();
+  const sharedMaxTokensRaw = $('#sg_customMaxTokens').val() || $('#sg_mapMaxTokens').val();
+  const sharedStream = ($('#sg_customStream').length ? $('#sg_customStream').is(':checked') : false) || ($('#sg_mapStream').length ? $('#sg_mapStream').is(':checked') : false);
+
+  s.customEndpoint = sharedEndpoint;
+  s.customApiKey = sharedApiKey;
+  s.customModel = sharedModel;
+  s.customMaxTokens = clampInt(sharedMaxTokensRaw, 256, 200000, s.customMaxTokens || DEFAULT_SETTINGS.customMaxTokens);
+  s.customStream = !!sharedStream;
 
   // map settings
   s.mapProvider = String($('#sg_mapProvider').val() || 'inherit');
   s.mapPersistToChat = $('#sg_mapPersist').is(':checked');
-  s.mapCustomEndpoint = String($('#sg_mapCustomEndpoint').val() || '').trim();
-  s.mapCustomApiKey = String($('#sg_mapCustomApiKey').val() || '');
-  s.mapCustomModel = String($('#sg_mapCustomModel').val() || '').trim();
-  s.mapTemperature = clampFloat($('#sg_mapTemperature').val(), 0, 2, s.mapTemperature ?? DEFAULT_SETTINGS.mapTemperature);
-  s.mapMaxTokens = clampInt($('#sg_mapMaxTokens').val(), 256, 200000, s.mapMaxTokens ?? DEFAULT_SETTINGS.mapMaxTokens);
-  s.mapTopP = clampFloat($('#sg_mapTopP').val(), 0, 1, s.mapTopP ?? DEFAULT_SETTINGS.mapTopP);
-  s.mapStream = $('#sg_mapStream').is(':checked');
 
   // modulesJson：先不强行校验（用户可先保存再校验），但会在分析前用默认兜底
   s.modulesJson = String($('#sg_modulesJson').val() || '').trim() || JSON.stringify(DEFAULT_MODULES, null, 2);
