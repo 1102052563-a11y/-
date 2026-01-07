@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.7
+ * v0.9.8
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -20,10 +20,10 @@
  * v0.9.4 新增：总结写入世界书的“主要关键词(key)”可切换为“索引编号”（如 A-001），只写 1 个触发词，触发更精确。
  * v0.9.5 改进：蓝灯索引匹配会综合“最近 N 条消息正文 + 本次用户输入”，而不是只看最近正文（可在面板里关闭/调整权重）。
  * v0.9.6 改进：在面板标题处显示版本号，方便确认是否已正确更新到包含“用户输入权重”设置的版本。
- * v0.9.7 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
+ * v0.9.8 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
  */
 
-const SG_VERSION = '0.9.7';
+const SG_VERSION = '0.9.8';
 
 const MODULE_NAME = 'storyguide';
 
@@ -61,6 +61,14 @@ const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor
 
 // 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
 const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
+
+
+// ===== 索引提示词默认值（可在面板中自定义；用于“LLM 综合判断”模式） =====
+const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个“剧情索引匹配”助手。\n\n任务：\n- 输入包含：最近剧情正文（节选）、用户当前输入、以及若干候选索引条目（每条含标题/摘要/触发词）。\n- 你的目标是：综合判断哪些候选条目与“当前剧情”最相关（不是只匹配用户这一句话），并返回这些候选的 id。\n\n要求：\n- 优先选择与当前剧情主线/关键人物/关键地点/关键物品/未解决悬念相关的条目。\n- 避免选择明显无关或过于泛的条目。\n- 返回条目数量应 <= maxPick。`;
+
+const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】\n{{userMessage}}\n\n【最近剧情（节选）】\n{{recentText}}\n\n【候选索引条目（JSON）】\n{{candidates}}\n\n请从候选中选出与当前剧情最相关的条目（不超过 {{maxPick}} 条），并仅输出 JSON。`;
+
+const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"pickedIds": number[]}。\n- pickedIds 必须是候选列表里的 id（整数）。\n- 返回的 pickedIds 数量 <= maxPick。`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -164,6 +172,30 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // —— 蓝灯索引 → 绿灯触发 ——
   wiTriggerEnabled: false,
+
+// 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API）
+wiTriggerMatchMode: 'local',
+
+// —— 索引 LLM（独立于总结 API 的第二套配置）——
+wiIndexProvider: 'st',         // st | custom
+wiIndexTemperature: 0.2,
+wiIndexTopP: 0.95,
+wiIndexSystemPrompt: DEFAULT_INDEX_SYSTEM_PROMPT,
+wiIndexUserTemplate: DEFAULT_INDEX_USER_TEMPLATE,
+
+// LLM 模式：先用本地相似度预筛选 TopK，再交给模型综合判断（更省 tokens）
+wiIndexPrefilterTopK: 24,
+// 每条候选摘要截断字符（控制 tokens）
+wiIndexCandidateMaxChars: 420,
+
+// 索引独立 OpenAI 兼容 API
+wiIndexCustomEndpoint: '',
+wiIndexCustomApiKey: '',
+wiIndexCustomModel: 'gpt-4o-mini',
+wiIndexCustomModelsCache: [],
+wiIndexCustomMaxTokens: 1024,
+wiIndexCustomStream: false,
+
   // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
   wiTriggerLookbackMessages: 20,
   // 是否把“本次用户输入”纳入索引匹配（综合判断）。
@@ -2326,6 +2358,113 @@ function pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, 
   return scored.slice(0, maxEntries);
 }
 
+function buildIndexPromptMessages(recentText, userText, candidatesForModel, maxPick) {
+  const s = ensureSettings();
+  const sys = String(s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT).trim() || DEFAULT_INDEX_SYSTEM_PROMPT;
+  const tmpl = String(s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE).trim() || DEFAULT_INDEX_USER_TEMPLATE;
+
+  const candidatesJson = JSON.stringify(candidatesForModel, null, 0);
+
+  const user = tmpl
+    .replaceAll('{{userMessage}}', String(userText || ''))
+    .replaceAll('{{recentText}}', String(recentText || ''))
+    .replaceAll('{{candidates}}', candidatesJson)
+    .replaceAll('{{maxPick}}', String(maxPick));
+
+  const enforced = user + `
+
+` + INDEX_JSON_REQUIREMENT.replaceAll('maxPick', String(maxPick));
+
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: enforced },
+  ];
+}
+
+async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, maxEntries, includeUser, userWeight) {
+  const s = ensureSettings();
+
+  const topK = clampInt(s.wiIndexPrefilterTopK, 5, 80, 24);
+  const candMaxChars = clampInt(s.wiIndexCandidateMaxChars, 120, 2000, 420);
+
+  const pre = pickRelevantIndexEntries(
+    recentText,
+    userText,
+    candidates,
+    Math.max(topK, maxEntries),
+    0,
+    includeUser,
+    userWeight
+  );
+
+  const shortlist = (pre.length ? pre : candidates.map(e => ({ e, score: 0 }))).slice(0, topK);
+
+  const candidatesForModel = shortlist.map((x, i) => {
+    const e = x.e || x;
+    const title = String(e.title || '').trim();
+    const summary0 = String(e.summary || '').trim();
+    const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '…') : summary0;
+    const kws = Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : [];
+    return { id: i, title: title || '条目', summary, keywords: kws };
+  });
+
+  const messages = buildIndexPromptMessages(recentText, userText, candidatesForModel, maxEntries);
+
+  let jsonText = '';
+  if (String(s.wiIndexProvider || 'st') === 'custom') {
+    jsonText = await callViaCustom(
+      s.wiIndexCustomEndpoint,
+      s.wiIndexCustomApiKey,
+      s.wiIndexCustomModel,
+      messages,
+      clampFloat(s.wiIndexTemperature, 0, 2, 0.2),
+      clampInt(s.wiIndexCustomMaxTokens, 128, 200000, 1024),
+      clampFloat(s.wiIndexTopP, 0, 1, 0.95),
+      !!s.wiIndexCustomStream
+    );
+    const parsedTry = safeJsonParse(jsonText);
+    if (!parsedTry || !Array.isArray(parsedTry?.pickedIds)) {
+      try {
+        jsonText = await fallbackAskJsonCustom(
+          s.wiIndexCustomEndpoint,
+          s.wiIndexCustomApiKey,
+          s.wiIndexCustomModel,
+          messages,
+          clampFloat(s.wiIndexTemperature, 0, 2, 0.2),
+          clampInt(s.wiIndexCustomMaxTokens, 128, 200000, 1024),
+          clampFloat(s.wiIndexTopP, 0, 1, 0.95),
+          !!s.wiIndexCustomStream
+        );
+      } catch { /* ignore */ }
+    }
+  } else {
+    const schema = {
+      type: 'object',
+      properties: { pickedIds: { type: 'array', items: { type: 'integer' } } },
+      required: ['pickedIds'],
+    };
+    jsonText = await callViaSillyTavern(messages, schema, clampFloat(s.wiIndexTemperature, 0, 2, 0.2));
+    if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+    const parsedTry = safeJsonParse(jsonText);
+    if (!parsedTry || !Array.isArray(parsedTry?.pickedIds)) {
+      jsonText = await fallbackAskJson(messages, clampFloat(s.wiIndexTemperature, 0, 2, 0.2));
+    }
+  }
+
+  const parsed = safeJsonParse(jsonText);
+  const pickedIds = Array.isArray(parsed?.pickedIds) ? parsed.pickedIds : [];
+  const uniq = Array.from(new Set(pickedIds.map(x => Number(x)).filter(n => Number.isFinite(n))));
+
+  const picked = [];
+  for (const id of uniq) {
+    const origin = shortlist[id]?.e || null;
+    if (origin) picked.push({ e: origin, score: Number(shortlist[id]?.score || 0) });
+    if (picked.length >= maxEntries) break;
+  }
+  return picked;
+}
+
+
 async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const s = ensureSettings();
   if (!s.wiTriggerEnabled) return;
@@ -2375,9 +2514,19 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
   const includeUser = !!s.wiTriggerIncludeUserMessage;
   const userWeight = clampFloat(s.wiTriggerUserMessageWeight, 0, 10, 1.6);
-  // 关键：综合“最近 N 条正文 + 本次用户输入”来判断与当前剧情相关的条目。
-  const picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
-  if (!picked.length) return;
+const matchMode = String(s.wiTriggerMatchMode || 'local');
+let picked = [];
+if (matchMode === 'llm') {
+  try {
+    picked = await pickRelevantIndexEntriesLLM(recentText, lastText, candidates, maxEntries, includeUser, userWeight);
+  } catch (e) {
+    console.warn('[StoryGuide] index LLM failed; fallback to local similarity', e);
+    picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
+  }
+} else {
+  picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
+}
+if (!picked.length) return;
 
   const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
   const kwSet = new Set();
@@ -2857,6 +3006,22 @@ function fillSummaryModelSelect(modelIds, selected) {
   });
 }
 
+
+function fillIndexModelSelect(modelIds, selected) {
+  const $sel = $('#sg_wiIndexModelSelect');
+  if (!$sel.length) return;
+  $sel.empty();
+  $sel.append(`<option value="">（选择模型）</option>`);
+  (modelIds || []).forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    if (selected && id === selected) opt.selected = true;
+    $sel.append(opt);
+  });
+}
+
+
 async function refreshSummaryModels() {
   const s = ensureSettings();
   const raw = String($('#sg_summaryCustomEndpoint').val() || s.summaryCustomEndpoint || '').trim();
@@ -2954,6 +3119,105 @@ async function refreshSummaryModels() {
     setStatus(`刷新总结模型失败：${e?.message ?? e}`, 'err');
   }
 }
+
+
+async function refreshIndexModels() {
+  const s = ensureSettings();
+  const raw = String($('#sg_wiIndexCustomEndpoint').val() || s.wiIndexCustomEndpoint || '').trim();
+  const apiBase = normalizeBaseUrl(raw);
+  if (!apiBase) { setStatus('请先填写“索引独立API基础URL”再刷新模型', 'warn'); return; }
+
+  setStatus('正在刷新“索引独立API”模型列表…', 'warn');
+
+  const apiKey = String($('#sg_wiIndexCustomApiKey').val() || s.wiIndexCustomApiKey || '');
+  const statusUrl = '/api/backends/chat-completions/status';
+
+  const body = {
+    reverse_proxy: apiBase,
+    chat_completion_source: 'custom',
+    custom_url: apiBase,
+    custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : ''
+  };
+
+  try {
+    const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
+    const res = await fetch(statusUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    const data = await res.json().catch(() => ({}));
+
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+
+    ids = Array.from(new Set(ids)).sort((a,b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) {
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      return;
+    }
+
+    s.wiIndexCustomModelsCache = ids;
+    saveSettings();
+    fillIndexModelSelect(ids, s.wiIndexCustomModel);
+    setStatus(`已刷新索引模型：${ids.length} 个（后端代理）`, 'ok');
+    return;
+  } catch (e) {
+    const status = e?.status;
+    if (!(status === 404 || status === 405)) console.warn('[StoryGuide] index status check failed; fallback to direct /models', e);
+  }
+
+  try {
+    const modelsUrl = (function (base) {
+      const u = normalizeBaseUrl(base);
+      if (!u) return '';
+      if (/\/v1$/.test(u)) return u + '/models';
+      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      return u + '/v1/models';
+    })(apiBase);
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+    const res = await fetch(modelsUrl, { method: 'GET', headers });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+    }
+    const data = await res.json().catch(() => ({}));
+
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+
+    ids = Array.from(new Set(ids)).sort((a,b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+
+    s.wiIndexCustomModelsCache = ids;
+    saveSettings();
+    fillIndexModelSelect(ids, s.wiIndexCustomModel);
+    setStatus(`已刷新索引模型：${ids.length} 个（直连 fallback）`, 'ok');
+  } catch (e) {
+    setStatus(`刷新索引模型失败：${e?.message ?? e}`, 'err');
+  }
+}
+
+
 
 async function refreshModels() {
   const s = ensureSettings();
@@ -3736,6 +4000,85 @@ function buildModalHtml() {
                   <label>最多触发条目数</label>
                   <input id="sg_wiTriggerMaxEntries" type="number" min="1" max="20" placeholder="4">
                 </div>
+
+<div class="sg-grid2">
+  <div class="sg-field">
+    <label>匹配方式</label>
+    <select id="sg_wiTriggerMatchMode">
+      <option value="local">本地相似度（快）</option>
+      <option value="llm">LLM 综合判断（可自定义提示词）</option>
+    </select>
+  </div>
+  <div class="sg-field">
+    <label>预筛选 TopK（仅 LLM 模式）</label>
+    <input id="sg_wiIndexPrefilterTopK" type="number" min="5" max="80" placeholder="24">
+    <div class="sg-hint">先用相似度挑 TopK，再交给模型选出最相关的几条（省 tokens）。</div>
+  </div>
+</div>
+
+<div class="sg-card sg-subcard" id="sg_index_llm_block" style="display:none; margin-top:10px;">
+  <div class="sg-grid2">
+    <div class="sg-field">
+      <label>索引 Provider</label>
+      <select id="sg_wiIndexProvider">
+        <option value="st">使用酒馆当前连接的模型</option>
+        <option value="custom">使用独立 OpenAI 兼容 API</option>
+      </select>
+    </div>
+    <div class="sg-field">
+      <label>索引 Temperature</label>
+      <input id="sg_wiIndexTemperature" type="number" min="0" max="2" step="0.1">
+    </div>
+  </div>
+
+  <div class="sg-field">
+    <label>自定义索引提示词（System，可选）</label>
+    <textarea id="sg_wiIndexSystemPrompt" rows="6" placeholder="例如：更强调人物关系/线索回收/当前目标；或要求更严格的筛选…"></textarea>
+  </div>
+  <div class="sg-field">
+    <label>索引模板（User，可选）</label>
+    <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="支持占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}"></textarea>
+  </div>
+  <div class="sg-row sg-inline">
+    <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示词</button>
+    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}。插件会强制要求输出 JSON：{pickedIds:number[]}。</div>
+  </div>
+
+  <div class="sg-card sg-subcard" id="sg_index_custom_block" style="display:none">
+    <div class="sg-grid2">
+      <div class="sg-field">
+        <label>索引独立API基础URL</label>
+        <input id="sg_wiIndexCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
+      </div>
+      <div class="sg-field">
+        <label>API Key</label>
+        <input id="sg_wiIndexCustomApiKey" type="password" placeholder="sk-...">
+      </div>
+    </div>
+    <div class="sg-grid2">
+      <div class="sg-field">
+        <label>模型ID（可手填）</label>
+        <input id="sg_wiIndexCustomModel" type="text" placeholder="gpt-4o-mini">
+        <div class="sg-row sg-inline" style="margin-top:6px;">
+          <button class="menu_button sg-btn" id="sg_refreshIndexModels">刷新模型</button>
+          <select id="sg_wiIndexModelSelect" class="sg-model-select">
+            <option value="">（选择模型）</option>
+          </select>
+        </div>
+      </div>
+      <div class="sg-field">
+        <label>Max Tokens</label>
+        <input id="sg_wiIndexCustomMaxTokens" type="number" min="128" max="200000">
+        <div class="sg-row sg-inline" style="margin-top:6px;">
+          <span class="sg-hint">TopP</span>
+          <input id="sg_wiIndexTopP" type="number" min="0" max="1" step="0.01" style="width:110px">
+        </div>
+      </div>
+    </div>
+    <label class="sg-check"><input type="checkbox" id="sg_wiIndexCustomStream">stream（若支持）</label>
+  </div>
+</div>
+
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
@@ -3932,6 +4275,33 @@ function ensureModal() {
     pullUiToSettings(); saveSettings();
   });
 
+
+// wiTrigger match mode toggle
+$('#sg_wiTriggerMatchMode').on('change', () => {
+  const m = String($('#sg_wiTriggerMatchMode').val() || 'local');
+  $('#sg_index_llm_block').toggle(m === 'llm');
+  const p = String($('#sg_wiIndexProvider').val() || 'st');
+  $('#sg_index_custom_block').toggle(m === 'llm' && p === 'custom');
+  pullUiToSettings(); saveSettings();
+});
+
+// index provider toggle (only meaningful under LLM mode)
+$('#sg_wiIndexProvider').on('change', () => {
+  const m = String($('#sg_wiTriggerMatchMode').val() || 'local');
+  const p = String($('#sg_wiIndexProvider').val() || 'st');
+  $('#sg_index_custom_block').toggle(m === 'llm' && p === 'custom');
+  pullUiToSettings(); saveSettings();
+});
+
+// index prompt reset
+$('#sg_wiIndexResetPrompt').on('click', () => {
+  $('#sg_wiIndexSystemPrompt').val(DEFAULT_INDEX_SYSTEM_PROMPT);
+  $('#sg_wiIndexUserTemplate').val(DEFAULT_INDEX_USER_TEMPLATE);
+  pullUiToSettings();
+  saveSettings();
+  setStatus('已恢复默认索引提示词 ✅', 'ok');
+});
+
   $('#sg_summaryWorldInfoTarget').on('change', () => {
     const t = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
     $('#sg_summaryWorldInfoFile').toggle(t === 'file');
@@ -3998,7 +4368,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -4016,6 +4386,12 @@ function ensureModal() {
     await refreshSummaryModels();
   });
 
+
+$('#sg_refreshIndexModels').on('click', async () => {
+  pullUiToSettings(); saveSettings();
+  await refreshIndexModels();
+});
+
   $('#sg_modelSelect').on('change', () => {
     const id = String($('#sg_modelSelect').val() || '').trim();
     if (id) $('#sg_customModel').val(id);
@@ -4025,6 +4401,12 @@ function ensureModal() {
     const id = String($('#sg_summaryModelSelect').val() || '').trim();
     if (id) $('#sg_summaryCustomModel').val(id);
   });
+
+
+$('#sg_wiIndexModelSelect').on('change', () => {
+  const id = String($('#sg_wiIndexModelSelect').val() || '').trim();
+  if (id) $('#sg_wiIndexCustomModel').val(id);
+});
 
   // 蓝灯索引导入/清空
   $('#sg_refreshBlueIndexLive').on('click', async () => {
@@ -4317,6 +4699,25 @@ function pullSettingsToUi() {
   $('#sg_wiTriggerMaxKeywords').val(s.wiTriggerMaxKeywords || 24);
   $('#sg_wiTriggerInjectStyle').val(String(s.wiTriggerInjectStyle || 'hidden'));
   $('#sg_wiTriggerDebugLog').prop('checked', !!s.wiTriggerDebugLog);
+
+$('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
+$('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
+$('#sg_wiIndexProvider').val(String(s.wiIndexProvider || 'st'));
+$('#sg_wiIndexTemperature').val(s.wiIndexTemperature ?? 0.2);
+$('#sg_wiIndexSystemPrompt').val(String(s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT));
+$('#sg_wiIndexUserTemplate').val(String(s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE));
+$('#sg_wiIndexCustomEndpoint').val(String(s.wiIndexCustomEndpoint || ''));
+$('#sg_wiIndexCustomApiKey').val(String(s.wiIndexCustomApiKey || ''));
+$('#sg_wiIndexCustomModel').val(String(s.wiIndexCustomModel || 'gpt-4o-mini'));
+$('#sg_wiIndexCustomMaxTokens').val(s.wiIndexCustomMaxTokens || 1024);
+$('#sg_wiIndexTopP').val(s.wiIndexTopP ?? 0.95);
+$('#sg_wiIndexCustomStream').prop('checked', !!s.wiIndexCustomStream);
+fillIndexModelSelect(Array.isArray(s.wiIndexCustomModelsCache) ? s.wiIndexCustomModelsCache : [], s.wiIndexCustomModel);
+
+const mm = String(s.wiTriggerMatchMode || 'local');
+$('#sg_index_llm_block').toggle(mm === 'llm');
+$('#sg_index_custom_block').toggle(mm === 'llm' && String(s.wiIndexProvider || 'st') === 'custom');
+
   $('#sg_wiBlueIndexMode').val(String(s.wiBlueIndexMode || 'live'));
   $('#sg_wiBlueIndexFile').val(String(s.wiBlueIndexFile || ''));
   $('#sg_summaryMaxChars').val(s.summaryMaxCharsPerMessage || 4000);
@@ -4621,6 +5022,20 @@ function pullUiToSettings() {
   s.wiTriggerMaxKeywords = clampInt($('#sg_wiTriggerMaxKeywords').val(), 1, 200, s.wiTriggerMaxKeywords || 24);
   s.wiTriggerInjectStyle = String($('#sg_wiTriggerInjectStyle').val() || s.wiTriggerInjectStyle || 'hidden');
   s.wiTriggerDebugLog = $('#sg_wiTriggerDebugLog').is(':checked');
+
+s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
+s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
+s.wiIndexProvider = String($('#sg_wiIndexProvider').val() || s.wiIndexProvider || 'st');
+s.wiIndexTemperature = clampFloat($('#sg_wiIndexTemperature').val(), 0, 2, s.wiIndexTemperature ?? 0.2);
+s.wiIndexSystemPrompt = String($('#sg_wiIndexSystemPrompt').val() || s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT);
+s.wiIndexUserTemplate = String($('#sg_wiIndexUserTemplate').val() || s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE);
+s.wiIndexCustomEndpoint = String($('#sg_wiIndexCustomEndpoint').val() || s.wiIndexCustomEndpoint || '');
+s.wiIndexCustomApiKey = String($('#sg_wiIndexCustomApiKey').val() || s.wiIndexCustomApiKey || '');
+s.wiIndexCustomModel = String($('#sg_wiIndexCustomModel').val() || s.wiIndexCustomModel || 'gpt-4o-mini');
+s.wiIndexCustomMaxTokens = clampInt($('#sg_wiIndexCustomMaxTokens').val(), 128, 200000, s.wiIndexCustomMaxTokens || 1024);
+s.wiIndexTopP = clampFloat($('#sg_wiIndexTopP').val(), 0, 1, s.wiIndexTopP ?? 0.95);
+s.wiIndexCustomStream = $('#sg_wiIndexCustomStream').is(':checked');
+
   s.wiBlueIndexMode = String($('#sg_wiBlueIndexMode').val() || s.wiBlueIndexMode || 'live');
   s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
