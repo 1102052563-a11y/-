@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.1
+ * v0.9.2
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -16,6 +16,7 @@
  * v0.8.6 修复：写入世界书不再依赖 JS 解析 UID（改为在同一段 STscript 管线内用 {{pipe}} 传递 UID），避免误报“无法解析 UID”。
  * v0.9.0 修复：实时读取蓝灯世界书在部分 ST 版本返回包装字段（如 data 为 JSON 字符串）时解析为 0 条的问题；并增强读取端点/文件名兼容。
  * v0.9.1 新增：蓝灯索引→绿灯触发 的“索引日志”（显示命中条目名称/注入关键词），便于排查触发效果。
+ * v0.9.2 修复：条目标题前缀（comment）现在始终加在最前（即使模型输出了自定义 title 也会保留前缀）。
  */
 
 const MODULE_NAME = 'storyguide';
@@ -1764,8 +1765,15 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const kws = sanitizeKeywords(rec.keywords);
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
   const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
-  const title = String(rec.title || '').trim() || `${prefix}`;
-  const comment = `${title}${range ? `（${range}）` : ''}`;
+  const rawTitle = String(rec.title || '').trim();
+  // comment 字段通常就是世界书列表里的"标题"。这里保证 prefix 始终在最前，避免"前缀设置无效"。
+  let commentTitle = rawTitle;
+  if (prefix) {
+    if (!commentTitle) commentTitle = prefix;
+    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
+  }
+  if (!commentTitle) commentTitle = '剧情总结';
+  const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
 
   // normalize content and make it safe for slash parser (avoid accidental pipe split)
   const content = String(rec.summary || '')
@@ -3492,7 +3500,7 @@ function buildModalHtml() {
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>条目标题前缀（comment）</label>
+                <label>条目标题前缀（写入 comment，始终在最前）</label>
                 <input id="sg_summaryWorldInfoCommentPrefix" type="text" placeholder="剧情总结">
               </div>
               <div class="sg-field">
