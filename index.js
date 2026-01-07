@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.8
+ * v0.10.1
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -22,9 +22,11 @@
  * v0.9.6 改进：在面板标题处显示版本号，方便确认是否已正确更新到包含“用户输入权重”设置的版本。
  * v0.9.9 改进：把“剧情指导 / 总结设置 / 索引设置”拆成三页（左侧分页标签），界面更清晰。
  * v0.9.8 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
+ * v0.10.0 新增：手动楼层范围总结支持“按每 N 层拆分生成多条世界书条目”（例如 1-80 且 N=40 → 2 条）。
+ * v0.10.1 新增：一键导出“全局预设”（导出整个扩展全局配置；可选是否包含全部 API Key）。
  */
 
-const SG_VERSION = '0.9.9';
+const SG_VERSION = '0.10.1';
 
 const MODULE_NAME = 'storyguide';
 
@@ -124,6 +126,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryEnabled: false,
   // 多少“楼层”总结一次（楼层统计方式见 summaryCountMode）
   summaryEvery: 20,
+  // 手动楼层范围总结：是否按“每 N 层”拆分生成多条（N=summaryEvery）
+  summaryManualSplit: false,
   // assistant: 仅统计 AI 回复；all: 统计全部消息（用户+AI）
   summaryCountMode: 'assistant',
   // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最近 summaryEvery 段
@@ -1972,7 +1976,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   return { file: (t === 'file') ? f : 'chatbook', uid: null };
 }
 
-async function runSummary({ reason = 'manual', manualFromFloor = null, manualToFloor = null } = {}) {
+async function runSummary({ reason = 'manual', manualFromFloor = null, manualToFloor = null, manualSplit = null } = {}) {
   const s = ensureSettings();
   const ctx = SillyTavern.getContext();
 
@@ -1989,169 +1993,240 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     let meta = getSummaryMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
-    // choose range
-    let startIdx = 0;
-    let endIdx = Math.max(0, chat.length - 1);
-    let fromFloor = 1;
-    let toFloor = floorNow;
+    // choose range(s)
+    const every = clampInt(s.summaryEvery, 1, 200, 20);
+    const segments = [];
 
     if (reason === 'manual_range') {
-      const resolved = resolveChatRangeByFloors(chat, mode, manualFromFloor, manualToFloor);
-      if (!resolved) {
+      const resolved0 = resolveChatRangeByFloors(chat, mode, manualFromFloor, manualToFloor);
+      if (!resolved0) {
         setStatus('手动楼层范围无效（请检查起止层号）', 'warn');
         return;
       }
-      startIdx = resolved.startIdx;
-      endIdx = resolved.endIdx;
-      fromFloor = resolved.fromFloor;
-      toFloor = resolved.toFloor;
+
+      const splitEnabled = (manualSplit === null || manualSplit === undefined)
+        ? !!s.summaryManualSplit
+        : !!manualSplit;
+
+      if (splitEnabled && every > 0) {
+        const a0 = resolved0.fromFloor;
+        const b0 = resolved0.toFloor;
+        for (let f = a0; f <= b0; f += every) {
+          const g = Math.min(b0, f + every - 1);
+          const r = resolveChatRangeByFloors(chat, mode, f, g);
+          if (r) segments.push(r);
+        }
+        if (!segments.length) segments.push(resolved0);
+      } else {
+        segments.push(resolved0);
+      }
     } else if (reason === 'auto' && meta.lastChatLen > 0 && meta.lastChatLen < chat.length) {
-      startIdx = meta.lastChatLen;
-      fromFloor = Math.max(1, Number(meta.lastFloor || 0) + 1);
-      toFloor = floorNow;
-      endIdx = Math.max(0, chat.length - 1);
+      const startIdx = meta.lastChatLen;
+      const fromFloor = Math.max(1, Number(meta.lastFloor || 0) + 1);
+      const toFloor = floorNow;
+      const endIdx = Math.max(0, chat.length - 1);
+      segments.push({ startIdx, endIdx, fromFloor, toFloor, floorNow });
     } else {
-      startIdx = findStartIndexForLastNFloors(chat, mode, s.summaryEvery || 20);
-      fromFloor = Math.max(1, floorNow - (Number(s.summaryEvery) || 20) + 1);
-      toFloor = floorNow;
-      endIdx = Math.max(0, chat.length - 1);
+      const startIdx = findStartIndexForLastNFloors(chat, mode, every);
+      const fromFloor = Math.max(1, floorNow - every + 1);
+      const toFloor = floorNow;
+      const endIdx = Math.max(0, chat.length - 1);
+      segments.push({ startIdx, endIdx, fromFloor, toFloor, floorNow });
     }
 
-    const chunkText = buildSummaryChunkTextRange(chat, startIdx, endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
-    if (!chunkText) {
-      setStatus('没有可总结的内容（片段为空）', 'warn');
+    const totalSeg = segments.length;
+    if (!totalSeg) {
+      setStatus('没有可总结的内容（范围为空）', 'warn');
       return;
     }
 
-    const messages = buildSummaryPromptMessages(chunkText, fromFloor, toFloor);
-    const schema = getSummarySchema();
-
-    let jsonText = '';
-    if (String(s.summaryProvider || 'st') === 'custom') {
-      jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream);
-      const parsedTry = safeJsonParse(jsonText);
-      if (!parsedTry || !parsedTry.summary) {
-        try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream); }
-        catch { /* ignore */ }
-      }
-    } else {
-      jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature);
-      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-      const parsedTry = safeJsonParse(jsonText);
-      if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
-    }
-
-    const parsed = safeJsonParse(jsonText);
-    if (!parsed || !parsed.summary) throw new Error('总结输出无法解析为 JSON。');
-
-    const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
-    const rawTitle = String(parsed.title || '').trim();
-    const summary = String(parsed.summary || '').trim();
-
-    // 触发词（写入世界书 key）：默认用模型 keywords；可选用自动索引编号（A-001…）只写 1 个触发词。
-    const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
-    const modelKeywords = sanitizeKeywords(parsed.keywords);
-    let indexId = '';
-    let keywords = modelKeywords;
-
-    if (keyMode === 'indexId') {
-      // init nextIndex
-      if (!Number.isFinite(Number(meta.nextIndex))) {
-        // try derive from history (same prefix)
-        let maxN = 0;
-        const pref = String(s.summaryIndexPrefix || 'A-');
-        const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
-        for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
-          const id0 = String(h?.indexId || '').trim();
-          const m = id0.match(re);
-          if (m) maxN = Math.max(maxN, Number.parseInt(m[1], 10) || 0);
-        }
-        meta.nextIndex = Math.max(clampInt(s.summaryIndexStart, 1, 1000000, 1), maxN + 1);
-      }
-
-      const pref = String(s.summaryIndexPrefix || 'A-');
-      const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
-      const n = clampInt(meta.nextIndex, 1, 100000000, 1);
-      indexId = `${pref}${String(n).padStart(pad, '0')}`;
-      keywords = [indexId];
-    }
-
-    const title = rawTitle || `${prefix}`;
-
-    const rec = {
-      title,
-      summary,
-      keywords,
-      // 额外元信息：索引编号 & 模型原始关键词（当 keyMode=indexId 时可用于调试/检索）
-      indexId: indexId || undefined,
-      modelKeywords: (keyMode === 'indexId') ? modelKeywords : undefined,
-      createdAt: Date.now(),
-      range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: endIdx },
-    };
-
-    if (keyMode === 'indexId') {
-      meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
-    }
-
-    meta.history = Array.isArray(meta.history) ? meta.history : [];
-    meta.history.push(rec);
-    if (meta.history.length > 120) meta.history = meta.history.slice(-120);
     const affectsProgress = (reason !== 'manual_range');
-    if (affectsProgress) {
-      meta.lastFloor = toFloor;
-      meta.lastChatLen = chat.length;
+    const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
+
+    let created = 0;
+    let wroteGreenOk = 0;
+    let wroteBlueOk = 0;
+    const writeErrs = [];
+    const runErrs = [];
+
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const startIdx = seg.startIdx;
+      const endIdx = seg.endIdx;
+      const fromFloor = seg.fromFloor;
+      const toFloor = seg.toFloor;
+
+      if (totalSeg > 1) setStatus(`手动分段总结中…（${i + 1}/${totalSeg}｜${fromFloor}-${toFloor}）`, 'warn');
+      else setStatus('总结中…', 'warn');
+
+      const chunkText = buildSummaryChunkTextRange(chat, startIdx, endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
+      if (!chunkText) {
+        runErrs.push(`${fromFloor}-${toFloor}：片段为空`);
+        continue;
+      }
+
+      const messages = buildSummaryPromptMessages(chunkText, fromFloor, toFloor);
+      const schema = getSummarySchema();
+
+      let jsonText = '';
+      if (String(s.summaryProvider || 'st') === 'custom') {
+        jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream);
+        const parsedTry = safeJsonParse(jsonText);
+        if (!parsedTry || !parsedTry.summary) {
+          try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream); }
+          catch { /* ignore */ }
+        }
+      } else {
+        jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature);
+        if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+        const parsedTry = safeJsonParse(jsonText);
+        if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
+      }
+
+      const parsed = safeJsonParse(jsonText);
+      if (!parsed || !parsed.summary) {
+        runErrs.push(`${fromFloor}-${toFloor}：总结输出无法解析为 JSON`);
+        continue;
+      }
+
+      const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+      const rawTitle = String(parsed.title || '').trim();
+      const summary = String(parsed.summary || '').trim();
+      const modelKeywords = sanitizeKeywords(parsed.keywords);
+      let indexId = '';
+      let keywords = modelKeywords;
+
+      if (keyMode === 'indexId') {
+        // init nextIndex
+        if (!Number.isFinite(Number(meta.nextIndex))) {
+          let maxN = 0;
+          const pref = String(s.summaryIndexPrefix || 'A-');
+          const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
+          for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
+            const id0 = String(h?.indexId || '').trim();
+            const m = id0.match(re);
+            if (m) maxN = Math.max(maxN, Number.parseInt(m[1], 10) || 0);
+          }
+          meta.nextIndex = Math.max(clampInt(s.summaryIndexStart, 1, 1000000, 1), maxN + 1);
+        }
+
+        const pref = String(s.summaryIndexPrefix || 'A-');
+        const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
+        const n = clampInt(meta.nextIndex, 1, 100000000, 1);
+        indexId = `${pref}${String(n).padStart(pad, '0')}`;
+        keywords = [indexId];
+      }
+
+      const title = rawTitle || `${prefix}`;
+
+      const rec = {
+        title,
+        summary,
+        keywords,
+        indexId: indexId || undefined,
+        modelKeywords: (keyMode === 'indexId') ? modelKeywords : undefined,
+        createdAt: Date.now(),
+        range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: endIdx },
+      };
+
+      if (keyMode === 'indexId') {
+        meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
+      }
+
+      meta.history = Array.isArray(meta.history) ? meta.history : [];
+      meta.history.push(rec);
+      if (meta.history.length > 120) meta.history = meta.history.slice(-120);
+      if (affectsProgress) {
+        meta.lastFloor = toFloor;
+        meta.lastChatLen = chat.length;
+      }
+      await setSummaryMeta(meta);
+      created += 1;
+
+      // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
+      try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
+
+      // world info write
+      if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
+        if (s.summaryToWorldInfo) {
+          try {
+            await writeSummaryToWorldInfoEntry(rec, meta, {
+              target: String(s.summaryWorldInfoTarget || 'chatbook'),
+              file: String(s.summaryWorldInfoFile || ''),
+              commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
+              constant: 0,
+            });
+            wroteGreenOk += 1;
+          } catch (e) {
+            console.warn('[StoryGuide] write green world info failed:', e);
+            writeErrs.push(`${fromFloor}-${toFloor} 绿灯：${e?.message ?? e}`);
+          }
+        }
+
+        if (s.summaryToBlueWorldInfo) {
+          try {
+            await writeSummaryToWorldInfoEntry(rec, meta, {
+              target: 'file',
+              file: String(s.summaryBlueWorldInfoFile || ''),
+              commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
+              constant: 1,
+            });
+            wroteBlueOk += 1;
+          } catch (e) {
+            console.warn('[StoryGuide] write blue world info failed:', e);
+            writeErrs.push(`${fromFloor}-${toFloor} 蓝灯：${e?.message ?? e}`);
+          }
+        }
+      }
     }
-    await setSummaryMeta(meta);
 
     updateSummaryInfoLabel();
     renderSummaryPaneFromMeta();
 
-    // 额外：把每次总结同步进“蓝灯索引缓存”（用于检索触发绿灯）
-    try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
+    // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
+    if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
+      ensureBlueIndexLive(true).catch(() => void 0);
+    }
 
-    // world info write
-    if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
-      const ok = [];
-      const err = [];
+    if (created <= 0) {
+      setStatus(`总结未生成（${runErrs.length ? runErrs[0] : '未知原因'}）`, 'warn');
+      return;
+    }
 
-      if (s.summaryToWorldInfo) {
-        try {
-          await writeSummaryToWorldInfoEntry(rec, meta, {
-            target: String(s.summaryWorldInfoTarget || 'chatbook'),
-            file: String(s.summaryWorldInfoFile || ''),
-            commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
-            constant: 0,
-          });
-          ok.push('绿灯世界书');
-        } catch (e) {
-          console.warn('[StoryGuide] write green world info failed:', e);
-          err.push(`绿灯世界书：${e?.message ?? e}`);
-        }
+    // final status
+    if (totalSeg > 1) {
+      const parts = [`生成 ${created} 条`];
+      if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
+        const wrote = [];
+        if (s.summaryToWorldInfo) wrote.push(`绿灯 ${wroteGreenOk}/${created}`);
+        if (s.summaryToBlueWorldInfo) wrote.push(`蓝灯 ${wroteBlueOk}/${created}`);
+        if (wrote.length) parts.push(`写入：${wrote.join('｜')}`);
       }
-
-      if (s.summaryToBlueWorldInfo) {
-        try {
-          await writeSummaryToWorldInfoEntry(rec, meta, {
-            target: 'file',
-            file: String(s.summaryBlueWorldInfoFile || ''),
-            commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
-            constant: 1,
-          });
-          ok.push('蓝灯世界书');
-          // 若启用实时读取索引：尽快刷新一次缓存，避免下条消息仍用旧索引
-          if (String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
-            ensureBlueIndexLive(true).catch(() => void 0);
-          }
-        } catch (e) {
-          console.warn('[StoryGuide] write blue world info failed:', e);
-          err.push(`蓝灯世界书：${e?.message ?? e}`);
-        }
+      const errCount = writeErrs.length + runErrs.length;
+      if (errCount) {
+        const sample = (writeErrs.concat(runErrs)).slice(0, 2).join('；');
+        setStatus(`手动分段总结完成 ✅（${parts.join('｜')}｜失败：${errCount}｜${sample}${errCount > 2 ? '…' : ''}）`, 'warn');
+      } else {
+        setStatus(`手动分段总结完成 ✅（${parts.join('｜')}）`, 'ok');
       }
-
-      if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ')}）`, 'ok');
-      else setStatus(`总结完成 ✅（写入失败：${err.join('；')}）`, 'warn');
     } else {
-      setStatus('总结完成 ✅', 'ok');
+      // single
+      if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
+        const ok = [];
+        const err = [];
+        if (s.summaryToWorldInfo) {
+          if (wroteGreenOk >= 1) ok.push('绿灯世界书');
+          else if (writeErrs.find(x => x.includes('绿灯'))) err.push(writeErrs.find(x => x.includes('绿灯')));
+        }
+        if (s.summaryToBlueWorldInfo) {
+          if (wroteBlueOk >= 1) ok.push('蓝灯世界书');
+          else if (writeErrs.find(x => x.includes('蓝灯'))) err.push(writeErrs.find(x => x.includes('蓝灯')));
+        }
+        if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ') || '（无）'}）`, 'ok');
+        else setStatus(`总结完成 ✅（写入失败：${err.join('；')}）`, 'warn');
+      } else {
+        setStatus('总结完成 ✅', 'ok');
+      }
     }
   } finally {
     isSummarizing = false;
@@ -3671,6 +3746,7 @@ function buildModalHtml() {
           剧情指导 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
         </div>
         <div class="sg-modal-actions">
+          <button class="menu_button sg-btn" id="sg_exportGlobalPreset">导出全局预设</button>
           <button class="menu_button sg-btn" id="sg_close">关闭</button>
         </div>
       </div>
@@ -3835,7 +3911,7 @@ function buildModalHtml() {
             <div class="sg-card-title">预设与世界书</div>
 
             <div class="sg-row sg-inline">
-              <button class="menu_button sg-btn" id="sg_exportPreset">导出预设</button>
+              <button class="menu_button sg-btn" id="sg_exportPreset">导出全局预设</button>
               <label class="sg-check"><input type="checkbox" id="sg_presetIncludeApiKey">导出包含 API Key</label>
               <button class="menu_button sg-btn" id="sg_importPreset">导入预设</button>
             </div>
@@ -4177,6 +4253,11 @@ function buildModalHtml() {
               <div class="sg-hint" id="sg_summaryManualHint" style="margin-left:auto">（可选范围：1-0）</div>
             </div>
 
+            <div class="sg-row sg-inline" style="margin-top:6px;">
+              <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_summaryManualSplit">手动范围按每 N 层拆分生成多条（N=上方“每 N 层总结一次”）</label>
+              <div class="sg-hint" style="margin-left:auto">例如 1-80 且 N=40 → 2 条</div>
+            </div>
+
             <div class="sg-row sg-inline">
               <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
               <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
@@ -4361,6 +4442,17 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
     setStatus('已恢复默认总结提示词 ✅', 'ok');
   });
 
+  // manual range split toggle & hint refresh
+  $('#sg_summaryManualSplit').on('change', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryManualRangeHint(false);
+  });
+  $('#sg_summaryManualFrom, #sg_summaryManualTo, #sg_summaryEvery, #sg_summaryCountMode').on('input change', () => {
+    // count mode / every affects the computed floor range and split pieces
+    updateSummaryManualRangeHint(false);
+  });
+
   // summary actions
   $('#sg_summarizeNow').on('click', async () => {
     try {
@@ -4504,18 +4596,45 @@ $('#sg_wiIndexModelSelect').on('change', () => {
 
   
   // presets actions
+  function exportGlobalPresetOneClick() {
+    pullUiToSettings();
+    const s = ensureSettings();
+    const out = clone(s);
+
+    const includeKey = $('#sg_presetIncludeApiKey').is(':checked');
+    if (!includeKey) {
+      // 注意：现在插件里有三套独立 API：剧情指导 / 总结 / 索引（都可能有 key）
+      out.customApiKey = '';
+      out.summaryCustomApiKey = '';
+      out.wiIndexCustomApiKey = '';
+    }
+
+    // 额外附带导出元信息（导入会自动忽略这些字段）
+    out._storyguide = {
+      type: 'global_preset',
+      version: SG_VERSION,
+      exportedAt: new Date().toISOString(),
+      includeApiKey: !!includeKey,
+    };
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(`storyguide-global-preset-${stamp}.json`, JSON.stringify(out, null, 2));
+  }
+
   $('#sg_exportPreset').on('click', () => {
     try {
-      pullUiToSettings();
-      const s = ensureSettings();
-      const out = clone(s);
+      exportGlobalPresetOneClick();
+      setStatus('已导出全局预设 ✅', 'ok');
+    } catch (e) {
+      setStatus(`导出失败：${e?.message ?? e}`, 'err');
+    }
+  });
 
-      const includeKey = $('#sg_presetIncludeApiKey').is(':checked');
-      if (!includeKey) out.customApiKey = '';
-
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`storyguide-preset-${stamp}.json`, JSON.stringify(out, null, 2));
-      setStatus('已导出预设 ✅', 'ok');
+  // 顶部一键导出（同上）
+  $('#sg_exportGlobalPreset').on('click', () => {
+    try {
+      exportGlobalPresetOneClick();
+      setStatus('已导出全局预设 ✅', 'ok');
     } catch (e) {
       setStatus(`导出失败：${e?.message ?? e}`, 'err');
     }
@@ -4736,6 +4855,7 @@ function pullSettingsToUi() {
   // summary
   $('#sg_summaryEnabled').prop('checked', !!s.summaryEnabled);
   $('#sg_summaryEvery').val(s.summaryEvery);
+  $('#sg_summaryManualSplit').prop('checked', !!s.summaryManualSplit);
   $('#sg_summaryCountMode').val(String(s.summaryCountMode || 'assistant'));
   $('#sg_summaryProvider').val(String(s.summaryProvider || 'st'));
   $('#sg_summaryTemperature').val(s.summaryTemperature);
@@ -4962,17 +5082,35 @@ function updateSummaryManualRangeHint(setDefaults = false) {
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
     const mode = String(s.summaryCountMode || 'assistant');
     const floorNow = computeFloorCount(chat, mode);
-    $hint.text(`（可选范围：1-${floorNow || 0}）`);
+    const every = clampInt(s.summaryEvery, 1, 200, 20);
 
+    // Optional: show how many entries would be generated when manual split is enabled.
     const $from = $('#sg_summaryManualFrom');
     const $to = $('#sg_summaryManualTo');
+    let extra = '';
+    if (s.summaryManualSplit) {
+      const fromVal0 = String($from.val() ?? '').trim();
+      const toVal0 = String($to.val() ?? '').trim();
+      const fromN = Number(fromVal0);
+      const toN = Number(toVal0);
+      if (Number.isFinite(fromN) && Number.isFinite(toN) && fromN > 0 && toN > 0 && floorNow > 0) {
+        const a = clampInt(fromN, 1, floorNow, 1);
+        const b = clampInt(toN, 1, floorNow, floorNow);
+        const len = Math.abs(b - a) + 1;
+        const pieces = Math.max(1, Math.ceil(len / every));
+        extra = `｜分段：${pieces} 条（每${every}层）`;
+      } else {
+        extra = `｜分段：每${every}层一条`;
+      }
+    }
+
+    $hint.text(`（可选范围：1-${floorNow || 0}${extra}）`);
     if (!$from.length || !$to.length) return;
 
     const fromVal = String($from.val() ?? '').trim();
     const toVal = String($to.val() ?? '').trim();
 
     if (setDefaults && floorNow > 0 && (!fromVal || !toVal)) {
-      const every = clampInt(s.summaryEvery, 1, 200, 20);
       const a = Math.max(1, floorNow - every + 1);
       $from.val(a);
       $to.val(floorNow);
@@ -5059,6 +5197,7 @@ function pullUiToSettings() {
   // summary
   s.summaryEnabled = $('#sg_summaryEnabled').is(':checked');
   s.summaryEvery = clampInt($('#sg_summaryEvery').val(), 1, 200, s.summaryEvery || 20);
+  s.summaryManualSplit = $('#sg_summaryManualSplit').is(':checked');
   s.summaryCountMode = String($('#sg_summaryCountMode').val() || 'assistant');
   s.summaryProvider = String($('#sg_summaryProvider').val() || 'st');
   s.summaryTemperature = clampFloat($('#sg_summaryTemperature').val(), 0, 2, s.summaryTemperature || 0.4);
