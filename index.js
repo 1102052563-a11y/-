@@ -23,10 +23,11 @@
  * v0.9.9 改进：把“剧情指导 / 总结设置 / 索引设置”拆成三页（左侧分页标签），界面更清晰。
  * v0.9.8 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
  * v0.10.0 新增：手动楼层范围总结支持“按每 N 层拆分生成多条世界书条目”（例如 1-80 且 N=40 → 2 条）。
- * v0.10.1 新增：一键导出“全局预设”（导出整个扩展全局配置；可选是否包含全部 API Key）。
+ * v0.10.1 新增：一键导出“全局预设”
+ * v0.10.3 修补：刷新后聊天绑定绿灯世界书条目丢失时，自动从蓝灯索引恢复。（导出整个扩展全局配置；可选是否包含全部 API Key）。
  */
 
-const SG_VERSION = '0.10.2';
+const SG_VERSION = '0.10.3';
 
 const MODULE_NAME = 'storyguide';
 
@@ -776,6 +777,156 @@ function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
   return items;
 }
 
+
+/**
+ * 修补：有些 ST 版本/某些使用场景下，chatbook（聊天绑定世界书）在刷新后会重新生成一个“空文件”，导致绿灯条目看起来“丢失”。
+ * 这里做一个自动修复：如果检测到绿灯目标世界书当前为 0 条，则尝试从蓝灯世界书（或蓝灯索引缓存）重建绿灯条目。
+ *
+ * 触发时机：
+ * - APP_READY 预热蓝灯索引后
+ * - CHAT_CHANGED 切换聊天后
+ * - 也会被 ensureBlueIndexLive() 成功加载后顺便触发一次
+ */
+function extractIndexIdFromKeywords(keywords) {
+  const arr = Array.isArray(keywords) ? keywords : [];
+  for (const k of arr) {
+    const s = String(k || '').trim();
+    if (!s) continue;
+    const m = s.match(/\b[A-Z]{1,3}-\d{3,6}\b/);
+    if (m) return m[0];
+  }
+  // fallback: sometimes stored directly
+  if (typeof keywords === 'string') {
+    const m = String(keywords).match(/\b[A-Z]{1,3}-\d{3,6}\b/);
+    if (m) return m[0];
+  }
+  return '';
+}
+
+function stripCommentPrefixFromTitle(title, prefix) {
+  const t = String(title || '').trim();
+  const p = String(prefix || '').trim();
+  if (!t) return t;
+  if (p && t.startsWith(p)) {
+    return t.slice(p.length).replace(/^[\s\-\|｜:：]+/g, '').trim();
+  }
+  return t;
+}
+
+async function resolveGreenWorldInfoFileName() {
+  const s = ensureSettings();
+  const t = String(s.summaryWorldInfoTarget || 'chatbook');
+  const f = String(s.summaryWorldInfoFile || '').trim();
+  if (t === 'file') return f;
+
+  // chatbook: ask ST to ensure binding and give us the file name
+  try {
+    const out = await execSlash('/getchatbook');
+    const name = String(out?.pipe ?? '').trim();
+    return name || '';
+  } catch (e) {
+    console.warn('[StoryGuide] resolve chatbook file failed:', e);
+    return '';
+  }
+}
+
+async function getWorldInfoEntryCountSafe(fileName) {
+  try {
+    const json = await fetchWorldInfoFileJsonCompat(fileName);
+    const entries = parseWorldbookJson(JSON.stringify(json || {}));
+    return Array.isArray(entries) ? entries.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = null) {
+  const s = ensureSettings();
+  if (!s.summaryToWorldInfo) return { repaired: false, reason: 'disabled' };
+
+  const greenFile = await resolveGreenWorldInfoFileName();
+  if (!greenFile) return { repaired: false, reason: 'no_green_file' };
+
+  const greenCount = await getWorldInfoEntryCountSafe(greenFile);
+  if (greenCount > 0) return { repaired: false, reason: 'not_empty' };
+
+  // 1) Prefer provided blue entries (already loaded)
+  let blueItems = Array.isArray(blueEntriesOverride) ? blueEntriesOverride : null;
+
+  // 2) Fallback to settings cache
+  if (!blueItems || !blueItems.length) {
+    const cached = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
+    if (cached.length) blueItems = cached;
+  }
+
+  // 3) Fallback to loading from blue world info file
+  if (!blueItems || !blueItems.length) {
+    const blueFile = pickBlueIndexFileName(); // wiBlueIndexFile || summaryBlueWorldInfoFile
+    if (!blueFile) return { repaired: false, reason: 'no_blue_source' };
+    try {
+      const json = await fetchWorldInfoFileJsonCompat(blueFile);
+      const prefix = String(s.summaryBlueWorldInfoCommentPrefix || '').trim();
+      blueItems = buildBlueIndexFromWorldInfoJson(json, prefix);
+    } catch (e) {
+      console.warn('[StoryGuide] repairGreen: read blue file failed:', e);
+      return { repaired: false, reason: 'blue_read_failed' };
+    }
+  }
+
+  if (!blueItems || !blueItems.length) return { repaired: false, reason: 'blue_empty' };
+
+  const greenPrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+
+  let ok = 0;
+  let fail = 0;
+
+  // 去重：如果蓝灯里有重复标题/内容，只写一次（避免恢复时生成大量重复条目）
+  const seen = new Set();
+
+  for (const it of blueItems) {
+    const summary = String(it?.summary ?? it?.content ?? '').trim();
+    if (!summary) continue;
+
+    const titleRaw = String(it?.title ?? '').trim();
+    const title = stripCommentPrefixFromTitle(titleRaw, greenPrefix);
+
+    const keywords = Array.isArray(it?.keywords) ? it.keywords : (Array.isArray(it?.keys) ? it.keys : []);
+    const indexId = extractIndexIdFromKeywords(keywords);
+
+    const sig = `${title}\n${indexId}\n${summary.slice(0, 200)}`;
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+
+    const rec = {
+      title,
+      summary,
+      keywords: keywords || [],
+      indexId,
+    };
+
+    try {
+      // 这里直接按“file”写入解析到的 greenFile，避免再次 /getchatbook 导致写到另一个新文件
+      await writeSummaryToWorldInfoEntry(rec, { range: null }, {
+        target: 'file',
+        file: greenFile,
+        commentPrefix: greenPrefix,
+        constant: 0,
+      });
+      ok += 1;
+    } catch (e) {
+      fail += 1;
+      console.warn('[StoryGuide] repairGreen: write failed:', e);
+    }
+  }
+
+  if (ok > 0) {
+    console.log(`[StoryGuide] repaired green world info from blue: ok=${ok} fail=${fail} reason=${reason}`);
+    return { repaired: true, ok, fail };
+  }
+  return { repaired: false, reason: 'write_none' };
+}
+
+
 async function ensureBlueIndexLive(force = false) {
   const s = ensureSettings();
   const mode = String(s.wiBlueIndexMode || 'live');
@@ -807,6 +958,9 @@ async function ensureBlueIndexLive(force = false) {
     s.summaryBlueIndex = entries;
     saveSettings();
     updateBlueIndexInfoLabel();
+
+    // 修补：若绿灯世界书在刷新后变为空，则用刚读到的蓝灯索引自动恢复
+    repairGreenWorldInfoIfEmpty('blue_index_live_loaded', entries).catch(() => void 0);
 
     return entries;
   } catch (e) {
@@ -2211,7 +2365,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
     if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
-      ensureBlueIndexLive(true).catch(() => void 0);
+      ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
     }
 
     if (created <= 0) {
@@ -5384,13 +5538,13 @@ function setupEventListeners() {
     startObservers();
 
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
-    ensureBlueIndexLive(true).catch(() => void 0);
+    ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
       inlineCache.clear();
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
-      ensureBlueIndexLive(true).catch(() => void 0);
+      ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
         setStatus('已切换聊天：已同步本聊天字段', 'ok');
