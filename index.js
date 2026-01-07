@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.6
+ * v0.9.7
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -20,9 +20,10 @@
  * v0.9.4 新增：总结写入世界书的“主要关键词(key)”可切换为“索引编号”（如 A-001），只写 1 个触发词，触发更精确。
  * v0.9.5 改进：蓝灯索引匹配会综合“最近 N 条消息正文 + 本次用户输入”，而不是只看最近正文（可在面板里关闭/调整权重）。
  * v0.9.6 改进：在面板标题处显示版本号，方便确认是否已正确更新到包含“用户输入权重”设置的版本。
+ * v0.9.7 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
  */
 
-const SG_VERSION = '0.9.6';
+const SG_VERSION = '0.9.7';
 
 const MODULE_NAME = 'storyguide';
 
@@ -1476,6 +1477,66 @@ function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars
   return parts.join('\n');
 }
 
+// 手动楼层范围总结：按 floor 号定位到聊天索引
+function findChatIndexByFloor(chat, mode, floorNo) {
+  const arr = Array.isArray(chat) ? chat : [];
+  const target = Math.max(1, Number(floorNo) || 1);
+  let c = 0;
+  for (let i = 0; i < arr.length; i++) {
+    const m = arr[i];
+    const hit = (mode === 'assistant') ? isCountableAssistantMessage(m) : isCountableMessage(m);
+    if (!hit) continue;
+    c += 1;
+    if (c === target) return i;
+  }
+  return -1;
+}
+
+function resolveChatRangeByFloors(chat, mode, fromFloor, toFloor) {
+  const floorNow = computeFloorCount(chat, mode);
+  if (floorNow <= 0) return null;
+  let a = clampInt(fromFloor, 1, floorNow, 1);
+  let b = clampInt(toFloor, 1, floorNow, floorNow);
+  if (b < a) { const t = a; a = b; b = t; }
+
+  let startIdx = findChatIndexByFloor(chat, mode, a);
+  let endIdx = findChatIndexByFloor(chat, mode, b);
+  if (startIdx < 0 || endIdx < 0) return null;
+
+  // 在 assistant 模式下，为了更贴近“回合”，把起始 assistant 楼层前一条用户消息也纳入（若存在）。
+  if (mode === 'assistant' && startIdx > 0) {
+    const prev = chat[startIdx - 1];
+    if (prev && prev.is_user === true && isCountableMessage(prev)) startIdx -= 1;
+  }
+
+  if (startIdx > endIdx) { const t = startIdx; startIdx = endIdx; endIdx = t; }
+  return { fromFloor: a, toFloor: b, startIdx, endIdx, floorNow };
+}
+
+function buildSummaryChunkTextRange(chat, startIdx, endIdx, maxCharsPerMessage, maxTotalChars) {
+  const arr = Array.isArray(chat) ? chat : [];
+  const start = Math.max(0, Math.min(arr.length - 1, Number(startIdx) || 0));
+  const end = Math.max(start, Math.min(arr.length - 1, Number(endIdx) || 0));
+  const perMsg = clampInt(maxCharsPerMessage, 200, 8000, 4000);
+  const totalMax = clampInt(maxTotalChars, 2000, 80000, 24000);
+
+  const parts = [];
+  let total = 0;
+  for (let i = start; i <= end; i++) {
+    const m = arr[i];
+    if (!isCountableMessage(m)) continue;
+    const who = m.is_user === true ? '用户' : (m.name || 'AI');
+    let txt = stripHtml(m.mes || '');
+    if (!txt) continue;
+    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '…';
+    const block = `【${who}】${txt}`;
+    if (total + block.length + 2 > totalMax) break;
+    parts.push(block);
+    total += block.length + 2;
+  }
+  return parts.join('\n');
+}
+
 function getSummarySchema() {
   return {
     type: 'object',
@@ -1878,7 +1939,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   return { file: (t === 'file') ? f : 'chatbook', uid: null };
 }
 
-async function runSummary({ reason = 'manual' } = {}) {
+async function runSummary({ reason = 'manual', manualFromFloor = null, manualToFloor = null } = {}) {
   const s = ensureSettings();
   const ctx = SillyTavern.getContext();
 
@@ -1895,21 +1956,35 @@ async function runSummary({ reason = 'manual' } = {}) {
 
     let meta = getSummaryMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
-
     // choose range
     let startIdx = 0;
+    let endIdx = Math.max(0, chat.length - 1);
     let fromFloor = 1;
-    const toFloor = floorNow;
+    let toFloor = floorNow;
 
-    if (reason === 'auto' && meta.lastChatLen > 0 && meta.lastChatLen < chat.length) {
+    if (reason === 'manual_range') {
+      const resolved = resolveChatRangeByFloors(chat, mode, manualFromFloor, manualToFloor);
+      if (!resolved) {
+        setStatus('手动楼层范围无效（请检查起止层号）', 'warn');
+        return;
+      }
+      startIdx = resolved.startIdx;
+      endIdx = resolved.endIdx;
+      fromFloor = resolved.fromFloor;
+      toFloor = resolved.toFloor;
+    } else if (reason === 'auto' && meta.lastChatLen > 0 && meta.lastChatLen < chat.length) {
       startIdx = meta.lastChatLen;
       fromFloor = Math.max(1, Number(meta.lastFloor || 0) + 1);
+      toFloor = floorNow;
+      endIdx = Math.max(0, chat.length - 1);
     } else {
       startIdx = findStartIndexForLastNFloors(chat, mode, s.summaryEvery || 20);
-      fromFloor = Math.max(1, toFloor - (Number(s.summaryEvery) || 20) + 1);
+      fromFloor = Math.max(1, floorNow - (Number(s.summaryEvery) || 20) + 1);
+      toFloor = floorNow;
+      endIdx = Math.max(0, chat.length - 1);
     }
 
-    const chunkText = buildSummaryChunkText(chat, startIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
+    const chunkText = buildSummaryChunkTextRange(chat, startIdx, endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
     if (!chunkText) {
       setStatus('没有可总结的内容（片段为空）', 'warn');
       return;
@@ -1978,7 +2053,7 @@ async function runSummary({ reason = 'manual' } = {}) {
       indexId: indexId || undefined,
       modelKeywords: (keyMode === 'indexId') ? modelKeywords : undefined,
       createdAt: Date.now(),
-      range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: Math.max(0, chat.length - 1) },
+      range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: endIdx },
     };
 
     if (keyMode === 'indexId') {
@@ -1988,8 +2063,11 @@ async function runSummary({ reason = 'manual' } = {}) {
     meta.history = Array.isArray(meta.history) ? meta.history : [];
     meta.history.push(rec);
     if (meta.history.length > 120) meta.history = meta.history.slice(-120);
-    meta.lastFloor = toFloor;
-    meta.lastChatLen = chat.length;
+    const affectsProgress = (reason !== 'manual_range');
+    if (affectsProgress) {
+      meta.lastFloor = toFloor;
+      meta.lastChatLen = chat.length;
+    }
     await setSummaryMeta(meta);
 
     updateSummaryInfoLabel();
@@ -3728,6 +3806,15 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-row sg-inline">
+              <label>手动楼层范围</label>
+              <input id="sg_summaryManualFrom" type="number" min="1" style="width:110px" placeholder="起始层">
+              <span> - </span>
+              <input id="sg_summaryManualTo" type="number" min="1" style="width:110px" placeholder="结束层">
+              <button class="menu_button sg-btn" id="sg_summarizeRange">立即总结该范围</button>
+              <div class="sg-hint" id="sg_summaryManualHint" style="margin-left:auto">（可选范围：1-0）</div>
+            </div>
+
+            <div class="sg-row sg-inline">
               <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
               <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
               <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
@@ -3886,6 +3973,18 @@ function ensureModal() {
     }
   });
 
+  $('#sg_summarizeRange').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      const from = clampInt($('#sg_summaryManualFrom').val(), 1, 200000, 1);
+      const to = clampInt($('#sg_summaryManualTo').val(), 1, 200000, 1);
+      await runSummary({ reason: 'manual_range', manualFromFloor: from, manualToFloor: to });
+    } catch (e) {
+      setStatus(`手动范围总结失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
   $('#sg_resetSummaryState').on('click', async () => {
     try {
       const meta = getDefaultSummaryMeta();
@@ -3904,6 +4003,7 @@ function ensureModal() {
     saveSettings();
     updateSummaryInfoLabel();
     updateBlueIndexInfoLabel();
+    updateSummaryManualRangeHint(false);
   });
 
   $('#sg_refreshModels').on('click', async () => {
@@ -4381,6 +4481,37 @@ function updateSummaryInfoLabel() {
   }
 }
 
+
+function updateSummaryManualRangeHint(setDefaults = false) {
+  const $hint = $('#sg_summaryManualHint');
+  if (!$hint.length) return;
+
+  try {
+    const s = ensureSettings();
+    const ctx = SillyTavern.getContext();
+    const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+    const mode = String(s.summaryCountMode || 'assistant');
+    const floorNow = computeFloorCount(chat, mode);
+    $hint.text(`（可选范围：1-${floorNow || 0}）`);
+
+    const $from = $('#sg_summaryManualFrom');
+    const $to = $('#sg_summaryManualTo');
+    if (!$from.length || !$to.length) return;
+
+    const fromVal = String($from.val() ?? '').trim();
+    const toVal = String($to.val() ?? '').trim();
+
+    if (setDefaults && floorNow > 0 && (!fromVal || !toVal)) {
+      const every = clampInt(s.summaryEvery, 1, 200, 20);
+      const a = Math.max(1, floorNow - every + 1);
+      $from.val(a);
+      $to.val(floorNow);
+    }
+  } catch {
+    $hint.text('（可选范围：?）');
+  }
+}
+
 function renderSummaryPaneFromMeta() {
   const $el = $('#sg_sum');
   if (!$el.length) return;
@@ -4500,6 +4631,7 @@ function openModal() {
   ensureModal();
   pullSettingsToUi();
   updateWorldbookInfoLabel();
+  updateSummaryManualRangeHint(true);
   // 打开面板时尝试刷新一次蓝灯索引（不阻塞 UI）
   ensureBlueIndexLive(false).catch(() => void 0);
   setStatus('', '');
