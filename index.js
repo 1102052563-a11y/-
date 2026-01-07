@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.2
+ * v0.9.3
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -149,6 +149,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiTriggerEnabled: false,
   // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
   wiTriggerLookbackMessages: 20,
+  // 至少已有 N 条 AI 回复（楼层）才开始索引触发；0=立即
+  wiTriggerStartAfterAssistantMessages: 0,
   // 最多选择多少条 summary 条目来触发
   wiTriggerMaxEntries: 4,
   // 相关度阈值（0~1，越大越严格）
@@ -2178,6 +2180,29 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const lastText = String(last.mes ?? last.message ?? '').trim();
   if (!lastText || lastText.startsWith('/')) return;
 
+  // 仅在达到指定 AI 楼层后才开始索引触发（避免前期噪声/浪费）
+  const startAfter = clampInt(s.wiTriggerStartAfterAssistantMessages, 0, 200000, 0);
+  if (startAfter > 0) {
+    const assistantFloors = computeFloorCount(chat, 'assistant');
+    if (assistantFloors < startAfter) {
+      // log (optional)
+      appendWiTriggerLog({
+        ts: Date.now(),
+        reason: String(reason || 'msg_sent'),
+        userText: lastText,
+        skipped: true,
+        skippedReason: 'minAssistantFloors',
+        assistantFloors,
+        startAfter,
+      });
+      const modalOpen = $('#sg_modal_backdrop').is(':visible');
+      if (modalOpen || s.wiTriggerDebugLog) {
+        setStatus(`索引未启动：AI 回复楼层 ${assistantFloors}/${startAfter}`, 'info');
+      }
+      return;
+    }
+  }
+
   const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
   const recentText = buildRecentChatText(chat, lookback, true);
   if (!recentText) return;
@@ -3536,6 +3561,16 @@ function buildModalHtml() {
                   <input id="sg_wiTriggerMaxKeywords" type="number" min="1" max="200" placeholder="24">
                 </div>
               </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>至少已有 N 条 AI 回复才开始索引（0=立即）</label>
+                  <input id="sg_wiTriggerStartAfterAssistantMessages" type="number" min="0" max="200000" placeholder="0">
+                </div>
+                <div class="sg-field">
+                  <label>说明</label>
+                  <div class="sg-hint" style="padding-top:8px;">（只统计 AI 回复楼层；例如填 100 表示第 100 层之后才注入）</div>
+                </div>
+              </div>
               <div class="sg-row sg-inline">
                 <label>注入方式</label>
                 <select id="sg_wiTriggerInjectStyle" style="min-width:200px">
@@ -3737,7 +3772,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -4042,6 +4077,7 @@ function pullSettingsToUi() {
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
   $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
   $('#sg_wiTriggerLookbackMessages').val(s.wiTriggerLookbackMessages || 20);
+  $('#sg_wiTriggerStartAfterAssistantMessages').val(s.wiTriggerStartAfterAssistantMessages || 0);
   $('#sg_wiTriggerMaxEntries').val(s.wiTriggerMaxEntries || 4);
   $('#sg_wiTriggerMinScore').val(s.wiTriggerMinScore ?? 0.08);
   $('#sg_wiTriggerMaxKeywords').val(s.wiTriggerMaxKeywords || 24);
@@ -4106,6 +4142,7 @@ function renderWiTriggerLogs(metaOverride = null) {
   const shown = logs.slice(0, 30);
   const html = shown.map((l) => {
     const ts = formatTimeShort(l.ts);
+    const skipped = l.skipped === true;
     const picked = Array.isArray(l.picked) ? l.picked : [];
     const titles = picked.map(x => String(x?.title || '').trim()).filter(Boolean);
     const titleShort = titles.length
@@ -4115,6 +4152,24 @@ function renderWiTriggerLogs(metaOverride = null) {
     const userShort = user ? (user.slice(0, 120) + (user.length > 120 ? '…' : '')) : '';
     const kws = Array.isArray(l.injectedKeywords) ? l.injectedKeywords : [];
     const kwsShort = kws.length ? (kws.slice(0, 20).join('、') + (kws.length > 20 ? '…' : '')) : '';
+
+    if (skipped) {
+      const assistantFloors = Number(l.assistantFloors || 0);
+      const startAfter = Number(l.startAfter || 0);
+      const reasonKey = String(l.skippedReason || '').trim();
+      const reasonText = reasonKey === 'minAssistantFloors'
+        ? `AI 回复楼层不足（${assistantFloors}/${startAfter}）`
+        : (reasonKey || '跳过');
+      const detailsLines = [];
+      if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
+      detailsLines.push(`<div><b>未触发</b>：${escapeHtml(reasonText)}</div>`);
+      return `
+      <details>
+        <summary>${escapeHtml(`${ts}｜未触发：${reasonText}`)}</summary>
+        <div class="sg-log-body">${detailsLines.join('')}</div>
+      </details>
+    `;
+    }
 
     const detailsLines = [];
     if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
@@ -4287,6 +4342,7 @@ function pullUiToSettings() {
 
   s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
   s.wiTriggerLookbackMessages = clampInt($('#sg_wiTriggerLookbackMessages').val(), 5, 120, s.wiTriggerLookbackMessages || 20);
+  s.wiTriggerStartAfterAssistantMessages = clampInt($('#sg_wiTriggerStartAfterAssistantMessages').val(), 0, 200000, s.wiTriggerStartAfterAssistantMessages || 0);
   s.wiTriggerMaxEntries = clampInt($('#sg_wiTriggerMaxEntries').val(), 1, 20, s.wiTriggerMaxEntries || 4);
   s.wiTriggerMinScore = clampFloat($('#sg_wiTriggerMinScore').val(), 0, 1, (s.wiTriggerMinScore ?? 0.08));
   s.wiTriggerMaxKeywords = clampInt($('#sg_wiTriggerMaxKeywords').val(), 1, 200, s.wiTriggerMaxKeywords || 24);
