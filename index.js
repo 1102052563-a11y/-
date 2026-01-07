@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.4
+ * v0.9.6
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -18,7 +18,11 @@
  * v0.9.1 新增：蓝灯索引→绿灯触发 的“索引日志”（显示命中条目名称/注入关键词），便于排查触发效果。
  * v0.9.2 修复：条目标题前缀（comment）现在始终加在最前（即使模型输出了自定义 title 也会保留前缀）。
  * v0.9.4 新增：总结写入世界书的“主要关键词(key)”可切换为“索引编号”（如 A-001），只写 1 个触发词，触发更精确。
+ * v0.9.5 改进：蓝灯索引匹配会综合“最近 N 条消息正文 + 本次用户输入”，而不是只看最近正文（可在面板里关闭/调整权重）。
+ * v0.9.6 改进：在面板标题处显示版本号，方便确认是否已正确更新到包含“用户输入权重”设置的版本。
  */
+
+const SG_VERSION = '0.9.6';
 
 const MODULE_NAME = 'storyguide';
 
@@ -161,6 +165,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiTriggerEnabled: false,
   // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
   wiTriggerLookbackMessages: 20,
+  // 是否把“本次用户输入”纳入索引匹配（综合判断）。
+  wiTriggerIncludeUserMessage: true,
+  // 本次用户输入在相似度向量中的权重（越大越看重用户输入；1=与最近正文同权重）
+  wiTriggerUserMessageWeight: 1.6,
   // 至少已有 N 条 AI 回复（楼层）才开始索引触发；0=立即
   wiTriggerStartAfterAssistantMessages: 0,
   // 最多选择多少条 summary 条目来触发
@@ -2146,7 +2154,7 @@ function cosineSimilarity(mapA, mapB) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-function buildRecentChatText(chat, lookback, excludeLast = true) {
+function buildRecentChatText(chat, lookback, excludeLast = true, stripTag = '') {
   const msgs = [];
   const arr = Array.isArray(chat) ? chat : [];
   let i = arr.length - 1;
@@ -2155,7 +2163,8 @@ function buildRecentChatText(chat, lookback, excludeLast = true) {
     const m = arr[i];
     if (!m) continue;
     if (m.is_system === true) continue;
-    const t = stripHtml(m.mes ?? m.message ?? '');
+    let t = stripHtml(m.mes ?? m.message ?? '');
+    if (stripTag) t = stripTriggerInjection(t, stripTag);
     if (t) msgs.push(t);
   }
   return msgs.reverse().join('\n');
@@ -2218,8 +2227,16 @@ function collectBlueIndexCandidates() {
   return out;
 }
 
-function pickRelevantIndexEntries(recentText, candidates, maxEntries, minScore) {
+function pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, minScore, includeUser = true, userWeight = 1.0) {
   const recentVec = tokenizeForSimilarity(recentText);
+  if (includeUser && userText) {
+    const uvec = tokenizeForSimilarity(userText);
+    const w = Number(userWeight);
+    const mul = Number.isFinite(w) ? Math.max(0, Math.min(10, w)) : 1;
+    for (const [k, v] of uvec.entries()) {
+      recentVec.set(k, (recentVec.get(k) || 0) + v * mul);
+    }
+  }
   const scored = [];
   for (const e of candidates) {
     const txt = `${e.title || ''}\n${e.summary || ''}\n${(Array.isArray(e.keywords) ? e.keywords.join(' ') : '')}`;
@@ -2268,7 +2285,9 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   }
 
   const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
-  const recentText = buildRecentChatText(chat, lookback, true);
+  // 最近正文（不含本次用户输入）；为避免“触发词注入”污染相似度，先剔除同 tag 的注入片段。
+  const tagForStrip = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
+  const recentText = buildRecentChatText(chat, lookback, true, tagForStrip);
   if (!recentText) return;
 
   const candidates = collectBlueIndexCandidates();
@@ -2276,7 +2295,10 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
 
   const maxEntries = clampInt(s.wiTriggerMaxEntries, 1, 20, 4);
   const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
-  const picked = pickRelevantIndexEntries(recentText, candidates, maxEntries, minScore);
+  const includeUser = !!s.wiTriggerIncludeUserMessage;
+  const userWeight = clampFloat(s.wiTriggerUserMessageWeight, 0, 10, 1.6);
+  // 关键：综合“最近 N 条正文 + 本次用户输入”来判断与当前剧情相关的条目。
+  const picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
   if (!picked.length) return;
 
   const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
@@ -2304,7 +2326,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const keywords = Array.from(kwSet);
   if (!keywords.length) return;
 
-  const tag = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
+  const tag = tagForStrip;
   const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
   const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', tag);
   const injected = cleaned + buildTriggerInjection(keywords, tag, style);
@@ -3303,7 +3325,7 @@ function buildModalHtml() {
       <div class="sg-modal-head">
         <div class="sg-modal-title">
           <span class="sg-badge">📘</span>
-          剧情指导 <span class="sg-sub">StoryGuide</span>
+          剧情指导 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
         </div>
         <div class="sg-modal-actions">
           <button class="menu_button sg-btn" id="sg_close">关闭</button>
@@ -3639,6 +3661,17 @@ function buildModalHtml() {
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
+                  <label class="sg-check"><input type="checkbox" id="sg_wiTriggerIncludeUserMessage">结合本次用户输入（综合判断）</label>
+                  <div class="sg-hint">开启后会综合“最近 N 条正文 + 你这句话”来决定与当前剧情最相关的条目。</div>
+                </div>
+                <div class="sg-field">
+                  <label>用户输入权重（0~10）</label>
+                  <input id="sg_wiTriggerUserMessageWeight" type="number" min="0" max="10" step="0.1" placeholder="1.6">
+                  <div class="sg-hint">越大越看重你这句话；1=与最近正文同权重。</div>
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
                   <label>相关度阈值（0~1）</label>
                   <input id="sg_wiTriggerMinScore" type="number" min="0" max="1" step="0.01" placeholder="0.08">
                 </div>
@@ -3680,7 +3713,7 @@ function buildModalHtml() {
                 <div class="sg-hint" id="sg_blueIndexInfo" style="margin-left:auto">（蓝灯索引：0 条）</div>
               </div>
               <div class="sg-hint">
-                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与最近对话做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。
+                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与 <b>最近 N 条正文</b>（可选再加上 <b>本次用户输入</b>）做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
@@ -3866,7 +3899,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -4176,6 +4209,8 @@ function pullSettingsToUi() {
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
   $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
   $('#sg_wiTriggerLookbackMessages').val(s.wiTriggerLookbackMessages || 20);
+  $('#sg_wiTriggerIncludeUserMessage').prop('checked', !!s.wiTriggerIncludeUserMessage);
+  $('#sg_wiTriggerUserMessageWeight').val(s.wiTriggerUserMessageWeight ?? 1.6);
   $('#sg_wiTriggerStartAfterAssistantMessages').val(s.wiTriggerStartAfterAssistantMessages || 0);
   $('#sg_wiTriggerMaxEntries').val(s.wiTriggerMaxEntries || 4);
   $('#sg_wiTriggerMinScore').val(s.wiTriggerMinScore ?? 0.08);
@@ -4447,6 +4482,8 @@ function pullUiToSettings() {
 
   s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
   s.wiTriggerLookbackMessages = clampInt($('#sg_wiTriggerLookbackMessages').val(), 5, 120, s.wiTriggerLookbackMessages || 20);
+  s.wiTriggerIncludeUserMessage = $('#sg_wiTriggerIncludeUserMessage').is(':checked');
+  s.wiTriggerUserMessageWeight = clampFloat($('#sg_wiTriggerUserMessageWeight').val(), 0, 10, s.wiTriggerUserMessageWeight ?? 1.6);
   s.wiTriggerStartAfterAssistantMessages = clampInt($('#sg_wiTriggerStartAfterAssistantMessages').val(), 0, 200000, s.wiTriggerStartAfterAssistantMessages || 0);
   s.wiTriggerMaxEntries = clampInt($('#sg_wiTriggerMaxEntries').val(), 1, 20, s.wiTriggerMaxEntries || 4);
   s.wiTriggerMinScore = clampFloat($('#sg_wiTriggerMinScore').val(), 0, 1, (s.wiTriggerMinScore ?? 0.08));
@@ -4479,7 +4516,7 @@ function injectMinimalSettingsPanel() {
   $root.append(`
     <div class="sg-panel-min" id="sg_settings_panel_min">
       <div class="sg-min-row">
-        <div class="sg-min-title">剧情指导 StoryGuide</div>
+        <div class="sg-min-title">剧情指导 StoryGuide <span class="sg-sub">v${SG_VERSION}</span></div>
         <button class="menu_button sg-btn" id="sg_open_from_settings">打开面板</button>
       </div>
       <div class="sg-min-hint">支持自定义输出模块（JSON），并且自动追加框会缓存+监听重渲染，尽量不被变量更新覆盖。</div>
