@@ -1878,7 +1878,198 @@ function quoteSlashValue(v) {
   return `"${s}"`;
 }
 
-async function writeSummaryToWorldInfoEntry(rec, meta, {
+
+// -------------------- 世界书写入（持久化修复） --------------------
+
+function normalizeWorldInfoBaseName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '';
+  return raw.endsWith('.json') ? raw.slice(0, -5) : raw;
+}
+
+async function getChatbookNameCompat() {
+  // 1) Try common metadata paths (best effort)
+  try {
+    const ctx = SillyTavern.getContext();
+    const md = ctx?.chat_metadata || ctx?.chatMetadata || null;
+    const cand = [
+      md?.chat_lorebook,
+      md?.chatLorebook,
+      md?.chat_world,
+      md?.chatWorld,
+      md?.world_info,
+      md?.worldInfo,
+      md?.lorebook,
+      md?.primary_world_info,
+      md?.primaryWorldInfo,
+    ].map(x => String(x || '').trim()).filter(Boolean);
+    if (cand.length) return cand[0];
+  } catch { /* ignore */ }
+
+  // 2) Ask ST via slash command
+  try {
+    const out = await execSlash('/getchatbook');
+    const t = String(slashOutputToText(out) || '').trim();
+    if (t) return t;
+  } catch { /* ignore */ }
+
+  return '';
+}
+
+async function resolveWorldInfoNameByTarget(target, file) {
+  const t = String(target || 'file');
+  if (t === 'chatbook') {
+    const name = await getChatbookNameCompat();
+    return normalizeWorldInfoBaseName(name);
+  }
+  return normalizeWorldInfoBaseName(file);
+}
+
+async function fetchWorldInfoStrict(nameBase) {
+  const name = normalizeWorldInfoBaseName(nameBase);
+  if (!name) throw new Error('世界书文件名为空');
+  return await fetchJsonCompat('/api/worldinfo/get', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+async function saveWorldInfoStrict(nameBase, data) {
+  const name = normalizeWorldInfoBaseName(nameBase);
+  if (!name) throw new Error('世界书文件名为空');
+  return await fetchJsonCompat('/api/worldinfo/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, data }),
+  });
+}
+
+function ensureWorldInfoEntriesContainer(book) {
+  if (!book || typeof book !== 'object') book = { entries: {} };
+  if (!('entries' in book) || book.entries == null) book.entries = {};
+  return book;
+}
+
+function computeNextWorldInfoUid(book) {
+  const entries = book?.entries;
+  let maxUid = -1;
+
+  const consider = (v) => {
+    const n = Number.parseInt(String(v ?? ''), 10);
+    if (Number.isFinite(n)) maxUid = Math.max(maxUid, n);
+  };
+
+  if (Array.isArray(entries)) {
+    for (const e of entries) consider(e?.uid ?? e?.id);
+  } else if (entries && typeof entries === 'object') {
+    for (const [k, v] of Object.entries(entries)) {
+      consider(k);
+      consider(v?.uid ?? v?.id);
+    }
+  }
+
+  return String(Math.max(0, maxUid + 1));
+}
+
+function insertWorldInfoEntry(book, entry) {
+  book = ensureWorldInfoEntriesContainer(book);
+  const entries = book.entries;
+
+  // Keep existing structure if possible (array vs map)
+  if (Array.isArray(entries)) {
+    entries.push(entry);
+  } else if (entries && typeof entries === 'object') {
+    const uidKey = String(entry.uid ?? entry.id ?? computeNextWorldInfoUid(book));
+    entries[uidKey] = entry;
+  } else {
+    book.entries = { [String(entry.uid)]: entry };
+  }
+
+  return book;
+}
+
+async function writeSummaryToWorldInfoEntryApi(rec, meta, {
+  target = 'file',
+  file = '',
+  commentPrefix = '剧情总结',
+  constant = 0,
+} = {}) {
+  const s = ensureSettings();
+
+  const t = String(target || 'file');
+  const name = await resolveWorldInfoNameByTarget(t, file);
+  if (t === 'file' && !name) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
+  if (!name) throw new Error('无法解析世界书文件名（chatbook 未绑定或获取失败）。');
+
+  // Build comment/title
+  const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
+  const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
+  const rawTitle = String(rec.title || '').trim();
+  const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
+  const indexId = String(rec?.indexId || '').trim();
+  const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
+
+  let commentTitle = rawTitle;
+  if (prefix) {
+    if (!commentTitle) commentTitle = prefix;
+    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
+  }
+  if (indexInComment) {
+    if (!commentTitle.includes(indexId)) {
+      if (commentTitle === prefix) commentTitle = `${prefix}｜${indexId}`;
+      else if (commentTitle.startsWith(`${prefix}｜`)) commentTitle = commentTitle.replace(`${prefix}｜`, `${prefix}｜${indexId}｜`);
+      else commentTitle = `${prefix}｜${indexId}｜${commentTitle}`;
+      commentTitle = commentTitle.replace(/｜｜+/g, '｜');
+    }
+  }
+  if (!commentTitle) commentTitle = '剧情总结';
+  const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
+
+  // Keys
+  const kws = sanitizeKeywords(rec.keywords);
+  const keys = kws.length ? kws : sanitizeKeywords([prefix]);
+
+  const constantVal = (Number(constant) === 1) ? 1 : 0;
+  const content = String(rec.summary || '').trim();
+
+  // Read -> mutate -> save (ensures persistence even if ST UI uses debounced saves)
+  let book = await fetchWorldInfoStrict(name);
+  book = ensureWorldInfoEntriesContainer(book);
+
+  const uidStr = computeNextWorldInfoUid(book);
+  const uidNum = Number.parseInt(uidStr, 10);
+
+  const entry = {
+    uid: Number.isFinite(uidNum) ? uidNum : uidStr,
+    key: keys,
+    keysecondary: [],
+    content,
+    comment,
+    disable: 0,
+    constant: constantVal,
+  };
+
+  book = insertWorldInfoEntry(book, entry);
+  await saveWorldInfoStrict(name, book);
+
+  // If we touched chatbook, also persist the chat metadata binding.
+  if (t === 'chatbook') {
+    try { SillyTavern.getContext()?.saveChatDebounced?.(); } catch { /* ignore */ }
+  }
+
+  const keyName = (constantVal === 1) ? 'worldInfoBlue' : 'worldInfoGreen';
+  rec[keyName] = { file: name, uid: uidStr };
+  if (meta && Array.isArray(meta.history) && meta.history.length) {
+    meta.history[meta.history.length - 1] = rec;
+    await setSummaryMeta(meta);
+  }
+
+  return { file: name, uid: uidStr };
+}
+
+// 旧版：使用 STscript 写入（部分版本存在“刷新后丢失/未落盘”的风险），仅作为兜底
+async function writeSummaryToWorldInfoEntrySlash(rec, meta, {
   target = 'file',
   file = '',
   commentPrefix = '剧情总结',
@@ -1893,13 +2084,11 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
   const indexId = String(rec?.indexId || '').trim();
   const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
-  // comment 字段通常就是世界书列表里的"标题"。这里保证 prefix 始终在最前，避免"前缀设置无效"。
   let commentTitle = rawTitle;
   if (prefix) {
     if (!commentTitle) commentTitle = prefix;
     else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
   }
-  // 若启用“索引编号触发”：把 A-001 写进 comment，便于在世界书列表里一眼定位。
   if (indexInComment) {
     if (!commentTitle.includes(indexId)) {
       if (commentTitle === prefix) commentTitle = `${prefix}｜${indexId}`;
@@ -1911,7 +2100,6 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   if (!commentTitle) commentTitle = '剧情总结';
   const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
 
-  // normalize content and make it safe for slash parser (avoid accidental pipe split)
   const content = String(rec.summary || '')
     .replace(/\s*\n+\s*/g, ' ')
     .replace(/\s+/g, ' ')
@@ -1922,14 +2110,6 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const f = String(file || '').trim();
   if (t === 'file' && !f) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
 
-  // We purposely avoid parsing UID in JS, because some ST builds return only a status object
-  // (e.g. {pipe:"0", ...}) even when the command pipes the UID internally.
-  // Instead, we build a single STscript pipeline that:
-  // 1) resolves chatbook file name (if needed)
-  // 2) creates the entry (UID goes into pipe)
-  // 3) stores UID into a local var
-  // 4) sets fields using the stored UID
-  // This works regardless of whether JS can read the piped output.
   const uidVar = '__sg_summary_uid';
   const fileVar = '__sg_summary_wbfile';
 
@@ -1944,18 +2124,15 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
     parts.push(`/setvar key=${fileVar}`);
   }
 
-  // create entry + capture uid
   parts.push(`/createentry file=${quoteSlashValue(fileExpr)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`);
   parts.push(`/setvar key=${uidVar}`);
 
-  // update fields
   parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=content ${quoteSlashValue(content)}`);
   parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=key ${quoteSlashValue(keyValue)}`);
   parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
   parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
   parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=constant ${constantVal}`);
 
-  // cleanup temp vars
   parts.push(`/flushvar ${uidVar}`);
   if (t === 'chatbook') parts.push(`/flushvar ${fileVar}`);
 
@@ -1965,7 +2142,6 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
     throw new Error(`写入世界书失败（返回：${safeStringifyShort(out)}）`);
   }
 
-  // store link (UID is intentionally omitted because it may be inaccessible from JS in some ST builds)
   const keyName = (constantVal === 1) ? 'worldInfoBlue' : 'worldInfoGreen';
   rec[keyName] = { file: (t === 'file') ? f : 'chatbook', uid: null };
   if (meta && Array.isArray(meta.history) && meta.history.length) {
@@ -1973,7 +2149,22 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
     await setSummaryMeta(meta);
   }
 
+  // Try to persist chat metadata binding.
+  if (t === 'chatbook') {
+    try { SillyTavern.getContext()?.saveChatDebounced?.(); } catch { /* ignore */ }
+  }
+
   return { file: (t === 'file') ? f : 'chatbook', uid: null };
+}
+
+async function writeSummaryToWorldInfoEntry(rec, meta, opts = {}) {
+  // 默认使用后端 API 直接写文件（可持久化、刷新不丢）
+  try {
+    return await writeSummaryToWorldInfoEntryApi(rec, meta, opts);
+  } catch (e) {
+    console.warn('[StoryGuide] world info api write failed, fallback to slash:', e);
+    return await writeSummaryToWorldInfoEntrySlash(rec, meta, opts);
+  }
 }
 
 async function runSummary({ reason = 'manual', manualFromFloor = null, manualToFloor = null, manualSplit = null } = {}) {
