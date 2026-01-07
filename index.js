@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.3
+ * v0.9.4
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -17,6 +17,7 @@
  * v0.9.0 修复：实时读取蓝灯世界书在部分 ST 版本返回包装字段（如 data 为 JSON 字符串）时解析为 0 条的问题；并增强读取端点/文件名兼容。
  * v0.9.1 新增：蓝灯索引→绿灯触发 的“索引日志”（显示命中条目名称/注入关键词），便于排查触发效果。
  * v0.9.2 修复：条目标题前缀（comment）现在始终加在最前（即使模型输出了自定义 title 也会保留前缀）。
+ * v0.9.4 新增：总结写入世界书的“主要关键词(key)”可切换为“索引编号”（如 A-001），只写 1 个触发词，触发更精确。
  */
 
 const MODULE_NAME = 'storyguide';
@@ -138,6 +139,17 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryWorldInfoTarget: 'chatbook',
   summaryWorldInfoFile: '',
   summaryWorldInfoCommentPrefix: '剧情总结',
+
+  // 总结写入世界书 key（触发词）的来源
+  // - keywords: 使用模型输出的 keywords（默认）
+  // - indexId: 使用自动生成的索引编号（如 A-001），只写 1 个触发词，触发更精确
+  summaryWorldInfoKeyMode: 'keywords',
+  // 当 keyMode=indexId 时：索引编号格式
+  summaryIndexPrefix: 'A-',
+  summaryIndexPad: 3,
+  summaryIndexStart: 1,
+  // 是否把索引编号写入条目标题（comment），便于世界书列表定位
+  summaryIndexInComment: true,
 
   // —— 蓝灯世界书（常开索引：给本插件做检索用）——
   // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个。
@@ -335,6 +347,8 @@ function getDefaultSummaryMeta() {
   return {
     lastFloor: 0,
     lastChatLen: 0,
+    // 用于“索引编号触发”（A-001/A-002…）的递增计数器（按聊天存储）
+    nextIndex: 1,
     history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
     wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
   };
@@ -1768,11 +1782,25 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
   const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
   const rawTitle = String(rec.title || '').trim();
+
+  const s = ensureSettings();
+  const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
+  const indexId = String(rec?.indexId || '').trim();
+  const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
   // comment 字段通常就是世界书列表里的"标题"。这里保证 prefix 始终在最前，避免"前缀设置无效"。
   let commentTitle = rawTitle;
   if (prefix) {
     if (!commentTitle) commentTitle = prefix;
     else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
+  }
+  // 若启用“索引编号触发”：把 A-001 写进 comment，便于在世界书列表里一眼定位。
+  if (indexInComment) {
+    if (!commentTitle.includes(indexId)) {
+      if (commentTitle === prefix) commentTitle = `${prefix}｜${indexId}`;
+      else if (commentTitle.startsWith(`${prefix}｜`)) commentTitle = commentTitle.replace(`${prefix}｜`, `${prefix}｜${indexId}｜`);
+      else commentTitle = `${prefix}｜${indexId}｜${commentTitle}`;
+      commentTitle = commentTitle.replace(/｜｜+/g, '｜');
+    }
   }
   if (!commentTitle) commentTitle = '剧情总结';
   const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
@@ -1900,18 +1928,54 @@ async function runSummary({ reason = 'manual' } = {}) {
     const parsed = safeJsonParse(jsonText);
     if (!parsed || !parsed.summary) throw new Error('总结输出无法解析为 JSON。');
 
-    const keywords = sanitizeKeywords(parsed.keywords);
     const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
-    const title = String(parsed.title || '').trim() || `${prefix}`;
+    const rawTitle = String(parsed.title || '').trim();
     const summary = String(parsed.summary || '').trim();
+
+    // 触发词（写入世界书 key）：默认用模型 keywords；可选用自动索引编号（A-001…）只写 1 个触发词。
+    const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
+    const modelKeywords = sanitizeKeywords(parsed.keywords);
+    let indexId = '';
+    let keywords = modelKeywords;
+
+    if (keyMode === 'indexId') {
+      // init nextIndex
+      if (!Number.isFinite(Number(meta.nextIndex))) {
+        // try derive from history (same prefix)
+        let maxN = 0;
+        const pref = String(s.summaryIndexPrefix || 'A-');
+        const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
+        for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
+          const id0 = String(h?.indexId || '').trim();
+          const m = id0.match(re);
+          if (m) maxN = Math.max(maxN, Number.parseInt(m[1], 10) || 0);
+        }
+        meta.nextIndex = Math.max(clampInt(s.summaryIndexStart, 1, 1000000, 1), maxN + 1);
+      }
+
+      const pref = String(s.summaryIndexPrefix || 'A-');
+      const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
+      const n = clampInt(meta.nextIndex, 1, 100000000, 1);
+      indexId = `${pref}${String(n).padStart(pad, '0')}`;
+      keywords = [indexId];
+    }
+
+    const title = rawTitle || `${prefix}`;
 
     const rec = {
       title,
       summary,
       keywords,
+      // 额外元信息：索引编号 & 模型原始关键词（当 keyMode=indexId 时可用于调试/检索）
+      indexId: indexId || undefined,
+      modelKeywords: (keyMode === 'indexId') ? modelKeywords : undefined,
       createdAt: Date.now(),
       range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: Math.max(0, chat.length - 1) },
     };
+
+    if (keyMode === 'indexId') {
+      meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
+    }
 
     meta.history = Array.isArray(meta.history) ? meta.history : [];
     meta.history.push(rec);
@@ -3537,6 +3601,28 @@ function buildModalHtml() {
               </div>
             </div>
 
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>世界书触发词写入 key</label>
+                <select id="sg_summaryWorldInfoKeyMode">
+                  <option value="keywords">使用模型输出的关键词（6~14 个）</option>
+                  <option value="indexId">使用索引编号（只写 1 个，如 A-001）</option>
+                </select>
+                <div class="sg-hint">想让“主要关键词”只显示 A-001，就选“索引编号”。</div>
+              </div>
+              <div class="sg-field" id="sg_summaryIndexFormat" style="display:none;">
+                <label>索引编号格式（keyMode=indexId）</label>
+                <div class="sg-row" style="margin-top:0; gap:8px; align-items:center;">
+                  <input id="sg_summaryIndexPrefix" type="text" placeholder="A-" style="width:90px">
+                  <span class="sg-hint">位数</span>
+                  <input id="sg_summaryIndexPad" type="number" min="1" max="12" style="width:80px">
+                  <span class="sg-hint">起始</span>
+                  <input id="sg_summaryIndexStart" type="number" min="1" max="1000000" style="width:100px">
+                </div>
+                <label class="sg-check" style="margin-top:6px;"><input type="checkbox" id="sg_summaryIndexInComment">条目标题（comment）包含编号</label>
+              </div>
+            </div>
+
             <div class="sg-card sg-subcard">
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">启用“蓝灯索引 → 绿灯触发”（发送消息前自动注入触发词）</label>
@@ -3739,6 +3825,14 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
   });
 
+  // summary key mode toggle (keywords vs indexId)
+  $('#sg_summaryWorldInfoKeyMode').on('change', () => {
+    const m = String($('#sg_summaryWorldInfoKeyMode').val() || 'keywords');
+    $('#sg_summaryIndexFormat').toggle(m === 'indexId');
+    pullUiToSettings();
+    saveSettings();
+  });
+
   // summary prompt reset
   $('#sg_summaryResetPrompt').on('click', () => {
     $('#sg_summarySystemPrompt').val(DEFAULT_SUMMARY_SYSTEM_PROMPT);
@@ -3772,7 +3866,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -4073,6 +4167,11 @@ function pullSettingsToUi() {
   $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
   $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
+  $('#sg_summaryWorldInfoKeyMode').val(String(s.summaryWorldInfoKeyMode || 'keywords'));
+  $('#sg_summaryIndexPrefix').val(String(s.summaryIndexPrefix || 'A-'));
+  $('#sg_summaryIndexPad').val(s.summaryIndexPad ?? 3);
+  $('#sg_summaryIndexStart').val(s.summaryIndexStart ?? 1);
+  $('#sg_summaryIndexInComment').prop('checked', !!s.summaryIndexInComment);
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
   $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
@@ -4091,6 +4190,7 @@ function pullSettingsToUi() {
   $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
   $('#sg_summaryWorldInfoFile').toggle(String(s.summaryWorldInfoTarget || 'chatbook') === 'file');
   $('#sg_summaryBlueWorldInfoFile').toggle(!!s.summaryToBlueWorldInfo);
+  $('#sg_summaryIndexFormat').toggle(String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId');
 
   updateBlueIndexInfoLabel();
 
@@ -4337,6 +4437,11 @@ function pullUiToSettings() {
   s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
   s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
   s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
+  s.summaryWorldInfoKeyMode = String($('#sg_summaryWorldInfoKeyMode').val() || 'keywords');
+  s.summaryIndexPrefix = String($('#sg_summaryIndexPrefix').val() || 'A-').trim() || 'A-';
+  s.summaryIndexPad = clampInt($('#sg_summaryIndexPad').val(), 1, 12, s.summaryIndexPad ?? 3);
+  s.summaryIndexStart = clampInt($('#sg_summaryIndexStart').val(), 1, 1000000, s.summaryIndexStart ?? 1);
+  s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
   s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
 
