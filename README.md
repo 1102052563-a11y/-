@@ -1,5 +1,8 @@
 # 剧情指导 StoryGuide（SillyTavern 扩展）
 
+## v0.8.9
+- 自动总结（独立API）支持“刷新模型列表”按钮与下拉选择（/models）。
+
 ## v0.8.5
 - 修复：部分 SillyTavern 版本下 /createentry 不会直接返回 UID，导致“写入失败但实际上已写入”的误报。
   - 现在会在创建后通过 /findentry 反查 UID，再设置 key/comment/constant 等字段（避免蓝灯条目无法设为常开）。
