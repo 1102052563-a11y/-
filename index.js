@@ -20,10 +20,11 @@
  * v0.9.4 新增：总结写入世界书的“主要关键词(key)”可切换为“索引编号”（如 A-001），只写 1 个触发词，触发更精确。
  * v0.9.5 改进：蓝灯索引匹配会综合“最近 N 条消息正文 + 本次用户输入”，而不是只看最近正文（可在面板里关闭/调整权重）。
  * v0.9.6 改进：在面板标题处显示版本号，方便确认是否已正确更新到包含“用户输入权重”设置的版本。
+ * v0.9.9 改进：把“剧情指导 / 总结设置 / 索引设置”拆成三页（左侧分页标签），界面更清晰。
  * v0.9.8 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
  */
 
-const SG_VERSION = '0.9.8';
+const SG_VERSION = '0.9.9';
 
 const MODULE_NAME = 'storyguide';
 
@@ -3676,6 +3677,13 @@ function buildModalHtml() {
 
       <div class="sg-modal-body">
         <div class="sg-left">
+          <div class="sg-pagetabs">
+            <button class="sg-pgtab active" id="sg_pgtab_guide">剧情指导</button>
+            <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
+          </div>
+
+          <div class="sg-page active" id="sg_page_guide">
           <div class="sg-card">
             <div class="sg-card-title">生成设置</div>
 
@@ -3863,6 +3871,10 @@ function buildModalHtml() {
 
             <div class="sg-hint" id="sg_worldbookInfo">（未导入世界书）</div>
           </div>
+
+          </div> <!-- sg_page_guide -->
+
+          <div class="sg-page" id="sg_page_summary">
 
           <div class="sg-card">
             <div class="sg-card-title">自动总结（写入世界书）</div>
@@ -4148,6 +4160,14 @@ function buildModalHtml() {
               </div>
             </div>
 
+            <div class="sg-card sg-subcard" id="sg_indexMovedHint" style="margin-top:10px;">
+              <div class="sg-row sg-inline" style="margin-top:0;">
+                <div class="sg-hint">索引相关设置已移至上方“索引设置”页。</div>
+                <div class="sg-spacer"></div>
+                <button class="menu_button sg-btn" id="sg_gotoIndexPage">打开索引设置</button>
+              </div>
+            </div>
+
             <div class="sg-row sg-inline">
               <label>手动楼层范围</label>
               <input id="sg_summaryManualFrom" type="number" min="1" style="width:110px" placeholder="起始层">
@@ -4167,9 +4187,15 @@ function buildModalHtml() {
               自动总结会按“每 N 层”触发；每次输出会生成 <b>摘要</b> + <b>关键词</b>，并可自动创建世界书条目（disable=0 绿灯启用，关键词写入 key 作为触发词）。
             </div>
           </div>
+          </div> <!-- sg_page_summary -->
 
-
-
+          <div class="sg-page" id="sg_page_index">
+            <div class="sg-card">
+              <div class="sg-card-title">索引设置（蓝灯索引 → 绿灯触发）</div>
+              <div class="sg-hint" style="margin-bottom:10px;">索引会从“蓝灯世界书”里挑选与当前剧情最相关的总结条目，并把对应触发词注入到你发送的消息末尾，以触发绿灯世界书条目。</div>
+              <div id="sg_index_mount"></div>
+            </div>
+          </div> <!-- sg_page_index -->
 
           <div class="sg-status" id="sg_status"></div>
         </div>
@@ -4205,6 +4231,9 @@ function buildModalHtml() {
 function ensureModal() {
   if (document.getElementById('sg_modal_backdrop')) return;
   document.body.insertAdjacentHTML('beforeend', buildModalHtml());
+
+  // --- settings pages (剧情指导 / 总结设置 / 索引设置) ---
+  setupSettingsPages();
 
   $('#sg_modal_backdrop').on('click', (e) => { if (e.target && e.target.id === 'sg_modal_backdrop') closeModal(); });
   $('#sg_close').on('click', closeModal);
@@ -4608,6 +4637,46 @@ $('#sg_wiIndexModelSelect').on('change', () => {
     $('#sg_modulesJson').val(s.modulesJson);
     setStatus('模块已应用并保存 ✅（注意：追加框展示的模块由“追加框展示模块”控制）', 'ok');
   });
+}
+
+function showSettingsPage(page) {
+  const p = String(page || 'guide');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index').removeClass('active');
+
+  if (p === 'summary') {
+    $('#sg_pgtab_summary').addClass('active');
+    $('#sg_page_summary').addClass('active');
+  } else if (p === 'index') {
+    $('#sg_pgtab_index').addClass('active');
+    $('#sg_page_index').addClass('active');
+  } else {
+    $('#sg_pgtab_guide').addClass('active');
+    $('#sg_page_guide').addClass('active');
+  }
+
+  // 切页后回到顶部，避免“看不到设置项”
+  try { $('.sg-left').scrollTop(0); } catch {}
+}
+
+function setupSettingsPages() {
+  // 把“索引设置块”从总结页移到索引页（保留内部所有控件 id，不影响事件绑定）
+  try {
+    const $mount = $('#sg_index_mount');
+    const $idxWrapper = $('#sg_wiTriggerEnabled').closest('.sg-card.sg-subcard');
+    if ($mount.length && $idxWrapper.length) {
+      $mount.append($idxWrapper.children());
+      $idxWrapper.remove();
+    }
+  } catch { /* ignore */ }
+
+  // tabs
+  $('#sg_pgtab_guide').on('click', () => showSettingsPage('guide'));
+  $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
+  $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
+
+  // quick jump
+  $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
 }
 
 function pullSettingsToUi() {
