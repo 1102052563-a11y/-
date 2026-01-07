@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.0
+ * v0.9.1
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -15,6 +15,7 @@
  * v0.8.3 新增：总结功能支持自定义提示词（system + user 模板，支持占位符）
  * v0.8.6 修复：写入世界书不再依赖 JS 解析 UID（改为在同一段 STscript 管线内用 {{pipe}} 传递 UID），避免误报“无法解析 UID”。
  * v0.9.0 修复：实时读取蓝灯世界书在部分 ST 版本返回包装字段（如 data 为 JSON 字符串）时解析为 0 条的问题；并增强读取端点/文件名兼容。
+ * v0.9.1 新增：蓝灯索引→绿灯触发 的“索引日志”（显示命中条目名称/注入关键词），便于排查触发效果。
  */
 
 const MODULE_NAME = 'storyguide';
@@ -266,6 +267,17 @@ function stripHtml(input) {
   return String(input).replace(/<[^>]*>/g, '').replace(/\s+\n/g, '\n').trim();
 }
 
+function escapeHtml(input) {
+  const s = String(input ?? '');
+  return s.replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
 function clampInt(v, min, max, fallback) {
   const n = Number.parseInt(v, 10);
   if (Number.isFinite(n)) return Math.min(max, Math.max(min, n));
@@ -321,6 +333,7 @@ function getDefaultSummaryMeta() {
     lastFloor: 0,
     lastChatLen: 0,
     history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
+    wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
   };
 }
 
@@ -334,6 +347,7 @@ function getSummaryMeta() {
       ...getDefaultSummaryMeta(),
       ...data,
       history: Array.isArray(data.history) ? data.history : [],
+      wiTriggerLogs: Array.isArray(data.wiTriggerLogs) ? data.wiTriggerLogs : [],
     };
   } catch {
     return getDefaultSummaryMeta();
@@ -2170,9 +2184,18 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
 
   const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
   const kwSet = new Set();
-  const pickedTitles = [];
+  const pickedTitles = []; // debug display with score
+  const pickedNames = [];  // entry names (等价于将触发的绿灯条目名称)
+  const pickedForLog = [];
   for (const { e, score } of picked) {
-    pickedTitles.push(`${e.title}（${score.toFixed(2)}）`);
+    const name = String(e.title || '').trim() || '条目';
+    pickedNames.push(name);
+    pickedTitles.push(`${name}（${score.toFixed(2)}）`);
+    pickedForLog.push({
+      title: name,
+      score: Number(score),
+      keywordsPreview: (Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : []),
+    });
     for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
       const kk = String(k || '').trim();
       if (!kk) continue;
@@ -2190,6 +2213,18 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const injected = cleaned + buildTriggerInjection(keywords, tag, style);
   last.mes = injected;
 
+  // append log (fire-and-forget)
+  appendWiTriggerLog({
+    ts: Date.now(),
+    reason: String(reason || 'msg_sent'),
+    userText: lastText,
+    lookback,
+    style,
+    tag,
+    picked: pickedForLog,
+    injectedKeywords: keywords,
+  });
+
   // try save
   try {
     if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
@@ -2199,7 +2234,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   // debug status (only when pane open or explicitly enabled)
   const modalOpen = $('#sg_modal_backdrop').is(':visible');
   if (modalOpen || s.wiTriggerDebugLog) {
-    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : ''}`, 'ok');
+    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : `｜将触发：${pickedNames.slice(0,4).join('；')}${pickedNames.length>4?'…':''}`}`, 'ok');
   }
 }
 
@@ -3518,6 +3553,16 @@ function buildModalHtml() {
               <div class="sg-hint">
                 说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与最近对话做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。
               </div>
+
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-row sg-inline" style="margin-top:0;">
+                  <div class="sg-card-title" style="margin:0;">索引日志</div>
+                  <div class="sg-spacer"></div>
+                  <button class="menu_button sg-btn" id="sg_clearWiLogs">清空</button>
+                </div>
+                <div class="sg-loglist" id="sg_wiLogs" style="margin-top:8px;">(暂无)</div>
+                <div class="sg-hint" style="margin-top:8px;">提示：日志记录“这次发送消息时命中了哪些索引条目（等价于将触发的绿灯条目）”以及注入了哪些关键词。</div>
+              </div>
             </div>
 
             <div class="sg-row sg-inline">
@@ -3764,6 +3809,18 @@ function ensureModal() {
     setStatus('已清空蓝灯索引', 'ok');
   });
 
+  $('#sg_clearWiLogs').on('click', async () => {
+    try {
+      const meta = getSummaryMeta();
+      meta.wiTriggerLogs = [];
+      await setSummaryMeta(meta);
+      renderWiTriggerLogs(meta);
+      setStatus('已清空索引日志', 'ok');
+    } catch (e) {
+      setStatus(`清空索引日志失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
   
   // presets actions
   $('#sg_exportPreset').on('click', () => {
@@ -3995,6 +4052,7 @@ function pullSettingsToUi() {
 
   updateSummaryInfoLabel();
   renderSummaryPaneFromMeta();
+  renderWiTriggerLogs();
 
   updateButtonsEnabled();
 }
@@ -4014,6 +4072,71 @@ function updateBlueIndexInfoLabel() {
   } else {
     $info.text(`（蓝灯索引：${count} 条｜缓存）`);
   }
+}
+
+// -------------------- wiTrigger logs (per chat meta) --------------------
+
+function formatTimeShort(ts) {
+  try {
+    const d = new Date(Number(ts) || Date.now());
+    return d.toLocaleTimeString();
+  } catch {
+    return '';
+  }
+}
+
+function renderWiTriggerLogs(metaOverride = null) {
+  const $box = $('#sg_wiLogs');
+  if (!$box.length) return;
+  const meta = metaOverride || getSummaryMeta();
+  const logs = Array.isArray(meta?.wiTriggerLogs) ? meta.wiTriggerLogs : [];
+  if (!logs.length) {
+    $box.html('<div class="sg-hint">(暂无)</div>');
+    return;
+  }
+
+  const shown = logs.slice(0, 30);
+  const html = shown.map((l) => {
+    const ts = formatTimeShort(l.ts);
+    const picked = Array.isArray(l.picked) ? l.picked : [];
+    const titles = picked.map(x => String(x?.title || '').trim()).filter(Boolean);
+    const titleShort = titles.length
+      ? (titles.slice(0, 4).join('；') + (titles.length > 4 ? '…' : ''))
+      : '（无命中条目）';
+    const user = String(l.userText || '').replace(/\s+/g, ' ').trim();
+    const userShort = user ? (user.slice(0, 120) + (user.length > 120 ? '…' : '')) : '';
+    const kws = Array.isArray(l.injectedKeywords) ? l.injectedKeywords : [];
+    const kwsShort = kws.length ? (kws.slice(0, 20).join('、') + (kws.length > 20 ? '…' : '')) : '';
+
+    const detailsLines = [];
+    if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
+    detailsLines.push(`<div><b>将触发绿灯条目</b>：${escapeHtml(titles.join('；') || '（无）')}</div>`);
+    detailsLines.push(`<div><b>注入触发词</b>：${escapeHtml(kwsShort || '（无）')}</div>`);
+    if (picked.length) {
+      const scored = picked.map(x => `${String(x.title || '').trim()}（${Number(x.score || 0).toFixed(2)}）`).join('；');
+      detailsLines.push(`<div class="sg-hint">相似度：${escapeHtml(scored)}</div>`);
+    }
+    return `
+      <details>
+        <summary>${escapeHtml(`${ts}｜命中${titles.length}条：${titleShort}`)}</summary>
+        <div class="sg-log-body">${detailsLines.join('')}</div>
+      </details>
+    `;
+  }).join('');
+
+  $box.html(html);
+}
+
+function appendWiTriggerLog(log) {
+  try {
+    const meta = getSummaryMeta();
+    const arr = Array.isArray(meta.wiTriggerLogs) ? meta.wiTriggerLogs : [];
+    arr.unshift(log);
+    meta.wiTriggerLogs = arr.slice(0, 50);
+    // 不 await：避免阻塞 MESSAGE_SENT
+    setSummaryMeta(meta).catch(() => void 0);
+    if ($('#sg_modal_backdrop').is(':visible')) renderWiTriggerLogs(meta);
+  } catch { /* ignore */ }
 }
 
 function updateWorldbookInfoLabel() {
