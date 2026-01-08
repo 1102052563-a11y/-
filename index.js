@@ -5742,9 +5742,6 @@ function createFloatingButton() {
       const left = parseInt(btn.style.left || '0', 10);
       const top = parseInt(btn.style.top || '0', 10);
       saveBtnPos(left, top);
-    } else {
-      // It was a click
-      toggleFloatingPanel();
     }
   };
 
@@ -5752,6 +5749,17 @@ function createFloatingButton() {
   btn.addEventListener('pointermove', onMove);
   btn.addEventListener('pointerup', onUp);
   btn.addEventListener('pointercancel', onUp);
+
+  // Robust click handler
+  btn.addEventListener('click', (e) => {
+    // If we just dragged, 'moved' might still be true
+    if (moved) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    toggleFloatingPanel();
+  });
 }
 
 function createFloatingPanel() {
@@ -5892,6 +5900,16 @@ function showFloatingPanel() {
   if (panel) {
     panel.classList.add('visible');
     floatingPanelVisible = true;
+
+    // Force safe positioning on mobile/tablet (<1200px) every time it opens
+    // This ensures it doesn't get stuck in weird places or off-screen
+    if (window.innerWidth < 1200) {
+      panel.style.left = '';
+      panel.style.top = '';
+      panel.style.bottom = ''; // Revert to CSS default (fixed bottom)
+      panel.style.right = '';
+      panel.style.transform = ''; // Clear strict transform if needed, though CSS handles transition
+    }
 
     // 如果有缓存内容则显示
     if (lastFloatingContent) {
