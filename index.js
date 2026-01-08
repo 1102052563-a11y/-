@@ -177,28 +177,28 @@ const DEFAULT_SETTINGS = Object.freeze({
   // —— 蓝灯索引 → 绿灯触发 ——
   wiTriggerEnabled: false,
 
-// 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API）
-wiTriggerMatchMode: 'local',
+  // 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API）
+  wiTriggerMatchMode: 'local',
 
-// —— 索引 LLM（独立于总结 API 的第二套配置）——
-wiIndexProvider: 'st',         // st | custom
-wiIndexTemperature: 0.2,
-wiIndexTopP: 0.95,
-wiIndexSystemPrompt: DEFAULT_INDEX_SYSTEM_PROMPT,
-wiIndexUserTemplate: DEFAULT_INDEX_USER_TEMPLATE,
+  // —— 索引 LLM（独立于总结 API 的第二套配置）——
+  wiIndexProvider: 'st',         // st | custom
+  wiIndexTemperature: 0.2,
+  wiIndexTopP: 0.95,
+  wiIndexSystemPrompt: DEFAULT_INDEX_SYSTEM_PROMPT,
+  wiIndexUserTemplate: DEFAULT_INDEX_USER_TEMPLATE,
 
-// LLM 模式：先用本地相似度预筛选 TopK，再交给模型综合判断（更省 tokens）
-wiIndexPrefilterTopK: 24,
-// 每条候选摘要截断字符（控制 tokens）
-wiIndexCandidateMaxChars: 420,
+  // LLM 模式：先用本地相似度预筛选 TopK，再交给模型综合判断（更省 tokens）
+  wiIndexPrefilterTopK: 24,
+  // 每条候选摘要截断字符（控制 tokens）
+  wiIndexCandidateMaxChars: 420,
 
-// 索引独立 OpenAI 兼容 API
-wiIndexCustomEndpoint: '',
-wiIndexCustomApiKey: '',
-wiIndexCustomModel: 'gpt-4o-mini',
-wiIndexCustomModelsCache: [],
-wiIndexCustomMaxTokens: 1024,
-wiIndexCustomStream: false,
+  // 索引独立 OpenAI 兼容 API
+  wiIndexCustomEndpoint: '',
+  wiIndexCustomApiKey: '',
+  wiIndexCustomModel: 'gpt-4o-mini',
+  wiIndexCustomModelsCache: [],
+  wiIndexCustomMaxTokens: 1024,
+  wiIndexCustomStream: false,
 
   // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
   wiTriggerLookbackMessages: 20,
@@ -238,6 +238,17 @@ wiIndexCustomStream: false,
   // 额外可自定义提示词“骨架”
   customSystemPreamble: '',     // 附加在默认 system 之后
   customConstraints: '',        // 附加在默认 constraints 之后
+
+  // ===== 快捷选项功能 =====
+  quickOptionsEnabled: true,
+  quickOptionsShowIn: 'inline', // inline | panel | both
+  // 预设默认选项（JSON 字符串）: [{label, prompt}]
+  quickOptionsJson: JSON.stringify([
+    { label: '继续', prompt: '继续当前剧情发展' },
+    { label: '详述', prompt: '请更详细地描述当前场景' },
+    { label: '对话', prompt: '让角色之间展开更多对话' },
+    { label: '行动', prompt: '描述接下来的具体行动' },
+  ], null, 2),
 });
 
 const META_KEYS = Object.freeze({
@@ -368,6 +379,103 @@ function safeJsonParse(maybeJson) {
   try { return JSON.parse(t); } catch { return null; }
 }
 
+// ===== 快捷选项功能 =====
+
+function getQuickOptions() {
+  const s = ensureSettings();
+  if (!s.quickOptionsEnabled) return [];
+
+  const raw = String(s.quickOptionsJson || '').trim();
+  if (!raw) return [];
+
+  try {
+    let arr = JSON.parse(raw);
+    // 支持 [[label, prompt], ...] 和 [{label, prompt}, ...] 两种格式
+    if (!Array.isArray(arr)) return [];
+    return arr.map((item, i) => {
+      if (Array.isArray(item)) {
+        return { label: String(item[0] || `选项${i + 1}`), prompt: String(item[1] || '') };
+      }
+      if (item && typeof item === 'object') {
+        return { label: String(item.label || `选项${i + 1}`), prompt: String(item.prompt || '') };
+      }
+      return null;
+    }).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function injectToUserInput(text) {
+  // 尝试多种可能的输入框选择器
+  const selectors = ['#send_textarea', 'textarea#send_textarea', '.send_textarea', 'textarea.send_textarea'];
+  let textarea = null;
+
+  for (const sel of selectors) {
+    textarea = document.querySelector(sel);
+    if (textarea) break;
+  }
+
+  if (!textarea) {
+    console.warn('[StoryGuide] 未找到聊天输入框');
+    return false;
+  }
+
+  // 设置文本值
+  textarea.value = String(text || '');
+
+  // 触发 input 事件以通知 SillyTavern
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // 聚焦输入框
+  textarea.focus();
+
+  // 将光标移到末尾
+  if (textarea.setSelectionRange) {
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
+
+  return true;
+}
+
+function renderQuickOptionsHtml(context = 'inline') {
+  const s = ensureSettings();
+  if (!s.quickOptionsEnabled) return '';
+
+  const showIn = String(s.quickOptionsShowIn || 'inline');
+  // 检查当前上下文是否应该显示
+  if (showIn !== 'both' && showIn !== context) return '';
+
+  const options = getQuickOptions();
+  if (!options.length) return '';
+
+  const buttons = options.map((opt, i) => {
+    const label = escapeHtml(opt.label || `选项${i + 1}`);
+    const prompt = escapeHtml(opt.prompt || '');
+    return `<button class="sg-quick-option" data-sg-prompt="${prompt}" title="${prompt}">${label}</button>`;
+  }).join('');
+
+  return `<div class="sg-quick-options">${buttons}</div>`;
+}
+
+function installQuickOptionsClickHandler() {
+  if (window.__storyguide_quick_options_installed) return;
+  window.__storyguide_quick_options_installed = true;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.sg-quick-option');
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const prompt = btn.dataset.sgPrompt || '';
+    if (prompt) {
+      injectToUserInput(prompt);
+    }
+  }, true);
+}
+
 function renderMarkdownToHtml(markdown) {
   const { showdown, DOMPurify } = SillyTavern.libs;
   const converter = new showdown.Converter({ simplifiedAutoLink: true, strikethrough: true, tables: true });
@@ -480,7 +588,7 @@ function validateAndNormalizeModules(raw) {
 
 // -------------------- presets & worldbook --------------------
 
-function downloadTextFile(filename, text, mime='application/json') {
+function downloadTextFile(filename, text, mime = 'application/json') {
   const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -905,7 +1013,7 @@ function computeWorldbookInjection() {
   let used = 0;
 
   for (const e of use) {
-    const head = `- 【${e.title}】${(e.keys && e.keys.length) ? `（触发：${e.keys.slice(0,6).join(' / ')}）` : ''}\n`;
+    const head = `- 【${e.title}】${(e.keys && e.keys.length) ? `（触发：${e.keys.slice(0, 6).join(' / ')}）` : ''}\n`;
     const body = e.content.trim() + '\n';
     const chunk = head + body + '\n';
     if ((acc.length + chunk.length) > maxChars) break;
@@ -2589,19 +2697,19 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
   const includeUser = !!s.wiTriggerIncludeUserMessage;
   const userWeight = clampFloat(s.wiTriggerUserMessageWeight, 0, 10, 1.6);
-const matchMode = String(s.wiTriggerMatchMode || 'local');
-let picked = [];
-if (matchMode === 'llm') {
-  try {
-    picked = await pickRelevantIndexEntriesLLM(recentText, lastText, candidates, maxEntries, includeUser, userWeight);
-  } catch (e) {
-    console.warn('[StoryGuide] index LLM failed; fallback to local similarity', e);
+  const matchMode = String(s.wiTriggerMatchMode || 'local');
+  let picked = [];
+  if (matchMode === 'llm') {
+    try {
+      picked = await pickRelevantIndexEntriesLLM(recentText, lastText, candidates, maxEntries, includeUser, userWeight);
+    } catch (e) {
+      console.warn('[StoryGuide] index LLM failed; fallback to local similarity', e);
+      picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
+    }
+  } else {
     picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
   }
-} else {
-  picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
-}
-if (!picked.length) return;
+  if (!picked.length) return;
 
   const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
   const kwSet = new Set();
@@ -2655,7 +2763,7 @@ if (!picked.length) return;
   // debug status (only when pane open or explicitly enabled)
   const modalOpen = $('#sg_modal_backdrop').is(':visible');
   if (modalOpen || s.wiTriggerDebugLog) {
-    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : `｜将触发：${pickedNames.slice(0,4).join('；')}${pickedNames.length>4?'…':''}`}`, 'ok');
+    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : `｜将触发：${pickedNames.slice(0, 4).join('；')}${pickedNames.length > 4 ? '…' : ''}`}`, 'ok');
   }
 }
 
@@ -2807,6 +2915,9 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed) {
   box.className = 'sg-inline-box';
   box.dataset.sgMesKey = String(mesKey);
 
+  // 获取快捷选项 HTML
+  const quickOptionsHtml = renderQuickOptionsHtml('inline');
+
   box.innerHTML = `
     <div class="sg-inline-head" title="点击折叠/展开（不会自动生成）">
       <span class="sg-inline-badge">📘</span>
@@ -2815,6 +2926,7 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed) {
       <span class="sg-inline-chevron">▾</span>
     </div>
     <div class="sg-inline-body">${htmlInner}</div>
+    ${quickOptionsHtml}
     <div class="sg-inline-foot" title="点击折叠并回到正文">
       <span class="sg-inline-foot-icon">▴</span>
       <span class="sg-inline-foot-text">收起并回到正文</span>
@@ -2867,6 +2979,9 @@ function createPanelBoxElement(mesKey, htmlInner, collapsed) {
   box.className = 'sg-panel-box';
   box.dataset.sgMesKey = String(mesKey);
 
+  // 获取快捷选项 HTML（panel上下文）
+  const quickOptionsHtml = renderQuickOptionsHtml('panel');
+
   box.innerHTML = `
     <div class="sg-panel-head" title="点击折叠/展开（面板分析结果）">
       <span class="sg-inline-badge">🧭</span>
@@ -2875,6 +2990,7 @@ function createPanelBoxElement(mesKey, htmlInner, collapsed) {
       <span class="sg-inline-chevron">▾</span>
     </div>
     <div class="sg-panel-body">${htmlInner}</div>
+    ${quickOptionsHtml}
     <div class="sg-panel-foot" title="点击折叠并回到正文">
       <span class="sg-inline-foot-icon">▴</span>
       <span class="sg-inline-foot-text">收起并回到正文</span>
@@ -3172,7 +3288,7 @@ async function refreshSummaryModels() {
     let ids = [];
     if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
 
-    ids = Array.from(new Set(ids)).sort((a,b) => String(a).localeCompare(String(b)));
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
       setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
@@ -3217,7 +3333,7 @@ async function refreshSummaryModels() {
     let ids = [];
     if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
 
-    ids = Array.from(new Set(ids)).sort((a,b) => String(a).localeCompare(String(b)));
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
 
@@ -3270,7 +3386,7 @@ async function refreshIndexModels() {
     let ids = [];
     if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
 
-    ids = Array.from(new Set(ids)).sort((a,b) => String(a).localeCompare(String(b)));
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
       setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
@@ -3314,7 +3430,7 @@ async function refreshIndexModels() {
     let ids = [];
     if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
 
-    ids = Array.from(new Set(ids)).sort((a,b) => String(a).localeCompare(String(b)));
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
 
@@ -3369,7 +3485,7 @@ async function refreshModels() {
     let ids = [];
     if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
 
-    ids = Array.from(new Set(ids)).sort((a,b) => String(a).localeCompare(String(b)));
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
       setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
@@ -3414,7 +3530,7 @@ async function refreshModels() {
     let ids = [];
     if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
 
-    ids = Array.from(new Set(ids)).sort((a,b) => String(a).localeCompare(String(b)));
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
 
@@ -3586,7 +3702,7 @@ function schedulePositionChatButtons() {
   if (sgChatPosTimer) return;
   sgChatPosTimer = setTimeout(() => {
     sgChatPosTimer = null;
-    try { positionChatActionButtons(); } catch {}
+    try { positionChatActionButtons(); } catch { }
   }, 60);
 }
 function ensureChatActionButtons() {
@@ -3658,7 +3774,7 @@ function ensureChatActionButtons() {
   wrap.appendChild(reroll);
 
   // Use fixed positioning to avoid overlapping with send button / different themes.
-  
+
   // drag to move (pin position)
   let dragging = false;
   let startX = 0, startY = 0, startLeft = 0, startTop = 0;
@@ -3680,7 +3796,7 @@ function ensureChatActionButtons() {
     if (!dragging) return;
     dragging = false;
     wrap.classList.remove('is-dragging');
-    try { handle.releasePointerCapture(ev.pointerId); } catch {}
+    try { handle.releasePointerCapture(ev.pointerId); } catch { }
     window.removeEventListener('pointermove', onMove, true);
     window.removeEventListener('pointerup', onUp, true);
     window.removeEventListener('pointercancel', onUp, true);
@@ -3706,7 +3822,7 @@ function ensureChatActionButtons() {
     startLeft = rect.left;
     startTop = rect.top;
 
-    try { handle.setPointerCapture(ev.pointerId); } catch {}
+    try { handle.setPointerCapture(ev.pointerId); } catch { }
     window.addEventListener('pointermove', onMove, true);
     window.addEventListener('pointerup', onUp, true);
     window.addEventListener('pointercancel', onUp, true);
@@ -3913,6 +4029,29 @@ function buildModalHtml() {
             <div class="sg-actions-row">
               <button class="menu_button sg-btn-primary" id="sg_saveSettings">保存设置</button>
               <button class="menu_button sg-btn-primary" id="sg_analyze">分析当前剧情</button>
+            </div>
+          </div>
+
+          <div class="sg-card">
+            <div class="sg-card-title">快捷选项</div>
+            <div class="sg-hint">点击选项可自动将提示词输入到聊天框。可自定义选项内容。</div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_quickOptionsEnabled">启用快捷选项</label>
+              <select id="sg_quickOptionsShowIn">
+                <option value="inline">仅分析框</option>
+                <option value="panel">仅面板</option>
+                <option value="both">两者都显示</option>
+              </select>
+            </div>
+
+            <div class="sg-field" style="margin-top:10px;">
+              <label>选项配置（JSON，格式：[{label, prompt}, ...]）</label>
+              <textarea id="sg_quickOptionsJson" rows="6" spellcheck="false" placeholder='[{"label": "继续", "prompt": "继续当前剧情发展"}]'></textarea>
+              <div class="sg-actions-row">
+                <button class="menu_button sg-btn" id="sg_resetQuickOptions">恢复默认选项</button>
+                <button class="menu_button sg-btn" id="sg_applyQuickOptions">应用选项</button>
+              </div>
             </div>
           </div>
 
@@ -4419,31 +4558,31 @@ function ensureModal() {
   });
 
 
-// wiTrigger match mode toggle
-$('#sg_wiTriggerMatchMode').on('change', () => {
-  const m = String($('#sg_wiTriggerMatchMode').val() || 'local');
-  $('#sg_index_llm_block').toggle(m === 'llm');
-  const p = String($('#sg_wiIndexProvider').val() || 'st');
-  $('#sg_index_custom_block').toggle(m === 'llm' && p === 'custom');
-  pullUiToSettings(); saveSettings();
-});
+  // wiTrigger match mode toggle
+  $('#sg_wiTriggerMatchMode').on('change', () => {
+    const m = String($('#sg_wiTriggerMatchMode').val() || 'local');
+    $('#sg_index_llm_block').toggle(m === 'llm');
+    const p = String($('#sg_wiIndexProvider').val() || 'st');
+    $('#sg_index_custom_block').toggle(m === 'llm' && p === 'custom');
+    pullUiToSettings(); saveSettings();
+  });
 
-// index provider toggle (only meaningful under LLM mode)
-$('#sg_wiIndexProvider').on('change', () => {
-  const m = String($('#sg_wiTriggerMatchMode').val() || 'local');
-  const p = String($('#sg_wiIndexProvider').val() || 'st');
-  $('#sg_index_custom_block').toggle(m === 'llm' && p === 'custom');
-  pullUiToSettings(); saveSettings();
-});
+  // index provider toggle (only meaningful under LLM mode)
+  $('#sg_wiIndexProvider').on('change', () => {
+    const m = String($('#sg_wiTriggerMatchMode').val() || 'local');
+    const p = String($('#sg_wiIndexProvider').val() || 'st');
+    $('#sg_index_custom_block').toggle(m === 'llm' && p === 'custom');
+    pullUiToSettings(); saveSettings();
+  });
 
-// index prompt reset
-$('#sg_wiIndexResetPrompt').on('click', () => {
-  $('#sg_wiIndexSystemPrompt').val(DEFAULT_INDEX_SYSTEM_PROMPT);
-  $('#sg_wiIndexUserTemplate').val(DEFAULT_INDEX_USER_TEMPLATE);
-  pullUiToSettings();
-  saveSettings();
-  setStatus('已恢复默认索引提示词 ✅', 'ok');
-});
+  // index prompt reset
+  $('#sg_wiIndexResetPrompt').on('click', () => {
+    $('#sg_wiIndexSystemPrompt').val(DEFAULT_INDEX_SYSTEM_PROMPT);
+    $('#sg_wiIndexUserTemplate').val(DEFAULT_INDEX_USER_TEMPLATE);
+    pullUiToSettings();
+    saveSettings();
+    setStatus('已恢复默认索引提示词 ✅', 'ok');
+  });
 
   $('#sg_summaryWorldInfoTarget').on('change', () => {
     const t = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
@@ -4541,10 +4680,10 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
   });
 
 
-$('#sg_refreshIndexModels').on('click', async () => {
-  pullUiToSettings(); saveSettings();
-  await refreshIndexModels();
-});
+  $('#sg_refreshIndexModels').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await refreshIndexModels();
+  });
 
   $('#sg_modelSelect').on('change', () => {
     const id = String($('#sg_modelSelect').val() || '').trim();
@@ -4557,10 +4696,10 @@ $('#sg_refreshIndexModels').on('click', async () => {
   });
 
 
-$('#sg_wiIndexModelSelect').on('change', () => {
-  const id = String($('#sg_wiIndexModelSelect').val() || '').trim();
-  if (id) $('#sg_wiIndexCustomModel').val(id);
-});
+  $('#sg_wiIndexModelSelect').on('change', () => {
+    const id = String($('#sg_wiIndexModelSelect').val() || '').trim();
+    if (id) $('#sg_wiIndexCustomModel').val(id);
+  });
 
   // 蓝灯索引导入/清空
   $('#sg_refreshBlueIndexLive').on('click', async () => {
@@ -4627,7 +4766,7 @@ $('#sg_wiIndexModelSelect').on('change', () => {
     }
   });
 
-  
+
   // presets actions
   $('#sg_exportPreset').on('click', () => {
     try {
@@ -4725,7 +4864,7 @@ $('#sg_wiIndexModelSelect').on('change', () => {
     updateWorldbookInfoLabel();
   });
 
-// modules json actions
+  // modules json actions
   $('#sg_validateModules').on('click', () => {
     const txt = String($('#sg_modulesJson').val() || '').trim();
     let parsed = null;
@@ -4762,6 +4901,39 @@ $('#sg_wiIndexModelSelect').on('change', () => {
     $('#sg_modulesJson').val(s.modulesJson);
     setStatus('模块已应用并保存 ✅（注意：追加框展示的模块由“追加框展示模块”控制）', 'ok');
   });
+
+  // 快捷选项按钮事件
+  $('#sg_resetQuickOptions').on('click', () => {
+    const defaultOptions = JSON.stringify([
+      { label: '继续', prompt: '继续当前剧情发展' },
+      { label: '详述', prompt: '请更详细地描述当前场景' },
+      { label: '对话', prompt: '让角色之间展开更多对话' },
+      { label: '行动', prompt: '描述接下来的具体行动' },
+    ], null, 2);
+    $('#sg_quickOptionsJson').val(defaultOptions);
+    const s = ensureSettings();
+    s.quickOptionsJson = defaultOptions;
+    saveSettings();
+    setStatus('已恢复默认快捷选项 ✅', 'ok');
+  });
+
+  $('#sg_applyQuickOptions').on('click', () => {
+    const txt = String($('#sg_quickOptionsJson').val() || '').trim();
+    try {
+      const arr = JSON.parse(txt || '[]');
+      if (!Array.isArray(arr)) {
+        setStatus('快捷选项格式错误：必须是 JSON 数组', 'err');
+        return;
+      }
+      const s = ensureSettings();
+      s.quickOptionsJson = JSON.stringify(arr, null, 2);
+      saveSettings();
+      $('#sg_quickOptionsJson').val(s.quickOptionsJson);
+      setStatus('快捷选项已应用并保存 ✅', 'ok');
+    } catch (e) {
+      setStatus(`快捷选项 JSON 解析失败：${e?.message ?? e}`, 'err');
+    }
+  });
 }
 
 function showSettingsPage(page) {
@@ -4781,7 +4953,7 @@ function showSettingsPage(page) {
   }
 
   // 切页后回到顶部，避免“看不到设置项”
-  try { $('.sg-left').scrollTop(0); } catch {}
+  try { $('.sg-left').scrollTop(0); } catch { }
 }
 
 function setupSettingsPages() {
@@ -4840,6 +5012,11 @@ function pullSettingsToUi() {
   $('#sg_customSystemPreamble').val(String(s.customSystemPreamble || ''));
   $('#sg_customConstraints').val(String(s.customConstraints || ''));
 
+  // 快捷选项
+  $('#sg_quickOptionsEnabled').prop('checked', !!s.quickOptionsEnabled);
+  $('#sg_quickOptionsShowIn').val(String(s.quickOptionsShowIn || 'inline'));
+  $('#sg_quickOptionsJson').val(String(s.quickOptionsJson || '[]'));
+
   $('#sg_presetIncludeApiKey').prop('checked', !!s.presetIncludeApiKey);
 
   $('#sg_worldbookEnabled').prop('checked', !!s.worldbookEnabled);
@@ -4895,23 +5072,23 @@ function pullSettingsToUi() {
   $('#sg_wiTriggerInjectStyle').val(String(s.wiTriggerInjectStyle || 'hidden'));
   $('#sg_wiTriggerDebugLog').prop('checked', !!s.wiTriggerDebugLog);
 
-$('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
-$('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
-$('#sg_wiIndexProvider').val(String(s.wiIndexProvider || 'st'));
-$('#sg_wiIndexTemperature').val(s.wiIndexTemperature ?? 0.2);
-$('#sg_wiIndexSystemPrompt').val(String(s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT));
-$('#sg_wiIndexUserTemplate').val(String(s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE));
-$('#sg_wiIndexCustomEndpoint').val(String(s.wiIndexCustomEndpoint || ''));
-$('#sg_wiIndexCustomApiKey').val(String(s.wiIndexCustomApiKey || ''));
-$('#sg_wiIndexCustomModel').val(String(s.wiIndexCustomModel || 'gpt-4o-mini'));
-$('#sg_wiIndexCustomMaxTokens').val(s.wiIndexCustomMaxTokens || 1024);
-$('#sg_wiIndexTopP').val(s.wiIndexTopP ?? 0.95);
-$('#sg_wiIndexCustomStream').prop('checked', !!s.wiIndexCustomStream);
-fillIndexModelSelect(Array.isArray(s.wiIndexCustomModelsCache) ? s.wiIndexCustomModelsCache : [], s.wiIndexCustomModel);
+  $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
+  $('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
+  $('#sg_wiIndexProvider').val(String(s.wiIndexProvider || 'st'));
+  $('#sg_wiIndexTemperature').val(s.wiIndexTemperature ?? 0.2);
+  $('#sg_wiIndexSystemPrompt').val(String(s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT));
+  $('#sg_wiIndexUserTemplate').val(String(s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE));
+  $('#sg_wiIndexCustomEndpoint').val(String(s.wiIndexCustomEndpoint || ''));
+  $('#sg_wiIndexCustomApiKey').val(String(s.wiIndexCustomApiKey || ''));
+  $('#sg_wiIndexCustomModel').val(String(s.wiIndexCustomModel || 'gpt-4o-mini'));
+  $('#sg_wiIndexCustomMaxTokens').val(s.wiIndexCustomMaxTokens || 1024);
+  $('#sg_wiIndexTopP').val(s.wiIndexTopP ?? 0.95);
+  $('#sg_wiIndexCustomStream').prop('checked', !!s.wiIndexCustomStream);
+  fillIndexModelSelect(Array.isArray(s.wiIndexCustomModelsCache) ? s.wiIndexCustomModelsCache : [], s.wiIndexCustomModel);
 
-const mm = String(s.wiTriggerMatchMode || 'local');
-$('#sg_index_llm_block').toggle(mm === 'llm');
-$('#sg_index_custom_block').toggle(mm === 'llm' && String(s.wiIndexProvider || 'st') === 'custom');
+  const mm = String(s.wiTriggerMatchMode || 'local');
+  $('#sg_index_llm_block').toggle(mm === 'llm');
+  $('#sg_index_custom_block').toggle(mm === 'llm' && String(s.wiIndexProvider || 'st') === 'custom');
 
   $('#sg_wiBlueIndexMode').val(String(s.wiBlueIndexMode || 'live'));
   $('#sg_wiBlueIndexFile').val(String(s.wiBlueIndexFile || ''));
@@ -5193,6 +5370,11 @@ function pullUiToSettings() {
   s.customSystemPreamble = String($('#sg_customSystemPreamble').val() || '');
   s.customConstraints = String($('#sg_customConstraints').val() || '');
 
+  // 快捷选项写入
+  s.quickOptionsEnabled = $('#sg_quickOptionsEnabled').is(':checked');
+  s.quickOptionsShowIn = String($('#sg_quickOptionsShowIn').val() || 'inline');
+  s.quickOptionsJson = String($('#sg_quickOptionsJson').val() || '[]');
+
   s.presetIncludeApiKey = $('#sg_presetIncludeApiKey').is(':checked');
 
   s.worldbookEnabled = $('#sg_worldbookEnabled').is(':checked');
@@ -5237,18 +5419,18 @@ function pullUiToSettings() {
   s.wiTriggerInjectStyle = String($('#sg_wiTriggerInjectStyle').val() || s.wiTriggerInjectStyle || 'hidden');
   s.wiTriggerDebugLog = $('#sg_wiTriggerDebugLog').is(':checked');
 
-s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
-s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
-s.wiIndexProvider = String($('#sg_wiIndexProvider').val() || s.wiIndexProvider || 'st');
-s.wiIndexTemperature = clampFloat($('#sg_wiIndexTemperature').val(), 0, 2, s.wiIndexTemperature ?? 0.2);
-s.wiIndexSystemPrompt = String($('#sg_wiIndexSystemPrompt').val() || s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT);
-s.wiIndexUserTemplate = String($('#sg_wiIndexUserTemplate').val() || s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE);
-s.wiIndexCustomEndpoint = String($('#sg_wiIndexCustomEndpoint').val() || s.wiIndexCustomEndpoint || '');
-s.wiIndexCustomApiKey = String($('#sg_wiIndexCustomApiKey').val() || s.wiIndexCustomApiKey || '');
-s.wiIndexCustomModel = String($('#sg_wiIndexCustomModel').val() || s.wiIndexCustomModel || 'gpt-4o-mini');
-s.wiIndexCustomMaxTokens = clampInt($('#sg_wiIndexCustomMaxTokens').val(), 128, 200000, s.wiIndexCustomMaxTokens || 1024);
-s.wiIndexTopP = clampFloat($('#sg_wiIndexTopP').val(), 0, 1, s.wiIndexTopP ?? 0.95);
-s.wiIndexCustomStream = $('#sg_wiIndexCustomStream').is(':checked');
+  s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
+  s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
+  s.wiIndexProvider = String($('#sg_wiIndexProvider').val() || s.wiIndexProvider || 'st');
+  s.wiIndexTemperature = clampFloat($('#sg_wiIndexTemperature').val(), 0, 2, s.wiIndexTemperature ?? 0.2);
+  s.wiIndexSystemPrompt = String($('#sg_wiIndexSystemPrompt').val() || s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT);
+  s.wiIndexUserTemplate = String($('#sg_wiIndexUserTemplate').val() || s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE);
+  s.wiIndexCustomEndpoint = String($('#sg_wiIndexCustomEndpoint').val() || s.wiIndexCustomEndpoint || '');
+  s.wiIndexCustomApiKey = String($('#sg_wiIndexCustomApiKey').val() || s.wiIndexCustomApiKey || '');
+  s.wiIndexCustomModel = String($('#sg_wiIndexCustomModel').val() || s.wiIndexCustomModel || 'gpt-4o-mini');
+  s.wiIndexCustomMaxTokens = clampInt($('#sg_wiIndexCustomMaxTokens').val(), 128, 200000, s.wiIndexCustomMaxTokens || 1024);
+  s.wiIndexTopP = clampFloat($('#sg_wiIndexTopP').val(), 0, 1, s.wiIndexTopP ?? 0.95);
+  s.wiIndexCustomStream = $('#sg_wiIndexCustomStream').is(':checked');
 
   s.wiBlueIndexMode = String($('#sg_wiBlueIndexMode').val() || s.wiBlueIndexMode || 'live');
   s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
@@ -5410,6 +5592,7 @@ function init() {
     injectMinimalSettingsPanel();
     ensureChatActionButtons();
     installCardZoomDelegation();
+    installQuickOptionsClickHandler();
   });
 
   globalThis.StoryGuide = {
