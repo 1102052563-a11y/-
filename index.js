@@ -48,8 +48,8 @@ const MODULE_NAME = 'storyguide';
  */
 
 const DEFAULT_MODULES = Object.freeze([
-  { key: 'world_summary', title: '世界简介', type: 'text', prompt: '1~3句概括世界与局势', required: true, panel: true, inline: true },
-  { key: 'key_plot_points', title: '重要剧情点', type: 'list', prompt: '3~8条关键剧情点（短句）', maxItems: 8, required: true, panel: true, inline: false },
+  { key: 'world_summary', title: '世界简介', type: 'text', prompt: '1~3句概括世界与局势', required: true, panel: true, inline: true, static: true },
+  { key: 'key_plot_points', title: '重要剧情点', type: 'list', prompt: '3~8条关键剧情点（短句）', maxItems: 8, required: true, panel: true, inline: false, static: true },
   { key: 'current_scene', title: '当前时间点 · 具体剧情', type: 'text', prompt: '描述当前发生了什么（地点/人物动机/冲突/悬念）', required: true, panel: true, inline: true },
   { key: 'next_events', title: '后续将会发生的事', type: 'list', prompt: '接下来最可能发生的事（条目）', maxItems: 6, required: true, panel: true, inline: true },
   { key: 'protagonist_impact', title: '主角行为造成的影响', type: 'text', prompt: '主角行为对剧情/关系/风险造成的改变', required: true, panel: true, inline: false },
@@ -256,6 +256,7 @@ const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
   summaryMeta: 'storyguide_summary_meta',
+  staticModulesCache: 'storyguide_static_modules_cache',
 });
 
 let lastReport = null;
@@ -559,6 +560,64 @@ async function setSummaryMeta(meta) {
   await setChatMetaValue(META_KEYS.summaryMeta, JSON.stringify(meta ?? getDefaultSummaryMeta()));
 }
 
+// ===== 静态模块缓存（只在首次或手动刷新时生成的模块结果）=====
+function getStaticModulesCache() {
+  const raw = String(getChatMetaValue(META_KEYS.staticModulesCache) || '').trim();
+  if (!raw) return {};
+  try {
+    const data = JSON.parse(raw);
+    return (data && typeof data === 'object') ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+async function setStaticModulesCache(cache) {
+  await setChatMetaValue(META_KEYS.staticModulesCache, JSON.stringify(cache ?? {}));
+}
+
+// 合并静态模块缓存到分析结果中
+function mergeStaticModulesIntoResult(parsedJson, modules) {
+  const cache = getStaticModulesCache();
+  const result = { ...parsedJson };
+
+  for (const m of modules) {
+    if (m.static && cache[m.key] !== undefined) {
+      // 使用缓存值替代（如果AI此次没生成或我们跳过了生成）
+      if (result[m.key] === undefined || result[m.key] === null || result[m.key] === '') {
+        result[m.key] = cache[m.key];
+      }
+    }
+  }
+
+  return result;
+}
+
+// 更新静态模块缓存
+async function updateStaticModulesCache(parsedJson, modules) {
+  const cache = getStaticModulesCache();
+  let changed = false;
+
+  for (const m of modules) {
+    if (m.static && parsedJson[m.key] !== undefined && parsedJson[m.key] !== null && parsedJson[m.key] !== '') {
+      // 只在首次生成或值有变化时更新缓存
+      if (cache[m.key] === undefined || JSON.stringify(cache[m.key]) !== JSON.stringify(parsedJson[m.key])) {
+        cache[m.key] = parsedJson[m.key];
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    await setStaticModulesCache(cache);
+  }
+}
+
+// 清除静态模块缓存（手动刷新时使用）
+async function clearStaticModulesCache() {
+  await setStaticModulesCache({});
+}
+
 function setStatus(text, kind = '') {
   const $s = $('#sg_status');
   $s.removeClass('ok err warn').addClass(kind || '');
@@ -605,10 +664,11 @@ function validateAndNormalizeModules(raw) {
     const required = m.required !== false; // default true
     const panel = m.panel !== false;       // default true
     const inline = m.inline === true;      // default false unless explicitly true
+    const isStatic = m.static === true;    // default false: 静态模块只在首次或手动刷新时生成
 
     const maxItems = (type === 'list' && Number.isFinite(Number(m.maxItems))) ? clampInt(m.maxItems, 1, 50, 8) : undefined;
 
-    normalized.push({ key, title, type, prompt, required, panel, inline, ...(maxItems ? { maxItems } : {}) });
+    normalized.push({ key, title, type, prompt, required, panel, inline, static: isStatic, ...(maxItems ? { maxItems } : {}) });
   }
 
   if (!normalized.length) return { ok: false, error: '模块配置为空：至少需要 1 个模块。', modules: null };
@@ -2949,12 +3009,10 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed, quickActions) {
   box.className = 'sg-inline-box';
   box.dataset.sgMesKey = String(mesKey);
 
-  // 优先渲染AI生成的动态选项，如果没有则使用静态配置的选项
+  // 只渲染AI生成的动态选项（不再使用静态配置的选项）
   let quickOptionsHtml = '';
   if (Array.isArray(quickActions) && quickActions.length) {
     quickOptionsHtml = renderDynamicQuickActionsHtml(quickActions, 'inline');
-  } else {
-    quickOptionsHtml = renderQuickOptionsHtml('inline');
   }
 
   box.innerHTML = `
@@ -3018,8 +3076,8 @@ function createPanelBoxElement(mesKey, htmlInner, collapsed) {
   box.className = 'sg-panel-box';
   box.dataset.sgMesKey = String(mesKey);
 
-  // 获取快捷选项 HTML（panel上下文）
-  const quickOptionsHtml = renderQuickOptionsHtml('panel');
+  // panel 模式暂不显示快捷选项（只在 inline 模式显示）
+  const quickOptionsHtml = '';
 
   box.innerHTML = `
     <div class="sg-panel-head" title="点击折叠/展开（面板分析结果）">
@@ -3219,11 +3277,17 @@ async function runInlineAppendForLastMessage(opts = {}) {
       return;
     }
 
-    const md = buildInlineMarkdownFromModules(parsed, modules, s.appendMode, !!s.inlineShowEmpty);
+    // 合并静态模块缓存（使用之前缓存的静态模块值）
+    const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
+
+    // 更新静态模块缓存（首次生成的静态模块会被缓存）
+    updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
+
+    const md = buildInlineMarkdownFromModules(mergedParsed, modules, s.appendMode, !!s.inlineShowEmpty);
     const htmlInner = renderMarkdownToHtml(md);
 
     // 提取 quick_actions 用于动态渲染可点击按钮
-    const quickActions = Array.isArray(parsed.quick_actions) ? parsed.quick_actions : [];
+    const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
 
     inlineCache.set(String(mesKey), { htmlInner, collapsed: false, createdAt: Date.now(), quickActions });
 
@@ -4109,10 +4173,12 @@ function buildModalHtml() {
 
             <div class="sg-field">
               <textarea id="sg_modulesJson" rows="12" spellcheck="false"></textarea>
+              <div class="sg-hint" style="margin-top:4px;">💡 模块可添加 <code>static: true</code> 表示静态模块（只在首次生成或手动刷新时更新）</div>
               <div class="sg-actions-row">
                 <button class="menu_button sg-btn" id="sg_validateModules">校验</button>
                 <button class="menu_button sg-btn" id="sg_resetModules">恢复默认</button>
                 <button class="menu_button sg-btn" id="sg_applyModules">应用到设置</button>
+                <button class="menu_button sg-btn" id="sg_clearStaticCache">刷新静态模块</button>
               </div>
             </div>
 
@@ -4950,6 +5016,16 @@ function ensureModal() {
     setStatus('模块已应用并保存 ✅（注意：追加框展示的模块由“追加框展示模块”控制）', 'ok');
   });
 
+  // 刷新静态模块缓存
+  $('#sg_clearStaticCache').on('click', async () => {
+    try {
+      await clearStaticModulesCache();
+      setStatus('已清除静态模块缓存 ✅ 下次分析会重新生成静态模块（如"世界简介"）', 'ok');
+    } catch (e) {
+      setStatus(`清除静态模块缓存失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
   // 快捷选项按钮事件
   $('#sg_resetQuickOptions').on('click', () => {
     const defaultOptions = JSON.stringify([
@@ -5623,6 +5699,156 @@ function setupEventListeners() {
   });
 }
 
+// -------------------- 悬浮按钮和面板 --------------------
+
+let floatingPanelVisible = false;
+let lastFloatingContent = null;
+
+function createFloatingButton() {
+  if (document.getElementById('sg_floating_btn')) return;
+
+  const btn = document.createElement('div');
+  btn.id = 'sg_floating_btn';
+  btn.className = 'sg-floating-btn';
+  btn.innerHTML = '📘';
+  btn.title = '剧情指导';
+
+  btn.addEventListener('click', () => {
+    toggleFloatingPanel();
+  });
+
+  document.body.appendChild(btn);
+}
+
+function createFloatingPanel() {
+  if (document.getElementById('sg_floating_panel')) return;
+
+  const panel = document.createElement('div');
+  panel.id = 'sg_floating_panel';
+  panel.className = 'sg-floating-panel';
+  panel.innerHTML = `
+    <div class="sg-floating-header">
+      <span class="sg-floating-title">📘 剧情指导</span>
+      <div class="sg-floating-actions">
+        <button class="sg-floating-action-btn" id="sg_floating_refresh" title="刷新分析">🔄</button>
+        <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
+        <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
+      </div>
+    </div>
+    <div class="sg-floating-body" id="sg_floating_body">
+      <div class="sg-floating-loading">点击 🔄 生成剧情分析</div>
+    </div>
+  `;
+
+  document.body.appendChild(panel);
+
+  // 事件绑定
+  $('#sg_floating_close').on('click', () => {
+    hideFloatingPanel();
+  });
+
+  $('#sg_floating_refresh').on('click', async () => {
+    await refreshFloatingPanelContent();
+  });
+
+  $('#sg_floating_settings').on('click', () => {
+    openModal();
+    hideFloatingPanel();
+  });
+}
+
+function toggleFloatingPanel() {
+  if (floatingPanelVisible) {
+    hideFloatingPanel();
+  } else {
+    showFloatingPanel();
+  }
+}
+
+function showFloatingPanel() {
+  createFloatingPanel();
+  const panel = document.getElementById('sg_floating_panel');
+  if (panel) {
+    panel.classList.add('visible');
+    floatingPanelVisible = true;
+
+    // 如果有缓存内容则显示
+    if (lastFloatingContent) {
+      updateFloatingPanelBody(lastFloatingContent);
+    }
+  }
+}
+
+function hideFloatingPanel() {
+  const panel = document.getElementById('sg_floating_panel');
+  if (panel) {
+    panel.classList.remove('visible');
+    floatingPanelVisible = false;
+  }
+}
+
+async function refreshFloatingPanelContent() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+
+  $body.html('<div class="sg-floating-loading">正在分析剧情...</div>');
+
+  try {
+    const s = ensureSettings();
+    const { snapshotText } = buildSnapshot();
+    const modules = getModules('panel');
+
+    if (!modules.length) {
+      $body.html('<div class="sg-floating-loading">没有配置模块</div>');
+      return;
+    }
+
+    const schema = buildSchemaFromModules(modules);
+    const messages = buildPromptMessages(snapshotText, s.spoilerLevel, modules, 'panel');
+
+    let jsonText = '';
+    if (s.provider === 'custom') {
+      jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
+    } else {
+      jsonText = await callViaSillyTavern(messages, schema, s.temperature);
+      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+    }
+
+    const parsed = safeJsonParse(jsonText);
+    if (!parsed) {
+      $body.html('<div class="sg-floating-loading">解析失败</div>');
+      return;
+    }
+
+    // 合并静态模块
+    const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
+    updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
+
+    // 渲染内容
+    const md = renderReportMarkdownFromModules(mergedParsed, modules);
+    const html = renderMarkdownToHtml(md);
+
+    // 添加快捷选项
+    const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
+    const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
+
+    const fullHtml = html + optionsHtml;
+    lastFloatingContent = fullHtml;
+    updateFloatingPanelBody(fullHtml);
+
+  } catch (e) {
+    console.warn('[StoryGuide] floating panel refresh failed:', e);
+    $body.html(`<div class="sg-floating-loading">分析失败: ${e?.message ?? e}</div>`);
+  }
+}
+
+function updateFloatingPanelBody(html) {
+  const $body = $('#sg_floating_body');
+  if ($body.length) {
+    $body.html(html);
+  }
+}
+
 // -------------------- init --------------------
 
 function init() {
@@ -5641,6 +5867,7 @@ function init() {
     ensureChatActionButtons();
     installCardZoomDelegation();
     installQuickOptionsClickHandler();
+    createFloatingButton();
   });
 
   globalThis.StoryGuide = {
