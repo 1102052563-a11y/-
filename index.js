@@ -5972,53 +5972,81 @@ function updateFloatingPanelBody(html) {
 // -------------------- init --------------------
 
 // -------------------- fixed input button --------------------
+// -------------------- fixed input button --------------------
 function injectFixedInputButton() {
   if (document.getElementById('sg_fixed_input_btn')) return;
 
-  // Try to find the button row above the input. 
-  // In many ST themes/versions, this is a flex container with class .bg5 or similar, 
-  // or checks for #chat_input_audit_buttons / #quick-reply-container
-  // The screenshot shows it's likely the "Extension Controls" or "Quick Reply" area.
-  // We'll try a few common selectors.
+  const tryInject = () => {
+    if (document.getElementById('sg_fixed_input_btn')) return true;
 
-  // Strategy: Find the "Roll" button or similar if possible, or just append to the container.
-  // Common selector for that row: #chat_input_audit_buttons (often used for extra buttons)
-  // Or: .quick-reply-container
+    // 1. Try standard extension/audit buttons container (desktop/standard themes)
+    let container = document.getElementById('chat_input_audit_buttons');
 
-  let container = document.getElementById('chat_input_audit_buttons') ||
-    document.querySelector('.quick-reply-container') ||
-    document.getElementById('form_chat_buttons'); // sometimes used
+    // 2. Try Quick Reply container (often where "Roll" macros live)
+    if (!container) container = document.querySelector('.quick-reply-container');
 
-  if (!container) {
-    // Fallback: try to find the textarea wrapper
-    const textarea = document.getElementById('send_but_sheld'); // yes, typo in ST source often
-    if (textarea) container = textarea.parentElement;
-  }
+    // 3. Try finding the "Roll" button specifically and use its parent
+    if (!container) {
+      const buttons = Array.from(document.querySelectorAll('button, .menu_button'));
+      const rollBtn = buttons.find(b => b.textContent && (b.textContent.includes('ROLL') || b.textContent.includes('Roll')));
+      if (rollBtn) container = rollBtn.parentElement;
+    }
 
-  if (!container) return; // Can't find safe place
+    // 4. Fallback: Insert before the input box wrapper
+    if (!container) {
+      const wrapper = document.getElementById('chat_input_form');
+      if (wrapper) container = wrapper;
+    }
 
-  const btn = document.createElement('div');
-  btn.id = 'sg_fixed_input_btn';
-  // Use styling that mimics ST buttons (often .menu_button or just div with pointer)
-  // The screenshot shows dark buttons with border. We'll use a generic class that fits.
-  btn.className = 'menu_button';
-  btn.style.display = 'inline-block';
-  btn.style.cursor = 'pointer';
-  btn.style.marginRight = '5px';
-  btn.style.padding = '5px 10px';
-  btn.innerHTML = '📘 剧情';
-  btn.title = '打开剧情指导悬浮窗';
+    if (!container) return false;
 
-  btn.addEventListener('click', () => {
-    toggleFloatingPanel();
+    const btn = document.createElement('div');
+    btn.id = 'sg_fixed_input_btn';
+    btn.className = 'menu_button';
+    btn.style.display = 'inline-block';
+    btn.style.cursor = 'pointer';
+    btn.style.marginRight = '5px';
+    btn.style.padding = '5px 10px';
+    btn.style.userSelect = 'none';
+    btn.innerHTML = '📘 剧情';
+    btn.title = '打开剧情指导悬浮窗';
+    // Ensure height consistency
+    btn.style.height = 'var(--input-height, auto)';
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleFloatingPanel();
+    });
+
+    // Check if we found 'chat_input_form' which is huge, we don't want to just appendChild
+    if (container.id === 'chat_input_form') {
+      container.insertBefore(btn, container.firstChild);
+      return true;
+    }
+
+    // For button bars, prepend usually works best for visibility
+    if (container.firstChild) {
+      container.insertBefore(btn, container.firstChild);
+    } else {
+      container.appendChild(btn);
+    }
+    return true;
+  };
+
+  // Attempt immediately
+  if (tryInject()) return;
+
+  // Watch for UI changes if not found yet (ST loads dynamically)
+  const observer = new MutationObserver((mutations, obs) => {
+    if (tryInject()) {
+      obs.disconnect();
+    }
   });
 
-  // Prepend or append? The user pointed to a specific gap. Prepend is usually safer to be seen.
-  // Or if there are existing children, try to insert at start.
-  if (container.firstChild) {
-    container.insertBefore(btn, container.firstChild);
-  } else {
-    container.appendChild(btn);
+  // observe body for new nodes
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 }
 
