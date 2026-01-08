@@ -1326,7 +1326,7 @@ body.sg-zoom-lock {
   justify-content: center;
   font-size: 24px;
   cursor: pointer;
-  z-index: 9998;
+  z-index: 2147483640;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   transition: all 0.2s ease;
   user-select: none;
@@ -1353,7 +1353,7 @@ body.sg-zoom-lock {
   border: 1px solid rgba(100, 130, 160, 0.35);
   border-radius: 16px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
-  z-index: 9997;
+  z-index: 2147483641;
   display: flex;
   flex-direction: column;
   opacity: 0;
