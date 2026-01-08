@@ -1359,7 +1359,8 @@ body.sg-zoom-lock {
   opacity: 0;
   visibility: hidden;
   transform: translateY(20px) scale(0.95);
-  transition: all 0.25s ease;
+  transform: translateY(20px) scale(0.95);
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
 }
 
 .sg-floating-panel.visible {
@@ -1376,6 +1377,12 @@ body.sg-zoom-lock {
   background: rgba(255, 255, 255, 0.05);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px 16px 0 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sg-floating-header:active {
+  cursor: grabbing;
 }
 
 .sg-floating-title {
@@ -1436,18 +1443,106 @@ body.sg-zoom-lock {
 /* 移动端适配 */
 @media (max-width: 500px) {
   .sg-floating-btn {
-    bottom: 70px;
-    right: 15px;
-    width: 45px;
-    height: 45px;
-    font-size: 20px;
+    bottom: 90px;
+    /* Liitle higher to avoid bottom bars */
+    right: 16px;
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+    z-index: 20000;
   }
 
   .sg-floating-panel {
-    bottom: 125px;
+    bottom: 150px;
     right: 10px;
     left: 10px;
     width: auto;
-    max-height: 50vh;
+    max-width: none;
+    max-height: 60vh;
+    z-index: 20001;
   }
+}
+
+/* Zoom/Collapse styles for floating panel items */
+.sg-floating-body ul {
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+
+.sg-floating-body ul>li {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  position: relative;
+  cursor: pointer;
+}
+
+.sg-floating-body ul>li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sg-floating-body ul>li strong {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 13px;
+  opacity: 0.95;
+}
+
+/* disable padding for nested lists inside the card */
+.sg-floating-body ul ul {
+  list-style: disc;
+  display: block;
+  gap: 0;
+  padding-left: 22px;
+  margin: 8px 0;
+}
+
+.sg-floating-body ul ul>li {
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: auto;
+}
+
+.sg-floating-body ul ul>li::before {
+  content: none;
+}
+
+/* Collapsed state */
+.sg-floating-body ul>li.sg-collapsed {
+  max-height: none;
+  overflow: hidden;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-right: 34px;
+}
+
+.sg-floating-body ul>li.sg-collapsed>*:not(strong) {
+  display: none !important;
+}
+
+.sg-floating-body ul>li.sg-collapsed strong {
+  margin: 0 !important;
+}
+
+.sg-floating-body ul>li.sg-collapsed::after {
+  content: "▸";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.65;
+  font-size: 14px;
 }

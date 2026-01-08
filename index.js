@@ -3753,6 +3753,37 @@ function clearPinnedChatPos() {
   } catch { /* ignore */ }
 }
 
+const SG_FLOATING_POS_KEY = 'storyguide_floating_panel_pos_v1';
+let sgFloatingPinnedLoaded = false;
+let sgFloatingPinnedPos = null;
+
+function loadFloatingPanelPos() {
+  if (sgFloatingPinnedLoaded) return;
+  sgFloatingPinnedLoaded = true;
+  try {
+    const raw = localStorage.getItem(SG_FLOATING_POS_KEY);
+    if (!raw) return;
+    const j = JSON.parse(raw);
+    if (j && typeof j.left === 'number' && typeof j.top === 'number') {
+      sgFloatingPinnedPos = { left: j.left, top: j.top };
+    }
+  } catch { /* ignore */ }
+}
+
+function saveFloatingPanelPos(left, top) {
+  try {
+    sgFloatingPinnedPos = { left: Number(left) || 0, top: Number(top) || 0 };
+    localStorage.setItem(SG_FLOATING_POS_KEY, JSON.stringify(sgFloatingPinnedPos));
+  } catch { /* ignore */ }
+}
+
+function clearFloatingPanelPos() {
+  try {
+    sgFloatingPinnedPos = null;
+    localStorage.removeItem(SG_FLOATING_POS_KEY);
+  } catch { /* ignore */ }
+}
+
 function clampToViewport(left, top, w, h) {
   const pad = 8;
   const L = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
@@ -3980,7 +4011,7 @@ function installCardZoomDelegation() {
     // don't hijack interactive elements
     if (target.closest('a, button, input, textarea, select, label')) return;
 
-    const card = target.closest('.sg-inline-body > ul > li');
+    const card = target.closest('.sg-inline-body > ul > li, .sg-floating-body ul > li');
     if (!card) return;
 
     // if user is selecting text, don't toggle
@@ -5727,7 +5758,7 @@ function createFloatingPanel() {
   panel.id = 'sg_floating_panel';
   panel.className = 'sg-floating-panel';
   panel.innerHTML = `
-    <div class="sg-floating-header">
+    <div class="sg-floating-header" style="cursor: move; touch-action: none;">
       <span class="sg-floating-title">📘 剧情指导</span>
       <div class="sg-floating-actions">
         <button class="sg-floating-action-btn" id="sg_floating_refresh" title="刷新分析">🔄</button>
@@ -5742,6 +5773,19 @@ function createFloatingPanel() {
 
   document.body.appendChild(panel);
 
+  // Restore position
+  loadFloatingPanelPos();
+  if (sgFloatingPinnedPos) {
+    const w = panel.offsetWidth || 300;
+    const h = panel.offsetHeight || 400;
+    // Use saved position but ensure it is on screen
+    const clamped = clampToViewport(sgFloatingPinnedPos.left, sgFloatingPinnedPos.top, w, h);
+    panel.style.left = `${Math.round(clamped.left)}px`;
+    panel.style.top = `${Math.round(clamped.top)}px`;
+    panel.style.bottom = 'auto';
+    panel.style.right = 'auto';
+  }
+
   // 事件绑定
   $('#sg_floating_close').on('click', () => {
     hideFloatingPanel();
@@ -5754,6 +5798,77 @@ function createFloatingPanel() {
   $('#sg_floating_settings').on('click', () => {
     openModal();
     hideFloatingPanel();
+  });
+
+  // Drag logic
+  const header = panel.querySelector('.sg-floating-header');
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let moved = false;
+
+  const onDown = (ev) => {
+    if (ev.target.closest('button')) return; // ignore buttons
+    dragging = true;
+    startX = ev.clientX;
+    startY = ev.clientY;
+
+    const rect = panel.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    moved = false;
+
+    panel.style.bottom = 'auto';
+    panel.style.right = 'auto';
+    panel.style.transition = 'none'; // disable transition during drag
+
+    header.setPointerCapture(ev.pointerId);
+  };
+
+  const onMove = (ev) => {
+    if (!dragging) return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+
+    if (!moved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) moved = true;
+
+    const newLeft = startLeft + dx;
+    const newTop = startTop + dy;
+
+    // Constrain to viewport
+    const w = panel.offsetWidth;
+    const h = panel.offsetHeight;
+    const clamped = clampToViewport(newLeft, newTop, w, h);
+
+    panel.style.left = `${Math.round(clamped.left)}px`;
+    panel.style.top = `${Math.round(clamped.top)}px`;
+  };
+
+  const onUp = (ev) => {
+    if (!dragging) return;
+    dragging = false;
+    header.releasePointerCapture(ev.pointerId);
+    panel.style.transition = ''; // restore transition
+
+    if (moved) {
+      const left = parseInt(panel.style.left || '0', 10);
+      const top = parseInt(panel.style.top || '0', 10);
+      saveFloatingPanelPos(left, top);
+    }
+  };
+
+  header.addEventListener('pointerdown', onDown);
+  header.addEventListener('pointermove', onMove);
+  header.addEventListener('pointerup', onUp);
+  header.addEventListener('pointercancel', onUp);
+
+  // Double click to reset
+  header.addEventListener('dblclick', (ev) => {
+    if (ev.target.closest('button')) return; // ignore buttons
+    clearFloatingPanelPos();
+    panel.style.left = '';
+    panel.style.top = '';
+    panel.style.bottom = ''; // restore CSS default
+    panel.style.right = '';  // restore CSS default
   });
 }
 
