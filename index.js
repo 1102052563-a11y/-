@@ -6038,13 +6038,20 @@ function injectFixedInputButton() {
   };
 
   // Attempt immediately
-  if (tryInject()) return;
+  tryInject();
 
-  // Watch for UI changes if not found yet (ST loads dynamically)
-  const observer = new MutationObserver((mutations, obs) => {
-    if (tryInject()) {
-      obs.disconnect();
+  // Watch for UI changes continuously (ST wipes DOM often)
+  // We do NOT disconnect, so if the button is removed, it comes back.
+  const observer = new MutationObserver((mutations) => {
+    // Check if relevant nodes were added or removed
+    let needsCheck = false;
+    for (const m of mutations) {
+      if (m.type === 'childList') {
+        needsCheck = true;
+        break;
+      }
     }
+    if (needsCheck) tryInject();
   });
 
   // observe body for new nodes
