@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.10.1
+ * v0.9.8
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -23,11 +23,9 @@
  * v0.9.9 改进：把“剧情指导 / 总结设置 / 索引设置”拆成三页（左侧分页标签），界面更清晰。
  * v0.9.8 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
  * v0.10.0 新增：手动楼层范围总结支持“按每 N 层拆分生成多条世界书条目”（例如 1-80 且 N=40 → 2 条）。
- * v0.10.1 新增：一键导出“全局预设”
- * v0.10.3 修补：刷新后聊天绑定绿灯世界书条目丢失时，自动从蓝灯索引恢复。（导出整个扩展全局配置；可选是否包含全部 API Key）。
  */
 
-const SG_VERSION = '0.10.3';
+const SG_VERSION = '0.10.0';
 
 const MODULE_NAME = 'storyguide';
 
@@ -777,156 +775,6 @@ function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
   return items;
 }
 
-
-/**
- * 修补：有些 ST 版本/某些使用场景下，chatbook（聊天绑定世界书）在刷新后会重新生成一个“空文件”，导致绿灯条目看起来“丢失”。
- * 这里做一个自动修复：如果检测到绿灯目标世界书当前为 0 条，则尝试从蓝灯世界书（或蓝灯索引缓存）重建绿灯条目。
- *
- * 触发时机：
- * - APP_READY 预热蓝灯索引后
- * - CHAT_CHANGED 切换聊天后
- * - 也会被 ensureBlueIndexLive() 成功加载后顺便触发一次
- */
-function extractIndexIdFromKeywords(keywords) {
-  const arr = Array.isArray(keywords) ? keywords : [];
-  for (const k of arr) {
-    const s = String(k || '').trim();
-    if (!s) continue;
-    const m = s.match(/\b[A-Z]{1,3}-\d{3,6}\b/);
-    if (m) return m[0];
-  }
-  // fallback: sometimes stored directly
-  if (typeof keywords === 'string') {
-    const m = String(keywords).match(/\b[A-Z]{1,3}-\d{3,6}\b/);
-    if (m) return m[0];
-  }
-  return '';
-}
-
-function stripCommentPrefixFromTitle(title, prefix) {
-  const t = String(title || '').trim();
-  const p = String(prefix || '').trim();
-  if (!t) return t;
-  if (p && t.startsWith(p)) {
-    return t.slice(p.length).replace(/^[\s\-\|｜:：]+/g, '').trim();
-  }
-  return t;
-}
-
-async function resolveGreenWorldInfoFileName() {
-  const s = ensureSettings();
-  const t = String(s.summaryWorldInfoTarget || 'chatbook');
-  const f = String(s.summaryWorldInfoFile || '').trim();
-  if (t === 'file') return f;
-
-  // chatbook: ask ST to ensure binding and give us the file name
-  try {
-    const out = await execSlash('/getchatbook');
-    const name = String(out?.pipe ?? '').trim();
-    return name || '';
-  } catch (e) {
-    console.warn('[StoryGuide] resolve chatbook file failed:', e);
-    return '';
-  }
-}
-
-async function getWorldInfoEntryCountSafe(fileName) {
-  try {
-    const json = await fetchWorldInfoFileJsonCompat(fileName);
-    const entries = parseWorldbookJson(JSON.stringify(json || {}));
-    return Array.isArray(entries) ? entries.length : 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = null) {
-  const s = ensureSettings();
-  if (!s.summaryToWorldInfo) return { repaired: false, reason: 'disabled' };
-
-  const greenFile = await resolveGreenWorldInfoFileName();
-  if (!greenFile) return { repaired: false, reason: 'no_green_file' };
-
-  const greenCount = await getWorldInfoEntryCountSafe(greenFile);
-  if (greenCount > 0) return { repaired: false, reason: 'not_empty' };
-
-  // 1) Prefer provided blue entries (already loaded)
-  let blueItems = Array.isArray(blueEntriesOverride) ? blueEntriesOverride : null;
-
-  // 2) Fallback to settings cache
-  if (!blueItems || !blueItems.length) {
-    const cached = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
-    if (cached.length) blueItems = cached;
-  }
-
-  // 3) Fallback to loading from blue world info file
-  if (!blueItems || !blueItems.length) {
-    const blueFile = pickBlueIndexFileName(); // wiBlueIndexFile || summaryBlueWorldInfoFile
-    if (!blueFile) return { repaired: false, reason: 'no_blue_source' };
-    try {
-      const json = await fetchWorldInfoFileJsonCompat(blueFile);
-      const prefix = String(s.summaryBlueWorldInfoCommentPrefix || '').trim();
-      blueItems = buildBlueIndexFromWorldInfoJson(json, prefix);
-    } catch (e) {
-      console.warn('[StoryGuide] repairGreen: read blue file failed:', e);
-      return { repaired: false, reason: 'blue_read_failed' };
-    }
-  }
-
-  if (!blueItems || !blueItems.length) return { repaired: false, reason: 'blue_empty' };
-
-  const greenPrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
-
-  let ok = 0;
-  let fail = 0;
-
-  // 去重：如果蓝灯里有重复标题/内容，只写一次（避免恢复时生成大量重复条目）
-  const seen = new Set();
-
-  for (const it of blueItems) {
-    const summary = String(it?.summary ?? it?.content ?? '').trim();
-    if (!summary) continue;
-
-    const titleRaw = String(it?.title ?? '').trim();
-    const title = stripCommentPrefixFromTitle(titleRaw, greenPrefix);
-
-    const keywords = Array.isArray(it?.keywords) ? it.keywords : (Array.isArray(it?.keys) ? it.keys : []);
-    const indexId = extractIndexIdFromKeywords(keywords);
-
-    const sig = `${title}\n${indexId}\n${summary.slice(0, 200)}`;
-    if (seen.has(sig)) continue;
-    seen.add(sig);
-
-    const rec = {
-      title,
-      summary,
-      keywords: keywords || [],
-      indexId,
-    };
-
-    try {
-      // 这里直接按“file”写入解析到的 greenFile，避免再次 /getchatbook 导致写到另一个新文件
-      await writeSummaryToWorldInfoEntry(rec, { range: null }, {
-        target: 'file',
-        file: greenFile,
-        commentPrefix: greenPrefix,
-        constant: 0,
-      });
-      ok += 1;
-    } catch (e) {
-      fail += 1;
-      console.warn('[StoryGuide] repairGreen: write failed:', e);
-    }
-  }
-
-  if (ok > 0) {
-    console.log(`[StoryGuide] repaired green world info from blue: ok=${ok} fail=${fail} reason=${reason}`);
-    return { repaired: true, ok, fail };
-  }
-  return { repaired: false, reason: 'write_none' };
-}
-
-
 async function ensureBlueIndexLive(force = false) {
   const s = ensureSettings();
   const mode = String(s.wiBlueIndexMode || 'live');
@@ -958,9 +806,6 @@ async function ensureBlueIndexLive(force = false) {
     s.summaryBlueIndex = entries;
     saveSettings();
     updateBlueIndexInfoLabel();
-
-    // 修补：若绿灯世界书在刷新后变为空，则用刚读到的蓝灯索引自动恢复
-    repairGreenWorldInfoIfEmpty('blue_index_live_loaded', entries).catch(() => void 0);
 
     return entries;
   } catch (e) {
@@ -1937,7 +1782,7 @@ function slashOutputToText(out, seen = new Set()) {
     seen.add(out);
 
     // common fields in different ST builds
-    const common = ['pipe', 'text', 'output', 'message', 'content', 'result', 'value', 'data', 'html', 'return', 'payload', 'response'];
+    const common = ['text', 'output', 'message', 'content', 'result', 'value', 'data', 'html', 'return', 'payload', 'response'];
     for (const k of common) {
       if (Object.hasOwn(out, k)) {
         const s = slashOutputToText(out[k], seen);
@@ -1966,10 +1811,9 @@ function extractUid(out, seen = new Set()) {
 
   const t = typeof out;
 
-  // In WI files UIDs can start from 0, so 0 is a valid UID.
   if (t === 'number') {
     const n = Math.trunc(out);
-    return Number.isFinite(n) && n >= 0 ? n : null;
+    return Number.isFinite(n) && n > 0 ? n : null;
   }
 
   if (t === 'string') {
@@ -1984,7 +1828,7 @@ function extractUid(out, seen = new Set()) {
   if (Array.isArray(out)) {
     for (const it of out) {
       const r = extractUid(it, seen);
-      if (r !== null) return r;
+      if (r) return r;
     }
     return null;
   }
@@ -1993,18 +1837,12 @@ function extractUid(out, seen = new Set()) {
     if (seen.has(out)) return null;
     seen.add(out);
 
-    // direct uid/id fields (some ST builds place the piped value here)
-    const directKeys = ['pipe', 'uid', 'id', 'entryId', 'entry_id', 'worldInfoUid', 'worldinfoUid'];
+    // direct uid/id fields
+    const directKeys = ['uid', 'id', 'entryId', 'entry_id', 'worldInfoUid', 'worldinfoUid'];
     for (const k of directKeys) {
       if (Object.hasOwn(out, k)) {
-        const v = out[k];
-        // number or numeric string
-        if (typeof v === 'number') {
-          const n = Math.trunc(v);
-          if (Number.isFinite(n) && n >= 0) return n;
-        } else if (typeof v === 'string' && /^\d{1,12}$/.test(v.trim())) {
-          return Number.parseInt(v.trim(), 10);
-        }
+        const n = Number(out[k]);
+        if (Number.isFinite(n) && n > 0) return Math.trunc(n);
       }
     }
 
@@ -2013,14 +1851,14 @@ function extractUid(out, seen = new Set()) {
     for (const k of nestedKeys) {
       if (Object.hasOwn(out, k)) {
         const r = extractUid(out[k], seen);
-        if (r !== null) return r;
+        if (r) return r;
       }
     }
 
     // scan all values (shallow + recursion)
     for (const v of Object.values(out)) {
       const r = extractUid(v, seen);
-      if (r !== null) return r;
+      if (r) return r;
     }
 
     // fallback: parse from textified output
@@ -2033,7 +1871,6 @@ function extractUid(out, seen = new Set()) {
   // fallback
   return extractUid(String(out), seen);
 }
-
 
 function quoteSlashValue(v) {
   const s = String(v ?? '').replace(/"/g, '\\"');
@@ -2055,7 +1892,6 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
   const indexId = String(rec?.indexId || '').trim();
   const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
-
   // comment 字段通常就是世界书列表里的"标题"。这里保证 prefix 始终在最前，避免"前缀设置无效"。
   let commentTitle = rawTitle;
   if (prefix) {
@@ -2082,79 +1918,62 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
     .replace(/\|/g, '｜');
 
   const t = String(target || 'file');
-  const f0 = String(file || '').trim();
+  const f = String(file || '').trim();
+  if (t === 'file' && !f) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
 
-  // Decide keywords for the entry
-  const keyValue = (keyMode === 'indexId' && indexId)
-    ? indexId
-    : (kws.length ? kws.join(',') : prefix);
+  // We purposely avoid parsing UID in JS, because some ST builds return only a status object
+  // (e.g. {pipe:"0", ...}) even when the command pipes the UID internally.
+  // Instead, we build a single STscript pipeline that:
+  // 1) resolves chatbook file name (if needed)
+  // 2) creates the entry (UID goes into pipe)
+  // 3) stores UID into a local var
+  // 4) sets fields using the stored UID
+  // This works regardless of whether JS can read the piped output.
+  const uidVar = '__sg_summary_uid';
+  const fileVar = '__sg_summary_wbfile';
 
+  const keyValue = (kws.length ? kws.join(',') : prefix);
   const constantVal = (Number(constant) === 1) ? 1 : 0;
 
-  // Resolve target file name
-  let fileName = f0;
+  const fileExpr = (t === 'chatbook') ? `{{getvar::${fileVar}}}` : f;
+
+  const parts = [];
   if (t === 'chatbook') {
-    const out = await execSlash('/getchatbook');
-    // Most ST builds return {pipe:"<name>", ...}
-    if (out && typeof out === 'object' && Object.hasOwn(out, 'pipe')) fileName = String(out.pipe || '').trim();
-    if (!fileName) fileName = String(slashOutputToText(out) || '').trim();
-  } else {
-    if (!fileName) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
+    parts.push('/getchatbook');
+    parts.push(`/setvar key=${fileVar}`);
   }
 
-  // Slash commands usually want the base name (without .json)
-  fileName = String(fileName || '').trim().replace(/\.json$/i, '');
-  if (!fileName) throw new Error('无法获取世界书文件名（chatbook 解析失败）。');
+  // create entry + capture uid
+  parts.push(`/createentry file=${quoteSlashValue(fileExpr)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`);
+  parts.push(`/setvar key=${uidVar}`);
 
-  // 1) create entry to get UID (UID can be 0)
-  let uid = null;
-  {
-    const cmd = `/createentry file=${quoteSlashValue(fileName)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`;
-    const out = await execSlash(cmd);
-    uid = extractUid(out);
-    if (uid === null || uid === undefined) {
-      // fallback: find by key
-      const out2 = await execSlash(`/findentry file=${quoteSlashValue(fileName)} field=key ${quoteSlashValue(keyValue)}`);
-      uid = extractUid(out2);
-    }
-    if (uid === null || uid === undefined) {
-      throw new Error(`创建世界书条目失败：无法解析 UID（create 返回：${safeStringifyShort(out)}）`);
-    }
+  // update fields
+  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=content ${quoteSlashValue(content)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=key ${quoteSlashValue(keyValue)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
+  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=constant ${constantVal}`);
+
+  // cleanup temp vars
+  parts.push(`/flushvar ${uidVar}`);
+  if (t === 'chatbook') parts.push(`/flushvar ${fileVar}`);
+
+  const script = parts.join(' | ');
+  const out = await execSlash(script);
+  if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
+    throw new Error(`写入世界书失败（返回：${safeStringifyShort(out)}）`);
   }
 
-  // 2) set fields
-  {
-    const parts = [];
-    parts.push(`/setentryfield file=${quoteSlashValue(fileName)} uid=${uid} field=content ${quoteSlashValue(content)}`);
-    parts.push(`/setentryfield file=${quoteSlashValue(fileName)} uid=${uid} field=key ${quoteSlashValue(keyValue)}`);
-    parts.push(`/setentryfield file=${quoteSlashValue(fileName)} uid=${uid} field=comment ${quoteSlashValue(comment)}`);
-    parts.push(`/setentryfield file=${quoteSlashValue(fileName)} uid=${uid} field=disable 0`);
-    parts.push(`/setentryfield file=${quoteSlashValue(fileName)} uid=${uid} field=constant ${constantVal}`);
-    const out = await execSlash(parts.join(' | '));
-    if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
-      throw new Error(`写入世界书失败（返回：${safeStringifyShort(out)}）`);
-    }
-  }
-
-  // 3) try force-save chat so chatbook binding & WI edits don't get lost on refresh
-  try {
-    const ctx = SillyTavern.getContext();
-    if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
-    else if (typeof ctx.saveChat === 'function') ctx.saveChat();
-  } catch { /* ignore */ }
-
-  // store link
+  // store link (UID is intentionally omitted because it may be inaccessible from JS in some ST builds)
   const keyName = (constantVal === 1) ? 'worldInfoBlue' : 'worldInfoGreen';
-  rec[keyName] = { file: fileName, uid };
-
+  rec[keyName] = { file: (t === 'file') ? f : 'chatbook', uid: null };
   if (meta && Array.isArray(meta.history) && meta.history.length) {
     meta.history[meta.history.length - 1] = rec;
     await setSummaryMeta(meta);
   }
 
-  return { file: fileName, uid };
+  return { file: (t === 'file') ? f : 'chatbook', uid: null };
 }
-
 
 async function runSummary({ reason = 'manual', manualFromFloor = null, manualToFloor = null, manualSplit = null } = {}) {
   const s = ensureSettings();
@@ -2365,7 +2184,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
     if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
-      ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
+      ensureBlueIndexLive(true).catch(() => void 0);
     }
 
     if (created <= 0) {
@@ -2947,53 +2766,41 @@ function setCollapsed(boxEl, collapsed) {
   boxEl.classList.toggle('collapsed', !!collapsed);
 }
 
+
 function attachToggleHandler(boxEl, mesKey) {
   if (!boxEl) return;
-  const head = boxEl.querySelector('.sg-inline-head');
-  if (!head) return;
-  if (head.dataset.sgBound === '1') return;
-  head.dataset.sgBound = '1';
 
-  head.addEventListener('click', (e) => {
-    if (e.target && (e.target.closest('a'))) return;
+  const bind = (el, isFooter = false) => {
+    if (!el) return;
+    const flag = isFooter ? 'sgBoundFoot' : 'sgBound';
+    if (el.dataset[flag] === '1') return;
+    el.dataset[flag] = '1';
 
-    const cur = boxEl.classList.contains('collapsed');
-    const next = !cur;
-    setCollapsed(boxEl, next);
+    el.addEventListener('click', (e) => {
+      if (e.target && (e.target.closest('a'))) return;
 
-    const cached = inlineCache.get(String(mesKey));
-    if (cached) {
-      cached.collapsed = next;
-      inlineCache.set(String(mesKey), cached);
-    }
-  });
-}
+      const cur = boxEl.classList.contains('collapsed');
+      const next = !cur;
+      setCollapsed(boxEl, next);
 
+      const cached = inlineCache.get(String(mesKey));
+      if (cached) {
+        cached.collapsed = next;
+        inlineCache.set(String(mesKey), cached);
+      }
 
-
-function ensureFirstModuleCardBottomBtn(boxEl) {
-  try {
-    if (!boxEl) return;
-    const li = boxEl.querySelector('.sg-inline-body > ul > li');
-    if (!li) return;
-    if (li.querySelector('.sg-card-foot')) return;
-
-    const foot = document.createElement('div');
-    foot.className = 'sg-card-foot';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'menu_button sg-card-foot-btn';
-    btn.title = '收起/展开该模块';
-    btn.textContent = '▴ 收起';
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      li.classList.toggle('sg-collapsed');
+      // Footer button: collapse then scroll back to the message正文
+      if (isFooter && next) {
+        const mesEl = boxEl.closest('.mes');
+        (mesEl || boxEl).scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     });
-    foot.appendChild(btn);
-    li.appendChild(foot);
-  } catch { /* ignore */ }
+  };
+
+  bind(boxEl.querySelector('.sg-inline-head'), false);
+  bind(boxEl.querySelector('.sg-inline-foot'), true);
 }
+
 
 function createInlineBoxElement(mesKey, htmlInner, collapsed) {
   const box = document.createElement('div');
@@ -3008,36 +2815,52 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed) {
       <span class="sg-inline-chevron">▾</span>
     </div>
     <div class="sg-inline-body">${htmlInner}</div>
-  `.trim();
+    <div class="sg-inline-foot" title="点击折叠并回到正文">
+      <span class="sg-inline-foot-icon">▴</span>
+      <span class="sg-inline-foot-text">收起并回到正文</span>
+      <span class="sg-inline-foot-icon">▴</span>
+    </div>`.trim();
 
   setCollapsed(box, !!collapsed);
   attachToggleHandler(box, mesKey);
-  ensureFirstModuleCardBottomBtn(box);
   return box;
 }
 
 
+
 function attachPanelToggleHandler(boxEl, mesKey) {
   if (!boxEl) return;
-  const head = boxEl.querySelector('.sg-panel-head');
-  if (!head) return;
-  if (head.dataset.sgBound === '1') return;
-  head.dataset.sgBound = '1';
 
-  head.addEventListener('click', (e) => {
-    if (e.target && (e.target.closest('a'))) return;
+  const bind = (el, isFooter = false) => {
+    if (!el) return;
+    const flag = isFooter ? 'sgBoundFoot' : 'sgBound';
+    if (el.dataset[flag] === '1') return;
+    el.dataset[flag] = '1';
 
-    const cur = boxEl.classList.contains('collapsed');
-    const next = !cur;
-    setCollapsed(boxEl, next);
+    el.addEventListener('click', (e) => {
+      if (e.target && (e.target.closest('a'))) return;
 
-    const cached = panelCache.get(String(mesKey));
-    if (cached) {
-      cached.collapsed = next;
-      panelCache.set(String(mesKey), cached);
-    }
-  });
+      const cur = boxEl.classList.contains('collapsed');
+      const next = !cur;
+      setCollapsed(boxEl, next);
+
+      const cached = panelCache.get(String(mesKey));
+      if (cached) {
+        cached.collapsed = next;
+        panelCache.set(String(mesKey), cached);
+      }
+
+      if (isFooter && next) {
+        const mesEl = boxEl.closest('.mes');
+        (mesEl || boxEl).scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  };
+
+  bind(boxEl.querySelector('.sg-panel-head'), false);
+  bind(boxEl.querySelector('.sg-panel-foot'), true);
 }
+
 
 function createPanelBoxElement(mesKey, htmlInner, collapsed) {
   const box = document.createElement('div');
@@ -3052,7 +2875,11 @@ function createPanelBoxElement(mesKey, htmlInner, collapsed) {
       <span class="sg-inline-chevron">▾</span>
     </div>
     <div class="sg-panel-body">${htmlInner}</div>
-  `.trim();
+    <div class="sg-panel-foot" title="点击折叠并回到正文">
+      <span class="sg-inline-foot-icon">▴</span>
+      <span class="sg-inline-foot-text">收起并回到正文</span>
+      <span class="sg-inline-foot-icon">▴</span>
+    </div>`.trim();
 
   setCollapsed(box, !!collapsed);
   attachPanelToggleHandler(box, mesKey);
@@ -3127,7 +2954,6 @@ function ensureInlineBoxPresent(mesKey) {
   if (existing) {
     setCollapsed(existing, !!cached.collapsed);
     attachToggleHandler(existing, mesKey);
-    ensureFirstModuleCardBottomBtn(existing);
     // 更新 body（有时候被覆盖成空壳）
     const body = existing.querySelector('.sg-inline-body');
     if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
@@ -3954,7 +3780,6 @@ function buildModalHtml() {
           剧情指导 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
         </div>
         <div class="sg-modal-actions">
-          <button class="menu_button sg-btn" id="sg_exportGlobalPreset">导出全局预设</button>
           <button class="menu_button sg-btn" id="sg_close">关闭</button>
         </div>
       </div>
@@ -4119,7 +3944,7 @@ function buildModalHtml() {
             <div class="sg-card-title">预设与世界书</div>
 
             <div class="sg-row sg-inline">
-              <button class="menu_button sg-btn" id="sg_exportPreset">导出全局预设</button>
+              <button class="menu_button sg-btn" id="sg_exportPreset">导出预设</button>
               <label class="sg-check"><input type="checkbox" id="sg_presetIncludeApiKey">导出包含 API Key</label>
               <button class="menu_button sg-btn" id="sg_importPreset">导入预设</button>
             </div>
@@ -4804,45 +4629,18 @@ $('#sg_wiIndexModelSelect').on('change', () => {
 
   
   // presets actions
-  function exportGlobalPresetOneClick() {
-    pullUiToSettings();
-    const s = ensureSettings();
-    const out = clone(s);
-
-    const includeKey = $('#sg_presetIncludeApiKey').is(':checked');
-    if (!includeKey) {
-      // 注意：现在插件里有三套独立 API：剧情指导 / 总结 / 索引（都可能有 key）
-      out.customApiKey = '';
-      out.summaryCustomApiKey = '';
-      out.wiIndexCustomApiKey = '';
-    }
-
-    // 额外附带导出元信息（导入会自动忽略这些字段）
-    out._storyguide = {
-      type: 'global_preset',
-      version: SG_VERSION,
-      exportedAt: new Date().toISOString(),
-      includeApiKey: !!includeKey,
-    };
-
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadTextFile(`storyguide-global-preset-${stamp}.json`, JSON.stringify(out, null, 2));
-  }
-
   $('#sg_exportPreset').on('click', () => {
     try {
-      exportGlobalPresetOneClick();
-      setStatus('已导出全局预设 ✅', 'ok');
-    } catch (e) {
-      setStatus(`导出失败：${e?.message ?? e}`, 'err');
-    }
-  });
+      pullUiToSettings();
+      const s = ensureSettings();
+      const out = clone(s);
 
-  // 顶部一键导出（同上）
-  $('#sg_exportGlobalPreset').on('click', () => {
-    try {
-      exportGlobalPresetOneClick();
-      setStatus('已导出全局预设 ✅', 'ok');
+      const includeKey = $('#sg_presetIncludeApiKey').is(':checked');
+      if (!includeKey) out.customApiKey = '';
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      downloadTextFile(`storyguide-preset-${stamp}.json`, JSON.stringify(out, null, 2));
+      setStatus('已导出预设 ✅', 'ok');
     } catch (e) {
       setStatus(`导出失败：${e?.message ?? e}`, 'err');
     }
@@ -5566,13 +5364,13 @@ function setupEventListeners() {
     startObservers();
 
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
-    ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
+    ensureBlueIndexLive(true).catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
       inlineCache.clear();
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
-      ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
+      ensureBlueIndexLive(true).catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
         setStatus('已切换聊天：已同步本聊天字段', 'ok');
