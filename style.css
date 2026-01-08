@@ -1441,11 +1441,11 @@ body.sg-zoom-lock {
 }
 
 /* 移动端适配 */
-@media (max-width: 500px) {
+/* 移动端/平板适配 (Mobile & Tablet) */
+@media (max-width: 1200px) {
   .sg-floating-btn {
     bottom: 90px;
-    /* Liitle higher to avoid bottom bars */
-    right: 16px;
+    right: 20px;
     width: 48px;
     height: 48px;
     font-size: 22px;
@@ -1453,13 +1453,33 @@ body.sg-zoom-lock {
   }
 
   .sg-floating-panel {
-    bottom: 150px;
-    right: 10px;
-    left: 10px;
-    width: auto;
-    max-width: none;
-    max-height: 60vh;
+    /* Bottom Sheet Layout */
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    max-height: 80vh;
+    /* Leave some space at top */
+    border-radius: 20px 20px 0 0;
+    /* Rounded top corners only */
+    border: none;
+    border-top: 1px solid rgba(100, 130, 160, 0.5);
     z-index: 2147483641;
+    transform: translateY(100%);
+    /* Start hidden below */
+    transition: transform 0.3s ease-out;
+    /* Reset other processing */
+    top: auto !important;
+  }
+
+  .sg-floating-panel.visible {
+    transform: translateY(0);
+    /* Slide up */
+    opacity: 1;
+    visibility: visible;
   }
 }
 
