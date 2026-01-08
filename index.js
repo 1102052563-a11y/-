@@ -5635,6 +5635,7 @@ function setupEventListeners() {
 
 let floatingPanelVisible = false;
 let lastFloatingContent = null;
+let sgFloatingResizeGuardBound = false;
 
 const SG_FLOATING_BTN_POS_KEY = 'storyguide_floating_btn_pos_v1';
 let sgBtnPos = null;
@@ -5654,8 +5655,7 @@ function saveBtnPos(left, top) {
 }
 
 function createFloatingButton() {
-  const existingBtn = document.getElementById('sg_floating_btn');
-  if (existingBtn) existingBtn.remove(); // Force refresh to clear old listeners
+  if (document.getElementById('sg_floating_btn')) return;
 
   const btn = document.createElement('div');
   btn.id = 'sg_floating_btn';
@@ -5699,17 +5699,10 @@ function createFloatingButton() {
   // Mobile: Simple Click Mode
   if (isMobile) {
     btn.style.cursor = 'pointer';
-    btn.style.touchAction = 'auto'; // CRITICAL: Allow native clicks!
     btn.onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
-      try {
-        console.log('Mobile click detected');
-        toggleFloatingPanel();
-      } catch (err) {
-        alert('Error opening panel: ' + err.message);
-        console.error(err);
-      }
+      toggleFloatingPanel();
     };
     return; // SKIP desktop logic
   }
@@ -5917,6 +5910,55 @@ function toggleFloatingPanel() {
   }
 }
 
+
+function shouldGuardFloatingPanelViewport() {
+  // When the viewport is very small (mobile / narrow desktop window),
+  // the panel may be pushed off-screen by fixed bottom offsets.
+  return window.innerWidth < 560 || window.innerHeight < 520;
+}
+
+function ensureFloatingPanelInViewport(panel) {
+  try {
+    if (!panel || !panel.getBoundingClientRect) return;
+
+    if (!shouldGuardFloatingPanelViewport()) return;
+
+    const pad = 8;
+
+    // Ensure the panel itself never exceeds viewport bounds
+    // (helps when the browser height is tiny, e.g. mobile landscape).
+    panel.style.maxWidth = `calc(100vw - ${pad * 2}px)`;
+    panel.style.maxHeight = `calc(100dvh - ${pad * 2}px)`;
+
+    const rect = panel.getBoundingClientRect();
+    const w = rect.width || panel.offsetWidth || 300;
+    const h = rect.height || panel.offsetHeight || 400;
+
+    // Clamp current on-screen position into viewport.
+    const clamped = clampToViewport(rect.left, rect.top, w, h);
+
+    // If anything is out of bounds, switch to explicit top/left positioning.
+    if (rect.top < pad || rect.left < pad || rect.bottom > window.innerHeight - pad || rect.right > window.innerWidth - pad) {
+      panel.style.left = `${Math.round(clamped.left)}px`;
+      panel.style.top = `${Math.round(clamped.top)}px`;
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+    }
+  } catch { /* ignore */ }
+}
+
+function bindFloatingPanelResizeGuard() {
+  if (sgFloatingResizeGuardBound) return;
+  sgFloatingResizeGuardBound = true;
+
+  window.addEventListener('resize', () => {
+    if (!floatingPanelVisible) return;
+    const panel = document.getElementById('sg_floating_panel');
+    if (!panel) return;
+    requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
+  });
+}
+
 function showFloatingPanel() {
   createFloatingPanel();
   const panel = document.getElementById('sg_floating_panel');
@@ -5938,6 +5980,10 @@ function showFloatingPanel() {
     if (lastFloatingContent) {
       updateFloatingPanelBody(lastFloatingContent);
     }
+
+    bindFloatingPanelResizeGuard();
+    // Final guard: make sure the panel is actually within the viewport on tiny screens.
+    requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
   }
 }
 
