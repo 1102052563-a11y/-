@@ -157,6 +157,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
   summaryWorldInfoTarget: 'chatbook',
   summaryWorldInfoFile: '',
+  // 每个对话自动创建一对蓝/绿世界书并独立存放（避免切换对话导致混写/重复）
+  summaryWorldInfoPerChat: true,
   summaryWorldInfoCommentPrefix: '剧情总结',
 
   // 总结写入世界书 key（触发词）的来源
@@ -246,6 +248,9 @@ const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
   summaryMeta: 'storyguide_summary_meta',
+  wiGreenFile: 'storyguide_wi_green_file',
+  wiBlueFile: 'storyguide_wi_blue_file',
+  wiChatUid: 'storyguide_wi_chat_uid',
 });
 
 let lastReport = null;
@@ -390,6 +395,61 @@ async function setChatMetaValue(key, value) {
   const ctx = SillyTavern.getContext();
   ctx.chatMetadata[key] = value;
   await ctx.saveMetadata();
+}
+
+function normalizeWorldInfoBaseName(name) {
+  return String(name || '').trim().replace(/\.json$/i, '');
+}
+
+function sanitizeWorldInfoBaseName(name) {
+  const raw = normalizeWorldInfoBaseName(name);
+  return raw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function getOrCreateChatUid() {
+  const ctx = SillyTavern.getContext();
+  const meta = ctx.chatMetadata ?? (ctx.chatMetadata = {});
+  const existing = String(meta[META_KEYS.wiChatUid] || '').trim();
+  if (existing) return existing;
+
+  const candidate = [
+    ctx.chatId,
+    ctx.chat?.id,
+    ctx.chat?.chatId,
+    ctx.activeChatId,
+    ctx.activeChat?.id,
+  ].map(v => String(v ?? '').trim()).find(Boolean);
+
+  let uid = sanitizeWorldInfoBaseName(candidate || '');
+  if (!uid) {
+    uid = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  meta[META_KEYS.wiChatUid] = uid;
+  try { ctx.saveMetadata(); } catch { /* ignore */ }
+  return uid;
+}
+
+function ensurePerChatWorldInfoFiles() {
+  const s = ensureSettings();
+  if (!s.summaryWorldInfoPerChat) return null;
+
+  const ctx = SillyTavern.getContext();
+  const meta = ctx.chatMetadata ?? (ctx.chatMetadata = {});
+  let green = normalizeWorldInfoBaseName(meta[META_KEYS.wiGreenFile]);
+  let blue = normalizeWorldInfoBaseName(meta[META_KEYS.wiBlueFile]);
+
+  if (!green || !blue) {
+    const uid = sanitizeWorldInfoBaseName(getOrCreateChatUid());
+    const suffix = uid || `${Date.now().toString(36)}`;
+    if (!green) green = `sg_green_${suffix}`;
+    if (!blue) blue = `sg_blue_${suffix}`;
+    meta[META_KEYS.wiGreenFile] = green;
+    meta[META_KEYS.wiBlueFile] = blue;
+    try { ctx.saveMetadata(); } catch { /* ignore */ }
+  }
+
+  return { green, blue };
 }
 
 // -------------------- summary meta (per chat) --------------------
@@ -667,6 +727,10 @@ function parseWorldbookJson(rawText) {
 
 function pickBlueIndexFileName() {
   const s = ensureSettings();
+  if (s.summaryWorldInfoPerChat && s.summaryToBlueWorldInfo) {
+    const files = ensurePerChatWorldInfoFiles();
+    if (files?.blue) return files.blue;
+  }
   const explicit = String(s.wiBlueIndexFile || '').trim();
   if (explicit) return explicit;
   const fromBlueWrite = String(s.summaryBlueWorldInfoFile || '').trim();
@@ -934,6 +998,10 @@ function stripCommentPrefixFromTitle(title, prefix) {
 
 async function resolveGreenWorldInfoFileName() {
   const s = ensureSettings();
+  if (s.summaryWorldInfoPerChat) {
+    const files = ensurePerChatWorldInfoFiles();
+    if (files?.green) return files.green;
+  }
   const t = String(s.summaryWorldInfoTarget || 'chatbook');
   const f = String(s.summaryWorldInfoFile || '').trim();
   if (t === 'file') return f;
@@ -947,6 +1015,24 @@ async function resolveGreenWorldInfoFileName() {
     console.warn('[StoryGuide] resolve chatbook file failed:', e);
     return '';
   }
+}
+
+function resolveGreenWorldInfoWriteTarget() {
+  const s = ensureSettings();
+  if (s.summaryWorldInfoPerChat) {
+    const files = ensurePerChatWorldInfoFiles();
+    if (files?.green) return { target: 'file', file: files.green };
+  }
+  return { target: String(s.summaryWorldInfoTarget || 'chatbook'), file: String(s.summaryWorldInfoFile || '').trim() };
+}
+
+function resolveBlueWorldInfoWriteTarget() {
+  const s = ensureSettings();
+  if (s.summaryWorldInfoPerChat) {
+    const files = ensurePerChatWorldInfoFiles();
+    if (files?.blue) return { file: files.blue };
+  }
+  return { file: String(s.summaryBlueWorldInfoFile || '').trim() };
 }
 
 async function getWorldInfoEntryCountSafe(fileName) {
@@ -2486,9 +2572,10 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
         if (s.summaryToWorldInfo) {
           try {
+            const greenTarget = resolveGreenWorldInfoWriteTarget();
             await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: String(s.summaryWorldInfoTarget || 'chatbook'),
-              file: String(s.summaryWorldInfoFile || ''),
+              target: String(greenTarget.target || 'chatbook'),
+              file: String(greenTarget.file || ''),
               commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
               constant: 0,
             });
@@ -2501,9 +2588,10 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
         if (s.summaryToBlueWorldInfo) {
           try {
+            const blueTarget = resolveBlueWorldInfoWriteTarget();
             await writeSummaryToWorldInfoEntry(rec, meta, {
               target: 'file',
-              file: String(s.summaryBlueWorldInfoFile || ''),
+              file: String(blueTarget.file || ''),
               commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
               constant: 1,
             });
@@ -4375,6 +4463,11 @@ function buildModalHtml() {
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
             </div>
 
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryWorldInfoPerChat">每个对话自动创建蓝/绿世界书（防止重复/串写）</label>
+              <div class="sg-hint" id="sg_summaryWorldInfoPerChatHint" style="margin-left:auto"></div>
+            </div>
+
             <div class="sg-grid2">
               <div class="sg-field">
                 <label>条目标题前缀（写入 comment，始终在最前）</label>
@@ -4749,15 +4842,22 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
 });
 
   $('#sg_summaryWorldInfoTarget').on('change', () => {
-    const t = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
-    $('#sg_summaryWorldInfoFile').toggle(t === 'file');
-    pullUiToSettings(); saveSettings();
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryWorldInfoControls();
   });
 
   $('#sg_summaryToBlueWorldInfo').on('change', () => {
-    const checked = $('#sg_summaryToBlueWorldInfo').is(':checked');
-    $('#sg_summaryBlueWorldInfoFile').toggle(!!checked);
-    pullUiToSettings(); saveSettings();
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryWorldInfoControls();
+    updateBlueIndexInfoLabel();
+  });
+
+  $('#sg_summaryWorldInfoPerChat').on('change', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryWorldInfoControls();
     updateBlueIndexInfoLabel();
   });
 
@@ -4825,11 +4925,12 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoPerChat, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
     updateBlueIndexInfoLabel();
+    updateSummaryWorldInfoControls();
     updateSummaryManualRangeHint(false);
   });
 
@@ -5206,6 +5307,7 @@ function pullSettingsToUi() {
   $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
   $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
+  $('#sg_summaryWorldInfoPerChat').prop('checked', !!s.summaryWorldInfoPerChat);
   $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
   $('#sg_summaryWorldInfoKeyMode').val(String(s.summaryWorldInfoKeyMode || 'keywords'));
   $('#sg_summaryIndexPrefix').val(String(s.summaryIndexPrefix || 'A-'));
@@ -5249,8 +5351,7 @@ $('#sg_index_custom_block').toggle(mm === 'llm' && String(s.wiIndexProvider || '
   $('#sg_summaryMaxTotalChars').val(s.summaryMaxTotalChars || 24000);
 
   $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
-  $('#sg_summaryWorldInfoFile').toggle(String(s.summaryWorldInfoTarget || 'chatbook') === 'file');
-  $('#sg_summaryBlueWorldInfoFile').toggle(!!s.summaryToBlueWorldInfo);
+  updateSummaryWorldInfoControls();
   $('#sg_summaryIndexFormat').toggle(String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId');
 
   updateBlueIndexInfoLabel();
@@ -5277,6 +5378,39 @@ function updateBlueIndexInfoLabel() {
   } else {
     $info.text(`（蓝灯索引：${count} 条｜缓存）`);
   }
+}
+
+function updatePerChatWorldInfoHint() {
+  const $hint = $('#sg_summaryWorldInfoPerChatHint');
+  if (!$hint.length) return;
+  const s = ensureSettings();
+  if (!s.summaryWorldInfoPerChat) {
+    $hint.text('');
+    return;
+  }
+  const files = ensurePerChatWorldInfoFiles();
+  if (!files) {
+    $hint.text('（未生成）');
+    return;
+  }
+  $hint.text(`当前对话：绿=${files.green}｜蓝=${files.blue}`);
+}
+
+function updateSummaryWorldInfoControls() {
+  const s = ensureSettings();
+  const perChat = !!s.summaryWorldInfoPerChat;
+  const t = String(s.summaryWorldInfoTarget || 'chatbook');
+  const blueEnabled = !!s.summaryToBlueWorldInfo;
+
+  $('#sg_summaryWorldInfoTarget').prop('disabled', perChat);
+  $('#sg_summaryWorldInfoFile')
+    .toggle(!perChat && t === 'file')
+    .prop('disabled', perChat);
+  $('#sg_summaryBlueWorldInfoFile')
+    .toggle(blueEnabled && !perChat)
+    .prop('disabled', perChat);
+
+  updatePerChatWorldInfoHint();
 }
 
 // -------------------- wiTrigger logs (per chat meta) --------------------
@@ -5547,6 +5681,7 @@ function pullUiToSettings() {
   s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
   s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
   s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
+  s.summaryWorldInfoPerChat = $('#sg_summaryWorldInfoPerChat').is(':checked');
   s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
   s.summaryWorldInfoKeyMode = String($('#sg_summaryWorldInfoKeyMode').val() || 'keywords');
   s.summaryIndexPrefix = String($('#sg_summaryIndexPrefix').val() || 'A-').trim() || 'A-';
@@ -5694,12 +5829,14 @@ function setupEventListeners() {
     startObservers();
 
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
+    ensurePerChatWorldInfoFiles();
     ensureBlueIndexLive(true).then((entries)=>{ scheduleGreenWorldInfoReset('app_ready', entries); }).catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
       inlineCache.clear();
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
+      ensurePerChatWorldInfoFiles();
       ensureBlueIndexLive(true).then((entries)=>{ scheduleGreenWorldInfoReset('chat_changed', entries); }).catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
