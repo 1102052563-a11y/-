@@ -965,3 +965,24 @@ body.sg-zoom-lock{
   cursor: grabbing;
   opacity: 1;
 }
+
+
+/* v0.10.x first module bottom toggle */
+.sg-card-foot{
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+  opacity: 0.95;
+}
+.sg-card-foot-btn{
+  padding: 4px 10px !important;
+  border-radius: 10px !important;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  min-width: 0 !important;
+  opacity: 0.85;
+}
+.sg-card-foot-btn:hover{ opacity: 1; }

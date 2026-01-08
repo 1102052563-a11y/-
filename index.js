@@ -817,13 +817,13 @@ async function resolveGreenWorldInfoFileName() {
   const s = ensureSettings();
   const t = String(s.summaryWorldInfoTarget || 'chatbook');
   const f = String(s.summaryWorldInfoFile || '').trim();
-  if (t === 'file') return normalizeWorldInfoFileName(f);
+  if (t === 'file') return f;
 
   // chatbook: ask ST to ensure binding and give us the file name
   try {
     const out = await execSlash('/getchatbook');
     const name = String(out?.pipe ?? '').trim();
-    return normalizeWorldInfoFileName(name || '');
+    return name || '';
   } catch (e) {
     console.warn('[StoryGuide] resolve chatbook file failed:', e);
     return '';
@@ -839,171 +839,6 @@ async function getWorldInfoEntryCountSafe(fileName) {
     return 0;
   }
 }
-
-// -------------------- World Info 文件创建/确保（绿灯/蓝灯） --------------------
-
-// 规范化世界书文件名：SillyTavern 通常不需要 .json 后缀；但部分接口会带/不带都能读。
-// 为了避免出现 “xxx.json.json”，我们统一去掉末尾 .json（若有）。
-function normalizeWorldInfoFileName(name) {
-  const s = String(name || '').trim();
-  return s.replace(/\.json$/i, '');
-}
-
-const WORLDINFO_ENSURE_TTL_MS = 10 * 60 * 1000; // 10min
-const worldInfoEnsureOkAt = new Map();          // name -> ts
-const worldInfoEnsureInflight = new Map();      // name -> Promise<{ok:boolean,...}>
-
-async function postJsonOkCompat(url, body) {
-  const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-cache' });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    const err = new Error(`HTTP ${res.status} ${res.statusText}${text ? `\n${text}` : ''}`);
-    err.status = res.status;
-    throw err;
-  }
-  return true;
-}
-
-async function createWorldInfoFileByApiCompat(fileName) {
-  const name = normalizeWorldInfoFileName(fileName);
-  if (!name) return false;
-
-  // 参考 ST 前端 createNewWorldInfo：/editworldinfo (旧) / /api/worldinfo/edit (新)
-  const templateObj = { entries: {} };
-  const payloads = [
-    { name, data: templateObj },
-    { name, data: JSON.stringify(templateObj) },
-    { file: name, data: templateObj },
-    { file: name, data: JSON.stringify(templateObj) },
-  ];
-  const urls = [
-    '/api/worldinfo/edit',
-    '/editworldinfo',
-  ];
-
-  let lastErr = null;
-  for (const url of urls) {
-    for (const body of payloads) {
-      try {
-        await postJsonOkCompat(url, body);
-        return true;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-  }
-
-  // 极少数分支可能提供 create/new 端点（不保证存在）
-  const extraUrls = ['/api/worldinfo/create', '/api/worldinfo/new'];
-  for (const url of extraUrls) {
-    for (const body of [{ name }, { file: name }]) {
-      try {
-        await postJsonOkCompat(url, body);
-        return true;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-  }
-
-  if (lastErr) console.debug('[StoryGuide] createWorldInfoFileByApiCompat failed:', lastErr);
-  return false;
-}
-
-function slashQuote(s) {
-  // slash 参数一般用双引号包起来；这里做最小必要转义
-  return String(s ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, ' ');
-}
-
-// Slash fallback：尝试用 /createentry 触发创建文件（不同 ST 版本行为可能不同）
-async function createWorldInfoFileBySlashCompat(fileName) {
-  const name = normalizeWorldInfoFileName(fileName);
-  if (!name) return false;
-
-  const placeholder = 'StoryGuide 自动创建的占位条目（已禁用，可安全删除）';
-  const out = await execSlash(`/createentry file="${slashQuote(name)}" key="__SG_INIT__" content="${slashQuote(placeholder)}"`);
-  const uid = extractUid(out);
-  if (uid != null) {
-    // 尽量把占位条目设为禁用，避免影响注入
-    try { await execSlash(`/setentryfield file="${slashQuote(name)}" uid=${uid} field=comment value="${slashQuote('StoryGuide 占位(可删)')}"`); } catch {}
-    try { await execSlash(`/setentryfield file="${slashQuote(name)}" uid=${uid} field=disable value=true`); } catch {}
-    try { await execSlash(`/setentryfield file="${slashQuote(name)}" uid=${uid} field=order value=0`); } catch {}
-  }
-  return true;
-}
-
-async function ensureWorldInfoFileExists(fileName, opts = {}) {
-  const name = normalizeWorldInfoFileName(fileName);
-  if (!name) return { ok: false, reason: 'empty_name' };
-
-  const now = Date.now();
-  const ts = worldInfoEnsureOkAt.get(name);
-  if (ts && (now - ts) < WORLDINFO_ENSURE_TTL_MS) return { ok: true, cached: true, existed: true };
-
-  if (worldInfoEnsureInflight.has(name)) return await worldInfoEnsureInflight.get(name);
-
-  const p = (async () => {
-    // 1) already exists?
-    try {
-      await fetchWorldInfoFileJsonCompat(name);
-      worldInfoEnsureOkAt.set(name, Date.now());
-      return { ok: true, existed: true };
-    } catch { /* not found / other errors -> try create */ }
-
-    // 2) API create
-    const apiOk = await createWorldInfoFileByApiCompat(name).catch(() => false);
-
-    // 3) Slash fallback
-    const slashOk = apiOk ? true : await createWorldInfoFileBySlashCompat(name).catch(() => false);
-
-    if (!slashOk) return { ok: false, existed: false, reason: 'create_failed' };
-
-    // 4) best-effort recheck (not fatal if fails)
-    try { await fetchWorldInfoFileJsonCompat(name); } catch { /* ignore */ }
-
-    worldInfoEnsureOkAt.set(name, Date.now());
-    return { ok: true, existed: false, created: true };
-  })().finally(() => worldInfoEnsureInflight.delete(name));
-
-  worldInfoEnsureInflight.set(name, p);
-  return await p;
-}
-
-// 对当前聊天（chatbook/指定文件）执行“绿灯/蓝灯”世界书文件创建/确保。
-async function ensurePerChatWorldbookFiles(reason = '') {
-  const s = ensureSettings();
-  const tasks = [];
-
-  // 绿灯（总结写入）
-  if (s.summaryToWorldInfo) {
-    try {
-      const green = await resolveGreenWorldInfoFileName();
-      const g = normalizeWorldInfoFileName(green);
-      if (g) tasks.push(ensureWorldInfoFileExists(g, { reason, kind: 'green' }));
-    } catch { /* ignore */ }
-  }
-
-  // 蓝灯（总结写入）
-  if (s.summaryToBlueWorldInfo) {
-    const b = normalizeWorldInfoFileName(String(s.summaryBlueWorldInfoFile || '').trim());
-    if (b) tasks.push(ensureWorldInfoFileExists(b, { reason, kind: 'blue' }));
-  }
-
-  // 蓝灯索引（实时读取/缓存文件名）
-  try {
-    const mode = String(s.wiBlueIndexMode || 'live');
-    if (mode === 'live') {
-      const f = normalizeWorldInfoFileName(pickBlueIndexFileName());
-      if (f) tasks.push(ensureWorldInfoFileExists(f, { reason, kind: 'blue_index' }));
-    }
-  } catch { /* ignore */ }
-
-  if (!tasks.length) return { ok: false, reason: 'no_tasks' };
-  const settled = await Promise.allSettled(tasks);
-  return { ok: settled.some(x => x.status === 'fulfilled' && x.value?.ok), settled };
-}
-
 
 async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = null) {
   const s = ensureSettings();
@@ -2248,7 +2083,6 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
 
   const t = String(target || 'file');
   const f0 = String(file || '').trim();
-  const f = normalizeWorldInfoFileName(f0);
 
   // Decide keywords for the entry
   const keyValue = (keyMode === 'indexId' && indexId)
@@ -2258,7 +2092,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const constantVal = (Number(constant) === 1) ? 1 : 0;
 
   // Resolve target file name
-  let fileName = f;
+  let fileName = f0;
   if (t === 'chatbook') {
     const out = await execSlash('/getchatbook');
     // Most ST builds return {pipe:"<name>", ...}
@@ -2531,7 +2365,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
     if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
-      ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('app_ready', entries).catch(() => void 0); }).catch(() => void 0);
+      ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
     }
 
     if (created <= 0) {
@@ -3135,6 +2969,32 @@ function attachToggleHandler(boxEl, mesKey) {
   });
 }
 
+
+
+function ensureFirstModuleCardBottomBtn(boxEl) {
+  try {
+    if (!boxEl) return;
+    const li = boxEl.querySelector('.sg-inline-body > ul > li');
+    if (!li) return;
+    if (li.querySelector('.sg-card-foot')) return;
+
+    const foot = document.createElement('div');
+    foot.className = 'sg-card-foot';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'menu_button sg-card-foot-btn';
+    btn.title = '收起/展开该模块';
+    btn.textContent = '▴ 收起';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      li.classList.toggle('sg-collapsed');
+    });
+    foot.appendChild(btn);
+    li.appendChild(foot);
+  } catch { /* ignore */ }
+}
+
 function createInlineBoxElement(mesKey, htmlInner, collapsed) {
   const box = document.createElement('div');
   box.className = 'sg-inline-box';
@@ -3152,6 +3012,7 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed) {
 
   setCollapsed(box, !!collapsed);
   attachToggleHandler(box, mesKey);
+  ensureFirstModuleCardBottomBtn(box);
   return box;
 }
 
@@ -3266,6 +3127,7 @@ function ensureInlineBoxPresent(mesKey) {
   if (existing) {
     setCollapsed(existing, !!cached.collapsed);
     attachToggleHandler(existing, mesKey);
+    ensureFirstModuleCardBottomBtn(existing);
     // 更新 body（有时候被覆盖成空壳）
     const body = existing.querySelector('.sg-inline-body');
     if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
@@ -4843,42 +4705,6 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
     updateSummaryManualRangeHint(false);
   });
 
-
-  // 启用开关时：立即为当前聊天创建/确保世界书文件（让绿灯/蓝灯文件立刻可见）
-  $('#sg_summaryToWorldInfo').on('change', () => {
-    try {
-      // 依赖 auto-save handler 先落盘 settings；这里只做 best-effort
-      if ($('#sg_summaryToWorldInfo').is(':checked')) ensurePerChatWorldbookFiles('toggle_green').catch(() => void 0);
-    } catch {}
-  });
-
-  $('#sg_summaryToBlueWorldInfo').on('change', () => {
-    try {
-      if ($('#sg_summaryToBlueWorldInfo').is(':checked')) ensurePerChatWorldbookFiles('toggle_blue').catch(() => void 0);
-    } catch {}
-  });
-
-  // 相关文件名/目标变更时（且已启用）：也做一次 ensure，避免首次写入失败
-  $('#sg_summaryWorldInfoTarget, #sg_summaryWorldInfoFile').on('change', () => {
-    try {
-      if ($('#sg_summaryToWorldInfo').is(':checked')) ensurePerChatWorldbookFiles('green_target_changed').catch(() => void 0);
-    } catch {}
-  });
-
-  $('#sg_summaryBlueWorldInfoFile').on('change', () => {
-    try {
-      if ($('#sg_summaryToBlueWorldInfo').is(':checked')) ensurePerChatWorldbookFiles('blue_file_changed').catch(() => void 0);
-    } catch {}
-  });
-
-  $('#sg_wiBlueIndexMode, #sg_wiBlueIndexFile').on('change', () => {
-    try {
-      // 只有实时读取模式才需要确保文件存在
-      const mode = String($('#sg_wiBlueIndexMode').val() || 'live');
-      if (mode === 'live') ensurePerChatWorldbookFiles('blue_index_changed').catch(() => void 0);
-    } catch {}
-  });
-
   $('#sg_refreshModels').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await refreshModels();
@@ -5739,19 +5565,12 @@ function setupEventListeners() {
   eventSource.on(event_types.APP_READY, () => {
     startObservers();
 
-    
-
-    // 每个聊天：确保绿/蓝世界书文件存在（让新文件自动“出现”）
-    ensurePerChatWorldbookFiles('app_ready').catch(() => void 0);
-// 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
+    // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
     ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
       inlineCache.clear();
-      
-      // 每次切换聊天：确保绿/蓝世界书文件存在
-      ensurePerChatWorldbookFiles('chat_changed').catch(() => void 0);
-scheduleReapplyAll('chat_changed');
+      scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
       ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
