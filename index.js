@@ -5777,8 +5777,8 @@ function createFloatingPanel() {
   document.body.appendChild(panel);
 
   // Restore position (Only on Desktop/Large screens)
-  // On mobile (< 600px wide), we rely on CSS defaults (bottom sheet style) to ensure visibility
-  if (window.innerWidth >= 600) {
+  // On mobile/tablets (< 1200px wide), we rely on CSS defaults (bottom sheet style) to ensure visibility
+  if (window.innerWidth >= 1200) {
     loadFloatingPanelPos();
     if (sgFloatingPinnedPos) {
       const w = panel.offsetWidth || 300;
