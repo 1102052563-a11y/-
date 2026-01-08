@@ -1449,7 +1449,7 @@ body.sg-zoom-lock {
     width: 48px;
     height: 48px;
     font-size: 22px;
-    z-index: 20000;
+    z-index: 2147483640;
   }
 
   .sg-floating-panel {
@@ -1459,7 +1459,7 @@ body.sg-zoom-lock {
     width: auto;
     max-width: none;
     max-height: 60vh;
-    z-index: 20001;
+    z-index: 2147483641;
   }
 }
 
