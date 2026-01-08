@@ -5698,10 +5698,17 @@ function createFloatingButton() {
   // Mobile: Simple Click Mode
   if (isMobile) {
     btn.style.cursor = 'pointer';
+    btn.style.touchAction = 'auto'; // CRITICAL: Allow native clicks!
     btn.onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
-      toggleFloatingPanel();
+      try {
+        console.log('Mobile click detected');
+        toggleFloatingPanel();
+      } catch (err) {
+        alert('Error opening panel: ' + err.message);
+        console.error(err);
+      }
     };
     return; // SKIP desktop logic
   }
