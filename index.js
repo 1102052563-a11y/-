@@ -5654,7 +5654,8 @@ function saveBtnPos(left, top) {
 }
 
 function createFloatingButton() {
-  if (document.getElementById('sg_floating_btn')) return;
+  const existingBtn = document.getElementById('sg_floating_btn');
+  if (existingBtn) existingBtn.remove(); // Force refresh to clear old listeners
 
   const btn = document.createElement('div');
   btn.id = 'sg_floating_btn';
