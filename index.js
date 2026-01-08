@@ -5971,6 +5971,57 @@ function updateFloatingPanelBody(html) {
 
 // -------------------- init --------------------
 
+// -------------------- fixed input button --------------------
+function injectFixedInputButton() {
+  if (document.getElementById('sg_fixed_input_btn')) return;
+
+  // Try to find the button row above the input. 
+  // In many ST themes/versions, this is a flex container with class .bg5 or similar, 
+  // or checks for #chat_input_audit_buttons / #quick-reply-container
+  // The screenshot shows it's likely the "Extension Controls" or "Quick Reply" area.
+  // We'll try a few common selectors.
+
+  // Strategy: Find the "Roll" button or similar if possible, or just append to the container.
+  // Common selector for that row: #chat_input_audit_buttons (often used for extra buttons)
+  // Or: .quick-reply-container
+
+  let container = document.getElementById('chat_input_audit_buttons') ||
+    document.querySelector('.quick-reply-container') ||
+    document.getElementById('form_chat_buttons'); // sometimes used
+
+  if (!container) {
+    // Fallback: try to find the textarea wrapper
+    const textarea = document.getElementById('send_but_sheld'); // yes, typo in ST source often
+    if (textarea) container = textarea.parentElement;
+  }
+
+  if (!container) return; // Can't find safe place
+
+  const btn = document.createElement('div');
+  btn.id = 'sg_fixed_input_btn';
+  // Use styling that mimics ST buttons (often .menu_button or just div with pointer)
+  // The screenshot shows dark buttons with border. We'll use a generic class that fits.
+  btn.className = 'menu_button';
+  btn.style.display = 'inline-block';
+  btn.style.cursor = 'pointer';
+  btn.style.marginRight = '5px';
+  btn.style.padding = '5px 10px';
+  btn.innerHTML = '📘 剧情';
+  btn.title = '打开剧情指导悬浮窗';
+
+  btn.addEventListener('click', () => {
+    toggleFloatingPanel();
+  });
+
+  // Prepend or append? The user pointed to a specific gap. Prepend is usually safer to be seen.
+  // Or if there are existing children, try to insert at start.
+  if (container.firstChild) {
+    container.insertBefore(btn, container.firstChild);
+  } else {
+    container.appendChild(btn);
+  }
+}
+
 function init() {
   ensureSettings();
   setupEventListeners();
@@ -5988,6 +6039,7 @@ function init() {
     installCardZoomDelegation();
     installQuickOptionsClickHandler();
     createFloatingButton();
+    injectFixedInputButton();
   });
 
   globalThis.StoryGuide = {
