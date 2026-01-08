@@ -5686,15 +5686,16 @@ function createFloatingButton() {
     btn.style.left = 'auto';
   }
 
-  // Drag logic
+  // --- Unified Interaction Logic ---
+  const isMobile = window.innerWidth < 1200;
+
+  // Variables or drag
   let dragging = false;
   let startX = 0, startY = 0, startLeft = 0, startTop = 0;
   let moved = false;
-  let longPressTimer = null;
+  let longPressTimer = null; // Legacy
 
-  // Check for mobile/tablet to simplify interaction
-  const isMobile = window.innerWidth < 1200;
-
+  // Mobile: Simple Click Mode
   if (isMobile) {
     btn.style.cursor = 'pointer';
     btn.onclick = (e) => {
@@ -5702,8 +5703,7 @@ function createFloatingButton() {
       e.preventDefault();
       toggleFloatingPanel();
     };
-    // Return early to skip adding pointer listeners
-    return;
+    return; // SKIP desktop logic
   }
   // Desktop logic continues below...
 
