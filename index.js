@@ -5943,7 +5943,9 @@ async function refreshFloatingPanelContent() {
     updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
 
     // 渲染内容
-    const md = renderReportMarkdownFromModules(mergedParsed, modules);
+    // Filter out quick_actions from main Markdown body to avoid duplication
+    const bodyModules = modules.filter(m => m.key !== 'quick_actions');
+    const md = renderReportMarkdownFromModules(mergedParsed, bodyModules);
     const html = renderMarkdownToHtml(md);
 
     // 添加快捷选项

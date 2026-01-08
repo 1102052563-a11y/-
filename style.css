@@ -1463,8 +1463,24 @@ body.sg-zoom-lock {
   }
 }
 
+/* Allow resizing and scrolling for panel */
+.sg-floating-panel {
+  resize: both;
+  overflow: hidden;
+  /* Handle content overflow via body scrolling */
+  min-width: 200px;
+  min-height: 150px;
+}
+
+/* Ensure body takes available space */
+.sg-floating-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
 /* Zoom/Collapse styles for floating panel items */
-.sg-floating-body ul {
+.sg-floating-body ul,
+.sg-floating-body ol {
   padding-left: 0;
   list-style: none;
   display: flex;
@@ -1473,7 +1489,8 @@ body.sg-zoom-lock {
   margin: 0;
 }
 
-.sg-floating-body ul>li {
+.sg-floating-body ul>li,
+.sg-floating-body ol>li {
   padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.10);
