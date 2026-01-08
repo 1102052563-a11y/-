@@ -246,7 +246,6 @@ const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
   summaryMeta: 'storyguide_summary_meta',
-  chatbookBound: 'storyguide_chatbook_bound',
 });
 
 let lastReport = null;
@@ -428,28 +427,6 @@ function setStatus(text, kind = '') {
   $s.removeClass('ok err warn').addClass(kind || '');
   $s.text(text || '');
 }
-
-
-function sgNotify(msg, type = 'info') {
-  const text = String(msg || '').trim();
-  if (!text) return;
-
-  // Prefer SillyTavern's toastr if available
-  try {
-    const ctx = (typeof SillyTavern !== 'undefined' && SillyTavern?.getContext) ? SillyTavern.getContext() : null;
-    const toastr = ctx?.toastr || window?.toastr;
-    const map = { ok: 'success', success: 'success', info: 'info', warn: 'warning', warning: 'warning', err: 'error', error: 'error' };
-    const method = map[String(type || 'info').toLowerCase()] || 'info';
-    if (toastr && typeof toastr[method] === 'function') {
-      toastr[method](text, 'StoryGuide');
-      return;
-    }
-  } catch { /* ignore */ }
-
-  // Fallback: blocking popup
-  try { window.alert(text); } catch { /* ignore */ }
-}
-
 
 function updateButtonsEnabled() {
   const ok = Boolean(lastReport?.markdown);
@@ -691,9 +668,6 @@ function pickBlueIndexFileName() {
   if (explicit) return explicit;
   const fromBlueWrite = String(s.summaryBlueWorldInfoFile || '').trim();
   if (fromBlueWrite) return fromBlueWrite;
-  // auto-mode may leave settings blank; use last live cache file if available
-  const fromCache = String(blueIndexLiveCache?.file || '').trim();
-  if (fromCache) return fromCache;
   // 最后兜底：若用户把蓝灯索引建在绿灯同文件里，也能读到（不推荐，但不阻断）
   const fromGreen = String(s.summaryWorldInfoFile || '').trim();
   return fromGreen;
@@ -839,120 +813,21 @@ function stripCommentPrefixFromTitle(title, prefix) {
   return t;
 }
 
-// ---- chatbook / per-chat worldbook helpers ----
-
-function sanitizeWorldInfoFileBase(name) {
-  // WorldInfo 文件名一般允许中文/空格，但避免路径分隔符等危险字符。
-  return String(name || '')
-    .trim()
-    .replace(/\.json$/i, '')
-    .replace(/[\\/<>:"|?*]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function makeAutoWorldInfoFileName(baseName, kind) {
-  const base = sanitizeWorldInfoFileBase(baseName);
-  if (!base) return '';
-  const k = String(kind || '').toLowerCase();
-  const suffix = (k === 'blue' || k === 'blue_write')
-    ? '__SG_BLUE'
-    : (k === 'blue_index')
-      ? '__SG_BLUE_INDEX'
-      : '__SG_GREEN';
-  // avoid double suffix
-  if (base.endsWith(suffix)) return normalizeWorldInfoFileName(base);
-  return normalizeWorldInfoFileName(`${base}${suffix}`);
-}
-
-
-function applyChatTemplate(name, chatName) {
-  const raw = String(name || '').trim();
-  if (!raw) return '';
-  const cn = String(chatName || '').trim();
-  if (!cn) return raw;
-  // Support a couple of common placeholders
-  return raw
-    .replace(/\{\{\s*chat\s*\}\}/gi, cn)
-    .replace(/\{\{\s*chatname\s*\}\}/gi, cn)
-    .replace(/\$\{\s*chat\s*\}/gi, cn)
-    .replace(/\$\{\s*chatname\s*\}/gi, cn);
-}
-
-
-// Best-effort: get current chat's chatbook worldinfo file name.
-async function getChatbookFileNameBySlashCompat() {
-  try {
-    const out = await execSlash('/getchatbook');
-    let name = '';
-    if (out && typeof out === 'object' && Object.hasOwn(out, 'pipe')) name = String(out.pipe ?? '').trim();
-    if (!name) name = String(slashOutputToText(out) || '').trim();
-    if (name === '[object Object]') name = '';
-    return normalizeWorldInfoFileName(name || '');
-  } catch {
-    return '';
-  }
-}
-
-
-// Best-effort: get current chat name (chat file base name) from ST via slash.
-// This is usually unique per chat (e.g. characterName - A-002 ...).
-async function getChatNameBySlashCompat() {
-  try {
-    const out = await execSlash('/getchatname');
-    let name = '';
-    if (out && typeof out === 'object' && Object.hasOwn(out, 'pipe')) name = String(out.pipe ?? '').trim();
-    if (!name) name = String(slashOutputToText(out) || '').trim();
-    if (name === '[object Object]') name = '';
-    name = String(name || '').trim().replace(/\.json$/i, '');
-    return name;
-  } catch {
-    return '';
-  }
-}
-
-
-// 蓝灯（写入/索引用）世界书文件名：
-// - 用户填写了就用填写的
-// - 否则自动按 chatbook 派生：<chatbook>__SG_BLUE
-async function resolveBlueWorldInfoFileName() {
-  const s = ensureSettings();
-  const chatName = await getChatNameBySlashCompat();
-
-  const raw = String(s.summaryBlueWorldInfoFile || '').trim();
-  if (raw) return normalizeWorldInfoFileName(applyChatTemplate(raw, chatName));
-
-  // 自动命名（用户没填）：优先按 chatname 派生，确保每个聊天唯一
-  if (chatName) return makeAutoWorldInfoFileName(chatName, 'blue');
-
-  // 兜底：按 chatbook 派生
-  const chatbook = await getChatbookFileNameBySlashCompat();
-  if (chatbook) return makeAutoWorldInfoFileName(chatbook, 'blue');
-
-  return '';
-}
-
 async function resolveGreenWorldInfoFileName() {
   const s = ensureSettings();
   const t = String(s.summaryWorldInfoTarget || 'chatbook');
   const f = String(s.summaryWorldInfoFile || '').trim();
-  const chatName = await getChatNameBySlashCompat();
-
-  if (t === 'file') {
-    if (f) return normalizeWorldInfoFileName(applyChatTemplate(f, chatName));
-
-    // 自动命名（用户没填 file）：优先按 chatname 派生，确保每个聊天唯一
-    if (chatName) return makeAutoWorldInfoFileName(chatName, 'green');
-
-    // 兜底：按 chatbook 派生
-    const chatbook = await getChatbookFileNameBySlashCompat();
-    if (chatbook) return makeAutoWorldInfoFileName(chatbook, 'green');
-
-    return '';
-  }
+  if (t === 'file') return normalizeWorldInfoFileName(f);
 
   // chatbook: ask ST to ensure binding and give us the file name
-  return await getChatbookFileNameBySlashCompat();
+  try {
+    const out = await execSlash('/getchatbook');
+    const name = String(out?.pipe ?? '').trim();
+    return normalizeWorldInfoFileName(name || '');
+  } catch (e) {
+    console.warn('[StoryGuide] resolve chatbook file failed:', e);
+    return '';
+  }
 }
 
 async function getWorldInfoEntryCountSafe(fileName) {
@@ -977,7 +852,6 @@ function normalizeWorldInfoFileName(name) {
 const WORLDINFO_ENSURE_TTL_MS = 10 * 60 * 1000; // 10min
 const worldInfoEnsureOkAt = new Map();          // name -> ts
 const worldInfoEnsureInflight = new Map();      // name -> Promise<{ok:boolean,...}>
-const worldInfoCreateNotified = new Set();      // name -> already notified
 
 async function postJsonOkCompat(url, body) {
   const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
@@ -1089,13 +963,6 @@ async function ensureWorldInfoFileExists(fileName, opts = {}) {
     try { await fetchWorldInfoFileJsonCompat(name); } catch { /* ignore */ }
 
     worldInfoEnsureOkAt.set(name, Date.now());
-    try {
-      if (!worldInfoCreateNotified.has(name)) {
-        worldInfoCreateNotified.add(name);
-        const kind = String(opts?.kind || '').trim();
-        sgNotify(`已自动创建世界书文件：${name}${kind ? `（${kind}）` : ''}`,'success');
-      }
-    } catch { /* ignore */ }
     return { ok: true, existed: false, created: true };
   })().finally(() => worldInfoEnsureInflight.delete(name));
 
@@ -1119,26 +986,15 @@ async function ensurePerChatWorldbookFiles(reason = '') {
 
   // 蓝灯（总结写入）
   if (s.summaryToBlueWorldInfo) {
-    try {
-      const blue = await resolveBlueWorldInfoFileName();
-      const b = normalizeWorldInfoFileName(String(blue || '').trim());
-      if (b) tasks.push(ensureWorldInfoFileExists(b, { reason, kind: 'blue' }));
-    } catch { /* ignore */ }
+    const b = normalizeWorldInfoFileName(String(s.summaryBlueWorldInfoFile || '').trim());
+    if (b) tasks.push(ensureWorldInfoFileExists(b, { reason, kind: 'blue' }));
   }
 
   // 蓝灯索引（实时读取/缓存文件名）
   try {
     const mode = String(s.wiBlueIndexMode || 'live');
     if (mode === 'live') {
-      let f = normalizeWorldInfoFileName(String(s.wiBlueIndexFile || '').trim());
-      if (!f) f = normalizeWorldInfoFileName(String(s.summaryBlueWorldInfoFile || '').trim());
-      if (!f) {
-        try {
-          const autoBlue = await resolveBlueWorldInfoFileName();
-          f = normalizeWorldInfoFileName(String(autoBlue || '').trim());
-        } catch { /* ignore */ }
-      }
-      if (!f) f = normalizeWorldInfoFileName(pickBlueIndexFileName());
+      const f = normalizeWorldInfoFileName(pickBlueIndexFileName());
       if (f) tasks.push(ensureWorldInfoFileExists(f, { reason, kind: 'blue_index' }));
     }
   } catch { /* ignore */ }
@@ -1147,150 +1003,6 @@ async function ensurePerChatWorldbookFiles(reason = '') {
   const settled = await Promise.allSettled(tasks);
   return { ok: settled.some(x => x.status === 'fulfilled' && x.value?.ok), settled };
 }
-
-// -------------------- per-chat worldbook ensure (chat switch safe) --------------------
-
-// Track chat switches to avoid running ensure on an old chat after user quickly switches again.
-let lastKnownChatNameForEnsure = '';
-let chatSwitchEnsureToken = 0;
-let lastKnownChatbookFileForEnsure = '';
-
-
-function sleepMs(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-// Best-effort: get current chat file name (chat name) from ST via slash.
-// Uses /getchatname, which is widely available in STscript command set.
-async function getCurrentChatNameBySlashCompat() {
-  try {
-    const out = await execSlash('/getchatname');
-    let name = '';
-    if (out && typeof out === 'object' && Object.hasOwn(out, 'pipe')) name = String(out.pipe ?? '').trim();
-    if (!name) name = String(slashOutputToText(out) || '').trim();
-    if (name === '[object Object]') name = '';
-    name = String(name || '').trim().replace(/\.json$/i, '');
-    return name;
-  } catch {
-    return '';
-  }
-}
-
-
-async function bindChatbookToNameBySlashCompat(fileName) {
-  const name = normalizeWorldInfoFileName(fileName);
-  if (!name) return '';
-  try {
-    const out = await execSlash(`/getchatbook name="${slashQuote(name)}"`);
-    let got = '';
-    if (out && typeof out === 'object' && Object.hasOwn(out, 'pipe')) got = String(out.pipe ?? '').trim();
-    if (!got) got = String(slashOutputToText(out) || '').trim();
-    if (got === '[object Object]') got = '';
-    return normalizeWorldInfoFileName(got || name);
-  } catch {
-    return '';
-  }
-}
-
-// If green target is "chatbook", try to ensure the chat-bound lorebook is UNIQUE per chat.
-// Heuristic: when switching chats, if /getchatbook returns the same file as the previous chat,
-// we bind it to <chatname>__SG_GREEN using /getchatbook name="...".
-async function ensureChatbookBoundForCurrentChat(chatName, reason = '') {
-  const s = ensureSettings();
-  if (!s.summaryToWorldInfo) return { ok: false, reason: 'disabled' };
-  const target = String(s.summaryWorldInfoTarget || 'chatbook');
-  if (target !== 'chatbook') return { ok: false, reason: 'not_chatbook' };
-
-  const cn = String(chatName || '').trim();
-  if (!cn) return { ok: false, reason: 'no_chat_name' };
-
-  const desired = makeAutoWorldInfoFileName(cn, 'green');
-  if (!desired) return { ok: false, reason: 'no_desired' };
-
-  // per-chat meta: if we already recorded a bound book for THIS chat, don't touch again
-  const meta = String(getChatMetaValue(META_KEYS.chatbookBound) || '').trim();
-  if (meta) {
-    lastKnownChatbookFileForEnsure = meta;
-    return { ok: true, skipped: true, file: meta };
-  }
-
-  const prev = String(lastKnownChatbookFileForEnsure || '').trim();
-  const cur = await getChatbookFileNameBySlashCompat();
-
-  const shouldRebind = (!cur) || (prev && cur === prev && desired !== cur);
-  if (!shouldRebind) {
-    try { await setChatMetaValue(META_KEYS.chatbookBound, cur || ''); } catch { /* ignore */ }
-    lastKnownChatbookFileForEnsure = cur || prev;
-    return { ok: true, kept: true, file: cur };
-  }
-
-  const bound = await bindChatbookToNameBySlashCompat(desired);
-  if (bound) {
-    try { await setChatMetaValue(META_KEYS.chatbookBound, bound); } catch { /* ignore */ }
-    lastKnownChatbookFileForEnsure = bound;
-    sgNotify(`已为本聊天绑定世界书：${bound}`, 'success');
-    return { ok: true, bound: true, file: bound, previous: cur, reason };
-  }
-
-  // Older ST without "name" argument support: keep current
-  try { if (cur) await setChatMetaValue(META_KEYS.chatbookBound, cur); } catch { /* ignore */ }
-  lastKnownChatbookFileForEnsure = cur || prev;
-  return { ok: false, reason: 'bind_failed', file: cur || '' };
-}
-
-
-// Run per-chat ensure AFTER chat is actually active/loaded.
-// Some ST builds fire CHAT_CHANGED early; this waits until /getchatname changes,
-// then retries ensure a few times so /getchatbook has a chance to bind/create.
-async function ensurePerChatWorldbookFilesAfterChatLoaded(reason = '') {
-  const token = ++chatSwitchEnsureToken;
-  const prev = String(lastKnownChatNameForEnsure || '').trim();
-
-  // Wait for chat name to become available and (ideally) change.
-  const start = Date.now();
-  let name = '';
-  while ((Date.now() - start) < 3500) {
-    if (token !== chatSwitchEnsureToken) return { ok: false, reason: 'superseded' };
-    name = await getCurrentChatNameBySlashCompat();
-    if (name && (!prev || name !== prev)) break;
-    await sleepMs(220);
-  }
-  if (name) lastKnownChatNameForEnsure = name;
-
-  // If green target uses chatbook, try to bind to a per-chat unique book name.
-  await ensureChatbookBoundForCurrentChat(name, reason).catch(() => void 0);
-
-
-  // Retry ensure: in some builds, chatbook binding is set slightly later.
-  let last = null;
-  for (let i = 0; i < 5; i++) {
-    if (token !== chatSwitchEnsureToken) return { ok: false, reason: 'superseded' };
-    last = await ensurePerChatWorldbookFiles(reason ? `${reason}_stable` : 'stable')
-      .catch((e) => ({ ok: false, reason: String(e?.message ?? e) }));
-
-    if (last?.ok) return last;
-
-    // If we couldn't even resolve tasks (likely chatbook name not ready), retry.
-    if (last?.reason === 'no_tasks' || !last) {
-      await sleepMs(250 + i * 250);
-      continue;
-    }
-
-    // Create may have failed transiently; do a couple more quick retries.
-    await sleepMs(300 + i * 250);
-  }
-
-  if (!(last?.ok)) {
-    try {
-      const why = String(last?.reason || '').trim() || 'unknown';
-      sgNotify(`StoryGuide：自动创建/确保世界书未成功（${reason}）：${why}`,'warning');
-    } catch { /* ignore */ }
-  }
-
-  return last ?? { ok: false, reason: 'unknown' };
-}
-
-
 
 
 async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = null) {
@@ -1314,9 +1026,7 @@ async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = nu
 
   // 3) Fallback to loading from blue world info file
   if (!blueItems || !blueItems.length) {
-    let blueFile = String(s.wiBlueIndexFile || '').trim() || String(s.summaryBlueWorldInfoFile || '').trim();
-    if (!blueFile) blueFile = await resolveBlueWorldInfoFileName().catch(() => '');
-    if (!blueFile) blueFile = pickBlueIndexFileName();
+    const blueFile = pickBlueIndexFileName(); // wiBlueIndexFile || summaryBlueWorldInfoFile
     if (!blueFile) return { repaired: false, reason: 'no_blue_source' };
     try {
       const json = await fetchWorldInfoFileJsonCompat(blueFile);
@@ -1390,13 +1100,7 @@ async function ensureBlueIndexLive(force = false) {
     return arr;
   }
 
-
-  // Prefer explicit config; if empty, auto-derive from chatbook (<chatbook>__SG_BLUE).
-  let file = String(s.wiBlueIndexFile || '').trim();
-  if (!file) file = String(s.summaryBlueWorldInfoFile || '').trim();
-  if (!file) file = await resolveBlueWorldInfoFileName().catch(() => '');
-  if (!file) file = String(s.summaryWorldInfoFile || '').trim();
-  file = normalizeWorldInfoFileName(file);
+  const file = pickBlueIndexFileName();
   if (!file) return [];
 
   const minSec = clampInt(s.wiBlueIndexMinRefreshSec, 5, 600, 20);
@@ -2561,11 +2265,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
     if (out && typeof out === 'object' && Object.hasOwn(out, 'pipe')) fileName = String(out.pipe || '').trim();
     if (!fileName) fileName = String(slashOutputToText(out) || '').trim();
   } else {
-    if (!fileName) {
-      const base = await getChatbookFileNameBySlashCompat();
-      if (base) fileName = makeAutoWorldInfoFileName(base, (constantVal === 1) ? 'blue' : 'green');
-      else throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名（且无法获取 chatbook 作为自动命名基底）。');
-    }
+    if (!fileName) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
   }
 
   // Slash commands usually want the base name (without .json)
@@ -2813,7 +2513,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           try {
             await writeSummaryToWorldInfoEntry(rec, meta, {
               target: 'file',
-              file: await resolveBlueWorldInfoFileName(),
+              file: String(s.summaryBlueWorldInfoFile || ''),
               commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
               constant: 1,
             });
@@ -5222,10 +4922,9 @@ $('#sg_wiIndexModelSelect').on('change', () => {
         setStatus('当前为“缓存”模式：不会实时读取（可切换为“实时读取蓝灯世界书”）', 'warn');
         return;
       }
-      let file = String(s.wiBlueIndexFile || '').trim() || String(s.summaryBlueWorldInfoFile || '').trim();
-      if (!file) file = await resolveBlueWorldInfoFileName().catch(() => '');
+      const file = pickBlueIndexFileName();
       if (!file) {
-        setStatus('蓝灯世界书文件名为空：请在“蓝灯索引”里填写文件名，或开启“同时写入蓝灯世界书”（可留空自动按聊天创建）', 'err');
+        setStatus('蓝灯世界书文件名为空：请在“蓝灯索引”里填写文件名，或在“同时写入蓝灯世界书”里填写文件名', 'err');
         return;
       }
       const entries = await ensureBlueIndexLive(true);
@@ -6043,7 +5742,7 @@ function setupEventListeners() {
     
 
     // 每个聊天：确保绿/蓝世界书文件存在（让新文件自动“出现”）
-    ensurePerChatWorldbookFilesAfterChatLoaded('app_ready').catch(() => void 0);
+    ensurePerChatWorldbookFiles('app_ready').catch(() => void 0);
 // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
     ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
 
@@ -6051,7 +5750,7 @@ function setupEventListeners() {
       inlineCache.clear();
       
       // 每次切换聊天：确保绿/蓝世界书文件存在
-      ensurePerChatWorldbookFilesAfterChatLoaded('chat_changed').catch(() => void 0);
+      ensurePerChatWorldbookFiles('chat_changed').catch(() => void 0);
 scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
       ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
