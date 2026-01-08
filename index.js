@@ -3868,7 +3868,6 @@ function clearLegacyZoomArtifacts() {
 }
 
 function installCardZoomDelegation() {
-  // keep old function name for compatibility, but behavior is now "click to shrink/expand"
   if (window.__storyguide_card_toggle_installed) return;
   window.__storyguide_card_toggle_installed = true;
 
@@ -3876,23 +3875,56 @@ function installCardZoomDelegation() {
 
   document.addEventListener('click', (e) => {
     const target = e.target;
-
     // don't hijack interactive elements
     if (target.closest('a, button, input, textarea, select, label')) return;
 
-    const card = target.closest('.sg-inline-body > ul > li, .sg-floating-body ul > li');
-    if (!card) return;
+    // Handle Title Click -> Collapse Section
+    // Target headers h1-h6 inside floating or inline body
+    // We strictly look for headers that are direct children or wrapped in simple divs of the body
+    const header = target.closest('.sg-floating-body h1, .sg-floating-body h2, .sg-floating-body h3, .sg-floating-body h4, .sg-floating-body h5, .sg-floating-body h6, .sg-inline-body h1, .sg-inline-body h2, .sg-inline-body h3, .sg-inline-body h4, .sg-inline-body h5, .sg-inline-body h6');
 
-    // if user is selecting text, don't toggle
-    try {
-      const sel = window.getSelection();
-      if (sel && String(sel).trim().length > 0) return;
-    } catch { /* ignore */ }
+    if (header) {
+      e.preventDefault();
+      e.stopPropagation();
 
-    e.preventDefault();
-    e.stopPropagation();
+      // Find the next sibling that is usually the content (ul, p, or div)
+      let next = header.nextElementSibling;
+      let handled = false;
 
-    card.classList.toggle('sg-collapsed');
+      // Toggle class on header for styling (arrow)
+      header.classList.toggle('sg-section-collapsed');
+
+      while (next) {
+        // Stop if we hit another header of same or higher level, or if end of container
+        const tag = next.tagName.toLowerCase();
+        if (/^h[1-6]$/.test(tag)) break;
+
+        // Toggle visibility
+        if (next.style.display === 'none') {
+          next.style.display = '';
+        } else {
+          next.style.display = 'none';
+        }
+
+        next = next.nextElementSibling;
+        handled = true;
+      }
+      return;
+    }
+
+    // Fallback: If inline cards still need collapsing (optional, keeping for compatibility if user wants inline msg boxes to toggle)
+    const card = target.closest('.sg-inline-body > ul > li');
+    if (card) {
+      // Check selection
+      try {
+        const sel = window.getSelection();
+        if (sel && String(sel).trim().length > 0) return;
+      } catch { /* ignore */ }
+
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.toggle('sg-collapsed');
+    }
   }, true);
 }
 
@@ -5645,9 +5677,13 @@ function createFloatingButton() {
     btn.style.bottom = 'auto';
     btn.style.right = 'auto';
   } else {
-    // User requested "move to chat box". We can't easily find "chat box" coordinates in fixed mode reliably across themes,
-    // but we can set a better default for mobile.
-    // However, CSS handles the default. JS only overrides if saved.
+    // Default safe position for mobile/desktop if never moved
+    // Use top positioning to avoid bottom bar interference on mobile/desktop
+    // Mobile browsers often have dynamic bottom bars, so "bottom" is risky.
+    btn.style.top = '150px';
+    btn.style.right = '16px';
+    btn.style.bottom = 'auto'; // override CSS
+    btn.style.left = 'auto';
   }
 
   // Drag logic
