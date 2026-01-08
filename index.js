@@ -267,6 +267,7 @@ let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
 let greenResetTimer = null;
 let greenResetInFlight = null;
 let greenResetPending = false;
+const ensuredWorldInfoFiles = new Map();
 
 // ============== 关键：DOM 追加缓存 & 观察者（抗重渲染） ==============
 /**
@@ -450,6 +451,84 @@ function ensurePerChatWorldInfoFiles() {
   }
 
   return { green, blue };
+}
+
+async function ensureWorldInfoFileExists(fileName) {
+  const name = normalizeWorldInfoBaseName(fileName);
+  if (!name) return { ok: false, created: false, reason: 'empty' };
+  if (ensuredWorldInfoFiles.has(name)) return { ok: true, created: ensuredWorldInfoFiles.get(name) };
+
+  try {
+    await fetchWorldInfoFileJsonCompat(name);
+    ensuredWorldInfoFiles.set(name, false);
+    return { ok: true, created: false };
+  } catch {
+    // continue to create
+  }
+
+  const createRequests = [
+    { url: '/api/worldinfo/create', body: { name } },
+    { url: '/api/worldinfo/create', body: { file: name } },
+    { url: '/api/worldinfo/create', body: { filename: name } },
+    { url: '/api/worldinfo/new', body: { name } },
+    { url: '/api/worldinfo/new', body: { file: name } },
+    { url: '/api/worldinfo/add', body: { name } },
+    { url: '/api/worldinfo/save', body: { name, entries: [] } },
+    { url: '/api/worldinfo/save', body: { file: name, entries: [] } },
+    { url: '/api/worldinfo/update', body: { name, entries: [] } },
+  ];
+
+  for (const req of createRequests) {
+    try {
+      await fetchJsonCompat(req.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body),
+      });
+      break;
+    } catch {
+      // try next
+    }
+  }
+
+  const slashCmds = [
+    `/createworldinfo ${quoteSlashValue(name)}`,
+    `/createworldbook ${quoteSlashValue(name)}`,
+    `/createlorebook ${quoteSlashValue(name)}`,
+  ];
+  for (const cmd of slashCmds) {
+    try {
+      const out = await execSlash(cmd);
+      if (!isSlashError(out)) break;
+    } catch {
+      // try next
+    }
+  }
+
+  try {
+    await fetchWorldInfoFileJsonCompat(name);
+    ensuredWorldInfoFiles.set(name, true);
+    return { ok: true, created: true };
+  } catch {
+    return { ok: false, created: false, reason: 'create_failed' };
+  }
+}
+
+async function ensurePerChatWorldInfoFilesCreated(reason = '') {
+  const s = ensureSettings();
+  if (!s.summaryWorldInfoPerChat) return null;
+  const files = ensurePerChatWorldInfoFiles();
+  if (!files?.green || !files?.blue) return null;
+  const targets = [files.green, files.blue];
+  try {
+    await Promise.allSettled(targets.map((name) => ensureWorldInfoFileExists(name)));
+  } catch {
+    // ignore
+  }
+  if (reason) {
+    console.log(`[StoryGuide] ensured per-chat worldbooks (${reason}): ${targets.join(', ')}`);
+  }
+  return files;
 }
 
 // -------------------- summary meta (per chat) --------------------
@@ -4859,6 +4938,7 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
     saveSettings();
     updateSummaryWorldInfoControls();
     updateBlueIndexInfoLabel();
+    ensurePerChatWorldInfoFilesCreated('toggle').catch(() => void 0);
   });
 
   // summary key mode toggle (keywords vs indexId)
@@ -5830,6 +5910,7 @@ function setupEventListeners() {
 
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
     ensurePerChatWorldInfoFiles();
+    ensurePerChatWorldInfoFilesCreated('app_ready').catch(() => void 0);
     ensureBlueIndexLive(true).then((entries)=>{ scheduleGreenWorldInfoReset('app_ready', entries); }).catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
@@ -5837,6 +5918,7 @@ function setupEventListeners() {
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
       ensurePerChatWorldInfoFiles();
+      ensurePerChatWorldInfoFilesCreated('chat_changed').catch(() => void 0);
       ensureBlueIndexLive(true).then((entries)=>{ scheduleGreenWorldInfoReset('chat_changed', entries); }).catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
