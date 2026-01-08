@@ -257,6 +257,7 @@ let refreshTimer = null;
 let appendTimer = null;
 let summaryTimer = null;
 let isSummarizing = false;
+let greenSummarySyncInFlight = false;
 
 // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
 let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
@@ -814,6 +815,164 @@ function stripCommentPrefixFromTitle(title, prefix) {
   return t;
 }
 
+function normalizeWorldInfoJson(rawData) {
+  let data = rawData;
+  if (!data) return null;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { return null; }
+  }
+  for (let i = 0; i < 4; i++) {
+    if (!data || typeof data !== 'object') break;
+    const wrappers = ['data', 'world_info', 'worldInfo', 'lorebook', 'book', 'worldbook', 'worldBook', 'payload', 'result'];
+    let changed = false;
+    for (const k of wrappers) {
+      const v = data?.[k];
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (t && (t.startsWith('{') || t.startsWith('['))) {
+          try { data = JSON.parse(t); changed = true; break; } catch { /* ignore */ }
+        }
+      } else if (v && typeof v === 'object') {
+        if (v.entries || v.world_info || v.worldInfo || v.lorebook || v.items) {
+          data = v;
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  return data;
+}
+
+function extractWorldInfoEntriesRaw(worldInfoJson) {
+  const data = normalizeWorldInfoJson(worldInfoJson);
+  if (!data || typeof data !== 'object') return [];
+
+  const candidates = [
+    data?.entries,
+    data?.world_info?.entries,
+    data?.worldInfo?.entries,
+    data?.lorebook?.entries,
+    data?.lorebook?.items,
+    data?.items,
+    data?.world_info,
+    data?.worldInfo,
+    data?.lorebook,
+  ];
+
+  let entries = null;
+  for (const c of candidates) {
+    if (!c) continue;
+    if (Array.isArray(c) || typeof c === 'object') {
+      entries = c;
+      break;
+    }
+  }
+  if (!entries) return [];
+
+  const out = [];
+  if (Array.isArray(entries)) {
+    for (const e of entries) out.push({ entry: e, key: null });
+  } else {
+    for (const [k, v] of Object.entries(entries)) out.push({ entry: v, key: k });
+  }
+
+  return out
+    .map(({ entry, key }) => {
+      const raw = entry && typeof entry === 'object' ? entry : {};
+      let uid = raw.uid ?? raw.id ?? raw.entry_id ?? raw.entryId ?? raw.uid;
+      if (uid === undefined || uid === null) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) uid = Number.parseInt(key, 10);
+      }
+      if (typeof uid === 'string' && /^\d+$/.test(uid)) uid = Number.parseInt(uid, 10);
+      if (!Number.isFinite(uid)) uid = null;
+
+      const comment = String(raw.comment ?? raw.title ?? raw.name ?? '').trim();
+      const title = String(raw.title ?? raw.name ?? raw.comment ?? '').trim();
+      return {
+        uid,
+        comment,
+        title,
+        entry: raw,
+      };
+    })
+    .filter(x => x.entry && typeof x.entry === 'object');
+}
+
+function matchesSummaryPrefix(comment, title, prefix) {
+  const p = String(prefix || '').trim();
+  if (!p) return false;
+  const c = String(comment || '').trim();
+  const t = String(title || '').trim();
+  return (c && c.includes(p)) || (t && t.includes(p));
+}
+
+async function withGreenSummarySyncLock(task) {
+  if (greenSummarySyncInFlight) return { repaired: false, reason: 'busy' };
+  greenSummarySyncInFlight = true;
+  try {
+    return await task();
+  } finally {
+    greenSummarySyncInFlight = false;
+  }
+}
+
+async function clearGreenSummaryEntries(reason = '') {
+  const s = ensureSettings();
+  if (!s.summaryToWorldInfo) return { cleared: false, reason: 'disabled' };
+
+  const greenFile = await resolveGreenWorldInfoFileName();
+  if (!greenFile) return { cleared: false, reason: 'no_green_file' };
+
+  let json = null;
+  try {
+    json = await fetchWorldInfoFileJsonCompat(greenFile);
+  } catch (e) {
+    console.warn('[StoryGuide] clearGreenSummaryEntries: read green file failed:', e);
+    return { cleared: false, reason: 'green_read_failed' };
+  }
+
+  const greenPrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const entries = extractWorldInfoEntriesRaw(json);
+  const targets = entries.filter(e => matchesSummaryPrefix(e.comment, e.title, greenPrefix) && Number.isFinite(e.uid));
+
+  if (!targets.length) return { cleared: false, reason: 'no_targets' };
+
+  const fileName = String(greenFile || '').trim().replace(/\.json$/i, '');
+  let ok = 0;
+  let fail = 0;
+
+  for (const t of targets) {
+    const uid = t.uid;
+    if (!Number.isFinite(uid)) continue;
+    try {
+      const out = await execSlash(`/deleteentry file=${quoteSlashValue(fileName)} uid=${uid}`);
+      if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
+        throw new Error(`delete error: ${safeStringifyShort(out)}`);
+      }
+      ok += 1;
+    } catch (e) {
+      try {
+        const out2 = await execSlash(`/setentryfield file=${quoteSlashValue(fileName)} uid=${uid} field=disable 1`);
+        if (out2 && typeof out2 === 'object' && (out2.isError || out2.isAborted || out2.isQuietlyAborted)) {
+          throw new Error(`disable error: ${safeStringifyShort(out2)}`);
+        }
+        ok += 1;
+      } catch (e2) {
+        fail += 1;
+        console.warn('[StoryGuide] clearGreenSummaryEntries: remove failed:', e2);
+      }
+    }
+  }
+
+  if (ok > 0) {
+    console.log(`[StoryGuide] cleared green summary entries: ok=${ok} fail=${fail} reason=${reason}`);
+    return { cleared: true, ok, fail };
+  }
+  return { cleared: false, reason: 'none_removed' };
+}
+
 async function resolveGreenWorldInfoFileName() {
   const s = ensureSettings();
   const t = String(s.summaryWorldInfoTarget || 'chatbook');
@@ -831,6 +990,24 @@ async function resolveGreenWorldInfoFileName() {
   }
 }
 
+async function resolveBlueWorldInfoFileName() {
+  const s = ensureSettings();
+  const explicit = String(s.summaryBlueWorldInfoFile || '').trim();
+  if (explicit) return explicit;
+
+  if (s.summaryToBlueWorldInfo) {
+    try {
+      const out = await execSlash('/getchatbook');
+      const name = String(out?.pipe ?? '').trim() || String(slashOutputToText(out) || '').trim();
+      if (name) return name;
+    } catch {
+      // ignore
+    }
+  }
+
+  return pickBlueIndexFileName();
+}
+
 async function getWorldInfoEntryCountSafe(fileName) {
   try {
     const json = await fetchWorldInfoFileJsonCompat(fileName);
@@ -841,40 +1018,14 @@ async function getWorldInfoEntryCountSafe(fileName) {
   }
 }
 
-async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = null) {
+async function importGreenSummaryEntriesFromBlueItems(blueItems, reason = '') {
   const s = ensureSettings();
   if (!s.summaryToWorldInfo) return { repaired: false, reason: 'disabled' };
 
   const greenFile = await resolveGreenWorldInfoFileName();
   if (!greenFile) return { repaired: false, reason: 'no_green_file' };
 
-  const greenCount = await getWorldInfoEntryCountSafe(greenFile);
-  if (greenCount > 0) return { repaired: false, reason: 'not_empty' };
-
-  // 1) Prefer provided blue entries (already loaded)
-  let blueItems = Array.isArray(blueEntriesOverride) ? blueEntriesOverride : null;
-
-  // 2) Fallback to settings cache
-  if (!blueItems || !blueItems.length) {
-    const cached = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
-    if (cached.length) blueItems = cached;
-  }
-
-  // 3) Fallback to loading from blue world info file
-  if (!blueItems || !blueItems.length) {
-    const blueFile = pickBlueIndexFileName(); // wiBlueIndexFile || summaryBlueWorldInfoFile
-    if (!blueFile) return { repaired: false, reason: 'no_blue_source' };
-    try {
-      const json = await fetchWorldInfoFileJsonCompat(blueFile);
-      const prefix = String(s.summaryBlueWorldInfoCommentPrefix || '').trim();
-      blueItems = buildBlueIndexFromWorldInfoJson(json, prefix);
-    } catch (e) {
-      console.warn('[StoryGuide] repairGreen: read blue file failed:', e);
-      return { repaired: false, reason: 'blue_read_failed' };
-    }
-  }
-
-  if (!blueItems || !blueItems.length) return { repaired: false, reason: 'blue_empty' };
+  if (!Array.isArray(blueItems) || !blueItems.length) return { repaired: false, reason: 'blue_empty' };
 
   const greenPrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
 
@@ -916,7 +1067,7 @@ async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = nu
       ok += 1;
     } catch (e) {
       fail += 1;
-      console.warn('[StoryGuide] repairGreen: write failed:', e);
+      console.warn('[StoryGuide] import green from blue failed:', e);
     }
   }
 
@@ -927,8 +1078,48 @@ async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = nu
   return { repaired: false, reason: 'write_none' };
 }
 
+async function repairGreenWorldInfoIfEmpty(reason = '', blueEntriesOverride = null) {
+  return await withGreenSummarySyncLock(async () => {
+    const s = ensureSettings();
+    if (!s.summaryToWorldInfo) return { repaired: false, reason: 'disabled' };
 
-async function ensureBlueIndexLive(force = false) {
+    const greenFile = await resolveGreenWorldInfoFileName();
+    if (!greenFile) return { repaired: false, reason: 'no_green_file' };
+
+    const greenCount = await getWorldInfoEntryCountSafe(greenFile);
+    if (greenCount > 0) return { repaired: false, reason: 'not_empty' };
+
+    // 1) Prefer provided blue entries (already loaded)
+    let blueItems = Array.isArray(blueEntriesOverride) ? blueEntriesOverride : null;
+
+    // 2) Fallback to settings cache
+    if (!blueItems || !blueItems.length) {
+      const cached = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
+      if (cached.length) blueItems = cached;
+    }
+
+    // 3) Fallback to loading from blue world info file
+    if (!blueItems || !blueItems.length) {
+      const blueFile = await resolveBlueWorldInfoFileName();
+      if (!blueFile) return { repaired: false, reason: 'no_blue_source' };
+      try {
+        const json = await fetchWorldInfoFileJsonCompat(blueFile);
+        const prefix = String(s.summaryBlueWorldInfoCommentPrefix || '').trim();
+        blueItems = buildBlueIndexFromWorldInfoJson(json, prefix);
+      } catch (e) {
+        console.warn('[StoryGuide] repairGreen: read blue file failed:', e);
+        return { repaired: false, reason: 'blue_read_failed' };
+      }
+    }
+
+    if (!blueItems || !blueItems.length) return { repaired: false, reason: 'blue_empty' };
+
+    return await importGreenSummaryEntriesFromBlueItems(blueItems, reason);
+  });
+}
+
+
+async function ensureBlueIndexLive(force = false, options = {}) {
   const s = ensureSettings();
   const mode = String(s.wiBlueIndexMode || 'live');
   if (mode !== 'live') {
@@ -936,7 +1127,7 @@ async function ensureBlueIndexLive(force = false) {
     return arr;
   }
 
-  const file = pickBlueIndexFileName();
+  const file = await resolveBlueWorldInfoFileName();
   if (!file) return [];
 
   const minSec = clampInt(s.wiBlueIndexMinRefreshSec, 5, 600, 20);
@@ -961,7 +1152,9 @@ async function ensureBlueIndexLive(force = false) {
     updateBlueIndexInfoLabel();
 
     // 修补：若绿灯世界书在刷新后变为空，则用刚读到的蓝灯索引自动恢复
-    repairGreenWorldInfoIfEmpty('blue_index_live_loaded', entries).catch(() => void 0);
+    if (!options?.skipRepair) {
+      repairGreenWorldInfoIfEmpty('blue_index_live_loaded', entries).catch(() => void 0);
+    }
 
     return entries;
   } catch (e) {
@@ -970,6 +1163,37 @@ async function ensureBlueIndexLive(force = false) {
     const fallback = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
     return fallback;
   }
+}
+
+async function loadBlueIndexForCurrentChat() {
+  const s = ensureSettings();
+  const file = await resolveBlueWorldInfoFileName();
+  if (!file) return [];
+
+  try {
+    const json = await fetchWorldInfoFileJsonCompat(file);
+    const prefix = String(s.summaryBlueWorldInfoCommentPrefix || '').trim();
+    return buildBlueIndexFromWorldInfoJson(json, prefix);
+  } catch (e) {
+    console.warn('[StoryGuide] loadBlueIndexForCurrentChat failed:', e);
+    return [];
+  }
+}
+
+async function syncGreenSummaryOnChatChange(reason = 'chat_changed') {
+  return await withGreenSummarySyncLock(async () => {
+    const s = ensureSettings();
+    if (!s.summaryToWorldInfo) return { repaired: false, reason: 'disabled' };
+
+    await clearGreenSummaryEntries(reason);
+
+    if (!s.summaryToBlueWorldInfo) return { repaired: false, reason: 'blue_disabled' };
+
+    const blueItems = await loadBlueIndexForCurrentChat();
+    if (!blueItems.length) return { repaired: false, reason: 'blue_empty' };
+
+    return await importGreenSummaryEntriesFromBlueItems(blueItems, reason);
+  });
 }
 
 function selectActiveWorldbookEntries(entries, recentText) {
@@ -2346,9 +2570,11 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
         if (s.summaryToBlueWorldInfo) {
           try {
+            const blueFile = String(s.summaryBlueWorldInfoFile || '').trim();
+            const blueTarget = blueFile ? 'file' : 'chatbook';
             await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: 'file',
-              file: String(s.summaryBlueWorldInfoFile || ''),
+              target: blueTarget,
+              file: blueFile,
               commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
               constant: 1,
             });
@@ -2366,7 +2592,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
     if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
-      ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
+      ensureBlueIndexLive(true, { skipRepair: true }).catch(() => void 0);
     }
 
     if (created <= 0) {
@@ -2542,7 +2768,7 @@ function getBlueIndexEntriesFast() {
   const mode = String(s.wiBlueIndexMode || 'live');
   if (mode !== 'live') return (Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : []);
 
-  const file = pickBlueIndexFileName();
+  const file = String(s.summaryBlueWorldInfoFile || '').trim() || blueIndexLiveCache.file || pickBlueIndexFileName();
   if (!file) return (Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : []);
 
   const minSec = clampInt(s.wiBlueIndexMinRefreshSec, 5, 600, 20);
@@ -4721,9 +4947,9 @@ $('#sg_wiIndexModelSelect').on('change', () => {
         setStatus('当前为“缓存”模式：不会实时读取（可切换为“实时读取蓝灯世界书”）', 'warn');
         return;
       }
-      const file = pickBlueIndexFileName();
+      const file = await resolveBlueWorldInfoFileName();
       if (!file) {
-        setStatus('蓝灯世界书文件名为空：请在“蓝灯索引”里填写文件名，或在“同时写入蓝灯世界书”里填写文件名', 'err');
+        setStatus('蓝灯世界书文件名为空：请在“蓝灯索引”里填写文件名，或在“同时写入蓝灯世界书”里填写文件名（或使用 chatbook）', 'err');
         return;
       }
       const entries = await ensureBlueIndexLive(true);
@@ -5539,13 +5765,14 @@ function setupEventListeners() {
     startObservers();
 
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
-    ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
+    ensureBlueIndexLive(true).catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
       inlineCache.clear();
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
-      ensureBlueIndexLive(true).then((entries)=>{ repairGreenWorldInfoIfEmpty('chat_changed', entries).catch(() => void 0); }).catch(() => void 0);
+      syncGreenSummaryOnChatChange('chat_changed').catch(() => void 0);
+      ensureBlueIndexLive(true, { skipRepair: true }).catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
         setStatus('已切换聊天：已同步本聊天字段', 'ok');
