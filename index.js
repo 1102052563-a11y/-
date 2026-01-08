@@ -3848,145 +3848,14 @@ function schedulePositionChatButtons() {
     try { positionChatActionButtons(); } catch { }
   }, 60);
 }
+
+// Removed: ensureChatActionButtons feature (Generate/Reroll buttons near input)
 function ensureChatActionButtons() {
-  if (document.getElementById('sg_chat_controls')) {
-    schedulePositionChatButtons();
-    return;
-  }
-
-  const sendAnchor = findChatInputAnchor();
-  if (!sendAnchor) return;
-
-  const wrap = document.createElement('div');
-  wrap.id = 'sg_chat_controls';
-
-  // draggable handle (drag to pin position; double click to reset)
-  const handle = document.createElement('div');
-  handle.className = 'sg-chat-drag-handle';
-  handle.title = '拖动按钮位置（双击复位为自动贴边）';
-  handle.textContent = '⋮⋮';
-  wrap.className = 'sg-chat-controls';
-
-  const gen = document.createElement('button');
-  gen.type = 'button';
-  gen.id = 'sg_chat_generate';
-  gen.className = 'menu_button sg-chat-btn';
-  gen.title = '手动生成剧情指导分析框（不会自动生成）';
-  gen.innerHTML = '📘 <span class="sg-chat-label">生成</span>';
-
-  const reroll = document.createElement('button');
-  reroll.type = 'button';
-  reroll.id = 'sg_chat_reroll';
-  reroll.className = 'menu_button sg-chat-btn';
-  reroll.title = '重Roll：重新生成剧情指导分析框';
-  reroll.innerHTML = '🎲 <span class="sg-chat-label">重Roll</span>';
-
-  const setBusy = (busy) => {
-    gen.disabled = busy;
-    reroll.disabled = busy;
-    wrap.classList.toggle('is-busy', !!busy);
-  };
-
-  gen.addEventListener('click', async () => {
-    try {
-      setBusy(true);
-      await runInlineAppendForLastMessage({ allowWhenDisabled: true, force: false });
-    } catch (e) {
-      console.warn('[StoryGuide] generate failed', e);
-    } finally {
-      setBusy(false);
-      schedulePositionChatButtons();
-    }
-  });
-
-  reroll.addEventListener('click', async () => {
-    try {
-      setBusy(true);
-      await runInlineAppendForLastMessage({ allowWhenDisabled: true, force: true });
-    } catch (e) {
-      console.warn('[StoryGuide] reroll failed', e);
-    } finally {
-      setBusy(false);
-      schedulePositionChatButtons();
-    }
-  });
-
-  wrap.appendChild(handle);
-
-  wrap.appendChild(gen);
-  wrap.appendChild(reroll);
-
-  // Use fixed positioning to avoid overlapping with send button / different themes.
-
-  // drag to move (pin position)
-  let dragging = false;
-  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
-  let moved = false;
-
-  const onMove = (ev) => {
-    if (!dragging) return;
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
-    if (!moved && (Math.abs(dx) + Math.abs(dy) > 4)) moved = true;
-
-    const { w, h } = measureWrap(wrap);
-    const clamped = clampToViewport(startLeft + dx, startTop + dy, w, h);
-    wrap.style.left = `${Math.round(clamped.left)}px`;
-    wrap.style.top = `${Math.round(clamped.top)}px`;
-  };
-
-  const onUp = (ev) => {
-    if (!dragging) return;
-    dragging = false;
-    wrap.classList.remove('is-dragging');
-    try { handle.releasePointerCapture(ev.pointerId); } catch { }
-    window.removeEventListener('pointermove', onMove, true);
-    window.removeEventListener('pointerup', onUp, true);
-    window.removeEventListener('pointercancel', onUp, true);
-
-    if (moved) {
-      const left = parseInt(wrap.style.left || '0', 10);
-      const top = parseInt(wrap.style.top || '0', 10);
-      savePinnedChatPos(left, top);
-    }
-  };
-
-  handle.addEventListener('pointerdown', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    loadPinnedChatPos();
-    dragging = true;
-    moved = false;
-    wrap.classList.add('is-dragging');
-
-    const rect = wrap.getBoundingClientRect();
-    startX = ev.clientX;
-    startY = ev.clientY;
-    startLeft = rect.left;
-    startTop = rect.top;
-
-    try { handle.setPointerCapture(ev.pointerId); } catch { }
-    window.addEventListener('pointermove', onMove, true);
-    window.addEventListener('pointerup', onUp, true);
-    window.addEventListener('pointercancel', onUp, true);
-  });
-
-  handle.addEventListener('dblclick', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    clearPinnedChatPos();
-    schedulePositionChatButtons();
-  });
-
-  document.body.appendChild(wrap);
-  loadPinnedChatPos();
-
-  // Keep it positioned correctly
-  window.addEventListener('resize', schedulePositionChatButtons, { passive: true });
-  window.addEventListener('scroll', schedulePositionChatButtons, { passive: true });
-
-  schedulePositionChatButtons();
+  // Feature disabled/removed as per user request.
+  const el = document.getElementById('sg_chat_controls');
+  if (el) el.remove();
 }
+
 
 // -------------------- card toggle (shrink/expand per module card) --------------------
 function clearLegacyZoomArtifacts() {
@@ -5735,6 +5604,23 @@ function setupEventListeners() {
 let floatingPanelVisible = false;
 let lastFloatingContent = null;
 
+const SG_FLOATING_BTN_POS_KEY = 'storyguide_floating_btn_pos_v1';
+let sgBtnPos = null;
+
+function loadBtnPos() {
+  try {
+    const raw = localStorage.getItem(SG_FLOATING_BTN_POS_KEY);
+    if (raw) sgBtnPos = JSON.parse(raw);
+  } catch { }
+}
+
+function saveBtnPos(left, top) {
+  try {
+    sgBtnPos = { left, top };
+    localStorage.setItem(SG_FLOATING_BTN_POS_KEY, JSON.stringify(sgBtnPos));
+  } catch { }
+}
+
 function createFloatingButton() {
   if (document.getElementById('sg_floating_btn')) return;
 
@@ -5743,12 +5629,93 @@ function createFloatingButton() {
   btn.className = 'sg-floating-btn';
   btn.innerHTML = '📘';
   btn.title = '剧情指导';
-
-  btn.addEventListener('click', () => {
-    toggleFloatingPanel();
-  });
+  // Allow dragging but also clicking. We need to distinguish click from drag.
+  btn.style.touchAction = 'none';
 
   document.body.appendChild(btn);
+
+  // Restore position
+  loadBtnPos();
+  if (sgBtnPos) {
+    const w = 50; // approx width
+    const h = 50;
+    const clamped = clampToViewport(sgBtnPos.left, sgBtnPos.top, w, h);
+    btn.style.left = `${Math.round(clamped.left)}px`;
+    btn.style.top = `${Math.round(clamped.top)}px`;
+    btn.style.bottom = 'auto';
+    btn.style.right = 'auto';
+  } else {
+    // User requested "move to chat box". We can't easily find "chat box" coordinates in fixed mode reliably across themes,
+    // but we can set a better default for mobile.
+    // However, CSS handles the default. JS only overrides if saved.
+  }
+
+  // Drag logic
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let moved = false;
+  let longPressTimer = null;
+
+  const onDown = (ev) => {
+    dragging = true;
+    moved = false;
+    startX = ev.clientX;
+    startY = ev.clientY;
+
+    const rect = btn.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+
+    btn.style.transition = 'none';
+    btn.setPointerCapture(ev.pointerId);
+
+    // If needed: Visual feedback for press
+  };
+
+  const onMove = (ev) => {
+    if (!dragging) return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+
+    if (!moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      moved = true;
+      btn.style.bottom = 'auto';
+      btn.style.right = 'auto';
+    }
+
+    if (moved) {
+      const newLeft = startLeft + dx;
+      const newTop = startTop + dy;
+
+      const w = btn.offsetWidth;
+      const h = btn.offsetHeight;
+      const clamped = clampToViewport(newLeft, newTop, w, h);
+
+      btn.style.left = `${Math.round(clamped.left)}px`;
+      btn.style.top = `${Math.round(clamped.top)}px`;
+    }
+  };
+
+  const onUp = (ev) => {
+    if (!dragging) return;
+    dragging = false;
+    btn.releasePointerCapture(ev.pointerId);
+    btn.style.transition = '';
+
+    if (moved) {
+      const left = parseInt(btn.style.left || '0', 10);
+      const top = parseInt(btn.style.top || '0', 10);
+      saveBtnPos(left, top);
+    } else {
+      // It was a click
+      toggleFloatingPanel();
+    }
+  };
+
+  btn.addEventListener('pointerdown', onDown);
+  btn.addEventListener('pointermove', onMove);
+  btn.addEventListener('pointerup', onUp);
+  btn.addEventListener('pointercancel', onUp);
 }
 
 function createFloatingPanel() {
