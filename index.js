@@ -5713,7 +5713,7 @@ function createFloatingButton() {
     const dx = ev.clientX - startX;
     const dy = ev.clientY - startY;
 
-    if (!moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+    if (!moved && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
       moved = true;
       btn.style.bottom = 'auto';
       btn.style.right = 'auto';
@@ -5776,17 +5776,20 @@ function createFloatingPanel() {
 
   document.body.appendChild(panel);
 
-  // Restore position
-  loadFloatingPanelPos();
-  if (sgFloatingPinnedPos) {
-    const w = panel.offsetWidth || 300;
-    const h = panel.offsetHeight || 400;
-    // Use saved position but ensure it is on screen
-    const clamped = clampToViewport(sgFloatingPinnedPos.left, sgFloatingPinnedPos.top, w, h);
-    panel.style.left = `${Math.round(clamped.left)}px`;
-    panel.style.top = `${Math.round(clamped.top)}px`;
-    panel.style.bottom = 'auto';
-    panel.style.right = 'auto';
+  // Restore position (Only on Desktop/Large screens)
+  // On mobile (< 600px wide), we rely on CSS defaults (bottom sheet style) to ensure visibility
+  if (window.innerWidth >= 600) {
+    loadFloatingPanelPos();
+    if (sgFloatingPinnedPos) {
+      const w = panel.offsetWidth || 300;
+      const h = panel.offsetHeight || 400;
+      // Use saved position but ensure it is on screen
+      const clamped = clampToViewport(sgFloatingPinnedPos.left, sgFloatingPinnedPos.top, w, h);
+      panel.style.left = `${Math.round(clamped.left)}px`;
+      panel.style.top = `${Math.round(clamped.top)}px`;
+      panel.style.bottom = 'auto';
+      panel.style.right = 'auto';
+    }
   }
 
   // 事件绑定
