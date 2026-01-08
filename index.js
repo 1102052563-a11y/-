@@ -5692,6 +5692,21 @@ function createFloatingButton() {
   let moved = false;
   let longPressTimer = null;
 
+  // Check for mobile/tablet to simplify interaction
+  const isMobile = window.innerWidth < 1200;
+
+  if (isMobile) {
+    btn.style.cursor = 'pointer';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleFloatingPanel();
+    };
+    // Return early to skip adding pointer listeners
+    return;
+  }
+  // Desktop logic continues below...
+
   const onDown = (ev) => {
     dragging = true;
     moved = false;
