@@ -54,6 +54,7 @@ const DEFAULT_MODULES = Object.freeze([
   { key: 'next_events', title: '后续将会发生的事', type: 'list', prompt: '接下来最可能发生的事（条目）', maxItems: 6, required: true, panel: true, inline: true },
   { key: 'protagonist_impact', title: '主角行为造成的影响', type: 'text', prompt: '主角行为对剧情/关系/风险造成的改变', required: true, panel: true, inline: false },
   { key: 'tips', title: '给主角的提示（基于原著后续/大纲）', type: 'list', prompt: '给出可执行提示（尽量具体）', maxItems: 4, required: true, panel: true, inline: true },
+  { key: 'quick_actions', title: '快捷选项', type: 'list', prompt: '根据当前剧情走向，给出4~6个玩家可以发送的具体行动选项（每项15~40字，可直接作为对话输入发送）', maxItems: 6, required: true, panel: true, inline: true },
 ]);
 
 // ===== 总结提示词默认值（可在面板中自定义） =====
@@ -456,6 +457,36 @@ function renderQuickOptionsHtml(context = 'inline') {
   }).join('');
 
   return `<div class="sg-quick-options">${buttons}</div>`;
+}
+
+// 渲染AI生成的动态快捷选项（从分析结果的quick_actions数组生成按钮，直接显示选项内容）
+function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
+  const s = ensureSettings();
+
+  // 如果没有动态选项，返回空
+  if (!Array.isArray(quickActions) || !quickActions.length) {
+    return '';
+  }
+
+  const buttons = quickActions.map((action, i) => {
+    const text = String(action || '').trim();
+    if (!text) return '';
+
+    // 移除可能的编号前缀如 "【1】" 或 "1."
+    const cleaned = text.replace(/^【\d+】\s*/, '').replace(/^\d+[\.\)\:：]\s*/, '').trim();
+    if (!cleaned) return '';
+
+    const escapedText = escapeHtml(cleaned);
+    // 按钮直接显示完整选项内容，点击后输入到聊天框
+    return `<button class="sg-quick-option sg-dynamic-option" data-sg-prompt="${escapedText}" title="点击输入到聊天框">${escapedText}</button>`;
+  }).filter(Boolean).join('');
+
+  if (!buttons) return '';
+
+  return `<div class="sg-quick-options sg-dynamic-options">
+    <div class="sg-quick-options-title">💡 快捷选项（点击输入）</div>
+    ${buttons}
+  </div>`;
 }
 
 function installQuickOptionsClickHandler() {
@@ -2794,6 +2825,9 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
   lines.push(`**剧情指导**`);
 
   for (const m of modules) {
+    // quick_actions 模块不在 Markdown 中渲染，而是单独渲染为可点击按钮
+    if (m.key === 'quick_actions') continue;
+
     const hasKey = parsedJson && Object.hasOwn(parsedJson, m.key);
     const val = hasKey ? parsedJson[m.key] : undefined;
     const title = m.title || m.key;
@@ -2910,13 +2944,18 @@ function attachToggleHandler(boxEl, mesKey) {
 }
 
 
-function createInlineBoxElement(mesKey, htmlInner, collapsed) {
+function createInlineBoxElement(mesKey, htmlInner, collapsed, quickActions) {
   const box = document.createElement('div');
   box.className = 'sg-inline-box';
   box.dataset.sgMesKey = String(mesKey);
 
-  // 获取快捷选项 HTML
-  const quickOptionsHtml = renderQuickOptionsHtml('inline');
+  // 优先渲染AI生成的动态选项，如果没有则使用静态配置的选项
+  let quickOptionsHtml = '';
+  if (Array.isArray(quickActions) && quickActions.length) {
+    quickOptionsHtml = renderDynamicQuickActionsHtml(quickActions, 'inline');
+  } else {
+    quickOptionsHtml = renderQuickOptionsHtml('inline');
+  }
 
   box.innerHTML = `
     <div class="sg-inline-head" title="点击折叠/展开（不会自动生成）">
@@ -3073,10 +3112,16 @@ function ensureInlineBoxPresent(mesKey) {
     // 更新 body（有时候被覆盖成空壳）
     const body = existing.querySelector('.sg-inline-body');
     if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
+    // 更新动态选项（如果有变化）
+    const optionsContainer = existing.querySelector('.sg-dynamic-options');
+    if (!optionsContainer && Array.isArray(cached.quickActions) && cached.quickActions.length) {
+      const newOptionsHtml = renderDynamicQuickActionsHtml(cached.quickActions, 'inline');
+      existing.querySelector('.sg-inline-body')?.insertAdjacentHTML('afterend', newOptionsHtml);
+    }
     return true;
   }
 
-  const box = createInlineBoxElement(mesKey, cached.htmlInner, cached.collapsed);
+  const box = createInlineBoxElement(mesKey, cached.htmlInner, cached.collapsed, cached.quickActions);
   textEl.appendChild(box);
   return true;
 }
@@ -3177,7 +3222,10 @@ async function runInlineAppendForLastMessage(opts = {}) {
     const md = buildInlineMarkdownFromModules(parsed, modules, s.appendMode, !!s.inlineShowEmpty);
     const htmlInner = renderMarkdownToHtml(md);
 
-    inlineCache.set(String(mesKey), { htmlInner, collapsed: false, createdAt: Date.now() });
+    // 提取 quick_actions 用于动态渲染可点击按钮
+    const quickActions = Array.isArray(parsed.quick_actions) ? parsed.quick_actions : [];
+
+    inlineCache.set(String(mesKey), { htmlInner, collapsed: false, createdAt: Date.now(), quickActions });
 
     requestAnimationFrame(() => { ensureInlineBoxPresent(mesKey); });
 
