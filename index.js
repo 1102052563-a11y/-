@@ -73,6 +73,7 @@ const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】\n{{userMessage}}\n
 
 const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"pickedIds": number[]}。\n- pickedIds 必须是候选列表里的 id（整数）。\n- 返回的 pickedIds 数量 <= maxPick。`;
 
+
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
 
