@@ -109,7 +109,68 @@ const DATABASE_JSON_REQUIREMENT = `输出要求：
 - JSON 结构必须与模块配置一致，每个 key 对应一个模块。
 - list 类型输出 string[]，text 类型输出 string。`;
 
+// 默认数据库显示模板（角色卡片风格）
+const DEFAULT_DATABASE_DISPLAY_TEMPLATE = `<div class="sg-db-cards">
+{{#each records}}
+<div class="sg-db-card">
+  <div class="sg-db-card-header">
+    <span class="sg-db-card-index">#{{@index}}</span>
+    <span class="sg-db-card-title">{{title}}</span>
+  </div>
+  <div class="sg-db-card-body">
+    {{#if type_is_list}}
+    <ul class="sg-db-card-list">
+      {{#each items}}
+      <li class="sg-db-card-item">{{this}}</li>
+      {{/each}}
+    </ul>
+    {{else}}
+    <div class="sg-db-card-text">{{content}}</div>
+    {{/if}}
+  </div>
+</div>
+{{/each}}
+</div>`;
+
+// 角色卡片风格模板（类似用户示例图片）
+const CHARACTER_CARD_TEMPLATE = `<div class="sg-db-character">
+  <div class="sg-db-char-header">
+    <span class="sg-db-char-index">#{{index}}</span>
+    <span class="sg-db-char-name">{{name}}</span>
+  </div>
+  
+  {{#each 基础信息}}
+  <div class="sg-db-char-row">
+    <span class="sg-db-char-label">{{@key}}</span>
+    <span class="sg-db-char-value">{{this}}</span>
+  </div>
+  {{/each}}
+  
+  {{#if 属性}}
+  <div class="sg-db-char-stats">
+    {{#each 属性}}
+    <div class="sg-db-char-stat">
+      <span class="sg-db-stat-name">{{@key}}</span>
+      <span class="sg-db-stat-val">{{this}} <span class="sg-db-stat-icon">⬡</span></span>
+    </div>
+    {{/each}}
+  </div>
+  {{/if}}
+  
+  {{#if 特殊能力}}
+  <div class="sg-db-char-abilities">
+    {{#each 特殊能力}}
+    <div class="sg-db-char-stat">
+      <span class="sg-db-stat-name">{{@key}}</span>
+      <span class="sg-db-stat-val">{{this}} <span class="sg-db-stat-icon">⬡</span></span>
+    </div>
+    {{/each}}
+  </div>
+  {{/if}}
+</div>`;
+
 const DEFAULT_SETTINGS = Object.freeze({
+
 
   enabled: true,
 
@@ -312,6 +373,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   databaseCustomMaxTokens: 4096,
   databaseCustomTopP: 0.95,
   databaseCustomStream: false,
+
+  // 数据库显示模板（HTML，支持 {{变量}} 占位符）
+  databaseDisplayTemplate: DEFAULT_DATABASE_DISPLAY_TEMPLATE,
 });
 
 const META_KEYS = Object.freeze({
@@ -2076,7 +2140,100 @@ function scheduleAutoDatabaseUpdate(reason) {
   }
 }
 
+// ===== 数据库模板渲染系统 =====
+
+function getValueByPath(obj, path) {
+  if (!obj || !path) return undefined;
+  const parts = path.split('.');
+  let val = obj;
+  for (const p of parts) {
+    if (val == null) return undefined;
+    val = val[p];
+  }
+  return val;
+}
+
+function renderDatabaseTemplate(template, data) {
+  if (!template || typeof template !== 'string') return '';
+  let html = template;
+
+  // 处理 {{#each key}}...{{/each}} 循环
+  html = html.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (match, key, inner) => {
+    const items = data[key];
+    if (!items) return '';
+
+    if (Array.isArray(items)) {
+      return items.map((item, idx) => {
+        let itemHtml = inner;
+        itemHtml = itemHtml.replace(/\{\{@index\}\}/g, String(idx + 1));
+        itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(String(item ?? '')));
+        // 递归处理对象属性
+        if (typeof item === 'object' && item !== null) {
+          itemHtml = renderDatabaseTemplate(itemHtml, item);
+        }
+        return itemHtml;
+      }).join('');
+    } else if (typeof items === 'object') {
+      return Object.entries(items).map(([k, v]) => {
+        let itemHtml = inner;
+        itemHtml = itemHtml.replace(/\{\{@key\}\}/g, escapeHtml(k));
+        itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(String(v ?? '')));
+        return itemHtml;
+      }).join('');
+    }
+    return '';
+  });
+
+  // 处理 {{#if key}}...{{/if}} 条件
+  html = html.replace(/\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (match, key, inner) => {
+    const val = getValueByPath(data, key.trim());
+    if (val && (Array.isArray(val) ? val.length > 0 : true)) {
+      return renderDatabaseTemplate(inner, data);
+    }
+    return '';
+  });
+
+  // 处理简单变量 {{path}}
+  html = html.replace(/\{\{([^#\/][^}]*)\}\}/g, (match, path) => {
+    const val = getValueByPath(data, path.trim());
+    if (val === undefined || val === null) return '';
+    return escapeHtml(String(val));
+  });
+
+  return html;
+}
+
 function renderDatabaseViewHtml(records, modules) {
+  const s = ensureSettings();
+  const template = String(s.databaseDisplayTemplate || '').trim();
+
+  // 如果有自定义模板，使用模板渲染
+  if (template && template.includes('{{')) {
+    // 将 records 和 modules 转换为模板数据格式
+    const templateData = {
+      records: modules.map((m, idx) => {
+        const val = records?.[m.key];
+        return {
+          index: idx + 1,
+          key: m.key,
+          title: m.title || m.key,
+          type: m.type,
+          type_is_list: m.type === 'list',
+          items: m.type === 'list' ? (Array.isArray(val) ? val : []) : [],
+          content: m.type !== 'list' ? (val || '') : '',
+          raw: val
+        };
+      })
+    };
+
+    try {
+      return renderDatabaseTemplate(template, templateData);
+    } catch (e) {
+      console.warn('[StoryGuide] template render error:', e);
+    }
+  }
+
+  // 默认渲染方式
   const lines = [];
   lines.push('<div class="sg-database-view">');
 
@@ -5172,6 +5329,22 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card">
+              <div class="sg-card-title">显示模板 (HTML)</div>
+              <div class="sg-hint" style="margin-bottom:8px;">自定义数据库显示样式。支持: {{#each records}}循环, {{#if key}}条件, {{变量名}}替换</div>
+              <div class="sg-field">
+                <textarea id="sg_databaseDisplayTemplate" rows="12" style="font-family: monospace;"></textarea>
+              </div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_resetDatabaseTemplate">恢复默认模板</button>
+                <button class="menu_button sg-btn" id="sg_previewDatabaseTemplate">👁️ 预览效果</button>
+              </div>
+              <div class="sg-hint" style="margin-top:8px;">
+                可用变量: {{@index}}(序号), {{title}}(模块标题), {{type_is_list}}(是否列表), {{items}}(列表项), {{content}}(文本内容)<br>
+                示例: &lt;div class="sg-db-card"&gt;#{{@index}} {{title}}&lt;/div&gt;
+              </div>
+            </div>
+
+            <div class="sg-card">
               <div class="sg-card-title">数据库操作</div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn-primary" id="sg_runDatabaseUpdate">🔄 立即更新数据库</button>
@@ -5402,7 +5575,7 @@ function ensureModal() {
   });
 
   // auto-save database settings
-  $('#sg_databaseEnabled, #sg_databaseAutoUpdate, #sg_databaseAutoUpdateEvery, #sg_databaseMaxMessages, #sg_databaseMaxCharsPerMessage, #sg_databaseTemperature, #sg_databaseCustomEndpoint, #sg_databaseCustomApiKey, #sg_databaseCustomModel, #sg_databaseCustomMaxTokens, #sg_databaseCustomTopP, #sg_databaseCustomStream, #sg_databaseSystemPrompt, #sg_databaseUserTemplate').on('change input', () => {
+  $('#sg_databaseEnabled, #sg_databaseAutoUpdate, #sg_databaseAutoUpdateEvery, #sg_databaseMaxMessages, #sg_databaseMaxCharsPerMessage, #sg_databaseTemperature, #sg_databaseCustomEndpoint, #sg_databaseCustomApiKey, #sg_databaseCustomModel, #sg_databaseCustomMaxTokens, #sg_databaseCustomTopP, #sg_databaseCustomStream, #sg_databaseSystemPrompt, #sg_databaseUserTemplate, #sg_databaseDisplayTemplate').on('change input', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -5804,6 +5977,25 @@ function setupDatabaseSettingsEvents() {
     updateDatabaseInfoLabel();
     setStatus('数据库记录已清空 ✅', 'ok');
   });
+
+  // Template buttons
+  $('#sg_resetDatabaseTemplate').on('click', () => {
+    $('#sg_databaseDisplayTemplate').val(DEFAULT_DATABASE_DISPLAY_TEMPLATE);
+    const s = ensureSettings();
+    s.databaseDisplayTemplate = DEFAULT_DATABASE_DISPLAY_TEMPLATE;
+    saveSettings();
+    setStatus('已恢复默认显示模板 ✅', 'ok');
+  });
+
+  $('#sg_previewDatabaseTemplate').on('click', () => {
+    // 打开浮动面板并切换到数据库视图
+    showFloatingPanel();
+    // 确保显示数据库视图
+    if (!$('#sg_floating_panel').hasClass('sg-database-mode')) {
+      toggleDatabaseView();
+    }
+    setStatus('预览已在浮动面板中显示 👁️', 'ok');
+  });
 }
 
 
@@ -5954,7 +6146,9 @@ function pullSettingsToUi() {
   $('#sg_databaseModulesJson').val(String(s.databaseModulesJson || JSON.stringify(DEFAULT_DATABASE_MODULES, null, 2)));
   $('#sg_databaseSystemPrompt').val(String(s.databaseSystemPrompt || DEFAULT_DATABASE_SYSTEM_PROMPT));
   $('#sg_databaseUserTemplate').val(String(s.databaseUserTemplate || DEFAULT_DATABASE_USER_TEMPLATE));
+  $('#sg_databaseDisplayTemplate').val(String(s.databaseDisplayTemplate || DEFAULT_DATABASE_DISPLAY_TEMPLATE));
   $('#sg_database_custom_block').toggle(String(s.databaseProvider || 'st') === 'custom');
+
 
   updateButtonsEnabled();
 }
@@ -6304,7 +6498,9 @@ function pullUiToSettings() {
   s.databaseModulesJson = String($('#sg_databaseModulesJson').val() || '').trim();
   s.databaseSystemPrompt = String($('#sg_databaseSystemPrompt').val() || '').trim() || DEFAULT_DATABASE_SYSTEM_PROMPT;
   s.databaseUserTemplate = String($('#sg_databaseUserTemplate').val() || '').trim() || DEFAULT_DATABASE_USER_TEMPLATE;
+  s.databaseDisplayTemplate = String($('#sg_databaseDisplayTemplate').val() || '').trim() || DEFAULT_DATABASE_DISPLAY_TEMPLATE;
 }
+
 
 
 function openModal() {
