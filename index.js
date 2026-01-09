@@ -74,6 +74,8 @@ const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】\n{{userMessage}}\n
 const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"pickedIds": number[]}。\n- pickedIds 必须是候选列表里的 id（整数）。\n- 返回的 pickedIds 数量 <= maxPick。`;
 
 
+
+
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
 
@@ -2581,36 +2583,6 @@ function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden
   return `\n\n<!--${tag}\n${body}\n-->`;
 }
 
-const DEFAULT_ROLL_ACTIONS = Object.freeze([
-  { key: 'combat', label: '战斗', keywords: ['战斗', '攻击', '砍', '击', '打', '杀', '射击', '射箭', '格斗', '搏斗', 'battle', 'fight', 'attack'] },
-  { key: 'deceive', label: '欺骗', keywords: ['欺骗', '撒谎', '骗局', '骗', '诈', '诓', '伪装', '乔装', 'deceive', 'lie', 'con', 'trick'] },
-  { key: 'stealth', label: '潜行', keywords: ['潜行', '潜入', '躲藏', '隐蔽', '匿踪', '偷袭', '偷窃', '扒窃', '暗杀', 'stealth', 'sneak', 'hide'] },
-  { key: 'persuade', label: '交涉', keywords: ['说服', '劝说', '交涉', '谈判', '威胁', '恐吓', '游说', '沟通', 'persuade', 'negotiate', 'intimidate'] },
-  { key: 'investigate', label: '调查', keywords: ['调查', '搜查', '搜索', '观察', '侦查', '寻找', '翻找', '取证', 'investigate', 'search', 'scout'] },
-  { key: 'magic', label: '施法', keywords: ['施法', '法术', '魔法', '咒语', '念咒', '咒文', 'magic', 'spell', 'cast'] },
-]);
-
-const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze([
-  'equipment', 'talent', 'skill', 'trait', 'buff', 'debuff', 'environment', 'position', 'tactics', 'morale', 'fatigue', 'injury', 'ally', 'enemy', 'luck',
-]);
-
-const DEFAULT_ROLL_FORMULAS = Object.freeze({
-  combat: '50 + (PC.atk * 0.6 + PC.str * 0.2 + PC.agi * 0.2 - EN.avg.def * 0.7 - EN.avg.agi * 0.2) + MOD.total + SURROUND.penalty + SURROUND.bonus',
-  deceive: '50 + (PC.cha * 0.6 + PC.int * 0.3 + PC.luck * 0.1 - EN.avg.per * 0.7 - EN.avg.int * 0.3) + MOD.total',
-  stealth: '50 + (PC.agi * 0.6 + PC.dex * 0.2 + PC.per * 0.2 - EN.avg.per * 0.7 - EN.avg.agi * 0.3) + MOD.total + SURROUND.bonus',
-  persuade: '50 + (PC.cha * 0.7 + PC.int * 0.2 + PC.luck * 0.1 - EN.avg.cha * 0.6 - EN.avg.int * 0.4) + MOD.total',
-  investigate: '50 + (PC.per * 0.6 + PC.int * 0.3 + PC.luck * 0.1 - EN.avg.per * 0.5 - EN.avg.int * 0.5) + MOD.total',
-  magic: '50 + (PC.int * 0.6 + PC.wis * 0.3 + PC.luck * 0.1 - EN.avg.res * 0.7 - EN.avg.wil * 0.3) + MOD.total',
-  default: '50 + (PC.int * 0.5 + PC.luck * 0.2 - EN.avg.int * 0.3) + MOD.total + SURROUND.penalty + SURROUND.bonus',
-});
-
-const DEFAULT_ROLL_STAT_COMMAND = `<status_current_variable>\n{{format_message_variable::stat_data}}\n</status_current_variable>`;
-
-const DEFAULT_ROLL_SYSTEM_PROMPT = `你是一个“公平的数值判定引擎”。\n\n要求：\n- 只关注数字与公式，不关注剧情，不偏袒主角。\n- 必须逐项列出修正来源及其数值。\n- 输出严格 JSON。`;
-
-const DEFAULT_ROLL_USER_TEMPLATE = `【动作】{{action}}\n【公式】{{formula}}\n【随机性权重】{{randomWeight}}\n【阈值】{{threshold}}\n【统计数据(JSON)】\n{{statDataJson}}\n\n请按规则输出 JSON。`;
-
-const ROLL_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown。\n- JSON 结构必须为：{"action":string,"formula":string,"base":number,"mods":[{"source":string,"value":number}],"random":{"roll":number,"weight":number},"final":number,"threshold":number,"success":boolean}。\n- mods 必须逐项列出每个修正来源。`;
 
 function rollDice(sides = 100) {
   const s = Math.max(2, Number(sides) || 100);
@@ -6857,4 +6829,25 @@ function init() {
   };
 }
 
-init();
+function bootstrap() {
+  if (globalThis.SillyTavern?.getContext) {
+    init();
+    return;
+  }
+
+  const startAt = Date.now();
+  const timer = setInterval(() => {
+    if (globalThis.SillyTavern?.getContext) {
+      clearInterval(timer);
+      init();
+      return;
+    }
+
+    if (Date.now() - startAt > 15000) {
+      clearInterval(timer);
+      console.warn('[StoryGuide] SillyTavern not ready, init skipped.');
+    }
+  }, 200);
+}
+
+bootstrap();
