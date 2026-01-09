@@ -2243,7 +2243,7 @@ function renderDatabaseTemplate(template, data) {
     eachRegex.lastIndex = startIdx + replacement.length;
   }
 
-  // 处理 {{#if key}}...{{/if}} 条件（支持嵌套）
+  // 处理 {{#if key}}...{{else}}...{{/if}} 条件（支持嵌套和 else）
   let ifMatch;
   const ifRegex = /\{\{#if\s+([^}]+)\}\}/g;
   while ((ifMatch = ifRegex.exec(html)) !== null) {
@@ -2260,13 +2260,49 @@ function renderDatabaseTemplate(template, data) {
     const val = getValueByPath(data, key);
     let replacement = '';
 
-    if (val && (Array.isArray(val) ? val.length > 0 : true)) {
-      replacement = renderDatabaseTemplate(inner, data);
+    // 查找 {{else}}（不在嵌套 if 块内的）
+    let elseIdx = -1;
+    let searchPos = 0;
+    while (searchPos < inner.length) {
+      const nextElse = inner.indexOf('{{else}}', searchPos);
+      if (nextElse === -1) break;
+
+      // 检查这个 else 是否在嵌套的 if 块内
+      const beforeElse = inner.substring(0, nextElse);
+      const nestedIfCount = (beforeElse.match(/\{\{#if\s+/g) || []).length;
+      const nestedEndIfCount = (beforeElse.match(/\{\{\/if\}\}/g) || []).length;
+
+      if (nestedIfCount === nestedEndIfCount) {
+        // 这个 else 属于当前 if 块
+        elseIdx = nextElse;
+        break;
+      }
+      searchPos = nextElse + 8; // 跳过这个 else 继续搜索
+    }
+
+    const isTruthy = val && (Array.isArray(val) ? val.length > 0 : true);
+
+    if (elseIdx !== -1) {
+      // 有 else 块
+      const thenBranch = inner.substring(0, elseIdx);
+      const elseBranch = inner.substring(elseIdx + 8); // 跳过 "{{else}}"
+
+      if (isTruthy) {
+        replacement = renderDatabaseTemplate(thenBranch, data);
+      } else {
+        replacement = renderDatabaseTemplate(elseBranch, data);
+      }
+    } else {
+      // 没有 else 块
+      if (isTruthy) {
+        replacement = renderDatabaseTemplate(inner, data);
+      }
     }
 
     html = html.substring(0, startIdx) + replacement + html.substring(closeIdx + '{{/if}}'.length);
     ifRegex.lastIndex = startIdx + replacement.length;
   }
+
 
   // 处理简单变量 {{path}}
   html = html.replace(/\{\{([^#\/][^}]*)\}\}/g, (match, path) => {
