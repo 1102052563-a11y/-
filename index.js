@@ -2203,7 +2203,17 @@ function renderDatabaseTemplate(template, data) {
         replacement = items.map((item, idx) => {
           let itemHtml = inner;
           itemHtml = itemHtml.replace(/\{\{@index\}\}/g, String(idx + 1));
-          itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(String(item ?? '')));
+          // 处理 {{this}} - 如果是对象则尝试提取文本或转 JSON
+          let thisVal = '';
+          if (item === null || item === undefined) {
+            thisVal = '';
+          } else if (typeof item === 'object') {
+            // 尝试提取常见的文本字段
+            thisVal = item.text || item.name || item.title || item.value || item.content || JSON.stringify(item);
+          } else {
+            thisVal = String(item);
+          }
+          itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(thisVal));
           // 递归处理对象属性
           if (typeof item === 'object' && item !== null) {
             itemHtml = renderDatabaseTemplate(itemHtml, item);
@@ -2214,10 +2224,19 @@ function renderDatabaseTemplate(template, data) {
         replacement = Object.entries(items).map(([k, v]) => {
           let itemHtml = inner;
           itemHtml = itemHtml.replace(/\{\{@key\}\}/g, escapeHtml(k));
-          itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(String(v ?? '')));
+          let thisVal = '';
+          if (v === null || v === undefined) {
+            thisVal = '';
+          } else if (typeof v === 'object') {
+            thisVal = v.text || v.name || v.title || v.value || v.content || JSON.stringify(v);
+          } else {
+            thisVal = String(v);
+          }
+          itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(thisVal));
           return itemHtml;
         }).join('');
       }
+
     }
 
     html = html.substring(0, startIdx) + replacement + html.substring(closeIdx + '{{/each}}'.length);
@@ -2270,18 +2289,30 @@ function renderDatabaseViewHtml(records, modules) {
     const templateData = {
       records: modules.map((m, idx) => {
         const val = records?.[m.key];
+        // 处理 items - 确保数组元素是字符串
+        let items = [];
+        if (m.type === 'list' && Array.isArray(val)) {
+          items = val.map(item => {
+            if (item === null || item === undefined) return '';
+            if (typeof item === 'object') {
+              return item.text || item.name || item.title || item.value || item.content || JSON.stringify(item);
+            }
+            return String(item);
+          });
+        }
         return {
           index: idx + 1,
           key: m.key,
           title: m.title || m.key,
           type: m.type,
           type_is_list: m.type === 'list',
-          items: m.type === 'list' ? (Array.isArray(val) ? val : []) : [],
+          items: items,
           content: m.type !== 'list' ? (val || '') : '',
           raw: val
         };
       })
     };
+
 
     try {
       return renderDatabaseTemplate(template, templateData);
