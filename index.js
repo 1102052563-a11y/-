@@ -358,6 +358,8 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // 数据库模块配置（JSON 字符串）
   databaseModulesJson: '',
+  // 数据隔离标识（空=默认；可输入任意字符串以隔离数据）
+  databaseScope: '',
 
   // 数据库提示词
   databaseSystemPrompt: DEFAULT_DATABASE_SYSTEM_PROMPT,
@@ -762,7 +764,12 @@ function getDefaultDatabaseMeta() {
 }
 
 function getDatabaseMeta() {
-  const raw = String(getChatMetaValue(META_KEYS.databaseMeta) || '').trim();
+  const s = ensureSettings();
+  // 支持数据隔离 Scope
+  const scope = String(s.databaseScope || '').trim();
+  const key = scope ? `${META_KEYS.databaseMeta}_${scope}` : META_KEYS.databaseMeta;
+
+  const raw = String(getChatMetaValue(key) || '').trim();
   if (!raw) return getDefaultDatabaseMeta();
   try {
     const data = JSON.parse(raw);
@@ -779,7 +786,11 @@ function getDatabaseMeta() {
 }
 
 async function setDatabaseMeta(meta) {
-  await setChatMetaValue(META_KEYS.databaseMeta, JSON.stringify(meta ?? getDefaultDatabaseMeta()));
+  const s = ensureSettings();
+  const scope = String(s.databaseScope || '').trim();
+  const key = scope ? `${META_KEYS.databaseMeta}_${scope}` : META_KEYS.databaseMeta;
+
+  await setChatMetaValue(key, JSON.stringify(meta ?? getDefaultDatabaseMeta()));
 }
 
 function getDatabaseModules() {
@@ -862,21 +873,29 @@ function formatDatabaseRecordsForPrompt(records, modules) {
   return lines.join('\n');
 }
 
-function buildDatabasePromptMessages(recentChatText, existingRecords, modules) {
+function buildDatabasePromptMessages(recentChatText, existingRecords, allModules, outputModules = null, extraInstruction = '') {
   const s = ensureSettings();
+  const modulesToOutput = outputModules || allModules;
 
   let sys = String(s.databaseSystemPrompt || '').trim();
   if (!sys) sys = DEFAULT_DATABASE_SYSTEM_PROMPT;
 
-  // 追加字段说明
-  sys += `\n\n[输出字段]\n${buildDatabaseOutputFieldsText(modules)}`;
+  // 追加字段说明（只包含需要输出的模块）
+  sys += `\n\n[输出字段]\n${buildDatabaseOutputFieldsText(modulesToOutput)}`;
   sys += `\n\n${DATABASE_JSON_REQUIREMENT}`;
+
+  // 注入额外指令
+  if (extraInstruction && typeof extraInstruction === 'string' && extraInstruction.trim()) {
+    sys += `\n\n[额外指令]\n${extraInstruction.trim()}`;
+  }
 
   let tpl = String(s.databaseUserTemplate || '').trim();
   if (!tpl) tpl = DEFAULT_DATABASE_USER_TEMPLATE;
 
+  // 用户Prompt中的现有记录应该包含所有模块作为参考，还是只包含目标模块？
+  // 为了一致性，通常提供完整的现有记录供 AI 参考。
   const user = renderTemplate(tpl, {
-    existingRecords: formatDatabaseRecordsForPrompt(existingRecords, modules),
+    existingRecords: formatDatabaseRecordsForPrompt(existingRecords, allModules),
     recentChat: recentChatText,
   });
 
@@ -885,6 +904,7 @@ function buildDatabasePromptMessages(recentChatText, existingRecords, modules) {
     { role: 'user', content: user },
   ];
 }
+
 
 function buildDatabaseChatSnapshot() {
   const ctx = SillyTavern.getContext();
@@ -2037,7 +2057,7 @@ async function runAnalysis() {
 
 // -------------------- database module --------------------
 
-async function runDatabaseUpdate(reason = 'manual') {
+async function runDatabaseUpdate(options) {
   const s = ensureSettings();
   if (!s.databaseEnabled) {
     showToast('数据库模块未启用', { kind: 'warn' });
@@ -2047,9 +2067,18 @@ async function runDatabaseUpdate(reason = 'manual') {
   if (isDatabaseUpdating) return;
   isDatabaseUpdating = true;
 
-  showToast('正在更新数据库…', { kind: 'warn', spinner: true, sticky: true });
-
   try {
+    const reason = typeof options === 'string' ? options : (options?.reason || 'manual');
+    // 如果是手动更新，检查是否有 targets 和 instruction
+    const targetModuleKeys = (typeof options === 'object' && Array.isArray(options?.modules) && options.modules.length > 0) ? options.modules : null;
+    const extraInstruction = (typeof options === 'object' && typeof options?.extraInstruction === 'string') ? options.extraInstruction : '';
+
+    console.log('[StoryGuide] starting database update, reason:', reason);
+    if (targetModuleKeys) console.log('[StoryGuide] targeting modules:', targetModuleKeys);
+    if (extraInstruction) console.log('[StoryGuide] extra instruction:', extraInstruction);
+
+    showToast('正在更新数据库…', { kind: 'warn', spinner: true, sticky: true });
+
     const modules = getDatabaseModules();
     const meta = getDatabaseMeta();
     const existingRecords = meta.records || {};
@@ -2060,8 +2089,18 @@ async function runDatabaseUpdate(reason = 'manual') {
       return;
     }
 
-    const messages = buildDatabasePromptMessages(recentChatText, existingRecords, modules);
-    const schema = buildDatabaseSchemaFromModules(modules);
+    // 确定要更新的模块和要输出的 Schema
+    const modulesToUpdate = targetModuleKeys
+      ? modules.filter(m => targetModuleKeys.includes(m.key))
+      : modules;
+
+    if (modulesToUpdate.length === 0) {
+      showToast('未选择任何需要更新的模块', { kind: 'warn' }); // Should not happen easily from UI
+      return; // Cleanup finally block handles isDatabaseUpdating = false
+    }
+
+    const messages = buildDatabasePromptMessages(recentChatText, existingRecords, modules, modulesToUpdate, extraInstruction);
+    const schema = buildDatabaseSchemaFromModules(modulesToUpdate);
 
     let jsonText = '';
     if (s.databaseProvider === 'custom') {
@@ -2378,9 +2417,32 @@ function renderDatabaseViewHtml(records, modules) {
 
   // 默认渲染方式
   const lines = [];
+
+  // 添加手动更新设置面板
+  lines.push(`
+    <div class="sg-db-controls">
+      <div class="sg-db-controls-header" onclick="$(this).next().toggleClass('visible')">
+        <span>手动更新设置</span>
+        <span>▼</span>
+      </div>
+      <div class="sg-db-controls-body">
+        <div class="sg-db-modules-grid" id="sg_db_modules_container">
+          ${modules.map(m => `
+            <label class="sg-db-module-check">
+              <input type="checkbox" class="sg-db-module-check-input" data-key="${escapeHtml(m.key)}" checked>
+              ${escapeHtml(m.title || m.key)}
+            </label>
+          `).join('')}
+        </div>
+        <textarea id="sg_db_extra_instruction" class="sg-db-extra-input" placeholder="输入额外更新指令（仅本次生效，例如：只关注刚才提到的人名）..."></textarea>
+      </div>
+    </div>
+  `);
+
   lines.push('<div class="sg-database-view">');
 
   for (const m of modules) {
+
     const val = records?.[m.key];
     lines.push(`<div class="sg-database-module">`);
     lines.push(`<div class="sg-database-module-title">${escapeHtml(m.title || m.key)}</div>`);
@@ -2432,7 +2494,21 @@ function updateDatabaseViewInFloatingPanel() {
 
   // 绑定按钮事件
   $('#sg_database_update').off('click').on('click', async () => {
-    await runDatabaseUpdate('manual');
+    // 获取手动选择的模块
+    const checkedModules = [];
+    $('.sg-db-module-check-input:checked').each(function () {
+      checkedModules.push($(this).data('key'));
+    });
+
+    // 获取额外指令
+    const extraInstruction = $('#sg_db_extra_instruction').val();
+
+    await runDatabaseUpdate({
+      reason: 'manual',
+      modules: checkedModules,
+      extraInstruction: extraInstruction
+    });
+
     // 更新后刷新视图
     updateDatabaseViewInFloatingPanel();
   });
@@ -5373,6 +5449,19 @@ function buildModalHtml() {
                   </label>
                 </div>
                 <div class="sg-field">
+                  <label>自动更新 (每N条)</label>
+                  <input id="sg_databaseAutoUpdateEvery" type="number" min="1" max="100" placeholder="10">
+                </div>
+              </div>
+              
+               <div class="sg-field" style="margin-top:10px;">
+                <label>数据隔离 SCOPE (留空=默认)</label>
+                <div class="sg-hint">输入任意标识符（如 'timeline1'）以切换不同的数据库记录。修改后需保存。</div>
+                <input id="sg_databaseScope" type="text" class="sg-input" placeholder="默认为空">
+              </div>
+
+              <div class="sg-row sg-inline" style="margin-top:10px;">
+                <div class="sg-field">
                   <label>自动更新</label>
                   <label class="sg-switch">
                     <input type="checkbox" id="sg_databaseAutoUpdate">
@@ -6290,6 +6379,7 @@ function pullSettingsToUi() {
   $('#sg_databaseCustomTopP').val(s.databaseCustomTopP ?? 0.95);
   $('#sg_databaseCustomStream').prop('checked', !!s.databaseCustomStream);
   $('#sg_databaseModulesJson').val(String(s.databaseModulesJson || JSON.stringify(DEFAULT_DATABASE_MODULES, null, 2)));
+  $('#sg_databaseScope').val(String(s.databaseScope || ''));
   $('#sg_databaseSystemPrompt').val(String(s.databaseSystemPrompt || DEFAULT_DATABASE_SYSTEM_PROMPT));
   $('#sg_databaseUserTemplate').val(String(s.databaseUserTemplate || DEFAULT_DATABASE_USER_TEMPLATE));
   $('#sg_databaseDisplayTemplate').val(String(s.databaseDisplayTemplate || DEFAULT_DATABASE_DISPLAY_TEMPLATE));
@@ -6642,6 +6732,7 @@ function pullUiToSettings() {
   s.databaseCustomTopP = clampFloat($('#sg_databaseCustomTopP').val(), 0, 1, s.databaseCustomTopP ?? 0.95);
   s.databaseCustomStream = $('#sg_databaseCustomStream').is(':checked');
   s.databaseModulesJson = String($('#sg_databaseModulesJson').val() || '').trim();
+  s.databaseScope = String($('#sg_databaseScope').val() || '').trim();
   s.databaseSystemPrompt = String($('#sg_databaseSystemPrompt').val() || '').trim() || DEFAULT_DATABASE_SYSTEM_PROMPT;
   s.databaseUserTemplate = String($('#sg_databaseUserTemplate').val() || '').trim() || DEFAULT_DATABASE_USER_TEMPLATE;
   s.databaseDisplayTemplate = String($('#sg_databaseDisplayTemplate').val() || '').trim() || DEFAULT_DATABASE_DISPLAY_TEMPLATE;
