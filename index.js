@@ -267,6 +267,7 @@ let refreshTimer = null;
 let appendTimer = null;
 let summaryTimer = null;
 let isSummarizing = false;
+let sgToastTimer = null;
 
 // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
 let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
@@ -623,6 +624,45 @@ function setStatus(text, kind = '') {
   $s.removeClass('ok err warn').addClass(kind || '');
   $s.text(text || '');
 }
+
+
+function ensureToast() {
+  if ($('#sg_toast').length) return;
+  $('body').append(`
+    <div id="sg_toast" class="sg-toast info" style="display:none" role="status" aria-live="polite">
+      <div class="sg-toast-inner">
+        <div class="sg-toast-spinner" aria-hidden="true"></div>
+        <div class="sg-toast-text" id="sg_toast_text"></div>
+      </div>
+    </div>
+  `);
+}
+
+function hideToast() {
+  const $t = $('#sg_toast');
+  if (!$t.length) return;
+  $t.removeClass('visible spinner');
+  // delay hide for transition
+  setTimeout(() => { $t.hide(); }, 180);
+}
+
+function showToast(text, { kind = 'info', spinner = false, sticky = false, duration = 1700 } = {}) {
+  ensureToast();
+  const $t = $('#sg_toast');
+  const $txt = $('#sg_toast_text');
+  $txt.text(text || '');
+  $t.removeClass('ok warn err info').addClass(kind || 'info');
+  $t.toggleClass('spinner', !!spinner);
+  $t.show(0);
+  // trigger transition
+  requestAnimationFrame(() => { $t.addClass('visible'); });
+
+  if (sgToastTimer) { clearTimeout(sgToastTimer); sgToastTimer = null; }
+  if (!sticky) {
+    sgToastTimer = setTimeout(() => { hideToast(); }, clampInt(duration, 500, 10000, 1700));
+  }
+}
+
 
 function updateButtonsEnabled() {
   const ok = Boolean(lastReport?.markdown);
@@ -2183,6 +2223,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
   if (isSummarizing) return;
   isSummarizing = true;
   setStatus('总结中…', 'warn');
+  showToast('正在总结…', { kind: 'warn', spinner: true, sticky: true });
 
   try {
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -2199,6 +2240,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       const resolved0 = resolveChatRangeByFloors(chat, mode, manualFromFloor, manualToFloor);
       if (!resolved0) {
         setStatus('手动楼层范围无效（请检查起止层号）', 'warn');
+        showToast('手动楼层范围无效（请检查起止层号）', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
         return;
       }
 
@@ -2235,6 +2277,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     const totalSeg = segments.length;
     if (!totalSeg) {
       setStatus('没有可总结的内容（范围为空）', 'warn');
+      showToast('没有可总结的内容（范围为空）', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
       return;
     }
 
@@ -2388,6 +2431,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     if (created <= 0) {
       setStatus(`总结未生成（${runErrs.length ? runErrs[0] : '未知原因'}）`, 'warn');
+      showToast(`总结未生成（${runErrs.length ? runErrs[0] : '未知原因'}）`, { kind: 'warn', spinner: false, sticky: false, duration: 2600 });
       return;
     }
 
@@ -2426,9 +2470,30 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         setStatus('总结完成 ✅', 'ok');
       }
     }
+
+    // toast notify (non-blocking)
+    try {
+      const errCount = (writeErrs?.length || 0) + (runErrs?.length || 0);
+      const kind = errCount ? 'warn' : 'ok';
+      const text = (totalSeg > 1)
+        ? (errCount ? '分段总结完成 ⚠️' : '分段总结完成 ✅')
+        : (errCount ? '总结完成 ⚠️' : '总结完成 ✅');
+      showToast(text, { kind, spinner: false, sticky: false, duration: errCount ? 2600 : 1700 });
+    } catch { /* ignore toast errors */ }
+
+
+
+  } catch (e) {
+    console.error('[StoryGuide] Summary failed:', e);
+    const msg = (e && (e.message || String(e))) ? (e.message || String(e)) : '未知错误';
+    setStatus(`总结失败 ❌（${msg}）`, 'err');
+    showToast(`总结失败 ❌（${msg}）`, { kind: 'err', spinner: false, sticky: false, duration: 3200 });
   } finally {
+
     isSummarizing = false;
     updateButtonsEnabled();
+    // avoid stuck "正在总结" toast on unexpected exits
+    try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
   }
 }
 
