@@ -2208,8 +2208,8 @@ function renderDatabaseTemplate(template, data) {
           if (item === null || item === undefined) {
             thisVal = '';
           } else if (typeof item === 'object') {
-            // 尝试提取常见的文本字段
-            thisVal = item.text || item.name || item.title || item.value || item.content || JSON.stringify(item);
+            // 尝试提取常见的文本字段（不使用 title 避免和模块标题混淆）
+            thisVal = item.text || item.name || item.value || item.content || item.description || JSON.stringify(item);
           } else {
             thisVal = String(item);
           }
@@ -2294,11 +2294,21 @@ function renderDatabaseViewHtml(records, modules) {
         if (m.type === 'list' && Array.isArray(val)) {
           items = val.map(item => {
             if (item === null || item === undefined) return '';
+            if (typeof item === 'string') return item;
+            if (typeof item === 'number') return String(item);
             if (typeof item === 'object') {
-              return item.text || item.name || item.title || item.value || item.content || JSON.stringify(item);
+              // 尝试提取常见的文本字段（不使用 title 避免和模块标题混淆）
+              const textVal = item.text || item.name || item.value || item.content || item.description || item.label;
+              if (textVal) return String(textVal);
+              // 如果没有找到文本字段，转为 JSON 但排除一些元数据字段
+              try {
+                return JSON.stringify(item);
+              } catch {
+                return '[对象]';
+              }
             }
             return String(item);
-          });
+          }).filter(Boolean); // 过滤空字符串
         }
         return {
           index: idx + 1,
@@ -2307,12 +2317,14 @@ function renderDatabaseViewHtml(records, modules) {
           type: m.type,
           type_is_list: m.type === 'list',
           items: items,
-          content: m.type !== 'list' ? (val || '') : '',
+          hasItems: items.length > 0,
+          content: m.type !== 'list' ? String(val || '') : '',
           raw: val
         };
       })
     };
 
+    console.log('[StoryGuide] Database template data:', JSON.stringify(templateData, null, 2));
 
     try {
       return renderDatabaseTemplate(template, templateData);
