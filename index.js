@@ -2108,9 +2108,11 @@ async function runDatabaseUpdate(reason = 'manual') {
     showToast(changedKeys.length ? `数据库已更新：${changedKeys.join(', ')}` : '数据库无变化', { kind: 'ok' });
 
     // 如果数据库视图可见，刷新显示
-    if (databaseViewMode && floatingPanelVisible) {
+    const $panel = $('#sg_floating_panel');
+    if ($panel.hasClass('visible') && databaseViewMode) {
       updateDatabaseViewInFloatingPanel();
     }
+
 
   } catch (e) {
     console.error('[StoryGuide] database update failed:', e);
@@ -2153,45 +2155,99 @@ function getValueByPath(obj, path) {
   return val;
 }
 
+// 查找匹配的关闭标签（处理嵌套）
+function findMatchingClose(template, openTag, closeTag, startIdx) {
+  let depth = 1;
+  let idx = startIdx;
+  while (idx < template.length && depth > 0) {
+    const nextOpen = template.indexOf(openTag, idx);
+    const nextClose = template.indexOf(closeTag, idx);
+
+    if (nextClose === -1) return -1; // 没找到关闭标签
+
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++;
+      idx = nextOpen + openTag.length;
+    } else {
+      depth--;
+      if (depth === 0) return nextClose;
+      idx = nextClose + closeTag.length;
+    }
+  }
+  return -1;
+}
+
 function renderDatabaseTemplate(template, data) {
   if (!template || typeof template !== 'string') return '';
   let html = template;
 
-  // 处理 {{#each key}}...{{/each}} 循环
-  html = html.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (match, key, inner) => {
+  // 处理 {{#each key}}...{{/each}} 循环（支持嵌套）
+  let eachMatch;
+  const eachRegex = /\{\{#each\s+(\w+)\}\}/g;
+  while ((eachMatch = eachRegex.exec(html)) !== null) {
+    const fullOpenTag = eachMatch[0];
+    const key = eachMatch[1];
+    const startIdx = eachMatch.index;
+    const innerStart = startIdx + fullOpenTag.length;
+
+    // 查找匹配的 {{/each}}
+    const closeIdx = findMatchingClose(html, '{{#each', '{{/each}}', innerStart);
+    if (closeIdx === -1) break;
+
+    const inner = html.substring(innerStart, closeIdx);
     const items = data[key];
-    if (!items) return '';
+    let replacement = '';
 
-    if (Array.isArray(items)) {
-      return items.map((item, idx) => {
-        let itemHtml = inner;
-        itemHtml = itemHtml.replace(/\{\{@index\}\}/g, String(idx + 1));
-        itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(String(item ?? '')));
-        // 递归处理对象属性
-        if (typeof item === 'object' && item !== null) {
-          itemHtml = renderDatabaseTemplate(itemHtml, item);
-        }
-        return itemHtml;
-      }).join('');
-    } else if (typeof items === 'object') {
-      return Object.entries(items).map(([k, v]) => {
-        let itemHtml = inner;
-        itemHtml = itemHtml.replace(/\{\{@key\}\}/g, escapeHtml(k));
-        itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(String(v ?? '')));
-        return itemHtml;
-      }).join('');
+    if (items) {
+      if (Array.isArray(items)) {
+        replacement = items.map((item, idx) => {
+          let itemHtml = inner;
+          itemHtml = itemHtml.replace(/\{\{@index\}\}/g, String(idx + 1));
+          itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(String(item ?? '')));
+          // 递归处理对象属性
+          if (typeof item === 'object' && item !== null) {
+            itemHtml = renderDatabaseTemplate(itemHtml, item);
+          }
+          return itemHtml;
+        }).join('');
+      } else if (typeof items === 'object') {
+        replacement = Object.entries(items).map(([k, v]) => {
+          let itemHtml = inner;
+          itemHtml = itemHtml.replace(/\{\{@key\}\}/g, escapeHtml(k));
+          itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(String(v ?? '')));
+          return itemHtml;
+        }).join('');
+      }
     }
-    return '';
-  });
 
-  // 处理 {{#if key}}...{{/if}} 条件
-  html = html.replace(/\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (match, key, inner) => {
-    const val = getValueByPath(data, key.trim());
+    html = html.substring(0, startIdx) + replacement + html.substring(closeIdx + '{{/each}}'.length);
+    eachRegex.lastIndex = startIdx + replacement.length;
+  }
+
+  // 处理 {{#if key}}...{{/if}} 条件（支持嵌套）
+  let ifMatch;
+  const ifRegex = /\{\{#if\s+([^}]+)\}\}/g;
+  while ((ifMatch = ifRegex.exec(html)) !== null) {
+    const fullOpenTag = ifMatch[0];
+    const key = ifMatch[1].trim();
+    const startIdx = ifMatch.index;
+    const innerStart = startIdx + fullOpenTag.length;
+
+    // 查找匹配的 {{/if}}
+    const closeIdx = findMatchingClose(html, '{{#if', '{{/if}}', innerStart);
+    if (closeIdx === -1) break;
+
+    const inner = html.substring(innerStart, closeIdx);
+    const val = getValueByPath(data, key);
+    let replacement = '';
+
     if (val && (Array.isArray(val) ? val.length > 0 : true)) {
-      return renderDatabaseTemplate(inner, data);
+      replacement = renderDatabaseTemplate(inner, data);
     }
-    return '';
-  });
+
+    html = html.substring(0, startIdx) + replacement + html.substring(closeIdx + '{{/if}}'.length);
+    ifRegex.lastIndex = startIdx + replacement.length;
+  }
 
   // 处理简单变量 {{path}}
   html = html.replace(/\{\{([^#\/][^}]*)\}\}/g, (match, path) => {
@@ -2202,6 +2258,7 @@ function renderDatabaseTemplate(template, data) {
 
   return html;
 }
+
 
 function renderDatabaseViewHtml(records, modules) {
   const s = ensureSettings();
@@ -2290,12 +2347,15 @@ function updateDatabaseViewInFloatingPanel() {
   // 绑定按钮事件
   $('#sg_database_update').off('click').on('click', async () => {
     await runDatabaseUpdate('manual');
+    // 更新后刷新视图
+    updateDatabaseViewInFloatingPanel();
   });
 
   $('#sg_database_export').off('click').on('click', () => {
     exportDatabaseTemplate();
   });
 }
+
 
 function exportDatabaseTemplate() {
   const meta = getDatabaseMeta();
