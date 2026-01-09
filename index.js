@@ -2366,60 +2366,8 @@ function renderDatabaseTemplate(template, data) {
 
 
 function renderDatabaseViewHtml(records, modules) {
-  const s = ensureSettings();
-  const template = String(s.databaseDisplayTemplate || '').trim();
-
-  // 如果有自定义模板，使用模板渲染
-  if (template && template.includes('{{')) {
-    // 将 records 和 modules 转换为模板数据格式
-    const templateData = {
-      records: modules.map((m, idx) => {
-        const val = records?.[m.key];
-        // 处理 items - 确保数组元素是字符串(primitive)
-        let items = [];
-        if (m.type === 'list' && Array.isArray(val)) {
-          items = val.map(item => {
-            if (item === null || item === undefined) return '';
-            // 强制转换为基础字符串，避免 String 对象问题
-            const s = String(item);
-            if (s === '[object Object]') {
-              // 如果真的是对象，尝试提取
-              if (typeof item === 'object') {
-                return item.text || item.content || item.value || JSON.stringify(item);
-              }
-            }
-            return s;
-          }).filter(Boolean);
-        }
-        return {
-          index: idx + 1,
-          key: m.key,
-          title: m.title || m.key,
-          type: m.type,
-          type_is_list: m.type === 'list',
-          items: items,
-          hasItems: items.length > 0,
-          content: m.type !== 'list' ? String(val || '') : '',
-          raw: val
-        };
-
-      })
-    };
-
-    console.log('[StoryGuide] Database template data:', JSON.stringify(templateData, null, 2));
-
-    try {
-      return renderDatabaseTemplate(template, templateData);
-    } catch (e) {
-      console.warn('[StoryGuide] template render error:', e);
-    }
-  }
-
-  // 默认渲染方式
-  const lines = [];
-
-  // 添加手动更新设置面板
-  lines.push(`
+  // 1. 构建手动更新控制面板 (Manual Update Controls)
+  const controlsHtml = `
     <div class="sg-db-controls">
       <div class="sg-db-controls-header" onclick="$(this).next().toggleClass('visible')">
         <span>手动更新设置</span>
@@ -2437,37 +2385,52 @@ function renderDatabaseViewHtml(records, modules) {
         <textarea id="sg_db_extra_instruction" class="sg-db-extra-input" placeholder="输入额外更新指令（仅本次生效，例如：只关注刚才提到的人名）..."></textarea>
       </div>
     </div>
-  `);
+  `;
 
-  lines.push('<div class="sg-database-view">');
-
-  for (const m of modules) {
-
+  // 2. 构建数据库记录卡片 (JS Direct Rendering)
+  // 替代旧的正则模板引擎，直接用 JS 生成 HTML，避免 Object 显示问题
+  const cardsHtml = modules.map((m, idx) => {
     const val = records?.[m.key];
-    lines.push(`<div class="sg-database-module">`);
-    lines.push(`<div class="sg-database-module-title">${escapeHtml(m.title || m.key)}</div>`);
+    const isList = m.type === 'list';
 
-    if (m.type === 'list') {
-      const arr = Array.isArray(val) ? val : [];
-      if (arr.length) {
-        lines.push('<ul class="sg-database-list">');
-        arr.forEach(item => {
-          lines.push(`<li class="sg-database-item">${escapeHtml(item)}</li>`);
-        });
-        lines.push('</ul>');
+    // Header
+    const indexHtml = `<span class="sg-db-card-index">#${idx + 1}</span>`;
+    const titleHtml = `<span class="sg-db-card-title">${escapeHtml(m.title || m.key)}</span>`;
+    const headerHtml = `<div class="sg-db-card-header">${indexHtml}${titleHtml}</div>`;
+
+    // Body
+    let bodyContent = '';
+    if (isList) {
+      // 确保 items 是数组且内容为字符串
+      const rawItems = Array.isArray(val) ? val : [];
+      if (rawItems.length > 0) {
+        const lis = rawItems.map(item => {
+          let text = '';
+          if (typeof item === 'object' && item !== null) {
+            // 尝试从对象中提取文本，或者 fallback 到 stringify
+            text = item.text || item.content || item.value || JSON.stringify(item);
+          } else {
+            text = String(item ?? '');
+          }
+          // 再次防护 [object Object]
+          if (text === '[object Object]') text = JSON.stringify(item);
+          return `<li class="sg-db-card-item">${escapeHtml(text)}</li>`;
+        }).join('');
+        bodyContent = `<ul class="sg-db-card-list">${lis}</ul>`;
       } else {
-        lines.push('<div class="sg-database-empty">(空)</div>');
+        bodyContent = `<div class="sg-hint" style="padding:4px 0">(空)</div>`;
       }
     } else {
-      lines.push(`<div class="sg-database-text">${val ? escapeHtml(val) : '(空)'}</div>`);
+      const text = String(val || '');
+      bodyContent = `<div class="sg-db-card-text">${escapeHtml(text || '(空)')}</div>`;
     }
 
-    lines.push('</div>');
-  }
+    return `<div class="sg-db-card">${headerHtml}<div class="sg-db-card-body">${bodyContent}</div></div>`;
+  }).join('');
 
-  lines.push('</div>');
-  return lines.join('\n');
+  return controlsHtml + `<div class="sg-db-cards">${cardsHtml}</div>`;
 }
+
 
 function updateDatabaseViewInFloatingPanel() {
   const $body = $('#sg_floating_body');
