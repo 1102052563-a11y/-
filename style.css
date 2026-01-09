@@ -1574,7 +1574,7 @@ body.sg-zoom-lock {
 
 
 /* StoryGuide Toast */
-.sg-toast{
+.sg-toast {
   position: fixed;
   left: 50%;
   top: 14px;
@@ -1584,11 +1584,13 @@ body.sg-zoom-lock {
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
-.sg-toast.visible{
+
+.sg-toast.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
-.sg-toast-inner{
+
+.sg-toast-inner {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1597,32 +1599,146 @@ body.sg-zoom-lock {
   border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.12));
   background: var(--SmartThemeBodyColorInverse, #151515);
   color: var(--SmartThemeBodyColor, #fff);
-  box-shadow: 0 10px 36px rgba(0,0,0,0.55);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.55);
   max-width: min(92vw, 680px);
 }
-.sg-toast-text{
+
+.sg-toast-text {
   font-size: 14px;
   line-height: 1.35;
   word-break: break-word;
 }
-.sg-toast-spinner{
+
+.sg-toast-spinner {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.25);
-  border-top-color: rgba(255,255,255,0.9);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.9);
   animation: sg_spin 0.9s linear infinite;
   display: none;
   flex: 0 0 auto;
 }
-.sg-toast.spinner .sg-toast-spinner{ display: block; }
-.sg-toast.ok .sg-toast-inner{ border-color: rgba(70, 200, 120, 0.45); }
-.sg-toast.warn .sg-toast-inner{ border-color: rgba(255, 200, 70, 0.45); }
-.sg-toast.err .sg-toast-inner{ border-color: rgba(255, 90, 90, 0.55); }
 
-@keyframes sg_spin { to { transform: rotate(360deg); } }
+.sg-toast.spinner .sg-toast-spinner {
+  display: block;
+}
 
-@media (max-width: 480px){
-  .sg-toast{ top: 10px; }
-  .sg-toast-inner{ padding: 9px 12px; }
+.sg-toast.ok .sg-toast-inner {
+  border-color: rgba(70, 200, 120, 0.45);
+}
+
+.sg-toast.warn .sg-toast-inner {
+  border-color: rgba(255, 200, 70, 0.45);
+}
+
+.sg-toast.err .sg-toast-inner {
+  border-color: rgba(255, 90, 90, 0.55);
+}
+
+@keyframes sg_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 480px) {
+  .sg-toast {
+    top: 10px;
+  }
+
+  .sg-toast-inner {
+    padding: 9px 12px;
+  }
+}
+
+/* ===== 数据库视图样式 ===== */
+.sg-database-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 12px;
+}
+
+.sg-database-info {
+  font-size: 12px;
+  color: rgba(180, 190, 200, 0.7);
+}
+
+.sg-database-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sg-database-update-btn,
+.sg-database-export-btn {
+  padding: 6px 12px !important;
+  font-size: 12px !important;
+  width: auto !important;
+}
+
+.sg-database-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sg-database-module {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.sg-database-module-title {
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  color: rgba(220, 230, 240, 0.95);
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sg-database-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 14px;
+}
+
+.sg-database-item {
+  padding: 6px 0;
+  font-size: 13px;
+  color: rgba(200, 210, 220, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sg-database-item:last-child {
+  border-bottom: none;
+}
+
+.sg-database-text {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: rgba(200, 210, 220, 0.9);
+  line-height: 1.5;
+}
+
+.sg-database-empty {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: rgba(150, 160, 170, 0.6);
+  font-style: italic;
+}
+
+/* 数据库视图滚动优化 */
+.sg-floating-body:has(.sg-database-view) {
+  padding: 12px 16px;
+}
+
+/* 数据库按钮高亮（当前在数据库视图时） */
+#sg_floating_database.active {
+  background: rgba(100, 160, 220, 0.25);
+  border-color: rgba(100, 160, 220, 0.4);
 }

@@ -73,7 +73,44 @@ const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】\n{{userMessage}}\n
 
 const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"pickedIds": number[]}。\n- pickedIds 必须是候选列表里的 id（整数）。\n- 返回的 pickedIds 数量 <= maxPick。`;
 
+// ===== 数据库模块默认配置 =====
+const DEFAULT_DATABASE_MODULES = Object.freeze([
+  { key: 'achievements', title: '成就记录', type: 'list', prompt: '记录已解锁的成就、里程碑事件', maxItems: 20 },
+  { key: 'quests', title: '任务进度', type: 'list', prompt: '当前进行中的任务及完成状态', maxItems: 15 },
+  { key: 'factions', title: '势力遭遇', type: 'list', prompt: '遭遇过的势力、组织及与主角的关系', maxItems: 15 },
+  { key: 'characters', title: '重要角色', type: 'list', prompt: '遇到的重要NPC及关系状态', maxItems: 20 },
+  { key: 'items', title: '重要物品', type: 'list', prompt: '获得的关键物品、装备、道具', maxItems: 15 },
+  { key: 'locations', title: '已探索地点', type: 'list', prompt: '已探索过的重要地点', maxItems: 15 },
+  { key: 'notes', title: '自由笔记', type: 'text', prompt: '其他重要记录、线索、备忘' },
+]);
+
+const DEFAULT_DATABASE_SYSTEM_PROMPT = `你是一个"游戏数据库记录员"助手。
+
+任务：
+- 阅读用户与AI的对话记录，提取并更新游戏进度相关的结构化信息。
+- 输出需要与现有数据库记录合并（新增或更新条目，不要删除已有记录除非明确被取消/完成）。
+- 保持记录简洁、准确，每条记录控制在50字以内。
+
+注意：
+- 成就/任务完成时标注[已完成]
+- 势力关系用[友好/中立/敌对]标注
+- 角色关系用简短描述（如"盟友""敌人""恋人"）`;
+
+const DEFAULT_DATABASE_USER_TEMPLATE = `【现有数据库记录】
+{{existingRecords}}
+
+【最近对话记录】
+{{recentChat}}
+
+请根据对话内容更新数据库记录。只输出需要新增或修改的内容，保留未变化的记录。`;
+
+const DATABASE_JSON_REQUIREMENT = `输出要求：
+- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。
+- JSON 结构必须与模块配置一致，每个 key 对应一个模块。
+- list 类型输出 string[]，text 类型输出 string。`;
+
 const DEFAULT_SETTINGS = Object.freeze({
+
   enabled: true,
 
   // 输入截取
@@ -250,6 +287,31 @@ const DEFAULT_SETTINGS = Object.freeze({
     { label: '对话', prompt: '让角色之间展开更多对话' },
     { label: '行动', prompt: '描述接下来的具体行动' },
   ], null, 2),
+
+  // ===== 数据库模块（独立 API）=====
+  databaseEnabled: true,
+  databaseAutoUpdate: true,
+  databaseAutoUpdateEvery: 10, // 每 N 条 AI 回复后自动更新
+  databaseMaxMessages: 30,     // 分析时最多读取多少条消息
+  databaseMaxCharsPerMessage: 2000,
+
+  // 数据库模块配置（JSON 字符串）
+  databaseModulesJson: '',
+
+  // 数据库提示词
+  databaseSystemPrompt: DEFAULT_DATABASE_SYSTEM_PROMPT,
+  databaseUserTemplate: DEFAULT_DATABASE_USER_TEMPLATE,
+
+  // 数据库独立 API 配置
+  databaseProvider: 'st', // st | custom
+  databaseTemperature: 0.3,
+  databaseCustomEndpoint: '',
+  databaseCustomApiKey: '',
+  databaseCustomModel: 'gpt-4o-mini',
+  databaseCustomModelsCache: [],
+  databaseCustomMaxTokens: 4096,
+  databaseCustomTopP: 0.95,
+  databaseCustomStream: false,
 });
 
 const META_KEYS = Object.freeze({
@@ -257,6 +319,7 @@ const META_KEYS = Object.freeze({
   world: 'storyguide_world_setup',
   summaryMeta: 'storyguide_summary_meta',
   staticModulesCache: 'storyguide_static_modules_cache',
+  databaseMeta: 'storyguide_database_meta',
 });
 
 let lastReport = null;
@@ -619,11 +682,222 @@ async function clearStaticModulesCache() {
   await setStaticModulesCache({});
 }
 
+// ===== 数据库模块存储 =====
+let lastDatabaseRecords = null;
+let isDatabaseUpdating = false;
+let databaseUpdateTimer = null;
+let databaseViewMode = false; // true = 显示数据库，false = 显示剧情分析
+
+function getDefaultDatabaseMeta() {
+  return {
+    records: {},       // { [moduleKey]: value }
+    lastUpdated: 0,
+    lastFloorCount: 0, // 上次自动更新时的楼层数
+    updateHistory: [], // [{updatedAt, changedKeys: string[]}]
+  };
+}
+
+function getDatabaseMeta() {
+  const raw = String(getChatMetaValue(META_KEYS.databaseMeta) || '').trim();
+  if (!raw) return getDefaultDatabaseMeta();
+  try {
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return getDefaultDatabaseMeta();
+    return {
+      ...getDefaultDatabaseMeta(),
+      ...data,
+      records: (data.records && typeof data.records === 'object') ? data.records : {},
+      updateHistory: Array.isArray(data.updateHistory) ? data.updateHistory : [],
+    };
+  } catch {
+    return getDefaultDatabaseMeta();
+  }
+}
+
+async function setDatabaseMeta(meta) {
+  await setChatMetaValue(META_KEYS.databaseMeta, JSON.stringify(meta ?? getDefaultDatabaseMeta()));
+}
+
+function getDatabaseModules() {
+  const s = ensureSettings();
+  const rawText = String(s.databaseModulesJson || '').trim();
+  if (!rawText) return clone(DEFAULT_DATABASE_MODULES);
+
+  try {
+    const parsed = JSON.parse(rawText);
+    const v = validateAndNormalizeModules(parsed);
+    return v.ok ? v.modules : clone(DEFAULT_DATABASE_MODULES);
+  } catch {
+    return clone(DEFAULT_DATABASE_MODULES);
+  }
+}
+
+function buildDatabaseSchemaFromModules(modules) {
+  const properties = {};
+  const required = [];
+
+  for (const m of modules) {
+    if (m.type === 'list') {
+      properties[m.key] = {
+        type: 'array',
+        items: { type: 'string' },
+        ...(m.maxItems ? { maxItems: m.maxItems } : {}),
+        minItems: 0
+      };
+    } else {
+      properties[m.key] = { type: 'string' };
+    }
+    required.push(m.key);
+  }
+
+  return {
+    name: 'StoryGuideDatabaseRecord',
+    description: '游戏数据库记录（按模块配置生成）',
+    strict: true,
+    value: {
+      '$schema': 'http://json-schema.org/draft-04/schema#',
+      type: 'object',
+      additionalProperties: false,
+      properties,
+      required
+    }
+  };
+}
+
+function buildDatabaseOutputFieldsText(modules) {
+  const lines = [];
+  for (const m of modules) {
+    const p = m.prompt ? ` — ${m.prompt}` : '';
+    const t = m.title ? `（${m.title}）` : '';
+    if (m.type === 'list') {
+      lines.push(`- ${m.key}${t}: string[]${m.maxItems ? ` (最多${m.maxItems}条)` : ''}${p}`);
+    } else {
+      lines.push(`- ${m.key}${t}: string${p}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatDatabaseRecordsForPrompt(records, modules) {
+  const lines = [];
+  for (const m of modules) {
+    const val = records?.[m.key];
+    lines.push(`【${m.title || m.key}】`);
+    if (m.type === 'list') {
+      const arr = Array.isArray(val) ? val : [];
+      if (arr.length) {
+        arr.forEach((item, i) => lines.push(`  ${i + 1}. ${item}`));
+      } else {
+        lines.push('  (空)');
+      }
+    } else {
+      lines.push(val ? `  ${val}` : '  (空)');
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+function buildDatabasePromptMessages(recentChatText, existingRecords, modules) {
+  const s = ensureSettings();
+
+  let sys = String(s.databaseSystemPrompt || '').trim();
+  if (!sys) sys = DEFAULT_DATABASE_SYSTEM_PROMPT;
+
+  // 追加字段说明
+  sys += `\n\n[输出字段]\n${buildDatabaseOutputFieldsText(modules)}`;
+  sys += `\n\n${DATABASE_JSON_REQUIREMENT}`;
+
+  let tpl = String(s.databaseUserTemplate || '').trim();
+  if (!tpl) tpl = DEFAULT_DATABASE_USER_TEMPLATE;
+
+  const user = renderTemplate(tpl, {
+    existingRecords: formatDatabaseRecordsForPrompt(existingRecords, modules),
+    recentChat: recentChatText,
+  });
+
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: user },
+  ];
+}
+
+function buildDatabaseChatSnapshot() {
+  const ctx = SillyTavern.getContext();
+  const s = ensureSettings();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const maxMessages = clampInt(s.databaseMaxMessages, 5, 100, 30);
+  const maxChars = clampInt(s.databaseMaxCharsPerMessage, 200, 8000, 2000);
+
+  const picked = [];
+  for (let i = chat.length - 1; i >= 0 && picked.length < maxMessages; i--) {
+    const m = chat[i];
+    if (!m) continue;
+    const isUser = m.is_user === true;
+    const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
+    let text = stripHtml(m.mes ?? m.message ?? '');
+    if (!text) continue;
+    if (text.length > maxChars) text = text.slice(0, maxChars) + '…(截断)';
+    picked.push(`【${name}】${text}`);
+  }
+  picked.reverse();
+  return picked.join('\n\n');
+}
+
+function mergeDatabaseRecords(existing, updates, modules) {
+  const merged = { ...existing };
+
+  for (const m of modules) {
+    const key = m.key;
+    const newVal = updates?.[key];
+
+    if (newVal === undefined || newVal === null) continue;
+
+    if (m.type === 'list') {
+      const oldArr = Array.isArray(merged[key]) ? merged[key] : [];
+      const newArr = Array.isArray(newVal) ? newVal : [];
+
+      // 合并数组：新增项加入，已有项可能被更新版本替换
+      const mergedSet = new Set(oldArr);
+      for (const item of newArr) {
+        if (item && typeof item === 'string') {
+          // 检查是否是更新（如"任务A [进行中]" -> "任务A [已完成]"）
+          const baseItem = item.replace(/\s*\[.*?\]\s*$/, '').trim();
+          let replaced = false;
+          for (const old of mergedSet) {
+            const oldBase = old.replace(/\s*\[.*?\]\s*$/, '').trim();
+            if (oldBase === baseItem && old !== item) {
+              mergedSet.delete(old);
+              mergedSet.add(item);
+              replaced = true;
+              break;
+            }
+          }
+          if (!replaced) {
+            mergedSet.add(item);
+          }
+        }
+      }
+      merged[key] = Array.from(mergedSet).slice(0, m.maxItems || 50);
+    } else {
+      // text 类型：如果有新值则替换
+      if (newVal && typeof newVal === 'string' && newVal.trim()) {
+        merged[key] = newVal.trim();
+      }
+    }
+  }
+
+  return merged;
+}
+
+
+
 function setStatus(text, kind = '') {
   const $s = $('#sg_status');
   $s.removeClass('ok err warn').addClass(kind || '');
   $s.text(text || '');
 }
+
 
 
 function ensureToast() {
@@ -1689,7 +1963,227 @@ async function runAnalysis() {
   }
 }
 
+// -------------------- database module --------------------
+
+async function runDatabaseUpdate(reason = 'manual') {
+  const s = ensureSettings();
+  if (!s.databaseEnabled) {
+    showToast('数据库模块未启用', { kind: 'warn' });
+    return;
+  }
+
+  if (isDatabaseUpdating) return;
+  isDatabaseUpdating = true;
+
+  showToast('正在更新数据库…', { kind: 'warn', spinner: true, sticky: true });
+
+  try {
+    const modules = getDatabaseModules();
+    const meta = getDatabaseMeta();
+    const existingRecords = meta.records || {};
+    const recentChatText = buildDatabaseChatSnapshot();
+
+    if (!recentChatText.trim()) {
+      showToast('没有对话内容可供分析', { kind: 'warn' });
+      return;
+    }
+
+    const messages = buildDatabasePromptMessages(recentChatText, existingRecords, modules);
+    const schema = buildDatabaseSchemaFromModules(modules);
+
+    let jsonText = '';
+    if (s.databaseProvider === 'custom') {
+      jsonText = await callViaCustom(
+        s.databaseCustomEndpoint,
+        s.databaseCustomApiKey,
+        s.databaseCustomModel,
+        messages,
+        s.databaseTemperature,
+        s.databaseCustomMaxTokens,
+        s.databaseCustomTopP,
+        s.databaseCustomStream
+      );
+    } else {
+      jsonText = await callViaSillyTavern(messages, schema, s.databaseTemperature);
+      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+    }
+
+    const parsed = safeJsonParse(jsonText);
+    if (!parsed) {
+      showToast('数据库更新失败：无法解析 AI 输出', { kind: 'err' });
+      console.warn('[StoryGuide] database update failed to parse:', jsonText);
+      return;
+    }
+
+    // 合并记录
+    const mergedRecords = mergeDatabaseRecords(existingRecords, parsed, modules);
+
+    // 计算变化的 keys
+    const changedKeys = [];
+    for (const m of modules) {
+      const oldVal = JSON.stringify(existingRecords[m.key] || (m.type === 'list' ? [] : ''));
+      const newVal = JSON.stringify(mergedRecords[m.key] || (m.type === 'list' ? [] : ''));
+      if (oldVal !== newVal) changedKeys.push(m.key);
+    }
+
+    // 更新元数据
+    const ctx = SillyTavern.getContext();
+    const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+    meta.records = mergedRecords;
+    meta.lastUpdated = Date.now();
+    meta.lastFloorCount = computeFloorCount(chat, 'assistant');
+    meta.updateHistory = meta.updateHistory || [];
+    if (changedKeys.length) {
+      meta.updateHistory.push({ updatedAt: Date.now(), changedKeys });
+      if (meta.updateHistory.length > 50) meta.updateHistory = meta.updateHistory.slice(-50);
+    }
+
+    await setDatabaseMeta(meta);
+    lastDatabaseRecords = mergedRecords;
+
+    showToast(changedKeys.length ? `数据库已更新：${changedKeys.join(', ')}` : '数据库无变化', { kind: 'ok' });
+
+    // 如果数据库视图可见，刷新显示
+    if (databaseViewMode && floatingPanelVisible) {
+      updateDatabaseViewInFloatingPanel();
+    }
+
+  } catch (e) {
+    console.error('[StoryGuide] database update failed:', e);
+    showToast(`数据库更新失败：${e?.message ?? e}`, { kind: 'err' });
+  } finally {
+    isDatabaseUpdating = false;
+  }
+}
+
+function scheduleAutoDatabaseUpdate(reason) {
+  const s = ensureSettings();
+  if (!s.databaseEnabled || !s.databaseAutoUpdate) return;
+
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const currentFloor = computeFloorCount(chat, 'assistant');
+  const meta = getDatabaseMeta();
+  const lastFloor = meta.lastFloorCount || 0;
+  const every = clampInt(s.databaseAutoUpdateEvery, 1, 100, 10);
+
+  if (currentFloor - lastFloor >= every) {
+    if (databaseUpdateTimer) clearTimeout(databaseUpdateTimer);
+    databaseUpdateTimer = setTimeout(() => {
+      runDatabaseUpdate('auto').catch(() => void 0);
+      databaseUpdateTimer = null;
+    }, 1500);
+  }
+}
+
+function renderDatabaseViewHtml(records, modules) {
+  const lines = [];
+  lines.push('<div class="sg-database-view">');
+
+  for (const m of modules) {
+    const val = records?.[m.key];
+    lines.push(`<div class="sg-database-module">`);
+    lines.push(`<div class="sg-database-module-title">${escapeHtml(m.title || m.key)}</div>`);
+
+    if (m.type === 'list') {
+      const arr = Array.isArray(val) ? val : [];
+      if (arr.length) {
+        lines.push('<ul class="sg-database-list">');
+        arr.forEach(item => {
+          lines.push(`<li class="sg-database-item">${escapeHtml(item)}</li>`);
+        });
+        lines.push('</ul>');
+      } else {
+        lines.push('<div class="sg-database-empty">(空)</div>');
+      }
+    } else {
+      lines.push(`<div class="sg-database-text">${val ? escapeHtml(val) : '(空)'}</div>`);
+    }
+
+    lines.push('</div>');
+  }
+
+  lines.push('</div>');
+  return lines.join('\n');
+}
+
+function updateDatabaseViewInFloatingPanel() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+
+  const meta = getDatabaseMeta();
+  const modules = getDatabaseModules();
+  const records = meta.records || {};
+
+  const lastUpdated = meta.lastUpdated ? new Date(meta.lastUpdated).toLocaleString() : '从未';
+
+  const headerHtml = `
+    <div class="sg-database-header">
+      <div class="sg-database-info">上次更新: ${escapeHtml(lastUpdated)}</div>
+      <div class="sg-database-actions">
+        <button class="sg-floating-action-btn sg-database-update-btn" id="sg_database_update" title="AI 更新数据库">🔄 更新</button>
+        <button class="sg-floating-action-btn sg-database-export-btn" id="sg_database_export" title="导出数据库模板">📤 导出</button>
+      </div>
+    </div>
+  `;
+
+  const viewHtml = renderDatabaseViewHtml(records, modules);
+  $body.html(headerHtml + viewHtml);
+
+  // 绑定按钮事件
+  $('#sg_database_update').off('click').on('click', async () => {
+    await runDatabaseUpdate('manual');
+  });
+
+  $('#sg_database_export').off('click').on('click', () => {
+    exportDatabaseTemplate();
+  });
+}
+
+function exportDatabaseTemplate() {
+  const meta = getDatabaseMeta();
+  const modules = getDatabaseModules();
+  const s = ensureSettings();
+
+  const exportData = {
+    version: SG_VERSION,
+    exportedAt: new Date().toISOString(),
+    modules: modules,
+    modulesJson: s.databaseModulesJson || JSON.stringify(DEFAULT_DATABASE_MODULES, null, 2),
+    records: meta.records || {},
+    systemPrompt: s.databaseSystemPrompt || DEFAULT_DATABASE_SYSTEM_PROMPT,
+    userTemplate: s.databaseUserTemplate || DEFAULT_DATABASE_USER_TEMPLATE,
+  };
+
+  const filename = `storyguide_database_${new Date().toISOString().slice(0, 10)}.json`;
+  downloadTextFile(filename, JSON.stringify(exportData, null, 2));
+  showToast('数据库模板已导出', { kind: 'ok' });
+}
+
+function toggleDatabaseView() {
+  databaseViewMode = !databaseViewMode;
+
+  const $title = $('.sg-floating-title');
+  const $dbBtn = $('#sg_floating_database');
+
+  if (databaseViewMode) {
+    $title.text('📊 数据库');
+    $dbBtn.html('📘').attr('title', '切换到剧情分析');
+    updateDatabaseViewInFloatingPanel();
+  } else {
+    $title.text('📘 剧情指导');
+    $dbBtn.html('📊').attr('title', '切换到数据库');
+    // 恢复剧情分析视图
+    if (lastFloatingContent) {
+      updateFloatingPanelBody(lastFloatingContent);
+    } else {
+      $('#sg_floating_body').html('<div class="sg-floating-loading">点击 🔄 生成剧情分析</div>');
+    }
+  }
+}
+
 // -------------------- summary (auto + world info) --------------------
+
 
 function isCountableMessage(m) {
   if (!m) return false;
@@ -5685,6 +6179,8 @@ function setupEventListeners() {
       scheduleReapplyAll('msg_received');
       // 自动总结（独立功能）
       scheduleAutoSummary('msg_received');
+      // 自动数据库更新
+      scheduleAutoDatabaseUpdate('msg_received');
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
@@ -5853,6 +6349,7 @@ function createFloatingPanel() {
     <div class="sg-floating-header" style="cursor: move; touch-action: none;">
       <span class="sg-floating-title">📘 剧情指导</span>
       <div class="sg-floating-actions">
+        <button class="sg-floating-action-btn" id="sg_floating_database" title="数据库">📊</button>
         <button class="sg-floating-action-btn" id="sg_floating_refresh" title="刷新分析">🔄</button>
         <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
         <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
@@ -5893,6 +6390,10 @@ function createFloatingPanel() {
   $('#sg_floating_settings').on('click', () => {
     openModal();
     hideFloatingPanel();
+  });
+
+  $('#sg_floating_database').on('click', () => {
+    toggleDatabaseView();
   });
 
   // Drag logic
