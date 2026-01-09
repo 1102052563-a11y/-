@@ -4509,6 +4509,7 @@ function buildModalHtml() {
             <button class="sg-pgtab active" id="sg_pgtab_guide">剧情指导</button>
             <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_database">数据库</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
@@ -5055,6 +5056,132 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_index -->
 
+          <div class="sg-page" id="sg_page_database">
+            <div class="sg-card">
+              <div class="sg-card-title">数据库设置</div>
+              <div class="sg-hint" style="margin-bottom:10px;">数据库模块用于记录游玩中的内容（成就、任务、势力、重要角色等），支持自定义模块和提示词。</div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>启用数据库</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_databaseEnabled">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+                <div class="sg-field">
+                  <label>自动更新</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_databaseAutoUpdate">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>每 N 条 AI 回复后自动更新</label>
+                  <input id="sg_databaseAutoUpdateEvery" type="number" min="1" max="100" placeholder="10">
+                </div>
+                <div class="sg-field">
+                  <label>分析时最多读取消息数</label>
+                  <input id="sg_databaseMaxMessages" type="number" min="5" max="100" placeholder="30">
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>每条消息最大字符数</label>
+                  <input id="sg_databaseMaxCharsPerMessage" type="number" min="200" max="8000" placeholder="2000">
+                </div>
+                <div class="sg-field">
+                  <label>Temperature</label>
+                  <input id="sg_databaseTemperature" type="number" min="0" max="2" step="0.1" placeholder="0.3">
+                </div>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">数据库 API 设置</div>
+              <div class="sg-field">
+                <label>Provider</label>
+                <select id="sg_databaseProvider">
+                  <option value="st">使用当前 SillyTavern API</option>
+                  <option value="custom">独立 API（走酒馆后端代理）</option>
+                </select>
+              </div>
+
+              <div id="sg_database_custom_block" style="display:none">
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>API 基础 URL</label>
+                    <input id="sg_databaseCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
+                  </div>
+                  <div class="sg-field">
+                    <label>API Key</label>
+                    <input id="sg_databaseCustomApiKey" type="password" placeholder="sk-...">
+                  </div>
+                </div>
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>模型 ID</label>
+                    <input id="sg_databaseCustomModel" type="text" placeholder="gpt-4o-mini">
+                  </div>
+                  <div class="sg-field">
+                    <label>Max Tokens</label>
+                    <input id="sg_databaseCustomMaxTokens" type="number" min="128" max="200000" placeholder="4096">
+                  </div>
+                </div>
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>Top P</label>
+                    <input id="sg_databaseCustomTopP" type="number" min="0" max="1" step="0.01" placeholder="0.95">
+                  </div>
+                  <div class="sg-field">
+                    <label class="sg-check" style="padding-top:24px;"><input type="checkbox" id="sg_databaseCustomStream"> Stream</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">数据库模块配置 (JSON)</div>
+              <div class="sg-hint" style="margin-bottom:8px;">每个模块包含: key(字段名), title(标题), type(text/list), prompt(提示词), maxItems(列表最大条目)</div>
+              <div class="sg-field">
+                <textarea id="sg_databaseModulesJson" rows="10" style="font-family: monospace;"></textarea>
+              </div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_resetDatabaseModules">恢复默认模块</button>
+                <button class="menu_button sg-btn" id="sg_applyDatabaseModules">应用模块配置</button>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">数据库提示词</div>
+              <div class="sg-field">
+                <label>System Prompt</label>
+                <textarea id="sg_databaseSystemPrompt" rows="6"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>User Template（支持占位符: {{existingRecords}} {{recentChat}}）</label>
+                <textarea id="sg_databaseUserTemplate" rows="4"></textarea>
+              </div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_resetDatabasePrompts">恢复默认提示词</button>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">数据库操作</div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn-primary" id="sg_runDatabaseUpdate">🔄 立即更新数据库</button>
+                <button class="menu_button sg-btn" id="sg_exportDatabaseTemplate">📤 导出模板</button>
+                <button class="menu_button sg-btn" id="sg_clearDatabaseRecords">🗑️ 清空记录</button>
+              </div>
+              <div class="sg-hint" id="sg_databaseInfo" style="margin-top:8px;">(数据库状态: 未初始化)</div>
+            </div>
+          </div> <!-- sg_page_database -->
+
           <div class="sg-status" id="sg_status"></div>
         </div>
 
@@ -5272,6 +5399,12 @@ function ensureModal() {
     updateSummaryInfoLabel();
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
+  });
+
+  // auto-save database settings
+  $('#sg_databaseEnabled, #sg_databaseAutoUpdate, #sg_databaseAutoUpdateEvery, #sg_databaseMaxMessages, #sg_databaseMaxCharsPerMessage, #sg_databaseTemperature, #sg_databaseCustomEndpoint, #sg_databaseCustomApiKey, #sg_databaseCustomModel, #sg_databaseCustomMaxTokens, #sg_databaseCustomTopP, #sg_databaseCustomStream, #sg_databaseSystemPrompt, #sg_databaseUserTemplate').on('change input', () => {
+    pullUiToSettings();
+    saveSettings();
   });
 
   $('#sg_refreshModels').on('click', async () => {
@@ -5553,8 +5686,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_database').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_database').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -5562,6 +5695,10 @@ function showSettingsPage(page) {
   } else if (p === 'index') {
     $('#sg_pgtab_index').addClass('active');
     $('#sg_page_index').addClass('active');
+  } else if (p === 'database') {
+    $('#sg_pgtab_database').addClass('active');
+    $('#sg_page_database').addClass('active');
+    updateDatabaseInfoLabel();
   } else {
     $('#sg_pgtab_guide').addClass('active');
     $('#sg_page_guide').addClass('active');
@@ -5586,10 +5723,89 @@ function setupSettingsPages() {
   $('#sg_pgtab_guide').on('click', () => showSettingsPage('guide'));
   $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
+  $('#sg_pgtab_database').on('click', () => showSettingsPage('database'));
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
+
+  // ===== Database settings events =====
+  setupDatabaseSettingsEvents();
 }
+
+function updateDatabaseInfoLabel() {
+  const meta = getDatabaseMeta();
+  const modules = getDatabaseModules();
+  const recordCount = Object.keys(meta.records || {}).length;
+  const lastUpdated = meta.lastUpdated ? new Date(meta.lastUpdated).toLocaleString() : '从未';
+  $('#sg_databaseInfo').text(`(数据库状态: ${recordCount}/${modules.length} 模块有记录，上次更新: ${lastUpdated})`);
+}
+
+function setupDatabaseSettingsEvents() {
+  // Provider toggle
+  $('#sg_databaseProvider').on('change', function () {
+    const isCustom = $(this).val() === 'custom';
+    $('#sg_database_custom_block').toggle(isCustom);
+    const s = ensureSettings();
+    s.databaseProvider = $(this).val();
+    saveSettings();
+  });
+
+  // Module buttons
+  $('#sg_resetDatabaseModules').on('click', () => {
+    $('#sg_databaseModulesJson').val(JSON.stringify(DEFAULT_DATABASE_MODULES, null, 2));
+    const s = ensureSettings();
+    s.databaseModulesJson = '';
+    saveSettings();
+    setStatus('已恢复默认数据库模块 ✅', 'ok');
+  });
+
+  $('#sg_applyDatabaseModules').on('click', () => {
+    const txt = String($('#sg_databaseModulesJson').val() || '').trim();
+    try {
+      const parsed = JSON.parse(txt || '[]');
+      const v = validateAndNormalizeModules(parsed);
+      if (!v.ok) { setStatus(`模块校验失败：${v.error}`, 'err'); return; }
+
+      const s = ensureSettings();
+      s.databaseModulesJson = JSON.stringify(v.modules, null, 2);
+      saveSettings();
+      $('#sg_databaseModulesJson').val(s.databaseModulesJson);
+      setStatus('数据库模块已应用并保存 ✅', 'ok');
+    } catch (e) {
+      setStatus(`模块 JSON 解析失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  // Prompt buttons
+  $('#sg_resetDatabasePrompts').on('click', () => {
+    $('#sg_databaseSystemPrompt').val(DEFAULT_DATABASE_SYSTEM_PROMPT);
+    $('#sg_databaseUserTemplate').val(DEFAULT_DATABASE_USER_TEMPLATE);
+    const s = ensureSettings();
+    s.databaseSystemPrompt = DEFAULT_DATABASE_SYSTEM_PROMPT;
+    s.databaseUserTemplate = DEFAULT_DATABASE_USER_TEMPLATE;
+    saveSettings();
+    setStatus('已恢复默认数据库提示词 ✅', 'ok');
+  });
+
+  // Action buttons
+  $('#sg_runDatabaseUpdate').on('click', async () => {
+    await runDatabaseUpdate('manual');
+    updateDatabaseInfoLabel();
+  });
+
+  $('#sg_exportDatabaseTemplate').on('click', () => {
+    exportDatabaseTemplate();
+  });
+
+  $('#sg_clearDatabaseRecords').on('click', async () => {
+    if (!confirm('确定要清空当前聊天的数据库记录吗？此操作不可撤销。')) return;
+    const meta = getDefaultDatabaseMeta();
+    await setDatabaseMeta(meta);
+    updateDatabaseInfoLabel();
+    setStatus('数据库记录已清空 ✅', 'ok');
+  });
+}
+
 
 function pullSettingsToUi() {
   const s = ensureSettings();
@@ -5720,6 +5936,25 @@ function pullSettingsToUi() {
   updateSummaryInfoLabel();
   renderSummaryPaneFromMeta();
   renderWiTriggerLogs();
+
+  // Database settings
+  $('#sg_databaseEnabled').prop('checked', !!s.databaseEnabled);
+  $('#sg_databaseAutoUpdate').prop('checked', !!s.databaseAutoUpdate);
+  $('#sg_databaseAutoUpdateEvery').val(s.databaseAutoUpdateEvery || 10);
+  $('#sg_databaseMaxMessages').val(s.databaseMaxMessages || 30);
+  $('#sg_databaseMaxCharsPerMessage').val(s.databaseMaxCharsPerMessage || 2000);
+  $('#sg_databaseTemperature').val(s.databaseTemperature ?? 0.3);
+  $('#sg_databaseProvider').val(String(s.databaseProvider || 'st'));
+  $('#sg_databaseCustomEndpoint').val(String(s.databaseCustomEndpoint || ''));
+  $('#sg_databaseCustomApiKey').val(String(s.databaseCustomApiKey || ''));
+  $('#sg_databaseCustomModel').val(String(s.databaseCustomModel || 'gpt-4o-mini'));
+  $('#sg_databaseCustomMaxTokens').val(s.databaseCustomMaxTokens || 4096);
+  $('#sg_databaseCustomTopP').val(s.databaseCustomTopP ?? 0.95);
+  $('#sg_databaseCustomStream').prop('checked', !!s.databaseCustomStream);
+  $('#sg_databaseModulesJson').val(String(s.databaseModulesJson || JSON.stringify(DEFAULT_DATABASE_MODULES, null, 2)));
+  $('#sg_databaseSystemPrompt').val(String(s.databaseSystemPrompt || DEFAULT_DATABASE_SYSTEM_PROMPT));
+  $('#sg_databaseUserTemplate').val(String(s.databaseUserTemplate || DEFAULT_DATABASE_USER_TEMPLATE));
+  $('#sg_database_custom_block').toggle(String(s.databaseProvider || 'st') === 'custom');
 
   updateButtonsEnabled();
 }
@@ -6051,7 +6286,26 @@ function pullUiToSettings() {
   s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
   s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
+
+  // database
+  s.databaseEnabled = $('#sg_databaseEnabled').is(':checked');
+  s.databaseAutoUpdate = $('#sg_databaseAutoUpdate').is(':checked');
+  s.databaseAutoUpdateEvery = clampInt($('#sg_databaseAutoUpdateEvery').val(), 1, 100, s.databaseAutoUpdateEvery || 10);
+  s.databaseMaxMessages = clampInt($('#sg_databaseMaxMessages').val(), 5, 100, s.databaseMaxMessages || 30);
+  s.databaseMaxCharsPerMessage = clampInt($('#sg_databaseMaxCharsPerMessage').val(), 200, 8000, s.databaseMaxCharsPerMessage || 2000);
+  s.databaseTemperature = clampFloat($('#sg_databaseTemperature').val(), 0, 2, s.databaseTemperature ?? 0.3);
+  s.databaseProvider = String($('#sg_databaseProvider').val() || s.databaseProvider || 'st');
+  s.databaseCustomEndpoint = String($('#sg_databaseCustomEndpoint').val() || s.databaseCustomEndpoint || '').trim();
+  s.databaseCustomApiKey = String($('#sg_databaseCustomApiKey').val() || s.databaseCustomApiKey || '');
+  s.databaseCustomModel = String($('#sg_databaseCustomModel').val() || s.databaseCustomModel || 'gpt-4o-mini').trim();
+  s.databaseCustomMaxTokens = clampInt($('#sg_databaseCustomMaxTokens').val(), 128, 200000, s.databaseCustomMaxTokens || 4096);
+  s.databaseCustomTopP = clampFloat($('#sg_databaseCustomTopP').val(), 0, 1, s.databaseCustomTopP ?? 0.95);
+  s.databaseCustomStream = $('#sg_databaseCustomStream').is(':checked');
+  s.databaseModulesJson = String($('#sg_databaseModulesJson').val() || '').trim();
+  s.databaseSystemPrompt = String($('#sg_databaseSystemPrompt').val() || '').trim() || DEFAULT_DATABASE_SYSTEM_PROMPT;
+  s.databaseUserTemplate = String($('#sg_databaseUserTemplate').val() || '').trim() || DEFAULT_DATABASE_USER_TEMPLATE;
 }
+
 
 function openModal() {
   ensureModal();
