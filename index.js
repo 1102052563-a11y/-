@@ -2216,11 +2216,13 @@ function renderDatabaseTemplate(template, data) {
           if (item === null || item === undefined) {
             thisVal = '';
           } else if (typeof item === 'object') {
+            console.warn('[StoryGuide] item is object:', item);
             // 尝试提取常见的文本字段
-            thisVal = item.text || item.name || item.value || item.content || item.description || '[对象]';
+            thisVal = item.text || item.name || item.value || item.content || item.description || JSON.stringify(item);
           } else {
             thisVal = String(item);
           }
+
           itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(thisVal));
 
           // 递归处理对象属性
