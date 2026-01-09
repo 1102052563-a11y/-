@@ -923,25 +923,33 @@ function mergeDatabaseRecords(existing, updates, modules) {
 
       // 合并数组：新增项加入，已有项可能被更新版本替换
       const mergedSet = new Set(oldArr);
+      const normalize = (s) => String(s).replace(/\s*\[.*?\]\s*$/, '').replace(/[。，,！!.\s]/g, '').trim();
+
       for (const item of newArr) {
         if (item && typeof item === 'string') {
-          // 检查是否是更新（如"任务A [进行中]" -> "任务A [已完成]"）
-          const baseItem = item.replace(/\s*\[.*?\]\s*$/, '').trim();
+          // 检查是否是 updates/dupes
+          const itemNorm = normalize(item);
           let replaced = false;
+
           for (const old of mergedSet) {
-            const oldBase = old.replace(/\s*\[.*?\]\s*$/, '').trim();
-            if (oldBase === baseItem && old !== item) {
-              mergedSet.delete(old);
-              mergedSet.add(item);
+            if (normalize(old) === itemNorm) {
+              // 它是同一个 item（只是状态或标点不同）
+              // 如果新项不等于旧项，通常意味着状态更新或格式修复 -> 替换旧项
+              if (old !== item) {
+                mergedSet.delete(old);
+                mergedSet.add(item);
+              }
               replaced = true;
               break;
             }
           }
+
           if (!replaced) {
             mergedSet.add(item);
           }
         }
       }
+
       merged[key] = Array.from(mergedSet).slice(0, m.maxItems || 50);
     } else {
       // text 类型：如果有新值则替换
@@ -2203,17 +2211,18 @@ function renderDatabaseTemplate(template, data) {
         replacement = items.map((item, idx) => {
           let itemHtml = inner;
           itemHtml = itemHtml.replace(/\{\{@index\}\}/g, String(idx + 1));
-          // 处理 {{this}} - 如果是对象则尝试提取文本或转 JSON
+          // 处理 {{this}} - 如果是对象则尝试提取文本
           let thisVal = '';
           if (item === null || item === undefined) {
             thisVal = '';
           } else if (typeof item === 'object') {
-            // 尝试提取常见的文本字段（不使用 title 避免和模块标题混淆）
-            thisVal = item.text || item.name || item.value || item.content || item.description || JSON.stringify(item);
+            // 尝试提取常见的文本字段
+            thisVal = item.text || item.name || item.value || item.content || item.description || '[对象]';
           } else {
             thisVal = String(item);
           }
           itemHtml = itemHtml.replace(/\{\{this\}\}/g, escapeHtml(thisVal));
+
           // 递归处理对象属性
           if (typeof item === 'object' && item !== null) {
             itemHtml = renderDatabaseTemplate(itemHtml, item);
