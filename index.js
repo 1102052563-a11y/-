@@ -923,7 +923,7 @@ function mergeDatabaseRecords(existing, updates, modules) {
 
       // 合并数组：新增项加入，已有项可能被更新版本替换
       const mergedSet = new Set(oldArr);
-      const normalize = (s) => String(s).replace(/\s*\[.*?\]\s*$/, '').replace(/[。，,！!.\s]/g, '').trim();
+      const normalize = (s) => String(s).replace(/\s*\[.*?\]\s*$/, '').replace(/^[\d\-\.\s]+/, '').replace(/[。，,！!.\s]/g, '').trim();
 
       for (const item of newArr) {
         if (item && typeof item === 'string') {
@@ -2336,26 +2336,21 @@ function renderDatabaseViewHtml(records, modules) {
     const templateData = {
       records: modules.map((m, idx) => {
         const val = records?.[m.key];
-        // 处理 items - 确保数组元素是字符串
+        // 处理 items - 确保数组元素是字符串(primitive)
         let items = [];
         if (m.type === 'list' && Array.isArray(val)) {
           items = val.map(item => {
             if (item === null || item === undefined) return '';
-            if (typeof item === 'string') return item;
-            if (typeof item === 'number') return String(item);
-            if (typeof item === 'object') {
-              // 尝试提取常见的文本字段（不使用 title 避免和模块标题混淆）
-              const textVal = item.text || item.name || item.value || item.content || item.description || item.label;
-              if (textVal) return String(textVal);
-              // 如果没有找到文本字段，转为 JSON 但排除一些元数据字段
-              try {
-                return JSON.stringify(item);
-              } catch {
-                return '[对象]';
+            // 强制转换为基础字符串，避免 String 对象问题
+            const s = String(item);
+            if (s === '[object Object]') {
+              // 如果真的是对象，尝试提取
+              if (typeof item === 'object') {
+                return item.text || item.content || item.value || JSON.stringify(item);
               }
             }
-            return String(item);
-          }).filter(Boolean); // 过滤空字符串
+            return s;
+          }).filter(Boolean);
         }
         return {
           index: idx + 1,
@@ -2368,6 +2363,7 @@ function renderDatabaseViewHtml(records, modules) {
           content: m.type !== 'list' ? String(val || '') : '',
           raw: val
         };
+
       })
     };
 
