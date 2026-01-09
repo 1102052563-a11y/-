@@ -221,6 +221,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiTriggerInjectStyle: 'hidden',
   wiTriggerTag: 'SG_WI_TRIGGERS',
   wiTriggerDebugLog: false,
+  // ROLL 点（本回合行动判定）
+  wiRollEnabled: false,
+  wiRollThreshold: 50,
+  wiRollInjectStyle: 'plain',
+  wiRollTag: 'SG_WI_ROLL',
 
   // 蓝灯索引读取方式：默认“实时读取蓝灯世界书文件”
   // - live：每次触发前会按需拉取蓝灯世界书（带缓存/节流）
@@ -2557,6 +2562,55 @@ function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden
   return `\n\n<!--${tag}\n${body}\n-->`;
 }
 
+const ROLL_ACTIONS = Object.freeze([
+  { key: 'combat', label: '战斗', patterns: [/战斗|攻击|砍|击|打|杀|射击|射箭|格斗|搏斗|battle|fight|attack/i] },
+  { key: 'deceive', label: '欺骗', patterns: [/欺骗|撒谎|骗局|骗|诈|诓|伪装|乔装|deceive|lie|con|trick/i] },
+  { key: 'stealth', label: '潜行', patterns: [/潜行|潜入|躲藏|隐蔽|匿踪|偷袭|偷窃|扒窃|暗杀|stealth|sneak|hide/i] },
+  { key: 'persuade', label: '交涉', patterns: [/说服|劝说|交涉|谈判|威胁|恐吓|游说|沟通|persuade|negotiate|intimidate/i] },
+  { key: 'investigate', label: '调查', patterns: [/调查|搜查|搜索|观察|侦查|寻找|翻找|取证|investigate|search|scout/i] },
+  { key: 'magic', label: '施法', patterns: [/施法|法术|魔法|咒语|念咒|咒文|magic|spell|cast/i] },
+]);
+
+function detectRollAction(userText) {
+  const t = String(userText || '');
+  if (!t) return null;
+  for (const a of ROLL_ACTIONS) {
+    for (const re of a.patterns) {
+      if (re.test(t)) return a;
+    }
+  }
+  return null;
+}
+
+function rollDice(sides = 100) {
+  const s = Math.max(2, Number(sides) || 100);
+  return Math.floor(Math.random() * s) + 1;
+}
+
+function classifyRollOutcome(roll, threshold, critSuccess = 5, critFail = 96) {
+  const r = Number(roll) || 0;
+  const th = clampInt(threshold, 1, 99, 50);
+  if (r <= critSuccess) return '大成功';
+  if (r >= critFail) return '大失败';
+  if (r <= th) return '成功';
+  return '失败';
+}
+
+function buildRollInjection(info, tag = 'SG_WI_ROLL', style = 'plain') {
+  if (!info) return '';
+  const action = String(info.action || '').trim();
+  const roll = Number(info.roll) || 0;
+  const outcome = String(info.outcome || '').trim();
+  const threshold = clampInt(info.threshold, 1, 99, 50);
+  if (!action || !roll || !outcome) return '';
+
+  if (String(style || 'plain') === 'hidden') {
+    return `\n\n<!--${tag}\n动作=${action}\n1d100=${roll}\n结果=${outcome}\n阈值<=${threshold}\n-->`;
+  }
+
+  return `\n\n[${tag}] 动作=${action} | 1d100=${roll} | 结果=${outcome} | 阈值<=${threshold}\n`;
+}
+
 function tokenizeForSimilarity(text) {
   const s = String(text || '').toLowerCase();
   const tokens = new Map();
@@ -2603,7 +2657,8 @@ function cosineSimilarity(mapA, mapB) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-function buildRecentChatText(chat, lookback, excludeLast = true, stripTag = '') {
+function buildRecentChatText(chat, lookback, excludeLast = true, stripTags = '') {
+  const tags = Array.isArray(stripTags) ? stripTags : (stripTags ? [stripTags] : []);
   const msgs = [];
   const arr = Array.isArray(chat) ? chat : [];
   let i = arr.length - 1;
@@ -2613,7 +2668,11 @@ function buildRecentChatText(chat, lookback, excludeLast = true, stripTag = '') 
     if (!m) continue;
     if (m.is_system === true) continue;
     let t = stripHtml(m.mes ?? m.message ?? '');
-    if (stripTag) t = stripTriggerInjection(t, stripTag);
+    if (tags.length) {
+      for (const tag of tags) {
+        if (tag) t = stripTriggerInjection(t, tag);
+      }
+    }
     if (t) msgs.push(t);
   }
   return msgs.reverse().join('\n');
@@ -2806,7 +2865,9 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
 
 async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const s = ensureSettings();
-  if (!s.wiTriggerEnabled) return;
+  const triggerEnabled = !!s.wiTriggerEnabled;
+  const rollEnabled = !!s.wiRollEnabled;
+  if (!triggerEnabled && !rollEnabled) return;
 
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -2817,110 +2878,140 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const lastText = String(last.mes ?? last.message ?? '').trim();
   if (!lastText || lastText.startsWith('/')) return;
 
-  // 仅在达到指定 AI 楼层后才开始索引触发（避免前期噪声/浪费）
-  const startAfter = clampInt(s.wiTriggerStartAfterAssistantMessages, 0, 200000, 0);
-  if (startAfter > 0) {
-    const assistantFloors = computeFloorCount(chat, 'assistant');
-    if (assistantFloors < startAfter) {
-      // log (optional)
-      appendWiTriggerLog({
-        ts: Date.now(),
-        reason: String(reason || 'msg_sent'),
-        userText: lastText,
-        skipped: true,
-        skippedReason: 'minAssistantFloors',
-        assistantFloors,
-        startAfter,
-      });
-      const modalOpen = $('#sg_modal_backdrop').is(':visible');
-      if (modalOpen || s.wiTriggerDebugLog) {
-        setStatus(`索引未启动：AI 回复楼层 ${assistantFloors}/${startAfter}`, 'info');
-      }
-      return;
-    }
-  }
-
-  const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
-  // 最近正文（不含本次用户输入）；为避免“触发词注入”污染相似度，先剔除同 tag 的注入片段。
   const tagForStrip = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
-  const recentText = buildRecentChatText(chat, lookback, true, tagForStrip);
-  if (!recentText) return;
+  const rollTag = String(s.wiRollTag || 'SG_WI_ROLL').trim() || 'SG_WI_ROLL';
 
-  const candidates = collectBlueIndexCandidates();
-  if (!candidates.length) return;
+  let cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', tagForStrip);
+  cleaned = stripTriggerInjection(cleaned, rollTag);
 
-  const maxEntries = clampInt(s.wiTriggerMaxEntries, 1, 20, 4);
-  const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
-  const includeUser = !!s.wiTriggerIncludeUserMessage;
-  const userWeight = clampFloat(s.wiTriggerUserMessageWeight, 0, 10, 1.6);
-  const matchMode = String(s.wiTriggerMatchMode || 'local');
-  let picked = [];
-  if (matchMode === 'llm') {
-    try {
-      picked = await pickRelevantIndexEntriesLLM(recentText, lastText, candidates, maxEntries, includeUser, userWeight);
-    } catch (e) {
-      console.warn('[StoryGuide] index LLM failed; fallback to local similarity', e);
-      picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
+  let injected = cleaned;
+  let rollInjected = false;
+  if (rollEnabled) {
+    const action = detectRollAction(lastText);
+    if (action) {
+      const threshold = clampInt(s.wiRollThreshold, 1, 99, 50);
+      const roll = rollDice(100);
+      const outcome = classifyRollOutcome(roll, threshold);
+      const style = String(s.wiRollInjectStyle || 'plain').trim() || 'plain';
+      const rollText = buildRollInjection({ action: action.label, roll, outcome, threshold }, rollTag, style);
+      if (rollText) {
+        injected += rollText;
+        rollInjected = true;
+      }
     }
-  } else {
-    picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
   }
-  if (!picked.length) return;
 
-  const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
-  const kwSet = new Set();
-  const pickedTitles = []; // debug display with score
-  const pickedNames = [];  // entry names (等价于将触发的绿灯条目名称)
-  const pickedForLog = [];
-  for (const { e, score } of picked) {
-    const name = String(e.title || '').trim() || '条目';
-    pickedNames.push(name);
-    pickedTitles.push(`${name}（${score.toFixed(2)}）`);
-    pickedForLog.push({
-      title: name,
-      score: Number(score),
-      keywordsPreview: (Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : []),
-    });
-    for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
-      const kk = String(k || '').trim();
-      if (!kk) continue;
-      kwSet.add(kk);
-      if (kwSet.size >= maxKeywords) break;
+  let triggerInjected = false;
+  if (triggerEnabled) {
+    let canTrigger = true;
+    // 仅在达到指定 AI 楼层后才开始索引触发（避免前期噪声/浪费）
+    const startAfter = clampInt(s.wiTriggerStartAfterAssistantMessages, 0, 200000, 0);
+    if (startAfter > 0) {
+      const assistantFloors = computeFloorCount(chat, 'assistant');
+      if (assistantFloors < startAfter) {
+        canTrigger = false;
+        // log (optional)
+        appendWiTriggerLog({
+          ts: Date.now(),
+          reason: String(reason || 'msg_sent'),
+          userText: lastText,
+          skipped: true,
+          skippedReason: 'minAssistantFloors',
+          assistantFloors,
+          startAfter,
+        });
+        const modalOpen = $('#sg_modal_backdrop').is(':visible');
+        if (modalOpen || s.wiTriggerDebugLog) {
+          setStatus(`索引未启动：AI 回复楼层 ${assistantFloors}/${startAfter}`, 'info');
+        }
+      }
     }
-    if (kwSet.size >= maxKeywords) break;
-  }
-  const keywords = Array.from(kwSet);
-  if (!keywords.length) return;
 
-  const tag = tagForStrip;
-  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
-  const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', tag);
-  const injected = cleaned + buildTriggerInjection(keywords, tag, style);
+    if (canTrigger) {
+      const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
+      // 最近正文（不含本次用户输入）；为避免注入污染相似度，先剔除注入片段。
+      const recentText = buildRecentChatText(chat, lookback, true, [tagForStrip, rollTag]);
+      if (recentText) {
+        const candidates = collectBlueIndexCandidates();
+        if (candidates.length) {
+          const maxEntries = clampInt(s.wiTriggerMaxEntries, 1, 20, 4);
+          const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
+          const includeUser = !!s.wiTriggerIncludeUserMessage;
+          const userWeight = clampFloat(s.wiTriggerUserMessageWeight, 0, 10, 1.6);
+          const matchMode = String(s.wiTriggerMatchMode || 'local');
+          let picked = [];
+          if (matchMode === 'llm') {
+            try {
+              picked = await pickRelevantIndexEntriesLLM(recentText, lastText, candidates, maxEntries, includeUser, userWeight);
+            } catch (e) {
+              console.warn('[StoryGuide] index LLM failed; fallback to local similarity', e);
+              picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
+            }
+          } else {
+            picked = pickRelevantIndexEntries(recentText, lastText, candidates, maxEntries, minScore, includeUser, userWeight);
+          }
+
+          if (picked.length) {
+            const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
+            const kwSet = new Set();
+            const pickedTitles = []; // debug display with score
+            const pickedNames = [];  // entry names (等价于将触发的绿灯条目名称)
+            const pickedForLog = [];
+            for (const { e, score } of picked) {
+              const name = String(e.title || '').trim() || '条目';
+              pickedNames.push(name);
+              pickedTitles.push(`${name}（${score.toFixed(2)}）`);
+              pickedForLog.push({
+                title: name,
+                score: Number(score),
+                keywordsPreview: (Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : []),
+              });
+              for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
+                const kk = String(k || '').trim();
+                if (!kk) continue;
+                kwSet.add(kk);
+                if (kwSet.size >= maxKeywords) break;
+              }
+              if (kwSet.size >= maxKeywords) break;
+            }
+            const keywords = Array.from(kwSet);
+            if (keywords.length) {
+              const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
+              injected += buildTriggerInjection(keywords, tagForStrip, style);
+              triggerInjected = true;
+
+              // append log (fire-and-forget)
+              appendWiTriggerLog({
+                ts: Date.now(),
+                reason: String(reason || 'msg_sent'),
+                userText: lastText,
+                lookback,
+                style,
+                tag: tagForStrip,
+                picked: pickedForLog,
+                injectedKeywords: keywords,
+              });
+
+              // debug status (only when pane open or explicitly enabled)
+              const modalOpen = $('#sg_modal_backdrop').is(':visible');
+              if (modalOpen || s.wiTriggerDebugLog) {
+                setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : `｜将触发：${pickedNames.slice(0, 4).join('；')}${pickedNames.length > 4 ? '…' : ''}`}`, 'ok');
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (!rollInjected && !triggerInjected) return;
   last.mes = injected;
-
-  // append log (fire-and-forget)
-  appendWiTriggerLog({
-    ts: Date.now(),
-    reason: String(reason || 'msg_sent'),
-    userText: lastText,
-    lookback,
-    style,
-    tag,
-    picked: pickedForLog,
-    injectedKeywords: keywords,
-  });
 
   // try save
   try {
     if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
     else if (typeof ctx.saveChat === 'function') ctx.saveChat();
   } catch { /* ignore */ }
-
-  // debug status (only when pane open or explicitly enabled)
-  const modalOpen = $('#sg_modal_backdrop').is(':visible');
-  if (modalOpen || s.wiTriggerDebugLog) {
-    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : `｜将触发：${pickedNames.slice(0, 4).join('；')}${pickedNames.length > 4 ? '…' : ''}`}`, 'ok');
-  }
 }
 
 // -------------------- inline append (dynamic modules) --------------------
@@ -4510,6 +4601,30 @@ function buildModalHtml() {
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-row sg-inline" style="margin-top:0;">
+                  <div class="sg-card-title" style="margin:0;">ROLL 点</div>
+                </div>
+                <div class="sg-row sg-inline">
+                  <label class="sg-check"><input type="checkbox" id="sg_wiRollEnabled">启用本回合行动 ROLL 点（与用户输入一起注入）</label>
+                </div>
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>成功阈值（1~99）</label>
+                    <input id="sg_wiRollThreshold" type="number" min="1" max="99" placeholder="50">
+                    <div class="sg-hint">1~阈值=成功；1~5=大成功；96~100=大失败</div>
+                  </div>
+                  <div class="sg-field">
+                    <label>注入方式</label>
+                    <select id="sg_wiRollInjectStyle">
+                      <option value="plain">普通文本</option>
+                      <option value="hidden">隐藏注释</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="sg-hint">动作类型从用户本回合输入识别（战斗/欺骗/潜行/交涉/调查等），未识别则不注入。</div>
+              </div>
+
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-row sg-inline" style="margin-top:0;">
                   <div class="sg-card-title" style="margin:0;">索引日志</div>
                   <div class="sg-spacer"></div>
                   <button class="menu_button sg-btn" id="sg_clearWiLogs">清空</button>
@@ -4772,7 +4887,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiRollEnabled, #sg_wiRollThreshold, #sg_wiRollInjectStyle, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -5192,6 +5307,9 @@ function pullSettingsToUi() {
   $('#sg_wiTriggerMaxKeywords').val(s.wiTriggerMaxKeywords || 24);
   $('#sg_wiTriggerInjectStyle').val(String(s.wiTriggerInjectStyle || 'hidden'));
   $('#sg_wiTriggerDebugLog').prop('checked', !!s.wiTriggerDebugLog);
+  $('#sg_wiRollEnabled').prop('checked', !!s.wiRollEnabled);
+  $('#sg_wiRollThreshold').val(s.wiRollThreshold ?? 50);
+  $('#sg_wiRollInjectStyle').val(String(s.wiRollInjectStyle || 'plain'));
 
   $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
   $('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
@@ -5539,6 +5657,9 @@ function pullUiToSettings() {
   s.wiTriggerMaxKeywords = clampInt($('#sg_wiTriggerMaxKeywords').val(), 1, 200, s.wiTriggerMaxKeywords || 24);
   s.wiTriggerInjectStyle = String($('#sg_wiTriggerInjectStyle').val() || s.wiTriggerInjectStyle || 'hidden');
   s.wiTriggerDebugLog = $('#sg_wiTriggerDebugLog').is(':checked');
+  s.wiRollEnabled = $('#sg_wiRollEnabled').is(':checked');
+  s.wiRollThreshold = clampInt($('#sg_wiRollThreshold').val(), 1, 99, s.wiRollThreshold ?? 50);
+  s.wiRollInjectStyle = String($('#sg_wiRollInjectStyle').val() || s.wiRollInjectStyle || 'plain');
 
   s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
   s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
