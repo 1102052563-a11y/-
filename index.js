@@ -7283,7 +7283,8 @@ function ensureFloatingPanelInViewport(panel) {
   try {
     if (!panel || !panel.getBoundingClientRect) return;
 
-    if (!shouldGuardFloatingPanelViewport()) return;
+    // Remove viewport size guard to ensure panel is always kept reachable
+    // if (!shouldGuardFloatingPanelViewport()) return;
 
     // 与 clampToViewport 保持一致的边界逻辑（允许 50% 越界）
     const minVisibleRatio = 0.5;
