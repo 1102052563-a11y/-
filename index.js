@@ -397,7 +397,11 @@ function ensureSettings() {
   }
   if (typeof extensionSettings[MODULE_NAME].wiRollSystemPrompt === 'string') {
     const cur = extensionSettings[MODULE_NAME].wiRollSystemPrompt;
-    if (!cur.includes('outcomeTier') || !cur.includes('explanation')) {
+    const needsRefresh = !cur.includes('outcomeTier')
+      || !cur.includes('explanation')
+      || !cur.includes('\u96be\u5ea6\u6a21\u5f0f difficulty')
+      || !cur.includes('\u6210\u529f\u9608\u503c/DC');
+    if (needsRefresh) {
       extensionSettings[MODULE_NAME].wiRollSystemPrompt = DEFAULT_ROLL_SYSTEM_PROMPT;
       saveSettingsDebounced();
     }
