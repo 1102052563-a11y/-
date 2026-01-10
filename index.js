@@ -246,6 +246,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiRollThreshold: 50,
   wiRollInjectStyle: 'hidden',
   wiRollTag: 'SG_ROLL',
+  wiRollDebugLog: false,
   wiRollActionsJson: JSON.stringify(DEFAULT_ROLL_ACTIONS, null, 2),
   wiRollFormulaJson: JSON.stringify(DEFAULT_ROLL_FORMULAS, null, 2),
   wiRollModifierSourcesJson: JSON.stringify(DEFAULT_ROLL_MODIFIER_SOURCES, null, 2),
@@ -2903,6 +2904,10 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
   if (!chat.length) return;
 
+  const modalOpen = $('#sg_modal_backdrop').is(':visible');
+  const shouldLog = modalOpen || s.wiRollDebugLog;
+  const logStatus = (msg, kind = 'info') => { if (shouldLog) setStatus(msg, kind); };
+
   const last = chat[chat.length - 1];
   if (!last || last.is_user !== true) return; // only on user send
   let lastText = String(last.mes ?? last.message ?? '').trim();
@@ -2913,7 +2918,10 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
   const actions = safeJsonParse(s.wiRollActionsJson) || DEFAULT_ROLL_ACTIONS;
   const combinedText = `${getLatestAssistantText(chat)}\n${lastText}`;
   const action = detectRollAction(combinedText, actions);
-  if (!action?.key) return;
+  if (!action?.key) {
+    logStatus('ROLL 未触发：未命中动作关键词', 'info');
+    return;
+  }
 
   const source = String(s.wiRollStatSource || 'template');
   let statData = null;
@@ -2923,7 +2931,10 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
     ({ statData } = await resolveStatDataFromTemplate(s));
     if (!statData) ({ statData } = resolveStatDataFromLatestAssistant(chat, s));
   }
-  if (!statData) return;
+  if (!statData) {
+    logStatus('ROLL 未触发：未读取到 stat_data 变量', 'warn');
+    return;
+  }
 
   const randomRoll = rollDice(100);
   let res = null;
@@ -2946,6 +2957,7 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
     if (rollText) {
       const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', rollTag);
       last.mes = cleaned + rollText;
+      logStatus('ROLL 已注入：判定完成', 'ok');
     }
   }
 
@@ -4951,6 +4963,9 @@ function buildModalHtml() {
                     <option value="plain">普通文本</option>
                   </select>
                 </div>
+                <div class="sg-row sg-inline">
+                  <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_wiRollDebugLog">调试：状态栏显示判定细节/未触发原因</label>
+                </div>
                 <div class="sg-field">
                   <label>动作关键词（JSON）</label>
                   <textarea id="sg_wiRollActionsJson" rows="4"></textarea>
@@ -5288,7 +5303,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollRandomWeight, #sg_wiRollThreshold, #sg_wiRollInjectStyle, #sg_wiRollStatParseMode, #sg_wiRollActionsJson, #sg_wiRollFormulaJson, #sg_wiRollModifierSourcesJson, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_wiRollUserTemplate').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollRandomWeight, #sg_wiRollThreshold, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollActionsJson, #sg_wiRollFormulaJson, #sg_wiRollModifierSourcesJson, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_wiRollUserTemplate').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -5714,6 +5729,7 @@ function pullSettingsToUi() {
   $('#sg_wiRollRandomWeight').val(s.wiRollRandomWeight ?? 0.3);
   $('#sg_wiRollThreshold').val(s.wiRollThreshold ?? 50);
   $('#sg_wiRollInjectStyle').val(String(s.wiRollInjectStyle || 'hidden'));
+  $('#sg_wiRollDebugLog').prop('checked', !!s.wiRollDebugLog);
   $('#sg_wiRollStatParseMode').val(String(s.wiRollStatParseMode || 'json'));
   $('#sg_wiRollActionsJson').val(String(s.wiRollActionsJson || JSON.stringify(DEFAULT_ROLL_ACTIONS, null, 2)));
   $('#sg_wiRollFormulaJson').val(String(s.wiRollFormulaJson || JSON.stringify(DEFAULT_ROLL_FORMULAS, null, 2)));
@@ -6082,6 +6098,7 @@ function pullUiToSettings() {
   s.wiRollRandomWeight = clampFloat($('#sg_wiRollRandomWeight').val(), 0, 1, s.wiRollRandomWeight ?? 0.3);
   s.wiRollThreshold = clampInt($('#sg_wiRollThreshold').val(), 1, 99, s.wiRollThreshold ?? 50);
   s.wiRollInjectStyle = String($('#sg_wiRollInjectStyle').val() || s.wiRollInjectStyle || 'hidden');
+  s.wiRollDebugLog = $('#sg_wiRollDebugLog').is(':checked');
   s.wiRollStatParseMode = String($('#sg_wiRollStatParseMode').val() || s.wiRollStatParseMode || 'json');
   s.wiRollActionsJson = String($('#sg_wiRollActionsJson').val() || s.wiRollActionsJson || JSON.stringify(DEFAULT_ROLL_ACTIONS, null, 2));
   s.wiRollFormulaJson = String($('#sg_wiRollFormulaJson').val() || s.wiRollFormulaJson || JSON.stringify(DEFAULT_ROLL_FORMULAS, null, 2));
