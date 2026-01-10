@@ -2878,7 +2878,6 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
   const rollTag = String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL';
   lastText = stripTriggerInjection(lastText, rollTag);
 
-  const rollTag = String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL';
   const actions = safeJsonParse(s.wiRollActionsJson) || DEFAULT_ROLL_ACTIONS;
   const combinedText = `${getLatestAssistantText(chat)}\n${lastText}`;
   const action = detectRollAction(combinedText, actions);
