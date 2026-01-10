@@ -1339,172 +1339,170 @@ async function clearWorldInfoEntry(fileName, uid) {
   await setWorldInfoEntryField(fileName, uid, 'key', '');
 }
 
-async function syncWorldbookEntriesForChat(records, {
-  target = 'file',
-  file = '',
-  commentPrefix = '',
-  currentTag = '',
-} = {}) {
-  const recs = Array.isArray(records) ? records : [];
-  const t = String(target || 'file');
-  const prefix = String(commentPrefix || '').trim();
-  if (!prefix) return { enabled: 0, disabled: 0, tagged: 0, error: '' };
+async function deleteWorldInfoEntries(fileName, uids) {
+  const list = Array.isArray(uids) ? uids.map(x => String(x || '').trim()).filter(Boolean) : [];
+  if (!fileName || !list.length) return 0;
 
-  let fileName = String(file || '').trim();
-  if (t === 'chatbook') fileName = await resolveChatbookFileName();
-  if (!fileName) return { enabled: 0, disabled: 0, tagged: 0, error: 'missing worldbook file' };
-
-  let entries = [];
-  try {
-    entries = await loadWorldInfoEntries(fileName);
-  } catch (e) {
-    return { enabled: 0, disabled: 0, tagged: 0, error: String(e?.message ?? e) };
+  const th = globalThis.TavernHelper;
+  if (th && typeof th.deleteLorebookEntries === 'function') {
+    await th.deleteLorebookEntries(String(fileName), list);
+    return list.length;
   }
 
-  const currentSet = new Set(
-    recs
-      .map(r => normalizeSummaryContent(r?.summary || ''))
-      .filter(Boolean)
-  );
-
-  let cleared = 0;
-  let tagged = 0;
-
-  for (const e of entries) {
-    const comment = String(e?.comment || '') || String(e?.title || '');
-    if (!comment.includes(prefix)) continue;
-
-    const content = normalizeSummaryContent(e?.content || '');
-    const uid = e?.uid ? String(e.uid) : '';
-    if (!uid) continue;
-
-    const keep = content && currentSet.has(content);
-    if (keep) {
-      const tag = extractTagFromComment(comment);
-      if (currentTag && tag !== currentTag) {
-        const updated = appendTagToComment(comment, currentTag);
-        if (updated !== comment) {
-          try { await setWorldInfoEntryField(fileName, uid, 'comment', updated); tagged += 1; } catch { /* ignore */ }
+  let deleted = 0;
+  for (const uid of list) {
+    const cmds = [
+      `/deleteentry file=${quoteSlashValue(fileName)} uid=${quoteSlashValue(uid)}`,
+      `/delentry file=${quoteSlashValue(fileName)} uid=${quoteSlashValue(uid)}`,
+      `/removeentry file=${quoteSlashValue(fileName)} uid=${quoteSlashValue(uid)}`,
+    ];
+    for (const cmd of cmds) {
+      try {
+        const out = await execSlash(cmd);
+        if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
+          continue;
         }
+        deleted += 1;
+        break;
+      } catch {
+        // try next command
       }
-    } else {
-      try { await clearWorldInfoEntry(fileName, uid); cleared += 1; } catch { /* ignore */ }
     }
   }
 
-  return { cleared, tagged, error: '' };
+  return deleted;
 }
 
-async function restoreSummariesToWorldInfoTarget(records, {
-  target = 'file',
+async function deleteSummaryEntriesInWorldbook(fileName, commentPrefix) {
+  const prefix = String(commentPrefix || '').trim();
+  if (!fileName || !prefix) return 0;
+  const entries = await loadWorldInfoEntries(fileName);
+  const uids = entries
+    .filter(e => {
+      const comment = String(e?.comment || '') || String(e?.title || '');
+      return comment.includes(prefix);
+    })
+    .map(e => String(e?.uid || '').trim())
+    .filter(Boolean);
+  if (!uids.length) return 0;
+  return await deleteWorldInfoEntries(fileName, uids);
+}
+
+async function createSummaryWorldbookEntry(rec, {
   file = '',
   commentPrefix = '',
   constant = 0,
 } = {}) {
-  const recs = Array.isArray(records) ? records : [];
-  if (!recs.length) return { restored: 0, missing: 0, error: '' };
+  const s = ensureSettings();
+  const kws = sanitizeKeywords(rec?.keywords);
+  const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
+  const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
+  const rawTitle = String(rec?.title || '').trim();
+  const tag = getWorldbookTag();
 
-  const t = String(target || 'file');
-  const prefix = String(commentPrefix || '').trim();
-  let fileName = String(file || '').trim();
-  if (t === 'chatbook') fileName = await resolveChatbookFileName();
-  if (!fileName) return { restored: 0, missing: 0, error: 'missing worldbook file' };
+  const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
+  const indexId = String(rec?.indexId || '').trim();
+  const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
 
-  let entries = [];
-  try {
-    entries = await loadWorldInfoEntries(fileName);
-  } catch (e) {
-    return { restored: 0, missing: 0, error: String(e?.message ?? e) };
+  let commentTitle = rawTitle;
+  if (prefix) {
+    if (!commentTitle) commentTitle = prefix;
+    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
   }
-
-  const existing = buildWorldInfoContentSet(entries, prefix);
-  const missing = [];
-  for (const rec of recs) {
-    const content = normalizeSummaryContent(rec?.summary || '');
-    if (!content) continue;
-    if (!existing.has(content)) missing.push(rec);
-  }
-
-  if (!missing.length) return { restored: 0, missing: 0, error: '' };
-
-  let restored = 0;
-  for (const rec of missing) {
-    try {
-      await writeSummaryToWorldInfoEntry(rec, null, {
-        target: t,
-        file: (t === 'file') ? fileName : '',
-        commentPrefix: prefix,
-        constant,
-      });
-      restored += 1;
-      existing.add(normalizeSummaryContent(rec?.summary || ''));
-    } catch {
-      // ignore individual failures
+  if (indexInComment) {
+    if (!commentTitle.includes(indexId)) {
+      if (commentTitle === prefix) commentTitle = `${prefix}｜${indexId}`;
+      else if (commentTitle.startsWith(`${prefix}｜`)) commentTitle = commentTitle.replace(`${prefix}｜`, `${prefix}｜${indexId}｜`);
+      else commentTitle = `${prefix}｜${indexId}｜${commentTitle}`;
+      commentTitle = commentTitle.replace(/｜｜+/g, '｜');
     }
   }
+  if (!commentTitle) commentTitle = '剧情总结';
+  commentTitle = appendTagToComment(commentTitle, tag);
+  const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
 
-  return { restored, missing: missing.length, error: '' };
+  const content = normalizeSummaryContent(rec?.summary || '');
+  if (!content) return false;
+
+  const keyValue = (kws.length ? kws.join(',') : prefix);
+  const constantVal = (Number(constant) === 1) ? 1 : 0;
+
+  const parts = [];
+  parts.push(`/createentry file=${quoteSlashValue(file)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`);
+  parts.push(`/setvar key=__sg_summary_uid`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=content ${quoteSlashValue(content)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=key ${quoteSlashValue(keyValue)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=comment ${quoteSlashValue(comment)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=disable 0`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=constant ${constantVal}`);
+  parts.push(`/flushvar __sg_summary_uid`);
+
+  const out = await execSlash(parts.join(' | '));
+  if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
+    return false;
+  }
+  return true;
 }
 
-async function restoreSummaryWorldInfoFromCache() {
+async function syncSummaryWorldbookForChat(reason = '') {
   const s = ensureSettings();
   const meta = getSummaryMeta();
   const records = Array.isArray(meta?.history) ? meta.history : [];
-  if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) return;
+  await ensureWorldbookTag();
 
-  const tag = await ensureWorldbookTag();
+  const result = {
+    green: { deleted: 0, created: 0, error: '' },
+    blue: { deleted: 0, created: 0, error: '' },
+  };
 
   if (s.summaryToWorldInfo) {
-    await syncWorldbookEntriesForChat(records, {
-      target: String(s.summaryWorldInfoTarget || 'chatbook'),
-      file: String(s.summaryWorldInfoFile || ''),
-      commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
-      currentTag: tag,
-    });
+    const file = String(s.summaryWorldInfoFile || '').trim();
+    const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+    if (!file) {
+      result.green.error = 'missing file';
+    } else {
+      try {
+        result.green.deleted = await deleteSummaryEntriesInWorldbook(file, prefix);
+        for (const rec of records) {
+          const ok = await createSummaryWorldbookEntry(rec, { file, commentPrefix: prefix, constant: 0 });
+          if (ok) result.green.created += 1;
+        }
+      } catch (e) {
+        result.green.error = String(e?.message ?? e);
+      }
+    }
   }
 
   if (s.summaryToBlueWorldInfo) {
-    await syncWorldbookEntriesForChat(records, {
-      target: 'file',
-      file: String(s.summaryBlueWorldInfoFile || ''),
-      commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
-      currentTag: tag,
-    });
+    const file = String(s.summaryBlueWorldInfoFile || '').trim();
+    const prefix = String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+    if (!file) {
+      result.blue.error = 'missing file';
+    } else {
+      try {
+        result.blue.deleted = await deleteSummaryEntriesInWorldbook(file, prefix);
+        for (const rec of records) {
+          const ok = await createSummaryWorldbookEntry(rec, { file, commentPrefix: prefix, constant: 1 });
+          if (ok) result.blue.created += 1;
+        }
+      } catch (e) {
+        result.blue.error = String(e?.message ?? e);
+      }
+    }
   }
 
-  let restoredGreen = 0;
-  let restoredBlue = 0;
-
-  if (s.summaryToWorldInfo) {
-    const res = await restoreSummariesToWorldInfoTarget(records, {
-      target: String(s.summaryWorldInfoTarget || 'chatbook'),
-      file: String(s.summaryWorldInfoFile || ''),
-      commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
-      constant: 0,
-    });
-    restoredGreen = res.restored || 0;
-  }
-
-  if (s.summaryToBlueWorldInfo) {
-    const res = await restoreSummariesToWorldInfoTarget(records, {
-      target: 'file',
-      file: String(s.summaryBlueWorldInfoFile || ''),
-      commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
-      constant: 1,
-    });
-    restoredBlue = res.restored || 0;
-  }
-
-  if (restoredGreen || restoredBlue) {
+  if (reason === 'chat_changed' || reason === 'app_ready') {
     const parts = [];
-    if (restoredGreen) parts.push(`绿灯 ${restoredGreen}`);
-    if (restoredBlue) parts.push(`蓝灯 ${restoredBlue}`);
-    setStatus(`已恢复世界书缓存：${parts.join(' + ')}`, 'ok');
+    if (s.summaryToWorldInfo) parts.push(`绿灯 删除${result.green.deleted} / 写入${result.green.created}`);
+    if (s.summaryToBlueWorldInfo) parts.push(`蓝灯 删除${result.blue.deleted} / 写入${result.blue.created}`);
+    if (parts.length) setStatus(`世界书同步：${parts.join(' + ')}`, 'ok');
   }
 
-  if (restoredBlue && String(s.wiBlueIndexMode || 'live') === 'live') {
+  if (result.blue.created && String(s.wiBlueIndexMode || 'live') === 'live') {
     ensureBlueIndexLive(true).catch(() => void 0);
   }
+
+  return result;
 }
 
 function selectActiveWorldbookEntries(entries, recentText) {
@@ -2762,8 +2760,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
 
     let created = 0;
-    let wroteGreenOk = 0;
-    let wroteBlueOk = 0;
+    let syncResult = null;
     const writeErrs = [];
     const runErrs = [];
 
@@ -2864,46 +2861,14 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
       try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
 
-      // world info write
-      if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
-        if (s.summaryToWorldInfo) {
-          try {
-            await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: String(s.summaryWorldInfoTarget || 'chatbook'),
-              file: String(s.summaryWorldInfoFile || ''),
-              commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
-              constant: 0,
-            });
-            wroteGreenOk += 1;
-          } catch (e) {
-            console.warn('[StoryGuide] write green world info failed:', e);
-            writeErrs.push(`${fromFloor}-${toFloor} 绿灯：${e?.message ?? e}`);
-          }
-        }
-
-        if (s.summaryToBlueWorldInfo) {
-          try {
-            await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: 'file',
-              file: String(s.summaryBlueWorldInfoFile || ''),
-              commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
-              constant: 1,
-            });
-            wroteBlueOk += 1;
-          } catch (e) {
-            console.warn('[StoryGuide] write blue world info failed:', e);
-            writeErrs.push(`${fromFloor}-${toFloor} 蓝灯：${e?.message ?? e}`);
-          }
-        }
-      }
     }
 
     updateSummaryInfoLabel();
     renderSummaryPaneFromMeta();
-
-    // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
-    if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
-      ensureBlueIndexLive(true).catch(() => void 0);
+    if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
+      syncResult = await syncSummaryWorldbookForChat('summary');
+      if (syncResult?.green?.error) writeErrs.push(`绿灯：${syncResult.green.error}`);
+      if (syncResult?.blue?.error) writeErrs.push(`蓝灯：${syncResult.blue.error}`);
     }
 
     if (created <= 0) {
@@ -2917,8 +2882,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       const parts = [`生成 ${created} 条`];
       if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
         const wrote = [];
-        if (s.summaryToWorldInfo) wrote.push(`绿灯 ${wroteGreenOk}/${created}`);
-        if (s.summaryToBlueWorldInfo) wrote.push(`蓝灯 ${wroteBlueOk}/${created}`);
+        if (s.summaryToWorldInfo) wrote.push(`绿灯 写入${syncResult?.green?.created ?? 0}`);
+        if (s.summaryToBlueWorldInfo) wrote.push(`蓝灯 写入${syncResult?.blue?.created ?? 0}`);
         if (wrote.length) parts.push(`写入：${wrote.join('｜')}`);
       }
       const errCount = writeErrs.length + runErrs.length;
@@ -2934,11 +2899,11 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         const ok = [];
         const err = [];
         if (s.summaryToWorldInfo) {
-          if (wroteGreenOk >= 1) ok.push('绿灯世界书');
+          if ((syncResult?.green?.created ?? 0) > 0) ok.push('绿灯世界书');
           else if (writeErrs.find(x => x.includes('绿灯'))) err.push(writeErrs.find(x => x.includes('绿灯')));
         }
         if (s.summaryToBlueWorldInfo) {
-          if (wroteBlueOk >= 1) ok.push('蓝灯世界书');
+          if ((syncResult?.blue?.created ?? 0) > 0) ok.push('蓝灯世界书');
           else if (writeErrs.find(x => x.includes('蓝灯'))) err.push(writeErrs.find(x => x.includes('蓝灯')));
         }
         if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ') || '（无）'}）`, 'ok');
@@ -7258,7 +7223,7 @@ function setupEventListeners() {
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
     restoreBlueIndexCacheFromMeta();
     ensureBlueIndexLive(true).catch(() => void 0);
-    restoreSummaryWorldInfoFromCache().catch(() => void 0);
+    syncSummaryWorldbookForChat('app_ready').catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
       inlineCache.clear();
@@ -7266,7 +7231,7 @@ function setupEventListeners() {
       ensureChatActionButtons();
       restoreBlueIndexCacheFromMeta();
       ensureBlueIndexLive(true).catch(() => void 0);
-      restoreSummaryWorldInfoFromCache().catch(() => void 0);
+      syncSummaryWorldbookForChat('chat_changed').catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
         setStatus('已切换聊天：已同步本聊天字段', 'ok');
