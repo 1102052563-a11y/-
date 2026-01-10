@@ -1519,6 +1519,23 @@ body.sg-zoom-lock {
   overflow-y: auto;
 }
 
+/* Small viewport safety: keep floating panel visible */
+@media (max-width: 720px), (max-height: 560px) {
+  .sg-floating-panel {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+    max-height: min(80dvh, calc(100dvh - 24px));
+    resize: none;
+  }
+
+  .sg-floating-body {
+    max-height: calc(80dvh - 60px);
+  }
+}
+
 /* Zoom/Collapse styles for floating panel items */
 .sg-floating-body ul,
 .sg-floating-body ol {
