@@ -3256,7 +3256,12 @@ function installRollPreSendHook() {
       await ensurePreSend(textarea);
     } finally {
       guard = false;
-      triggerSend(form);
+      window.__storyguide_presend_guard = true;
+      try {
+        triggerSend(form);
+      } finally {
+        window.__storyguide_presend_guard = false;
+      }
     }
   }, true);
 
@@ -3278,7 +3283,12 @@ function installRollPreSendHook() {
     } finally {
       guard = false;
       const form = findForm(textarea);
-      triggerSend(form);
+      window.__storyguide_presend_guard = true;
+      try {
+        triggerSend(form);
+      } finally {
+        window.__storyguide_presend_guard = false;
+      }
     }
   }, true);
 
@@ -3303,15 +3313,13 @@ function installRollPreSendHook() {
       guard = false;
       window.__storyguide_presend_guard = true;
       try {
-        const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
-        btn.dispatchEvent(ev);
+        if (typeof btn.click === 'function') btn.click();
       } finally {
         window.__storyguide_presend_guard = false;
       }
     }
   }
 
-  document.addEventListener('pointerdown', handleSendButtonEvent, true);
   document.addEventListener('click', handleSendButtonEvent, true);
 
   function wrapSendFunction(obj, key) {
