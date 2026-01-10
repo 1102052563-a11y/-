@@ -4825,6 +4825,7 @@ function buildModalHtml() {
             <button class="sg-pgtab active" id="sg_pgtab_guide">剧情指导</button>
             <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
@@ -5483,6 +5484,14 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_index -->
 
+          <div class="sg-page" id="sg_page_roll">
+            <div class="sg-card">
+              <div class="sg-card-title">ROLL 设置（判定）</div>
+              <div class="sg-hint" style="margin-bottom:10px;">用于行动判定的 ROLL 注入与计算规则。</div>
+              <div id="sg_roll_mount"></div>
+            </div>
+          </div> <!-- sg_page_roll -->
+
           <div class="sg-status" id="sg_status"></div>
         </div>
 
@@ -5518,7 +5527,7 @@ function ensureModal() {
   if (document.getElementById('sg_modal_backdrop')) return;
   document.body.insertAdjacentHTML('beforeend', buildModalHtml());
 
-  // --- settings pages (剧情指导 / 总结设置 / 索引设置) ---
+  // --- settings pages (剧情指导 / 总结设置 / 索引设置 / ROLL 设置) ---
   setupSettingsPages();
 
   $('#sg_modal_backdrop').on('click', (e) => { if (e.target && e.target.id === 'sg_modal_backdrop') closeModal(); });
@@ -5988,8 +5997,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -5997,6 +6006,9 @@ function showSettingsPage(page) {
   } else if (p === 'index') {
     $('#sg_pgtab_index').addClass('active');
     $('#sg_page_index').addClass('active');
+  } else if (p === 'roll') {
+    $('#sg_pgtab_roll').addClass('active');
+    $('#sg_page_roll').addClass('active');
   } else {
     $('#sg_pgtab_guide').addClass('active');
     $('#sg_page_guide').addClass('active');
@@ -6017,10 +6029,21 @@ function setupSettingsPages() {
     }
   } catch { /* ignore */ }
 
+  // 把“ROLL 设置块”移动到 ROLL 设置页
+  try {
+    const $mount = $('#sg_roll_mount');
+    const $rollWrapper = $('#sg_wiRollEnabled').closest('.sg-card.sg-subcard');
+    if ($mount.length && $rollWrapper.length) {
+      $mount.append($rollWrapper.children());
+      $rollWrapper.remove();
+    }
+  } catch { /* ignore */ }
+
   // tabs
   $('#sg_pgtab_guide').on('click', () => showSettingsPage('guide'));
   $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
+  $('#sg_pgtab_roll').on('click', () => showSettingsPage('roll'));
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
