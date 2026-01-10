@@ -1469,8 +1469,6 @@ async function restoreSummaryWorldInfoFromCache() {
   let restoredGreen = 0;
   let restoredBlue = 0;
 
-  if (!records.length) return;
-
   if (s.summaryToWorldInfo) {
     const res = await restoreSummariesToWorldInfoTarget(records, {
       target: String(s.summaryWorldInfoTarget || 'chatbook'),
