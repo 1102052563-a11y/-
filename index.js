@@ -409,7 +409,9 @@ function ensureSettings() {
       || !cur.includes('explanation')
       || !cur.includes('\u96be\u5ea6\u6a21\u5f0f difficulty')
       || !cur.includes('\u6210\u529f\u9608\u503c/DC');
-    if (needsRefresh) {
+    const missingGradeMap = cur.includes('数值映射建议')
+      && !cur.includes('品级修正');
+    if (needsRefresh || missingGradeMap) {
       extensionSettings[MODULE_NAME].wiRollSystemPrompt = DEFAULT_ROLL_SYSTEM_PROMPT;
       saveSettingsDebounced();
     }
