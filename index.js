@@ -3067,42 +3067,106 @@ function installRollPreSendHook() {
   window.__storyguide_roll_presend_installed = true;
   let guard = false;
 
+  function findTextarea() {
+    return document.querySelector('#send_textarea, textarea#send_textarea, .send_textarea, textarea.send_textarea');
+  }
+
+  function findForm(textarea) {
+    if (textarea && textarea.closest) {
+      const f = textarea.closest('form');
+      if (f) return f;
+    }
+    return document.getElementById('chat_input_form') || null;
+  }
+
+  function findSendButton(form) {
+    if (form) {
+      const btn = form.querySelector('button[type="submit"]');
+      if (btn) return btn;
+    }
+    return document.querySelector('#send_button, #send_but, button.send_button, .send_button');
+  }
+
+  async function runRollInjectFromTextarea(textarea) {
+    const s = ensureSettings();
+    if (!s.wiRollEnabled) return false;
+    const raw = String(textarea?.value ?? '').trim();
+    if (!raw || raw.startsWith('/')) return false;
+
+    const modalOpen = $('#sg_modal_backdrop').is(':visible');
+    const shouldLog = modalOpen || s.wiRollDebugLog;
+    const logStatus = (msg, kind = 'info') => {
+      if (!shouldLog) return;
+      if (modalOpen) setStatus(msg, kind);
+      else showToast(msg, { kind, spinner: false, sticky: false, duration: 2200 });
+    };
+
+    const ctx = SillyTavern.getContext();
+    const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+    const rollText = await buildRollInjectionForText(raw, chat, s, logStatus);
+    if (rollText && textarea) {
+      const cleaned = stripTriggerInjection(raw, String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL');
+      textarea.value = cleaned + rollText;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+    return false;
+  }
+
+  function triggerSend(form) {
+    const btn = findSendButton(form);
+    if (btn && typeof btn.click === 'function') {
+      btn.click();
+      return;
+    }
+    if (form && typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+      return;
+    }
+    if (form && typeof form.dispatchEvent === 'function') {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
+  }
+
   document.addEventListener('submit', async (e) => {
     const form = e.target;
-    if (!form || form.id !== 'chat_input_form') return;
+    const textarea = findTextarea();
+    if (!form || !textarea || !form.contains(textarea)) return;
     if (guard) return;
     const s = ensureSettings();
     if (!s.wiRollEnabled) return;
-
-    const textarea = document.getElementById('send_textarea');
-    const raw = String(textarea?.value ?? '').trim();
-    if (!raw || raw.startsWith('/')) return;
 
     e.preventDefault();
     e.stopPropagation();
     guard = true;
 
     try {
-      const modalOpen = $('#sg_modal_backdrop').is(':visible');
-      const shouldLog = modalOpen || s.wiRollDebugLog;
-      const logStatus = (msg, kind = 'info') => {
-        if (!shouldLog) return;
-        if (modalOpen) setStatus(msg, kind);
-        else showToast(msg, { kind, spinner: false, sticky: false, duration: 2200 });
-      };
-
-      const ctx = SillyTavern.getContext();
-      const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-      const rollText = await buildRollInjectionForText(raw, chat, s, logStatus);
-      if (rollText && textarea) {
-        const cleaned = stripTriggerInjection(raw, String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL');
-        textarea.value = cleaned + rollText;
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      await runRollInjectFromTextarea(textarea);
     } finally {
       guard = false;
-      if (typeof form.requestSubmit === 'function') form.requestSubmit();
-      else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      triggerSend(form);
+    }
+  }, true);
+
+  document.addEventListener('keydown', async (e) => {
+    const textarea = findTextarea();
+    if (!textarea || e.target !== textarea) return;
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+    const s = ensureSettings();
+    if (!s.wiRollEnabled) return;
+    if (guard) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    guard = true;
+
+    try {
+      await runRollInjectFromTextarea(textarea);
+    } finally {
+      guard = false;
+      const form = findForm(textarea);
+      triggerSend(form);
     }
   }, true);
 }
