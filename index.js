@@ -86,7 +86,7 @@ const DEFAULT_ROLL_FORMULAS = Object.freeze({
   default: 'MOD.total',
 });
 const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze(['skill', 'talent', 'trait', 'buff', 'equipment']);
-const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判定/ROLL 点计算器。\n\n核心规则：\n- 只使用 statDataJson（变量数据），不要参考剧情描述。\n- 依据轮回乐园设定处理位阶压制与属性壁障；若 statDataJson 中存在压制/壁障相关字段，需体现在判定修正中。\n- 若提供生物强度/等级差/等阶差字段，必须作为关键修正项，显著影响阈值或 mods。\n- 数值映射建议：等级差每 1 级=±2 修正；等阶差每 1 阶=±10 修正；生物强度差每 1 档=±5 修正（可按情况转为阈值调整）。\n- 允许综合主角/装备/技能/天赋/特性Buff/环境/性格/角色当前状态 等数据进行修正汇总。\n- 上述每类数据需细读其子信息（如技能效果/熟练度/品级/层级/冷却/消耗，装备词缀/宝石/品质/特效，Buff层数/剩余时间/可叠加状态等），只要在 statDataJson 中存在就必须纳入修正或阈值调整。
+const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判定/ROLL 点计算器。\n\n核心规则：\n- 只使用 statDataJson（变量数据），不要参考剧情描述。\n- 难度模式 difficulty：simple/normal/hard/hellãhard/hell ç´æ¥æé« DC åºé´æéä½æååºé´ï¼normal=DC15~20ï¼hard=DC20~25ï¼hell=DC25~30ï¼æå°æååºé´æ¶ç¼© (margin>=8ææ®éæåï¼margin 0~7 ä¸ºåå¼ºæåï¼margin -7~-1 ä¸ºå¤±è´¥ä½ææ¶è·ï¼margin<=-8 ä¸ºå¤§å¤±è´¥)ã\n- 依据轮回乐园设定处理位阶压制与属性壁障；若 statDataJson 中存在压制/壁障相关字段，需体现在判定修正中。\n- 若提供生物强度/等级差/等阶差字段，必须作为关键修正项，显著影响阈值或 mods。\n- 数值映射建议：等级差每 1 级=±2 修正；等阶差每 1 阶=±10 修正；生物强度差每 1 档=±5 修正（可按情况转为阈值调整）。\n- 允许综合主角/装备/技能/天赋/特性Buff/环境/性格/角色当前状态 等数据进行修正汇总。\n- 上述每类数据需细读其子信息（如技能效果/熟练度/品级/层级/冷却/消耗，装备词缀/宝石/品质/特效，Buff层数/剩余时间/可叠加状态等），只要在 statDataJson 中存在就必须纳入修正或阈值调整。
 - 状态/Buff/Debuff 叠加规则：可叠加则按层数线性叠加；标注递增/递减则按描述；冷却中不生效；剩余时间不足可按比例折算。\n- 多目标对战：若存在多个敌人，需明确主要目标，并同时考虑群体压力/围攻/保护阵形等对判定的影响。如为范围/溅杀行动，目标数量可提升阈值或降低命中/稳定性。
 - 多目标权重：主目标修正与阈值权重 100%；次要目标影响最多 50%，多个次要目标递减（50%/30%/20%）。\n- 若存在队友/友军配合，必须读取其属性/技能/天赋/特性Buff/装备/状态/位置与配合手段（夹击、掩护、增益等），计入协同修正。\n\nD20 规则（D&D/PF 风格）：
 - 协同修正上限建议：团队协同总修正不超过 +15 或不超过基础修正的 50%（取较小）。\n- 基础判定：1d20 + 修正 >= DC。\n- randomRoll 是 1~100 时，将其映射为 d20 点数：d20 = ceil(randomRoll / 5)。\n- 优势/劣势：掷两次 d20 取高/取低（若 statDataJson 提供优势/劣势标记则 적용）。\n- 自然 20 视为大成功，自然 1 视为大失败（若无明确规则冲突则 적용）。\n- 若非自然20/1，则按 success 判定为“成功/失败”。自然20=大成功，自然1=大失败。\n- 结果等级：
@@ -97,12 +97,13 @@ const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判�
   - 大失败 / 灾难（fumble）
 - 结果判定区间：定义 margin = final - threshold。自然20=大成功，自然1=大失败。其余情况：success 且 margin>=6 为普通成功；success 且 0~5 为勉强成功；失败且 margin 在 -5~-1 为失败但有收获；失败且 margin<=-6 为大失败。
 - 失败但有收获类型建议：情报/位置/士气/消耗减免/部分伤害或效果成立（二选一即可）。
-\n判定步骤：\n1) 判断是否需要判定（ROLL）。不需要则返回 needRoll=false。\n2) 需要判定时：\n   - 自行选择合理 action 名称。\n   - 以相关核心属性为主（如 力量/敏捷/体质/智力/幸运/魅力，或真实属性），必要时参考衍生属性（物理攻击/物理防御/法术攻击/法术防御）。\n   - 结合技能/天赋/特性Buff/装备/环境/性格/当前状态等修正，汇总为 mods。\n   - 计算 base，并按公式计算 final 与 success。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n\n输出要求：\n- 严格 JSON，不要任何额外文字。\n- 必须包含 outcomeTier 与 explanation（用于日志简述）。\n- explanation 控制在 1~2 句，避免过长影响日志可读性。\n- analysisSummary 可选，但若提供需包含“修正来源汇总/映射应用”两段（可简短）。\n`;
-const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
+\n判定步骤：\n1) 判断是否需要判定（ROLL）。不需要则返回 needRoll=false。\n2) 需要判定时：\n   - 自行选择合理 action 名称。\n   - 以相关核心属性为主（如 力量/敏捷/体质/智力/幸运/魅力，或真实属性），必要时参考衍生属性（物理攻击/物理防御/法术攻击/法术防御）。\n   - 结合技能/天赋/特性Buff/装备/环境/性格/当前状态等修正，汇总为 mods。\n   - 计算 base，并按公式计算 final 与 success。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n
+- 成功阈值/DC 由你根据行动难度自行选择，需在输出中返回 threshold。\n\n输出要求：\n- 严格 JSON，不要任何额外文字。\n- 必须包含 outcomeTier 与 explanation（用于日志简述）。\n- explanation 控制在 1~2 句，避免过长影响日志可读性。\n- analysisSummary 可选，但若提供需包含“修正来源汇总/映射应用”两段（可简短）。\n`;
+const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
 const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，建议包含“修正来源汇总/映射应用”两段；explanation 建议 1~2 句。`;
 const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
 
-const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判定/ROLL 点助手。\n\n任务：\n- 先判断用户输入是否需要进行行动判定（ROLL）。\n- 若需要，选择一个合适的 action，并基于给定数据计算结果。\n- 只使用 statDataJson 里的数据（属性/装备/技能/天赋/特性Buff/状态/环境/性格等）。\n- 处理位阶压制与属性壁障规则：若 statDataJson 中存在相关字段，必须影响判定。\n- 输出严格 JSON，不要任何额外文字。\n- 必须包含 outcomeTier 与 explanation（用于日志简述）。\n- explanation 控制在 1~2 句，避免过长影响日志可读性。\n- analysisSummary 可选，但若提供需包含“修正来源汇总/映射应用”两段（可简短）。\n\nD20 规则（D&D/PF 风格）：\n- 基础判定：1d20 + 修正 >= DC。\n- randomRoll 是 1~100 时，将其映射为 d20 点数：d20 = ceil(randomRoll / 5)。\n- 优势/劣势：掷两次 d20 取高/取低（若 statDataJson 提供优势/劣势标记则 적용）。\n- 自然 20 视为大成功，自然 1 视为大失败（若无明确规则冲突则 적용）。\n- 若非自然20/1，则按 success 判定为“成功/失败”。自然20=大成功，自然1=大失败。\n- 结果等级：
+const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判定/ROLL 点助手。\n\n任务：\n- 先判断用户输入是否需要进行行动判定（ROLL）。\n- 若需要，选择一个合适的 action，并基于给定数据计算结果。\n- 只使用 statDataJson 里的数据（属性/装备/技能/天赋/特性Buff/状态/环境/性格等）。\n- 难度模式 difficulty：simple/normal/hard/hellãhard/hell ç´æ¥æé« DC åºé´æéä½æååºé´ï¼normal=DC15~20ï¼hard=DC20~25ï¼hell=DC25~30ï¼æå°æååºé´æ¶ç¼© (margin>=8ææ®éæåï¼margin 0~7 ä¸ºåå¼ºæåï¼margin -7~-1 ä¸ºå¤±è´¥ä½ææ¶è·ï¼margin<=-8 ä¸ºå¤§å¤±è´¥)ã\n- 处理位阶压制与属性壁障规则：若 statDataJson 中存在相关字段，必须影响判定。\n- 输出严格 JSON，不要任何额外文字。\n- 必须包含 outcomeTier 与 explanation（用于日志简述）。\n- explanation 控制在 1~2 句，避免过长影响日志可读性。\n- analysisSummary 可选，但若提供需包含“修正来源汇总/映射应用”两段（可简短）。\n\nD20 规则（D&D/PF 风格）：\n- 基础判定：1d20 + 修正 >= DC。\n- randomRoll 是 1~100 时，将其映射为 d20 点数：d20 = ceil(randomRoll / 5)。\n- 优势/劣势：掷两次 d20 取高/取低（若 statDataJson 提供优势/劣势标记则 적용）。\n- 自然 20 视为大成功，自然 1 视为大失败（若无明确规则冲突则 적용）。\n- 若非自然20/1，则按 success 判定为“成功/失败”。自然20=大成功，自然1=大失败。\n- 结果等级：
   - 大成功 / 暴击（critical）
   - 普通成功
   - 勉强成功 / 成功但有代价
@@ -112,8 +113,9 @@ const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是“轮回乐园风格”的�
 - 失败但有收获类型建议：情报/位置/士气/消耗减免/部分伤害或效果成立（二选一即可）。
 \n修正规则（必须考虑）：\n- 技能/天赋/特性Buff/装备提供的数值加成或减益，要汇总为 mods。\n- 修正来源可多项叠加，但需遵守“属性壁障/位阶压制”限制。\n- 若存在“真实属性/衍生属性”（如物理攻击/物理防御、法术攻击/法术防御），优先使用与行动类型最相关的一组。\n- 角色当前状态（伤势/虚弱/诅咒/疲劳/专注/兴奋等）必须体现在修正或阈值上。\n- 必须考虑各类数据的子信息：\n  - 技能/天赋/特性Buff：效果、熟练度/等级、品级、层级、冷却、消耗、可叠加与层数、剩余时间。\n  - 装备：品质、评分、词缀、宝石、特效、耐久/状态、武器类型匹配。\n  - 敌方同类条目也必须读取其子信息。\n\n环境因素（必须考虑）：\n- 若 statDataJson 提供环境字段（地形、视野、天气、光照、噪音、空间压制、结界、毒雾等），必须影响修正或阈值。\n- 环境优势/劣势需体现为正/负修正，或影响 success 判定阈值。\n\n性格因素（必须考虑）：
 - 环境反制优先级建议：先应用环境负面，再应用技能/装备加成；若有护具或抗性标记可部分抵消。\n- 若 statDataJson 提供性格/心态字段（如冷静/鲁莽/谨慎/嗜战/恐惧等），需对判定产生修正。\n- 性格修正应与行动类型一致（鲁莽提高进攻但降低防御或稳定性；谨慎提高防御/命中但降低爆发等）。\n\n对战判定（必须考虑敌方）：\n- 若为对战行动，需读取敌方属性与敌方技能/天赋/特性Buff/装备/状态的修正效果。\n- 若存在“位阶压制差值/属性壁障差值”，必须对结果产生明显影响。\n- 若提供生物强度/等级差/等阶差字段，必须作为关键修正项，显著影响阈值或 mods。\n- 数值映射建议：等级差每 1 级=±2 修正；等阶差每 1 阶=±10 修正；生物强度差每 1 档=±5 修正（可按情况转为阈值调整）。\n- 敌我属性或装备的相克/克制，若 statDataJson 有对应字段，需计入修正或阈值。
-- 相克/克制映射建议：轻度/中度/重度=+3/+6/+10（或等幅负修正）。\n- 多目标对战：若有多个敌人，需明确主要目标，并同时考虑群体压力/围攻/保护阵形等对判定的影响。若行动为范围/溅杀，将目标数量纳入阈值或命中/稳定性调整。\n- 若存在队友/友军配合，必须读取其属性/技能/天赋/特性Buff/装备/状态/位置与配合手段（夹击、掩护、增益等），计入协同修正。\n\n判定步骤：\n1) 判断是否需要判定（ROLL）。不需要则返回 needRoll=false。\n2) 需要判定时：\n   - 选择合理 action 名称（自定义即可）。\n   - 结合核心属性/衍生属性/技能/天赋/特性Buff/装备/环境/性格/当前状态，汇总为 mods。\n   - 计算 base，并按公式计算 final 与 success。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n`;
-const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
+- 相克/克制映射建议：轻度/中度/重度=+3/+6/+10（或等幅负修正）。\n- 多目标对战：若有多个敌人，需明确主要目标，并同时考虑群体压力/围攻/保护阵形等对判定的影响。若行动为范围/溅杀，将目标数量纳入阈值或命中/稳定性调整。\n- 若存在队友/友军配合，必须读取其属性/技能/天赋/特性Buff/装备/状态/位置与配合手段（夹击、掩护、增益等），计入协同修正。\n\n判定步骤：\n1) 判断是否需要判定（ROLL）。不需要则返回 needRoll=false。\n2) 需要判定时：\n   - 选择合理 action 名称（自定义即可）。\n   - 结合核心属性/衍生属性/技能/天赋/特性Buff/装备/环境/性格/当前状态，汇总为 mods。\n   - 计算 base，并按公式计算 final 与 success。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n
+- 成功阈值/DC 由你根据行动难度自行选择，需在输出中返回 threshold。\n`;
+const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -269,6 +271,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiRollStatSource: 'variable', // variable | template | latest
   wiRollStatVarName: 'stat_data',
   wiRollRandomWeight: 0.3,
+  wiRollDifficulty: 'normal',
   wiRollInjectStyle: 'hidden',
   wiRollTag: 'SG_ROLL',
   wiRollDebugLog: false,
@@ -2823,12 +2826,14 @@ function buildRollPromptMessages(actionKey, statData, settings, formula, randomW
   const s = settings || ensureSettings();
   const sys = String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT).trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
   const tmpl = String(s.wiRollUserTemplate || DEFAULT_ROLL_USER_TEMPLATE).trim() || DEFAULT_ROLL_USER_TEMPLATE;
+  const difficulty = String(s.wiRollDifficulty || 'normal');
   const statDataJson = JSON.stringify(statData || {}, null, 0);
   const modifierSourcesJson = String(s.wiRollModifierSourcesJson || JSON.stringify(DEFAULT_ROLL_MODIFIER_SOURCES));
   const user = tmpl
     .replaceAll('{{action}}', String(actionKey || ''))
     .replaceAll('{{formula}}', String(formula || ''))
     .replaceAll('{{randomWeight}}', String(randomWeight))
+    .replaceAll('{{difficulty}}', difficulty)
     .replaceAll('{{randomRoll}}', String(randomRoll))
     .replaceAll('{{modifierSourcesJson}}', modifierSourcesJson)
     .replaceAll('{{statDataJson}}', statDataJson);
@@ -2844,11 +2849,13 @@ function buildRollDecisionPromptMessages(userText, statData, settings, randomRol
   const s = settings || ensureSettings();
   const sys = DEFAULT_ROLL_DECISION_SYSTEM_PROMPT;
   const randomWeight = clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
+  const difficulty = String(s.wiRollDifficulty || 'normal');
   const statDataJson = JSON.stringify(statData || {}, null, 0);
 
   const user = DEFAULT_ROLL_DECISION_USER_TEMPLATE
     .replaceAll('{{userText}}', String(userText || ''))
     .replaceAll('{{randomWeight}}', String(randomWeight))
+    .replaceAll('{{difficulty}}', difficulty)
     .replaceAll('{{randomRoll}}', String(randomRoll))
     .replaceAll('{{statDataJson}}', statDataJson);
 
@@ -5457,7 +5464,17 @@ function buildModalHtml() {
                   <div class="sg-field">
                     <label>随机权重（0~1）</label>
                     <input id="sg_wiRollRandomWeight" type="number" min="0" max="1" step="0.01" placeholder="0.3">
-                  </div>                </div>
+                  </div>
+                  <div class="sg-field">
+                    <label>难度模式</label>
+                    <select id="sg_wiRollDifficulty">
+                      <option value="simple">简单</option>
+                      <option value="normal">普通</option>
+                      <option value="hard">困难</option>
+                      <option value="hell">地狱</option>
+                    </select>
+                  </div>
+                </div>
                 <div class="sg-grid2">
                   <div class="sg-field">
                     <label>变量来源</label>
@@ -5826,7 +5843,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -6277,6 +6294,7 @@ function pullSettingsToUi() {
   $('#sg_wiRollStatSource').val(String(s.wiRollStatSource || 'variable'));
   $('#sg_wiRollStatVarName').val(String(s.wiRollStatVarName || 'stat_data'));
   $('#sg_wiRollRandomWeight').val(s.wiRollRandomWeight ?? 0.3);
+  $('#sg_wiRollDifficulty').val(String(s.wiRollDifficulty || 'normal'));
   $('#sg_wiRollInjectStyle').val(String(s.wiRollInjectStyle || 'hidden'));
   $('#sg_wiRollDebugLog').prop('checked', !!s.wiRollDebugLog);
   $('#sg_wiRollStatParseMode').val(String(s.wiRollStatParseMode || 'json'));
@@ -6695,6 +6713,7 @@ function pullUiToSettings() {
   s.wiRollStatSource = String($('#sg_wiRollStatSource').val() || s.wiRollStatSource || 'variable');
   s.wiRollStatVarName = String($('#sg_wiRollStatVarName').val() || s.wiRollStatVarName || 'stat_data').trim();
   s.wiRollRandomWeight = clampFloat($('#sg_wiRollRandomWeight').val(), 0, 1, s.wiRollRandomWeight ?? 0.3);
+  s.wiRollDifficulty = String($('#sg_wiRollDifficulty').val() || s.wiRollDifficulty || 'normal');
   s.wiRollInjectStyle = String($('#sg_wiRollInjectStyle').val() || s.wiRollInjectStyle || 'hidden');
   s.wiRollDebugLog = $('#sg_wiRollDebugLog').is(':checked');
   s.wiRollStatParseMode = String($('#sg_wiRollStatParseMode').val() || s.wiRollStatParseMode || 'json');
