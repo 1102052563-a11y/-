@@ -399,6 +399,7 @@ const META_KEYS = Object.freeze({
   world: 'storyguide_world_setup',
   summaryMeta: 'storyguide_summary_meta',
   staticModulesCache: 'storyguide_static_modules_cache',
+  blueIndexCache: 'storyguide_blue_index_cache',
 });
 
 let lastReport = null;
@@ -740,6 +741,38 @@ function getStaticModulesCache() {
 
 async function setStaticModulesCache(cache) {
   await setChatMetaValue(META_KEYS.staticModulesCache, JSON.stringify(cache ?? {}));
+}
+
+function getBlueIndexCache() {
+  const raw = String(getChatMetaValue(META_KEYS.blueIndexCache) || '').trim();
+  if (!raw) return [];
+  try {
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+async function setBlueIndexCache(cache) {
+  const data = Array.isArray(cache) ? cache : [];
+  await setChatMetaValue(META_KEYS.blueIndexCache, JSON.stringify(data));
+}
+
+function restoreBlueIndexCacheFromMeta() {
+  const s = ensureSettings();
+  const cached = getBlueIndexCache();
+  s.summaryBlueIndex = Array.isArray(cached) ? cached : [];
+  updateBlueIndexInfoLabel();
+}
+
+async function persistBlueIndexCacheFromSettings() {
+  const s = ensureSettings();
+  try {
+    await setBlueIndexCache(Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : []);
+  } catch {
+    // ignore
+  }
 }
 
 // 合并静态模块缓存到分析结果中
@@ -1210,6 +1243,7 @@ async function ensureBlueIndexLive(force = false) {
     s.summaryBlueIndex = entries;
     saveSettings();
     updateBlueIndexInfoLabel();
+    persistBlueIndexCacheFromSettings().catch(() => void 0);
 
     return entries;
   } catch (e) {
@@ -1217,6 +1251,133 @@ async function ensureBlueIndexLive(force = false) {
     // 读取失败就回退到现有缓存
     const fallback = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
     return fallback;
+  }
+}
+
+async function resolveChatbookFileName() {
+  try {
+    const out = await execSlash('/getchatbook');
+    const raw = String(slashOutputToText(out) || '').trim();
+    if (!raw) return '';
+    const match = raw.match(/(?:chatbook|worldbook|file|name)[:：]\s*(.+)$/i);
+    if (match?.[1]) return String(match[1]).trim();
+    const lastLine = raw.split('\n').map(x => x.trim()).filter(Boolean).pop();
+    return String(lastLine || raw).trim();
+  } catch {
+    return '';
+  }
+}
+
+async function loadWorldInfoEntries(fileName) {
+  const json = await fetchWorldInfoFileJsonCompat(fileName);
+  return parseWorldbookJson(JSON.stringify(json || {}));
+}
+
+function buildWorldInfoContentSet(entries, prefixFilter = '') {
+  const prefix = String(prefixFilter || '').trim();
+  const set = new Set();
+  for (const e of (Array.isArray(entries) ? entries : [])) {
+    const content = normalizeSummaryContent(e?.content || '');
+    if (!content) continue;
+    if (prefix) {
+      const comment = String(e?.comment || '');
+      if (!comment.includes(prefix)) continue;
+    }
+    set.add(content);
+  }
+  return set;
+}
+
+async function restoreSummariesToWorldInfoTarget(records, {
+  target = 'file',
+  file = '',
+  commentPrefix = '',
+  constant = 0,
+} = {}) {
+  const recs = Array.isArray(records) ? records : [];
+  if (!recs.length) return { restored: 0, missing: 0, error: '' };
+
+  const t = String(target || 'file');
+  const prefix = String(commentPrefix || '').trim();
+  let fileName = String(file || '').trim();
+  if (t === 'chatbook') fileName = await resolveChatbookFileName();
+  if (!fileName) return { restored: 0, missing: 0, error: 'missing worldbook file' };
+
+  let entries = [];
+  try {
+    entries = await loadWorldInfoEntries(fileName);
+  } catch (e) {
+    return { restored: 0, missing: 0, error: String(e?.message ?? e) };
+  }
+
+  const existing = buildWorldInfoContentSet(entries, prefix);
+  const missing = [];
+  for (const rec of recs) {
+    const content = normalizeSummaryContent(rec?.summary || '');
+    if (!content) continue;
+    if (!existing.has(content)) missing.push(rec);
+  }
+
+  if (!missing.length) return { restored: 0, missing: 0, error: '' };
+
+  let restored = 0;
+  for (const rec of missing) {
+    try {
+      await writeSummaryToWorldInfoEntry(rec, null, {
+        target: t,
+        file: (t === 'file') ? fileName : '',
+        commentPrefix: prefix,
+        constant,
+      });
+      restored += 1;
+      existing.add(normalizeSummaryContent(rec?.summary || ''));
+    } catch {
+      // ignore individual failures
+    }
+  }
+
+  return { restored, missing: missing.length, error: '' };
+}
+
+async function restoreSummaryWorldInfoFromCache() {
+  const s = ensureSettings();
+  const meta = getSummaryMeta();
+  const records = Array.isArray(meta?.history) ? meta.history : [];
+  if (!records.length) return;
+  if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) return;
+
+  let restoredGreen = 0;
+  let restoredBlue = 0;
+
+  if (s.summaryToWorldInfo) {
+    const res = await restoreSummariesToWorldInfoTarget(records, {
+      target: String(s.summaryWorldInfoTarget || 'chatbook'),
+      file: String(s.summaryWorldInfoFile || ''),
+      commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
+      constant: 0,
+    });
+    restoredGreen = res.restored || 0;
+  }
+
+  if (s.summaryToBlueWorldInfo) {
+    const res = await restoreSummariesToWorldInfoTarget(records, {
+      target: 'file',
+      file: String(s.summaryBlueWorldInfoFile || ''),
+      commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
+      constant: 1,
+    });
+    restoredBlue = res.restored || 0;
+  }
+
+  if (restoredGreen || restoredBlue) {
+    const parts = [];
+    if (restoredGreen) parts.push(`绿灯 ${restoredGreen}`);
+    if (restoredBlue) parts.push(`蓝灯 ${restoredBlue}`);
+    setStatus(`已恢复世界书缓存：${parts.join(' + ')}`, 'ok');
+  }
+
+  if (restoredBlue && String(s.wiBlueIndexMode || 'live') === 'live') {
+    ensureBlueIndexLive(true).catch(() => void 0);
   }
 }
 
@@ -2038,6 +2199,14 @@ function sanitizeKeywords(kws) {
   return out;
 }
 
+function normalizeSummaryContent(text) {
+  return String(text || '')
+    .replace(/\s*\n+\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\|/g, '｜');
+}
+
 function appendToBlueIndexCache(rec) {
   const s = ensureSettings();
   const item = {
@@ -2064,6 +2233,7 @@ function appendToBlueIndexCache(rec) {
   s.summaryBlueIndex = arr;
   saveSettings();
   updateBlueIndexInfoLabel();
+  persistBlueIndexCacheFromSettings().catch(() => void 0);
 }
 
 let cachedSlashExecutor = null;
@@ -2315,11 +2485,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
 
   // normalize content and make it safe for slash parser (avoid accidental pipe split)
-  const content = String(rec.summary || '')
-    .replace(/\s*\n+\s*/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\|/g, '｜');
+  const content = normalizeSummaryContent(rec.summary || '');
 
   const t = String(target || 'file');
   const f = String(file || '').trim();
@@ -6010,6 +6176,7 @@ function ensureModal() {
       })).filter(x => x.summary);
       saveSettings();
       updateBlueIndexInfoLabel();
+      persistBlueIndexCacheFromSettings().catch(() => void 0);
       setStatus(`蓝灯索引已导入 ✅（${s.summaryBlueIndex.length} 条）`, s.summaryBlueIndex.length ? 'ok' : 'warn');
     } catch (e) {
       setStatus(`导入蓝灯索引失败：${e?.message ?? e}`, 'err');
@@ -6021,6 +6188,7 @@ function ensureModal() {
     s.summaryBlueIndex = [];
     saveSettings();
     updateBlueIndexInfoLabel();
+    persistBlueIndexCacheFromSettings().catch(() => void 0);
     setStatus('已清空蓝灯索引', 'ok');
   });
 
@@ -6942,13 +7110,17 @@ function setupEventListeners() {
     startObservers();
 
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
+    restoreBlueIndexCacheFromMeta();
     ensureBlueIndexLive(true).catch(() => void 0);
+    restoreSummaryWorldInfoFromCache().catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
       inlineCache.clear();
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
+      restoreBlueIndexCacheFromMeta();
       ensureBlueIndexLive(true).catch(() => void 0);
+      restoreSummaryWorldInfoFromCache().catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
         setStatus('已切换聊天：已同步本聊天字段', 'ok');
