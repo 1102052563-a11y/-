@@ -1299,64 +1299,13 @@ async function ensureBlueIndexLive(force = false) {
   }
 }
 
-async function resolveChatbookFileName() {
-  try {
-    const out = await execSlash('/getchatbook');
-    const raw = String(slashOutputToText(out) || '').trim();
-    if (!raw) return '';
-    const match = raw.match(/(?:chatbook|worldbook|file|name)[:：]\s*(.+)$/i);
-    if (match?.[1]) return String(match[1]).trim();
-    const lastLine = raw.split('\n').map(x => x.trim()).filter(Boolean).pop();
-    return String(lastLine || raw).trim();
-  } catch {
-    return '';
-  }
-}
-
-async function loadWorldInfoEntries(fileName) {
-  const json = await fetchWorldInfoFileJsonCompat(fileName);
-  return parseWorldbookJson(JSON.stringify(json || {}));
-}
-
-function buildWorldInfoContentSet(entries, prefixFilter = '') {
-  const prefix = String(prefixFilter || '').trim();
-  const set = new Set();
-  for (const e of (Array.isArray(entries) ? entries : [])) {
-    if (e?.disable) continue;
-    const content = normalizeSummaryContent(e?.content || '');
-    if (!content) continue;
-    if (prefix) {
-      const comment = String(e?.comment || '') || String(e?.title || '');
-      if (!comment.includes(prefix)) continue;
-    }
-    set.add(content);
-  }
-  return set;
-}
-
-async function setWorldInfoEntryField(fileName, uid, field, value) {
-  if (!fileName || !uid) return;
-  const cmd = `/setentryfield file=${quoteSlashValue(fileName)} uid=${quoteSlashValue(uid)} field=${field} ${quoteSlashValue(value)}`;
-  await execSlash(cmd);
-}
-
-async function clearWorldInfoEntry(fileName, uid) {
-  if (!fileName || !uid) return;
-  await setWorldInfoEntryField(fileName, uid, 'content', '');
-  await setWorldInfoEntryField(fileName, uid, 'key', '');
-}
-
 async function getWorldbookEntriesCompat(fileName) {
   const th = globalThis.TavernHelper;
-  if (th && typeof th.getLorebookEntries === 'function') {
-    try {
-      const list = await th.getLorebookEntries(String(fileName));
-      return Array.isArray(list) ? list : [];
-    } catch {
-      // fall back to REST read
-    }
+  if (!th || typeof th.getLorebookEntries !== 'function') {
+    throw new Error('TavernHelper unavailable');
   }
-  return await loadWorldInfoEntries(String(fileName || ''));
+  const list = await th.getLorebookEntries(String(fileName));
+  return Array.isArray(list) ? list : [];
 }
 
 function normalizeWorldbookEntries(entries) {
@@ -1369,6 +1318,7 @@ function normalizeWorldbookEntries(entries) {
     const content = String(e.content ?? e.entry ?? e.text ?? e.description ?? e.desc ?? e.body ?? e.value ?? '').trim();
     const keys = Array.isArray(e.keys) ? e.keys : (Array.isArray(e.key) ? e.key : []);
     const disable = Number(e.disable ?? e.disabled ?? e.isDisabled ?? e.is_disabled ?? 0) === 1;
+    const order = Number(e.order ?? e.priority ?? e.position ?? e.depth ?? e.orderNumber ?? e.order_number);
     out.push({
       uid: (uid === null || uid === undefined) ? null : String(uid),
       comment,
@@ -1376,9 +1326,30 @@ function normalizeWorldbookEntries(entries) {
       content,
       keys,
       disable,
+      order: Number.isFinite(order) ? order : undefined,
     });
   }
   return out;
+}
+
+function buildUsedOrderSet(entries) {
+  const used = new Set();
+  for (const e of (Array.isArray(entries) ? entries : [])) {
+    const n = Number(e?.order);
+    if (Number.isFinite(n)) used.add(n);
+  }
+  return used;
+}
+
+function allocOrder(used, prefer = 99987, min = 1, max = 99999) {
+  let start = Math.max(min, Math.min(max, Number(prefer) || min));
+  for (let o = start; o <= max; o++) {
+    if (!used.has(o)) { used.add(o); return o; }
+  }
+  for (let o = min; o < start; o++) {
+    if (!used.has(o)) { used.add(o); return o; }
+  }
+  return start;
 }
 
 async function deleteWorldInfoEntries(fileName, uids) {
@@ -1386,33 +1357,11 @@ async function deleteWorldInfoEntries(fileName, uids) {
   if (!fileName || !list.length) return 0;
 
   const th = globalThis.TavernHelper;
-  if (th && typeof th.deleteLorebookEntries === 'function') {
-    await th.deleteLorebookEntries(String(fileName), list);
-    return list.length;
+  if (!th || typeof th.deleteLorebookEntries !== 'function') {
+    throw new Error('TavernHelper unavailable');
   }
-
-  let deleted = 0;
-  for (const uid of list) {
-    const cmds = [
-      `/deleteentry file=${quoteSlashValue(fileName)} uid=${quoteSlashValue(uid)}`,
-      `/delentry file=${quoteSlashValue(fileName)} uid=${quoteSlashValue(uid)}`,
-      `/removeentry file=${quoteSlashValue(fileName)} uid=${quoteSlashValue(uid)}`,
-    ];
-    for (const cmd of cmds) {
-      try {
-        const out = await execSlash(cmd);
-        if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
-          continue;
-        }
-        deleted += 1;
-        break;
-      } catch {
-        // try next command
-      }
-    }
-  }
-
-  return deleted;
+  await th.deleteLorebookEntries(String(fileName), list);
+  return list.length;
 }
 
 async function deleteSummaryEntriesInWorldbook(fileName, commentPrefix) {
@@ -1422,7 +1371,7 @@ async function deleteSummaryEntriesInWorldbook(fileName, commentPrefix) {
   const uids = entries
     .filter(e => {
       const comment = String(e?.comment || '') || String(e?.title || '');
-      return comment.includes(prefix);
+      return comment.startsWith(prefix);
     })
     .map(e => String(e?.uid || '').trim())
     .filter(Boolean);
@@ -1430,50 +1379,43 @@ async function deleteSummaryEntriesInWorldbook(fileName, commentPrefix) {
   return await deleteWorldInfoEntries(fileName, uids);
 }
 
-function buildSummaryEntryData(rec, {
+function buildSummaryEntryData(rec, seq, {
   commentPrefix = '',
   constant = 0,
+  order = null,
 } = {}) {
   const s = ensureSettings();
   const kws = sanitizeKeywords(rec?.keywords);
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
   const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
   const rawTitle = String(rec?.title || '').trim();
+  const idx = Math.max(1, Number(seq) || 1);
 
   const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
   const indexId = String(rec?.indexId || '').trim();
   const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
 
-  let commentTitle = rawTitle;
-  if (prefix) {
-    if (!commentTitle) commentTitle = prefix;
-    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
+  let comment = `${prefix}${idx}`;
+  if (rawTitle) comment += `｜${rawTitle}`;
+  if (range) comment += `｜${range}`;
+  if (indexInComment && indexId && !comment.includes(indexId)) {
+    comment = `${prefix}${idx}｜${indexId}` + (rawTitle ? `｜${rawTitle}` : '') + (range ? `｜${range}` : '');
   }
-  if (indexInComment) {
-    if (!commentTitle.includes(indexId)) {
-      if (commentTitle === prefix) commentTitle = `${prefix}｜${indexId}`;
-      else if (commentTitle.startsWith(`${prefix}｜`)) commentTitle = commentTitle.replace(`${prefix}｜`, `${prefix}｜${indexId}｜`);
-      else commentTitle = `${prefix}｜${indexId}｜${commentTitle}`;
-      commentTitle = commentTitle.replace(/｜｜+/g, '｜');
-    }
-  }
-  if (!commentTitle) commentTitle = '剧情总结';
-  const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
 
   const content = normalizeSummaryContent(rec?.summary || '');
   if (!content) return null;
 
-  const keyValue = (kws.length ? kws.join(',') : prefix);
   const constantVal = (Number(constant) === 1) ? 1 : 0;
+  const keys = kws.length ? kws : [prefix];
 
   return {
     comment,
     content,
-    keys: kws.length ? kws : [prefix],
+    keys,
     enabled: true,
     type: (constantVal === 1) ? 'constant' : 'keyword',
     constant: constantVal,
-    keyValue,
+    order: Number.isFinite(Number(order)) ? Number(order) : undefined,
   };
 }
 
@@ -1482,37 +1424,21 @@ async function createSummaryWorldbookEntry(rec, {
   commentPrefix = '',
   constant = 0,
 } = {}) {
-  const entry = buildSummaryEntryData(rec, { commentPrefix, constant });
+  const entry = buildSummaryEntryData(rec, 1, { commentPrefix, constant });
   if (!entry || !file) return false;
 
   const th = globalThis.TavernHelper;
-  if (th && typeof th.createLorebookEntries === 'function') {
-    await th.createLorebookEntries(String(file), [{
-      comment: entry.comment,
-      content: entry.content,
-      keys: entry.keys,
-      enabled: true,
-      type: entry.type,
-      constant: entry.constant,
-      prevent_recursion: true,
-    }]);
-    return true;
-  }
-
-  const parts = [];
-  parts.push(`/createentry file=${quoteSlashValue(file)} key=${quoteSlashValue(entry.keyValue)} ${quoteSlashValue(entry.content)}`);
-  parts.push(`/setvar key=__sg_summary_uid`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=content ${quoteSlashValue(entry.content)}`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=key ${quoteSlashValue(entry.keyValue)}`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=comment ${quoteSlashValue(entry.comment)}`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=disable 0`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=constant ${entry.constant}`);
-  parts.push(`/flushvar __sg_summary_uid`);
-
-  const out = await execSlash(parts.join(' | '));
-  if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
-    return false;
-  }
+  if (!th || typeof th.createLorebookEntries !== 'function') return false;
+  await th.createLorebookEntries(String(file), [{
+    comment: entry.comment,
+    content: entry.content,
+    keys: entry.keys,
+    enabled: true,
+    type: entry.type,
+    constant: entry.constant,
+    order: entry.order,
+    prevent_recursion: true,
+  }]);
   return true;
 }
 
@@ -1523,11 +1449,19 @@ async function syncSummaryWorldbookForChat(reason = '') {
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
   const hasUser = chat.some(m => m && m.is_user);
+  const th = globalThis.TavernHelper;
 
   const result = {
     green: { deleted: 0, created: 0, error: '' },
     blue: { deleted: 0, created: 0, error: '' },
   };
+
+  if (!th || typeof th.getLorebookEntries !== 'function' || typeof th.createLorebookEntries !== 'function' || typeof th.deleteLorebookEntries !== 'function') {
+    const msg = 'TavernHelper unavailable';
+    if (s.summaryToWorldInfo) result.green.error = msg;
+    if (s.summaryToBlueWorldInfo) result.blue.error = msg;
+    return result;
+  }
 
   if (s.summaryToWorldInfo) {
     const file = String(s.summaryWorldInfoFile || '').trim();
@@ -1536,11 +1470,15 @@ async function syncSummaryWorldbookForChat(reason = '') {
       result.green.error = 'missing file';
     } else {
       try {
+        const entries = normalizeWorldbookEntries(await getWorldbookEntriesCompat(file));
+        const usedOrders = buildUsedOrderSet(entries);
+        const sharedOrder = allocOrder(usedOrders, 99987, 1, 99999);
         result.green.deleted = await deleteSummaryEntriesInWorldbook(file, prefix);
         if (hasUser && records.length) {
-          const th = globalThis.TavernHelper;
-          const batch = records.map(r => buildSummaryEntryData(r, { commentPrefix: prefix, constant: 0 })).filter(Boolean);
-          if (batch.length && th && typeof th.createLorebookEntries === 'function') {
+          const batch = records
+          .map((r, i) => buildSummaryEntryData(r, i + 1, { commentPrefix: prefix, constant: 0, order: sharedOrder }))
+          .filter(Boolean);
+          if (batch.length) {
             await th.createLorebookEntries(String(file), batch.map(e => ({
               comment: e.comment,
               content: e.content,
@@ -1548,14 +1486,17 @@ async function syncSummaryWorldbookForChat(reason = '') {
               enabled: true,
               type: e.type,
               constant: e.constant,
+              order: e.order,
               prevent_recursion: true,
             })));
             result.green.created = batch.length;
-          } else {
-            for (const rec of records) {
-              const ok = await createSummaryWorldbookEntry(rec, { file, commentPrefix: prefix, constant: 0 });
-              if (ok) result.green.created += 1;
-            }
+            try {
+              const latest = normalizeWorldbookEntries(await getWorldbookEntriesCompat(file));
+              const toFix = latest.filter(e => (e.comment || '').startsWith(prefix)).map(e => ({ uid: e.uid, order: sharedOrder }));
+              if (toFix.length && typeof th.setLorebookEntries === 'function') {
+                await th.setLorebookEntries(String(file), toFix);
+              }
+            } catch { /* ignore order fix */ }
           }
         }
       } catch (e) {
@@ -1571,11 +1512,15 @@ async function syncSummaryWorldbookForChat(reason = '') {
       result.blue.error = 'missing file';
     } else {
       try {
+        const entries = normalizeWorldbookEntries(await getWorldbookEntriesCompat(file));
+        const usedOrders = buildUsedOrderSet(entries);
+        const sharedOrder = allocOrder(usedOrders, 99987, 1, 99999);
         result.blue.deleted = await deleteSummaryEntriesInWorldbook(file, prefix);
         if (hasUser && records.length) {
-          const th = globalThis.TavernHelper;
-          const batch = records.map(r => buildSummaryEntryData(r, { commentPrefix: prefix, constant: 1 })).filter(Boolean);
-          if (batch.length && th && typeof th.createLorebookEntries === 'function') {
+          const batch = records
+          .map((r, i) => buildSummaryEntryData(r, i + 1, { commentPrefix: prefix, constant: 1, order: sharedOrder }))
+          .filter(Boolean);
+          if (batch.length) {
             await th.createLorebookEntries(String(file), batch.map(e => ({
               comment: e.comment,
               content: e.content,
@@ -1583,14 +1528,17 @@ async function syncSummaryWorldbookForChat(reason = '') {
               enabled: true,
               type: e.type,
               constant: e.constant,
+              order: e.order,
               prevent_recursion: true,
             })));
             result.blue.created = batch.length;
-          } else {
-            for (const rec of records) {
-              const ok = await createSummaryWorldbookEntry(rec, { file, commentPrefix: prefix, constant: 1 });
-              if (ok) result.blue.created += 1;
-            }
+            try {
+              const latest = normalizeWorldbookEntries(await getWorldbookEntriesCompat(file));
+              const toFix = latest.filter(e => (e.comment || '').startsWith(prefix)).map(e => ({ uid: e.uid, order: sharedOrder }));
+              if (toFix.length && typeof th.setLorebookEntries === 'function') {
+                await th.setLorebookEntries(String(file), toFix);
+              }
+            } catch { /* ignore order fix */ }
           }
         }
       } catch (e) {
@@ -2437,23 +2385,6 @@ function normalizeSummaryContent(text) {
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\|/g, '｜');
-}
-
-const SG_TAG_PREFIX = 'SG:';
-
-function extractTagFromComment(comment) {
-  const s = String(comment || '');
-  const m = s.match(/(?:^|[｜|\s])SG:([a-z0-9_-]+)/i);
-  return m?.[1] ? String(m[1]) : '';
-}
-
-function appendTagToComment(comment, tag) {
-  const t = String(tag || '').trim();
-  if (!t) return String(comment || '').trim();
-  const s = String(comment || '').trim();
-  if (s.includes(`${SG_TAG_PREFIX}${t}`)) return s;
-  if (!s) return `${SG_TAG_PREFIX}${t}`;
-  return `${s}｜${SG_TAG_PREFIX}${t}`;
 }
 
 function appendToBlueIndexCache(rec) {
