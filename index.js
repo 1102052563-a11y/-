@@ -86,12 +86,24 @@ const DEFAULT_ROLL_FORMULAS = Object.freeze({
   default: 'MOD.total',
 });
 const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze(['skill', 'talent', 'trait', 'buff', 'equipment']);
-const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“行动判定/ROLL 点”计算器。\n\n任务：\n- 只使用给定的 statDataJson（来源于最新正文末尾的变量数据），不要参考剧情描述。\n- 按公式计算 base，并基于 randomRoll 生成最终结果。\n- 修正来源仅来自 statDataJson.mods（由你自行汇总）。\n- 输出严格 JSON，不要任何额外文字。\n- 可选输出 analysisSummary：1~3 句简短说明关键修正与计算步骤，不要输出内部思维链。\n\n公式规则：\n- base = 公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n`;
+const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判定/ROLL 点计算器。\n\n核心规则：\n- 只使用 statDataJson（变量数据），不要参考剧情描述。\n- 依据轮回乐园设定处理位阶压制与属性壁障；若 statDataJson 中存在压制/壁障相关字段，需体现在判定修正中。\n- 若提供生物强度/等级差/等阶差字段，必须作为关键修正项，显著影响阈值或 mods。\n- 数值映射建议：等级差每 1 级=±2 修正；等阶差每 1 阶=±10 修正；生物强度差每 1 档=±5 修正（可按情况转为阈值调整）。\n- 允许综合主角/装备/技能/天赋/特性Buff/环境/性格/角色当前状态 等数据进行修正汇总。\n- 上述每类数据需细读其子信息（如技能效果/熟练度/品级/层级/冷却/消耗，装备词缀/宝石/品质/特效，Buff层数/剩余时间/可叠加状态等），只要在 statDataJson 中存在就必须纳入修正或阈值调整。\n- 多目标对战：若存在多个敌人，需明确主要目标，并同时考虑群体压力/围攻/保护阵形等对判定的影响。如为范围/溅杀行动，目标数量可提升阈值或降低命中/稳定性。\n- 若存在队友/友军配合，必须读取其属性/技能/天赋/特性Buff/装备/状态/位置与配合手段（夹击、掩护、增益等），计入协同修正。\n\nD20 规则（D&D/PF 风格）：\n- 基础判定：1d20 + 修正 >= DC。\n- randomRoll 是 1~100 时，将其映射为 d20 点数：d20 = ceil(randomRoll / 5)。\n- 优势/劣势：掷两次 d20 取高/取低（若 statDataJson 提供优势/劣势标记则 적용）。\n- 自然 20 视为大成功，自然 1 视为大失败（若无明确规则冲突则 적용）。\n- 若非自然20/1，则按 success 判定为“成功/失败”。自然20=大成功，自然1=大失败。\n- 结果等级：
+  - 大成功 / 暴击（critical）
+  - 普通成功
+  - 勉强成功 / 成功但有代价
+  - 失败但有收获（fail forward）
+  - 大失败 / 灾难（fumble）
+\n判定步骤：\n1) 判断是否需要判定（ROLL）。不需要则返回 needRoll=false。\n2) 需要判定时：\n   - 自行选择合理 action 名称。\n   - 以相关核心属性为主（如 力量/敏捷/体质/智力/幸运/魅力，或真实属性），必要时参考衍生属性（物理攻击/物理防御/法术攻击/法术防御）。\n   - 结合技能/天赋/特性Buff/装备/环境/性格/当前状态等修正，汇总为 mods。\n   - 计算 base，并按公式计算 final 与 success。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n\n输出要求：\n- 严格 JSON，不要任何额外文字。\n- 可选 analysisSummary：1~3 句简短说明关键修正与计算步骤，不要输出内部思维链。\n`;
 const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\nthreshold={{threshold}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
 const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，1~3 句简短摘要即可。`;
 const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
 
-const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是“行动判定/ROLL 点”助手。\n\n任务：\n- 先判断用户输入是否需要进行行动判定（ROLL）。\n- 若需要，选择一个合适的 action，并基于给定数据计算结果。\n- 修正来源仅来自 statDataJson.mods（由你自行汇总）。\n- 输出严格 JSON，不要任何额外文字。\n- 可选输出 analysisSummary：1~3 句简短说明关键修正与计算步骤，不要输出内部思维链。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n`;
+const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判定/ROLL 点助手。\n\n任务：\n- 先判断用户输入是否需要进行行动判定（ROLL）。\n- 若需要，选择一个合适的 action，并基于给定数据计算结果。\n- 只使用 statDataJson 里的数据（属性/装备/技能/天赋/特性Buff/状态/环境/性格等）。\n- 处理位阶压制与属性壁障规则：若 statDataJson 中存在相关字段，必须影响判定。\n- 输出严格 JSON，不要任何额外文字。\n- 可选 analysisSummary：1~3 句简短说明关键修正与计算步骤，不要输出内部思维链。\n\nD20 规则（D&D/PF 风格）：\n- 基础判定：1d20 + 修正 >= DC。\n- randomRoll 是 1~100 时，将其映射为 d20 点数：d20 = ceil(randomRoll / 5)。\n- 优势/劣势：掷两次 d20 取高/取低（若 statDataJson 提供优势/劣势标记则 적용）。\n- 自然 20 视为大成功，自然 1 视为大失败（若无明确规则冲突则 적용）。\n- 若非自然20/1，则按 success 判定为“成功/失败”。自然20=大成功，自然1=大失败。\n- 结果等级：
+  - 大成功 / 暴击（critical）
+  - 普通成功
+  - 勉强成功 / 成功但有代价
+  - 失败但有收获（fail forward）
+  - 大失败 / 灾难（fumble）
+\n修正规则（必须考虑）：\n- 技能/天赋/特性Buff/装备提供的数值加成或减益，要汇总为 mods。\n- 修正来源可多项叠加，但需遵守“属性壁障/位阶压制”限制。\n- 若存在“真实属性/衍生属性”（如物理攻击/物理防御、法术攻击/法术防御），优先使用与行动类型最相关的一组。\n- 角色当前状态（伤势/虚弱/诅咒/疲劳/专注/兴奋等）必须体现在修正或阈值上。\n- 必须考虑各类数据的子信息：\n  - 技能/天赋/特性Buff：效果、熟练度/等级、品级、层级、冷却、消耗、可叠加与层数、剩余时间。\n  - 装备：品质、评分、词缀、宝石、特效、耐久/状态、武器类型匹配。\n  - 敌方同类条目也必须读取其子信息。\n\n环境因素（必须考虑）：\n- 若 statDataJson 提供环境字段（地形、视野、天气、光照、噪音、空间压制、结界、毒雾等），必须影响修正或阈值。\n- 环境优势/劣势需体现为正/负修正，或影响 success 判定阈值。\n\n性格因素（必须考虑）：\n- 若 statDataJson 提供性格/心态字段（如冷静/鲁莽/谨慎/嗜战/恐惧等），需对判定产生修正。\n- 性格修正应与行动类型一致（鲁莽提高进攻但降低防御或稳定性；谨慎提高防御/命中但降低爆发等）。\n\n对战判定（必须考虑敌方）：\n- 若为对战行动，需读取敌方属性与敌方技能/天赋/特性Buff/装备/状态的修正效果。\n- 若存在“位阶压制差值/属性壁障差值”，必须对结果产生明显影响。\n- 若提供生物强度/等级差/等阶差字段，必须作为关键修正项，显著影响阈值或 mods。\n- 数值映射建议：等级差每 1 级=±2 修正；等阶差每 1 阶=±10 修正；生物强度差每 1 档=±5 修正（可按情况转为阈值调整）。\n- 敌我属性或装备的相克/克制，若 statDataJson 有对应字段，需计入修正或阈值。\n- 多目标对战：若有多个敌人，需明确主要目标，并同时考虑群体压力/围攻/保护阵形等对判定的影响。若行动为范围/溅杀，将目标数量纳入阈值或命中/稳定性调整。\n- 若存在队友/友军配合，必须读取其属性/技能/天赋/特性Buff/装备/状态/位置与配合手段（夹击、掩护、增益等），计入协同修正。\n\n判定步骤：\n1) 判断是否需要判定（ROLL）。不需要则返回 needRoll=false。\n2) 需要判定时：\n   - 选择合理 action 名称（自定义即可）。\n   - 结合核心属性/衍生属性/技能/天赋/特性Buff/装备/环境/性格/当前状态，汇总为 mods。\n   - 计算 base，并按公式计算 final 与 success。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n`;
 const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\nthreshold={{threshold}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
 
 const DEFAULT_SETTINGS = Object.freeze({
