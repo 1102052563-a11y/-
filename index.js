@@ -98,7 +98,7 @@ const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判�
 - 结果判定区间：定义 margin = final - threshold。自然20=大成功，自然1=大失败。其余情况：success 且 margin>=6 为普通成功；success 且 0~5 为勉强成功；失败且 margin 在 -5~-1 为失败但有收获；失败且 margin<=-6 为大失败。
 - 失败但有收获类型建议：情报/位置/士气/消耗减免/部分伤害或效果成立（二选一即可）。
 \n判定步骤：\n1) 判断是否需要判定（ROLL）。不需要则返回 needRoll=false。\n2) 需要判定时：\n   - 自行选择合理 action 名称。\n   - 以相关核心属性为主（如 力量/敏捷/体质/智力/幸运/魅力，或真实属性），必要时参考衍生属性（物理攻击/物理防御/法术攻击/法术防御）。\n   - 结合技能/天赋/特性Buff/装备/环境/性格/当前状态等修正，汇总为 mods。\n   - 计算 base，并按公式计算 final 与 success。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n\n输出要求：\n- 严格 JSON，不要任何额外文字。\n- 必须包含 outcomeTier 与 explanation（用于日志简述）。\n- explanation 控制在 1~2 句，避免过长影响日志可读性。\n- analysisSummary 可选，但若提供需包含“修正来源汇总/映射应用”两段（可简短）。\n`;
-const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\nthreshold={{threshold}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
+const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
 const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，建议包含“修正来源汇总/映射应用”两段；explanation 建议 1~2 句。`;
 const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
 
@@ -113,7 +113,7 @@ const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是“轮回乐园风格”的�
 \n修正规则（必须考虑）：\n- 技能/天赋/特性Buff/装备提供的数值加成或减益，要汇总为 mods。\n- 修正来源可多项叠加，但需遵守“属性壁障/位阶压制”限制。\n- 若存在“真实属性/衍生属性”（如物理攻击/物理防御、法术攻击/法术防御），优先使用与行动类型最相关的一组。\n- 角色当前状态（伤势/虚弱/诅咒/疲劳/专注/兴奋等）必须体现在修正或阈值上。\n- 必须考虑各类数据的子信息：\n  - 技能/天赋/特性Buff：效果、熟练度/等级、品级、层级、冷却、消耗、可叠加与层数、剩余时间。\n  - 装备：品质、评分、词缀、宝石、特效、耐久/状态、武器类型匹配。\n  - 敌方同类条目也必须读取其子信息。\n\n环境因素（必须考虑）：\n- 若 statDataJson 提供环境字段（地形、视野、天气、光照、噪音、空间压制、结界、毒雾等），必须影响修正或阈值。\n- 环境优势/劣势需体现为正/负修正，或影响 success 判定阈值。\n\n性格因素（必须考虑）：
 - 环境反制优先级建议：先应用环境负面，再应用技能/装备加成；若有护具或抗性标记可部分抵消。\n- 若 statDataJson 提供性格/心态字段（如冷静/鲁莽/谨慎/嗜战/恐惧等），需对判定产生修正。\n- 性格修正应与行动类型一致（鲁莽提高进攻但降低防御或稳定性；谨慎提高防御/命中但降低爆发等）。\n\n对战判定（必须考虑敌方）：\n- 若为对战行动，需读取敌方属性与敌方技能/天赋/特性Buff/装备/状态的修正效果。\n- 若存在“位阶压制差值/属性壁障差值”，必须对结果产生明显影响。\n- 若提供生物强度/等级差/等阶差字段，必须作为关键修正项，显著影响阈值或 mods。\n- 数值映射建议：等级差每 1 级=±2 修正；等阶差每 1 阶=±10 修正；生物强度差每 1 档=±5 修正（可按情况转为阈值调整）。\n- 敌我属性或装备的相克/克制，若 statDataJson 有对应字段，需计入修正或阈值。
 - 相克/克制映射建议：轻度/中度/重度=+3/+6/+10（或等幅负修正）。\n- 多目标对战：若有多个敌人，需明确主要目标，并同时考虑群体压力/围攻/保护阵形等对判定的影响。若行动为范围/溅杀，将目标数量纳入阈值或命中/稳定性调整。\n- 若存在队友/友军配合，必须读取其属性/技能/天赋/特性Buff/装备/状态/位置与配合手段（夹击、掩护、增益等），计入协同修正。\n\n判定步骤：\n1) 判断是否需要判定（ROLL）。不需要则返回 needRoll=false。\n2) 需要判定时：\n   - 选择合理 action 名称（自定义即可）。\n   - 结合核心属性/衍生属性/技能/天赋/特性Buff/装备/环境/性格/当前状态，汇总为 mods。\n   - 计算 base，并按公式计算 final 与 success。\n\n公式规则：\n- base = 你采用的公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n`;
-const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\nthreshold={{threshold}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
+const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -269,7 +269,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiRollStatSource: 'variable', // variable | template | latest
   wiRollStatVarName: 'stat_data',
   wiRollRandomWeight: 0.3,
-  wiRollThreshold: 50,
   wiRollInjectStyle: 'hidden',
   wiRollTag: 'SG_ROLL',
   wiRollDebugLog: false,
@@ -391,6 +390,20 @@ function ensureSettings() {
     // 兼容旧版：若 modulesJson 为空，补默认
     if (!extensionSettings[MODULE_NAME].modulesJson) {
       extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
+    }
+  }
+  if (typeof extensionSettings[MODULE_NAME].wiRollSystemPrompt === 'string') {
+    const cur = extensionSettings[MODULE_NAME].wiRollSystemPrompt;
+    if (!cur.includes('outcomeTier') || !cur.includes('explanation')) {
+      extensionSettings[MODULE_NAME].wiRollSystemPrompt = DEFAULT_ROLL_SYSTEM_PROMPT;
+      saveSettingsDebounced();
+    }
+  }
+  if (typeof extensionSettings[MODULE_NAME].wiRollUserTemplate === 'string') {
+    const curTpl = extensionSettings[MODULE_NAME].wiRollUserTemplate;
+    if (curTpl.includes('{{threshold}}')) {
+      extensionSettings[MODULE_NAME].wiRollUserTemplate = DEFAULT_ROLL_USER_TEMPLATE;
+      saveSettingsDebounced();
     }
   }
   return extensionSettings[MODULE_NAME];
@@ -2768,7 +2781,7 @@ function computeRollLocal(actionKey, statData, settings) {
   const roll = rollDice(100);
   const randFactor = (roll - 50) / 50;
   const final = base + base * randWeight * randFactor;
-  const threshold = clampFloat(s.wiRollThreshold, 1, 99, 50);
+  const threshold = 50;
   const success = final >= threshold;
 
   return {
@@ -2798,10 +2811,15 @@ function normalizeRollMods(mods, sources) {
 function getRollAnalysisSummary(res) {
   if (!res || typeof res !== 'object') return '';
   const raw = res.analysisSummary ?? res.analysis_summary ?? res.explanation ?? res.reason ?? '';
+  if (raw && typeof raw === 'object') {
+    const pick = raw.summary ?? raw.text ?? raw.message;
+    if (pick != null) return String(pick).trim();
+    try { return JSON.stringify(raw); } catch { return String(raw); }
+  }
   return String(raw || '').trim();
 }
 
-function buildRollPromptMessages(actionKey, statData, settings, formula, randomWeight, threshold, randomRoll) {
+function buildRollPromptMessages(actionKey, statData, settings, formula, randomWeight, randomRoll) {
   const s = settings || ensureSettings();
   const sys = String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT).trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
   const tmpl = String(s.wiRollUserTemplate || DEFAULT_ROLL_USER_TEMPLATE).trim() || DEFAULT_ROLL_USER_TEMPLATE;
@@ -2811,7 +2829,6 @@ function buildRollPromptMessages(actionKey, statData, settings, formula, randomW
     .replaceAll('{{action}}', String(actionKey || ''))
     .replaceAll('{{formula}}', String(formula || ''))
     .replaceAll('{{randomWeight}}', String(randomWeight))
-    .replaceAll('{{threshold}}', String(threshold))
     .replaceAll('{{randomRoll}}', String(randomRoll))
     .replaceAll('{{modifierSourcesJson}}', modifierSourcesJson)
     .replaceAll('{{statDataJson}}', statDataJson);
@@ -2827,13 +2844,11 @@ function buildRollDecisionPromptMessages(userText, statData, settings, randomRol
   const s = settings || ensureSettings();
   const sys = DEFAULT_ROLL_DECISION_SYSTEM_PROMPT;
   const randomWeight = clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
-  const threshold = clampFloat(s.wiRollThreshold, 1, 99, 50);
   const statDataJson = JSON.stringify(statData || {}, null, 0);
 
   const user = DEFAULT_ROLL_DECISION_USER_TEMPLATE
     .replaceAll('{{userText}}', String(userText || ''))
     .replaceAll('{{randomWeight}}', String(randomWeight))
-    .replaceAll('{{threshold}}', String(threshold))
     .replaceAll('{{randomRoll}}', String(randomRoll))
     .replaceAll('{{statDataJson}}', statDataJson);
 
@@ -2849,8 +2864,7 @@ async function computeRollViaCustomProvider(actionKey, statData, settings, rando
   const formulas = safeJsonParse(s.wiRollFormulaJson) || DEFAULT_ROLL_FORMULAS;
   const formula = String(formulas?.[actionKey] || formulas?.default || DEFAULT_ROLL_FORMULAS.default);
   const randomWeight = clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
-  const threshold = clampFloat(s.wiRollThreshold, 1, 99, 50);
-  const messages = buildRollPromptMessages(actionKey, statData, s, formula, randomWeight, threshold, randomRoll);
+  const messages = buildRollPromptMessages(actionKey, statData, s, formula, randomWeight, randomRoll);
 
   const jsonText = await callViaCustom(
     s.wiRollCustomEndpoint,
@@ -2904,19 +2918,19 @@ function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style = 'hidden') {
   const formula = String(res.formula || '').trim();
   const base = Number.isFinite(Number(res.base)) ? Number(res.base) : 0;
   const final = Number.isFinite(Number(res.final)) ? Number(res.final) : 0;
-  const threshold = Number.isFinite(Number(res.threshold)) ? Number(res.threshold) : 50;
-  const success = !!res.success;
+  const threshold = Number.isFinite(Number(res.threshold)) ? Number(res.threshold) : null;
+  const success = res.success == null ? null : !!res.success;
   const roll = Number.isFinite(Number(res.random?.roll)) ? Number(res.random?.roll) : 0;
   const weight = Number.isFinite(Number(res.random?.weight)) ? Number(res.random?.weight) : 0;
   const mods = Array.isArray(res.mods) ? res.mods : [];
   const modLine = mods.map(m => `${m.source}:${Number(m.value) >= 0 ? '+' : ''}${Number(m.value) || 0}`).join(' | ');
-  const outcome = success ? '成功' : '失败';
+  const outcome = String(res.outcomeTier || '').trim() || (success == null ? 'N/A' : (success ? '成功' : '失败')) ;
 
   if (String(style || 'hidden') === 'plain') {
-    return `\n\n[${tag}] 动作=${action} | 结果=${outcome} | 最终=${final.toFixed(2)} | 阈值>=${threshold} | 基础=${base.toFixed(2)} | 随机=1d100:${roll}*${weight} | 修正=${modLine} | 公式=${formula}\n`;
+    return `\n\n[${tag}] 动作=${action} | 结果=${outcome} | 最终=${final.toFixed(2)} | 阈值>=${threshold == null ? 'N/A' : threshold} | 基础=${base.toFixed(2)} | 随机=1d100:${roll}*${weight} | 修正=${modLine} | 公式=${formula}\n`;
   }
 
-  return `\n\n<!--${tag}\n动作=${action}\n结果=${outcome}\n最终=${final.toFixed(2)}\n阈值>=${threshold}\n基础=${base.toFixed(2)}\n随机=1d100:${roll}*${weight}\n修正=${modLine}\n公式=${formula}\n-->`;
+  return `\n\n<!--${tag}\n动作=${action}\n结果=${outcome}\n最终=${final.toFixed(2)}\n阈值>=${threshold == null ? 'N/A' : threshold}\n基础=${base.toFixed(2)}\n随机=1d100:${roll}*${weight}\n修正=${modLine}\n公式=${formula}\n-->`;
 }
 
 function getLatestAssistantText(chat, strip = true) {
@@ -3067,7 +3081,6 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
     res.actionLabel = res.actionLabel || res.action || '';
     res.formula = res.formula || '';
     if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
-    if (res.threshold == null) res.threshold = clampFloat(s.wiRollThreshold, 1, 99, 50);
     if (res.final == null && Number.isFinite(Number(res.base))) {
       const randWeight = Number(res.random?.weight) || clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
       const randRoll = Number(res.random?.roll) || randomRoll;
@@ -3081,6 +3094,7 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
       appendRollLog({
         ts: Date.now(),
         action: res.actionLabel || res.action,
+        outcomeTier: res.outcomeTier,
         summary,
         final: res.final,
         success: res.success,
@@ -3150,7 +3164,6 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
   res.actionLabel = res.actionLabel || res.action || '';
   res.formula = res.formula || '';
   if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
-  if (res.threshold == null) res.threshold = clampFloat(s.wiRollThreshold, 1, 99, 50);
   if (res.final == null && Number.isFinite(Number(res.base))) {
     const randWeight = Number(res.random?.weight) || clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
     const randRoll = Number(res.random?.roll) || randomRoll;
@@ -3164,6 +3177,7 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
     appendRollLog({
       ts: Date.now(),
       action: res.actionLabel || res.action,
+      outcomeTier: res.outcomeTier,
       summary,
       final: res.final,
       success: res.success,
@@ -5443,12 +5457,7 @@ function buildModalHtml() {
                   <div class="sg-field">
                     <label>随机权重（0~1）</label>
                     <input id="sg_wiRollRandomWeight" type="number" min="0" max="1" step="0.01" placeholder="0.3">
-                  </div>
-                  <div class="sg-field">
-                    <label>成功阈值（1~99）</label>
-                    <input id="sg_wiRollThreshold" type="number" min="1" max="99" placeholder="50">
-                  </div>
-                </div>
+                  </div>                </div>
                 <div class="sg-grid2">
                   <div class="sg-field">
                     <label>变量来源</label>
@@ -5817,7 +5826,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollThreshold, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -6268,7 +6277,6 @@ function pullSettingsToUi() {
   $('#sg_wiRollStatSource').val(String(s.wiRollStatSource || 'variable'));
   $('#sg_wiRollStatVarName').val(String(s.wiRollStatVarName || 'stat_data'));
   $('#sg_wiRollRandomWeight').val(s.wiRollRandomWeight ?? 0.3);
-  $('#sg_wiRollThreshold').val(s.wiRollThreshold ?? 50);
   $('#sg_wiRollInjectStyle').val(String(s.wiRollInjectStyle || 'hidden'));
   $('#sg_wiRollDebugLog').prop('checked', !!s.wiRollDebugLog);
   $('#sg_wiRollStatParseMode').val(String(s.wiRollStatParseMode || 'json'));
@@ -6435,9 +6443,19 @@ function renderRollLogs(metaOverride = null) {
   const html = shown.map((l) => {
     const ts = l?.ts ? new Date(l.ts).toLocaleString() : '';
     const action = String(l?.action || '').trim();
-    const outcome = l?.success === true ? '成功' : (l?.success === false ? '失败' : '');
+    const outcome = String(l?.outcomeTier || '').trim()
+      || (l?.success == null ? 'N/A' : (l.success ? '成功' : '失败'));
     const finalVal = Number.isFinite(Number(l?.final)) ? Number(l.final).toFixed(2) : '';
-    const summary = String(l?.summary || '').trim();
+    let summary = '';
+    if (l?.summary && typeof l.summary === 'object') {
+      const pick = l.summary.summary ?? l.summary.text ?? l.summary.message;
+      summary = String(pick || '').trim();
+      if (!summary) {
+        try { summary = JSON.stringify(l.summary); } catch { summary = String(l.summary); }
+      }
+    } else {
+      summary = String(l?.summary || '').trim();
+    }
     const userShort = String(l?.userText || '').trim().slice(0, 160);
 
     const detailsLines = [];
@@ -6677,7 +6695,6 @@ function pullUiToSettings() {
   s.wiRollStatSource = String($('#sg_wiRollStatSource').val() || s.wiRollStatSource || 'variable');
   s.wiRollStatVarName = String($('#sg_wiRollStatVarName').val() || s.wiRollStatVarName || 'stat_data').trim();
   s.wiRollRandomWeight = clampFloat($('#sg_wiRollRandomWeight').val(), 0, 1, s.wiRollRandomWeight ?? 0.3);
-  s.wiRollThreshold = clampInt($('#sg_wiRollThreshold').val(), 1, 99, s.wiRollThreshold ?? 50);
   s.wiRollInjectStyle = String($('#sg_wiRollInjectStyle').val() || s.wiRollInjectStyle || 'hidden');
   s.wiRollDebugLog = $('#sg_wiRollDebugLog').is(':checked');
   s.wiRollStatParseMode = String($('#sg_wiRollStatParseMode').val() || s.wiRollStatParseMode || 'json');
