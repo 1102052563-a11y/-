@@ -2947,6 +2947,7 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
   let lastText = String(last.mes ?? last.message ?? '').trim();
   if (!lastText || lastText.startsWith('/')) return;
   const rollTag = String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL';
+  if (lastText.includes(rollTag)) return;
   lastText = stripTriggerInjection(lastText, rollTag);
 
   const actions = safeJsonParse(s.wiRollActionsJson) || DEFAULT_ROLL_ACTIONS;
@@ -3006,6 +3007,104 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
     if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
     else if (typeof ctx.saveChat === 'function') ctx.saveChat();
   } catch { /* ignore */ }
+}
+
+async function buildRollInjectionForText(userText, chat, settings, logStatus) {
+  const s = settings || ensureSettings();
+  const rollTag = String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL';
+  if (String(userText || '').includes(rollTag)) return null;
+  const actions = safeJsonParse(s.wiRollActionsJson) || DEFAULT_ROLL_ACTIONS;
+  const combinedText = `${getLatestAssistantText(chat)}\n${String(userText || '')}`;
+  const action = detectRollAction(combinedText, actions);
+  if (!action?.key) {
+    logStatus?.('ROLL 未触发：未命中动作关键词', 'info');
+    return null;
+  }
+
+  const source = String(s.wiRollStatSource || 'variable');
+  let statData = null;
+  if (source === 'latest') {
+    ({ statData } = resolveStatDataFromLatestAssistant(chat, s));
+  } else if (source === 'template') {
+    ({ statData } = await resolveStatDataFromTemplate(s));
+    if (!statData) ({ statData } = resolveStatDataFromVariableStore(s));
+    if (!statData) ({ statData } = resolveStatDataFromLatestAssistant(chat, s));
+  } else {
+    ({ statData } = resolveStatDataFromVariableStore(s));
+    if (!statData) ({ statData } = await resolveStatDataFromTemplate(s));
+    if (!statData) ({ statData } = resolveStatDataFromLatestAssistant(chat, s));
+  }
+  if (!statData) {
+    const name = String(s.wiRollStatVarName || 'stat_data').trim() || 'stat_data';
+    logStatus?.(`ROLL 未触发：未读取到变量（${name}）`, 'warn');
+    return null;
+  }
+
+  const randomRoll = rollDice(100);
+  let res = null;
+  if (String(s.wiRollProvider || 'custom') === 'custom' && String(s.wiRollCustomEndpoint || '').trim()) {
+    try {
+      res = await computeRollViaCustomProvider(action.key, statData, s, randomRoll);
+    } catch (e) {
+      console.warn('[StoryGuide] roll custom provider failed; fallback to local', e);
+    }
+  }
+  if (!res) res = computeRollLocal(action.key, statData, s);
+  if (!res) return null;
+
+  const sources = safeJsonParse(s.wiRollModifierSourcesJson) || DEFAULT_ROLL_MODIFIER_SOURCES;
+  res.mods = normalizeRollMods(res.mods, sources);
+  res.actionLabel = action.label || action.key;
+  if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
+  const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
+  const rollText = buildRollInjectionFromResult(res, rollTag, style);
+  if (rollText) logStatus?.('ROLL 已注入：判定完成', 'ok');
+  return rollText || null;
+}
+
+function installRollPreSendHook() {
+  if (window.__storyguide_roll_presend_installed) return;
+  window.__storyguide_roll_presend_installed = true;
+  let guard = false;
+
+  document.addEventListener('submit', async (e) => {
+    const form = e.target;
+    if (!form || form.id !== 'chat_input_form') return;
+    if (guard) return;
+    const s = ensureSettings();
+    if (!s.wiRollEnabled) return;
+
+    const textarea = document.getElementById('send_textarea');
+    const raw = String(textarea?.value ?? '').trim();
+    if (!raw || raw.startsWith('/')) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    guard = true;
+
+    try {
+      const modalOpen = $('#sg_modal_backdrop').is(':visible');
+      const shouldLog = modalOpen || s.wiRollDebugLog;
+      const logStatus = (msg, kind = 'info') => {
+        if (!shouldLog) return;
+        if (modalOpen) setStatus(msg, kind);
+        else showToast(msg, { kind, spinner: false, sticky: false, duration: 2200 });
+      };
+
+      const ctx = SillyTavern.getContext();
+      const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+      const rollText = await buildRollInjectionForText(raw, chat, s, logStatus);
+      if (rollText && textarea) {
+        const cleaned = stripTriggerInjection(raw, String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL');
+        textarea.value = cleaned + rollText;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    } finally {
+      guard = false;
+      if (typeof form.requestSubmit === 'function') form.requestSubmit();
+      else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
+  }, true);
 }
 
 function tokenizeForSimilarity(text) {
@@ -6853,6 +6952,7 @@ function init() {
     installQuickOptionsClickHandler();
     createFloatingButton();
     injectFixedInputButton();
+    installRollPreSendHook();
   });
 
   globalThis.StoryGuide = {
