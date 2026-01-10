@@ -4900,8 +4900,8 @@ function clampToViewport(left, top, w, h) {
   // 即 left + minVisibleW <= window.innerWidth → left <= window.innerWidth - minVisibleW
   const maxLeft = window.innerWidth - minVisibleW;
 
-  // 上边界：允许负值，但确保底部至少 minVisibleH 在屏幕内
-  const minTop = minVisibleH - h;
+  // 上边界：严格限制 >= 0，保证标题栏不被遮挡
+  const minTop = 0;
   // 下边界：确保顶部至少 minVisibleH 在屏幕内
   const maxTop = window.innerHeight - minVisibleH;
 
@@ -7309,7 +7309,7 @@ function ensureFloatingPanelInViewport(panel) {
     const visibleLeft = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(0, rect.left));
     const visibleTop = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(0, rect.top));
 
-    if (visibleLeft < minVisibleW || visibleTop < minVisibleH) {
+    if (visibleLeft < minVisibleW || visibleTop < minVisibleH || rect.top < 0) {
       panel.style.left = `${Math.round(clamped.left)}px`;
       panel.style.top = `${Math.round(clamped.top)}px`;
       panel.style.right = 'auto';
