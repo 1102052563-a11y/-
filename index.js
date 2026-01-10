@@ -3249,7 +3249,7 @@ function installRollPreSendHook() {
     }
   }, true);
 
-  document.addEventListener('click', async (e) => {
+  async function handleSendButtonEvent(e) {
     const btn = e.target && e.target.closest ? e.target.closest('#send_but') : null;
     if (!btn) return;
     if (guard || window.__storyguide_presend_guard) return;
@@ -3258,6 +3258,7 @@ function installRollPreSendHook() {
 
     e.preventDefault();
     e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
     guard = true;
 
     try {
@@ -3267,12 +3268,16 @@ function installRollPreSendHook() {
       guard = false;
       window.__storyguide_presend_guard = true;
       try {
-        if (typeof btn.click === 'function') btn.click();
+        const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+        btn.dispatchEvent(ev);
       } finally {
         window.__storyguide_presend_guard = false;
       }
     }
-  }, true);
+  }
+
+  document.addEventListener('pointerdown', handleSendButtonEvent, true);
+  document.addEventListener('click', handleSendButtonEvent, true);
 
   function wrapSendFunction(obj, key) {
     if (!obj || typeof obj[key] !== 'function' || obj[key].__sg_wrapped) return;
