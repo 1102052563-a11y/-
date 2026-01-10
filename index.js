@@ -2851,7 +2851,10 @@ function buildRollPromptMessages(actionKey, statData, settings, formula, randomW
 
 function buildRollDecisionPromptMessages(userText, statData, settings, randomRoll) {
   const s = settings || ensureSettings();
-  const sys = DEFAULT_ROLL_DECISION_SYSTEM_PROMPT;
+  const rawSys = String(s.wiRollSystemPrompt || '').trim();
+  const sys = (rawSys && rawSys !== DEFAULT_ROLL_SYSTEM_PROMPT)
+    ? rawSys
+    : DEFAULT_ROLL_DECISION_SYSTEM_PROMPT;
   const randomWeight = clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
   const difficulty = String(s.wiRollDifficulty || 'normal');
   const statDataJson = JSON.stringify(statData || {}, null, 0);
