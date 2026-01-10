@@ -4884,8 +4884,8 @@ function clearFloatingPanelPos() {
 }
 
 function clampToViewport(left, top, w, h) {
-  // 放宽边界限制：允许窗口被拖到屏幕外，但至少保留 40% 或最少 40px（标题栏高度）可见
-  const minVisibleRatio = 0.4; // 至少 40% 可见
+  // 放宽边界限制：允许窗口越界 50%（即至少保留 50% 或标题栏 40px 可见）
+  const minVisibleRatio = 0.5; // 至少 50% 可见（允许另外 50% 在屏幕外）
   const minVisiblePx = 40;     // 或至少 40px（保证标题栏可拖回）
 
   // 计算水平方向需要保持可见的最小宽度
@@ -7285,8 +7285,8 @@ function ensureFloatingPanelInViewport(panel) {
 
     if (!shouldGuardFloatingPanelViewport()) return;
 
-    // 与 clampToViewport 保持一致的边界逻辑
-    const minVisibleRatio = 0.4;
+    // 与 clampToViewport 保持一致的边界逻辑（允许 50% 越界）
+    const minVisibleRatio = 0.5;
     const minVisiblePx = 40;
 
     const rect = panel.getBoundingClientRect();
