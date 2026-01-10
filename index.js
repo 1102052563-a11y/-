@@ -2906,7 +2906,11 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
 
   const modalOpen = $('#sg_modal_backdrop').is(':visible');
   const shouldLog = modalOpen || s.wiRollDebugLog;
-  const logStatus = (msg, kind = 'info') => { if (shouldLog) setStatus(msg, kind); };
+  const logStatus = (msg, kind = 'info') => {
+    if (!shouldLog) return;
+    if (modalOpen) setStatus(msg, kind);
+    else showToast(msg, { kind, spinner: false, sticky: false, duration: 2200 });
+  };
 
   const last = chat[chat.length - 1];
   if (!last || last.is_user !== true) return; // only on user send
