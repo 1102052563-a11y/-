@@ -411,7 +411,8 @@ function ensureSettings() {
       || !cur.includes('\u6210\u529f\u9608\u503c/DC');
     const missingGradeMap = cur.includes('数值映射建议')
       && !cur.includes('品级修正');
-    if (needsRefresh || missingGradeMap) {
+    const hasMojibake = /[??????]/.test(cur);
+    if (needsRefresh || missingGradeMap || hasMojibake) {
       extensionSettings[MODULE_NAME].wiRollSystemPrompt = DEFAULT_ROLL_SYSTEM_PROMPT;
       saveSettingsDebounced();
     }
