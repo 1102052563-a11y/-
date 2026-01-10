@@ -1383,31 +1383,76 @@ body.sg-zoom-lock {
   transform: scale(0.95);
 }
 
+/* === 右侧抽屉式面板 === */
 .sg-floating-panel {
   position: fixed;
-  bottom: 140px;
-  right: 20px;
-  width: 380px;
-  max-width: calc(100vw - 40px);
-  max-height: 60vh;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%) translateX(50%);
+  /* 默认 peek 状态：向右偏移 50%，只露出一半 */
+  width: 420px;
+  max-width: 90vw;
+  height: 70vh;
+  max-height: calc(100vh - 40px);
   background: linear-gradient(180deg, rgba(30, 38, 48, 0.98) 0%, rgba(22, 28, 36, 0.99) 100%);
   border: 1px solid rgba(100, 130, 160, 0.35);
-  border-radius: 16px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  border-radius: 16px 0 0 16px;
+  /* 左侧圆角 */
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
   z-index: 2147483641;
   display: flex;
   flex-direction: column;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(20px) scale(0.95);
-  transform: translateY(20px) scale(0.95);
-  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease;
 }
 
 .sg-floating-panel.visible {
   opacity: 1;
   visibility: visible;
-  transform: translateY(0) scale(1);
+  /* peek 状态保持 50% 偏移 */
+  transform: translateY(-50%) translateX(50%);
+}
+
+/* 展开状态：完全显示 */
+.sg-floating-panel.visible.expanded {
+  transform: translateY(-50%) translateX(0);
+}
+
+/* 拖拽手柄（在面板左侧边缘） */
+.sg-floating-panel .sg-drawer-handle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%) translateX(-100%);
+  width: 24px;
+  height: 80px;
+  background: linear-gradient(180deg, rgba(60, 80, 100, 0.95) 0%, rgba(40, 55, 70, 0.98) 100%);
+  border: 1px solid rgba(100, 140, 180, 0.4);
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: -4px 0 15px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.sg-floating-panel .sg-drawer-handle:hover {
+  background: linear-gradient(180deg, rgba(70, 95, 120, 0.98) 0%, rgba(50, 68, 85, 0.99) 100%);
+  width: 28px;
+}
+
+.sg-floating-panel .sg-drawer-handle::before {
+  content: "◀";
+  font-size: 12px;
+  color: rgba(200, 220, 240, 0.8);
+  transition: transform 0.2s ease;
+}
+
+.sg-floating-panel.expanded .sg-drawer-handle::before {
+  content: "▶";
 }
 
 .sg-floating-header {
@@ -1481,11 +1526,10 @@ body.sg-zoom-lock {
   border-radius: 10px;
 }
 
-/* 移动端适配 */
+/* 移动端适配 - 抽屉式面板 */
 @media (max-width: 500px) {
   .sg-floating-btn {
     bottom: 90px;
-    /* Liitle higher to avoid bottom bars */
     right: 16px;
     width: 48px;
     height: 48px;
@@ -1494,21 +1538,33 @@ body.sg-zoom-lock {
   }
 
   .sg-floating-panel {
-    bottom: clamp(12px, 12dvh, 120px);
-    right: 10px;
-    left: 10px;
-    width: auto;
-    max-width: none;
-    max-height: min(70dvh, calc(100dvh - 24px));
-    z-index: 2147483641;
+    width: 85vw;
+    max-width: 85vw;
+    height: 80vh;
+    max-height: calc(100dvh - 40px);
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%) translateX(50%);
+  }
+
+  .sg-floating-panel.visible {
+    transform: translateY(-50%) translateX(50%);
+  }
+
+  .sg-floating-panel.visible.expanded {
+    transform: translateY(-50%) translateX(0);
+  }
+
+  .sg-floating-panel .sg-drawer-handle {
+    height: 60px;
+    width: 20px;
   }
 }
 
-/* Allow resizing and scrolling for panel */
+/* 抽屉面板允许上下调整大小 */
 .sg-floating-panel {
-  resize: both;
+  resize: vertical;
   overflow: hidden;
-  /* Handle content overflow via body scrolling */
   min-width: 200px;
   min-height: 150px;
 }

@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
@@ -3019,7 +3019,7 @@ function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style = 'hidden') {
   const weight = Number.isFinite(Number(res.random?.weight)) ? Number(res.random?.weight) : 0;
   const mods = Array.isArray(res.mods) ? res.mods : [];
   const modLine = mods.map(m => `${m.source}:${Number(m.value) >= 0 ? '+' : ''}${Number(m.value) || 0}`).join(' | ');
-  const outcome = String(res.outcomeTier || '').trim() || (success == null ? 'N/A' : (success ? '成功' : '失败')) ;
+  const outcome = String(res.outcomeTier || '').trim() || (success == null ? 'N/A' : (success ? '成功' : '失败'));
 
   if (String(style || 'hidden') === 'plain') {
     return `\n\n[${tag}] 动作=${action} | 结果=${outcome} | 最终=${final.toFixed(2)} | 阈值>=${threshold == null ? 'N/A' : threshold} | 基础=${base.toFixed(2)} | 随机=1d100:${roll}*${weight} | 修正=${modLine} | 公式=${formula}\n`;
@@ -7127,7 +7127,8 @@ function createFloatingPanel() {
   panel.id = 'sg_floating_panel';
   panel.className = 'sg-floating-panel';
   panel.innerHTML = `
-    <div class="sg-floating-header" style="cursor: move; touch-action: none;">
+    <div class="sg-drawer-handle" id="sg_drawer_handle" title="展开/收起面板"></div>
+    <div class="sg-floating-header">
       <span class="sg-floating-title">📘 剧情指导</span>
       <div class="sg-floating-actions">
         <button class="sg-floating-action-btn" id="sg_floating_refresh" title="刷新分析">🔄</button>
@@ -7141,22 +7142,6 @@ function createFloatingPanel() {
   `;
 
   document.body.appendChild(panel);
-
-  // Restore position (Only on Desktop/Large screens)
-  // On mobile/tablets (< 1200px wide), we rely on CSS defaults (bottom sheet style) to ensure visibility
-  if (window.innerWidth >= 1200) {
-    loadFloatingPanelPos();
-    if (sgFloatingPinnedPos) {
-      const w = panel.offsetWidth || 300;
-      const h = panel.offsetHeight || 400;
-      // Use saved position but ensure it is on screen
-      const clamped = clampToViewport(sgFloatingPinnedPos.left, sgFloatingPinnedPos.top, w, h);
-      panel.style.left = `${Math.round(clamped.left)}px`;
-      panel.style.top = `${Math.round(clamped.top)}px`;
-      panel.style.bottom = 'auto';
-      panel.style.right = 'auto';
-    }
-  }
 
   // 事件绑定
   $('#sg_floating_close').on('click', () => {
@@ -7172,76 +7157,11 @@ function createFloatingPanel() {
     hideFloatingPanel();
   });
 
-  // Drag logic
-  const header = panel.querySelector('.sg-floating-header');
-  let dragging = false;
-  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
-  let moved = false;
-
-  const onDown = (ev) => {
-    if (ev.target.closest('button')) return; // ignore buttons
-    dragging = true;
-    startX = ev.clientX;
-    startY = ev.clientY;
-
-    const rect = panel.getBoundingClientRect();
-    startLeft = rect.left;
-    startTop = rect.top;
-    moved = false;
-
-    panel.style.bottom = 'auto';
-    panel.style.right = 'auto';
-    panel.style.transition = 'none'; // disable transition during drag
-
-    header.setPointerCapture(ev.pointerId);
-  };
-
-  const onMove = (ev) => {
-    if (!dragging) return;
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
-
-    if (!moved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) moved = true;
-
-    const newLeft = startLeft + dx;
-    const newTop = startTop + dy;
-
-    // Constrain to viewport
-    const w = panel.offsetWidth;
-    const h = panel.offsetHeight;
-    const clamped = clampToViewport(newLeft, newTop, w, h);
-
-    panel.style.left = `${Math.round(clamped.left)}px`;
-    panel.style.top = `${Math.round(clamped.top)}px`;
-  };
-
-  const onUp = (ev) => {
-    if (!dragging) return;
-    dragging = false;
-    header.releasePointerCapture(ev.pointerId);
-    panel.style.transition = ''; // restore transition
-
-    if (moved) {
-      const left = parseInt(panel.style.left || '0', 10);
-      const top = parseInt(panel.style.top || '0', 10);
-      saveFloatingPanelPos(left, top);
-    }
-  };
-
-  header.addEventListener('pointerdown', onDown);
-  header.addEventListener('pointermove', onMove);
-  header.addEventListener('pointerup', onUp);
-  header.addEventListener('pointercancel', onUp);
-
-  // Double click to reset
-  header.addEventListener('dblclick', (ev) => {
-    if (ev.target.closest('button')) return; // ignore buttons
-    clearFloatingPanelPos();
-    panel.style.left = '';
-    panel.style.top = '';
-    panel.style.bottom = ''; // restore CSS default
-    panel.style.right = '';  // restore CSS default
+  // 抽屉手柄点击：展开/收起
+  $('#sg_drawer_handle').on('click', () => {
+    panel.classList.toggle('expanded');
   });
+
 }
 
 function toggleFloatingPanel() {
@@ -7308,24 +7228,10 @@ function showFloatingPanel() {
     panel.classList.add('visible');
     floatingPanelVisible = true;
 
-    // Force safe positioning on mobile/tablet (<1200px) every time it opens
-    // This ensures it doesn't get stuck in weird places or off-screen
-    if (window.innerWidth < 1200) {
-      panel.style.left = '';
-      panel.style.top = '';
-      panel.style.bottom = ''; // Revert to CSS default (fixed bottom)
-      panel.style.right = '';
-      panel.style.transform = ''; // Clear strict transform if needed, though CSS handles transition
-    }
-
     // 如果有缓存内容则显示
     if (lastFloatingContent) {
       updateFloatingPanelBody(lastFloatingContent);
     }
-
-    bindFloatingPanelResizeGuard();
-    // Final guard: make sure the panel is actually within the viewport on tiny screens.
-    requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
   }
 }
 
