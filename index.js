@@ -3062,10 +3062,75 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
   return rollText || null;
 }
 
+async function buildTriggerInjectionForText(userText, chat, settings, logStatus) {
+  const s = settings || ensureSettings();
+  if (!s.wiTriggerEnabled) return null;
+
+  const startAfter = clampInt(s.wiTriggerStartAfterAssistantMessages, 0, 200000, 0);
+  if (startAfter > 0) {
+    const assistantFloors = computeFloorCount(chat, 'assistant');
+    if (assistantFloors < startAfter) {
+      logStatus?.(`索引未触发：AI 楼层不足 ${assistantFloors}/${startAfter}`, 'info');
+      return null;
+    }
+  }
+
+  const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
+  const tagForStrip = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
+  const rollTag = String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL';
+  const recentText = buildRecentChatText(chat, lookback, true, [tagForStrip, rollTag]);
+  if (!recentText) return null;
+
+  const candidates = collectBlueIndexCandidates();
+  if (!candidates.length) return null;
+
+  const maxEntries = clampInt(s.wiTriggerMaxEntries, 1, 20, 4);
+  const minScore = clampFloat(s.wiTriggerMinScore, 0, 1, 0.08);
+  const includeUser = !!s.wiTriggerIncludeUserMessage;
+  const userWeight = clampFloat(s.wiTriggerUserMessageWeight, 0, 10, 1.6);
+  const matchMode = String(s.wiTriggerMatchMode || 'local');
+
+  let picked = [];
+  if (matchMode === 'llm') {
+    try {
+      picked = await pickRelevantIndexEntriesLLM(recentText, userText, candidates, maxEntries, includeUser, userWeight);
+    } catch (e) {
+      console.warn('[StoryGuide] index LLM failed; fallback to local similarity', e);
+      picked = pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, minScore, includeUser, userWeight);
+    }
+  } else {
+    picked = pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, minScore, includeUser, userWeight);
+  }
+  if (!picked.length) return null;
+
+  const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
+  const kwSet = new Set();
+  const pickedNames = [];
+  for (const { e } of picked) {
+    const name = String(e.title || '').trim() || '条目';
+    pickedNames.push(name);
+    for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
+      const kk = String(k || '').trim();
+      if (!kk) continue;
+      kwSet.add(kk);
+      if (kwSet.size >= maxKeywords) break;
+    }
+    if (kwSet.size >= maxKeywords) break;
+  }
+  const keywords = Array.from(kwSet);
+  if (!keywords.length) return null;
+
+  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
+  const injected = buildTriggerInjection(keywords, tagForStrip, style);
+  if (injected) logStatus?.(`索引已注入：${pickedNames.slice(0, 4).join('、')}${pickedNames.length > 4 ? '…' : ''}`, 'ok');
+  return injected || null;
+}
+
 function installRollPreSendHook() {
   if (window.__storyguide_roll_presend_installed) return;
   window.__storyguide_roll_presend_installed = true;
   let guard = false;
+  let preSendPromise = null;
 
   function findTextarea() {
     return document.querySelector('#send_textarea, textarea#send_textarea, .send_textarea, textarea.send_textarea');
@@ -3087,14 +3152,14 @@ function installRollPreSendHook() {
     return document.querySelector('#send_button, #send_but, button.send_button, .send_button');
   }
 
-  async function runRollInjectFromTextarea(textarea) {
+  async function runPreSendInjections(textarea) {
     const s = ensureSettings();
-    if (!s.wiRollEnabled) return false;
+    if (!s.wiRollEnabled && !s.wiTriggerEnabled) return false;
     const raw = String(textarea?.value ?? '').trim();
     if (!raw || raw.startsWith('/')) return false;
 
     const modalOpen = $('#sg_modal_backdrop').is(':visible');
-    const shouldLog = modalOpen || s.wiRollDebugLog;
+    const shouldLog = modalOpen || s.wiRollDebugLog || s.wiTriggerDebugLog;
     const logStatus = (msg, kind = 'info') => {
       if (!shouldLog) return;
       if (modalOpen) setStatus(msg, kind);
@@ -3103,14 +3168,28 @@ function installRollPreSendHook() {
 
     const ctx = SillyTavern.getContext();
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-    const rollText = await buildRollInjectionForText(raw, chat, s, logStatus);
-    if (rollText && textarea) {
-      const cleaned = stripTriggerInjection(raw, String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL');
-      textarea.value = cleaned + rollText;
+    const rollText = s.wiRollEnabled ? await buildRollInjectionForText(raw, chat, s, logStatus) : null;
+    const triggerText = s.wiTriggerEnabled ? await buildTriggerInjectionForText(raw, chat, s, logStatus) : null;
+    if ((rollText || triggerText) && textarea) {
+      let cleaned = stripTriggerInjection(raw, String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL');
+      cleaned = stripTriggerInjection(cleaned, String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS');
+      textarea.value = cleaned + (rollText || '') + (triggerText || '');
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     }
     return false;
+  }
+
+  async function ensurePreSend(textarea) {
+    if (preSendPromise) return preSendPromise;
+    preSendPromise = (async () => {
+      await runPreSendInjections(textarea);
+    })();
+    try {
+      await preSendPromise;
+    } finally {
+      preSendPromise = null;
+    }
   }
 
   function triggerSend(form) {
@@ -3134,14 +3213,14 @@ function installRollPreSendHook() {
     if (!form || !textarea || !form.contains(textarea)) return;
     if (guard) return;
     const s = ensureSettings();
-    if (!s.wiRollEnabled) return;
+    if (!s.wiRollEnabled && !s.wiTriggerEnabled) return;
 
     e.preventDefault();
     e.stopPropagation();
     guard = true;
 
     try {
-      await runRollInjectFromTextarea(textarea);
+      await ensurePreSend(textarea);
     } finally {
       guard = false;
       triggerSend(form);
@@ -3154,7 +3233,7 @@ function installRollPreSendHook() {
     if (e.key !== 'Enter') return;
     if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
     const s = ensureSettings();
-    if (!s.wiRollEnabled) return;
+    if (!s.wiRollEnabled && !s.wiTriggerEnabled) return;
     if (guard) return;
 
     e.preventDefault();
@@ -3162,13 +3241,43 @@ function installRollPreSendHook() {
     guard = true;
 
     try {
-      await runRollInjectFromTextarea(textarea);
+      await ensurePreSend(textarea);
     } finally {
       guard = false;
       const form = findForm(textarea);
       triggerSend(form);
     }
   }, true);
+
+  function wrapSendFunction(obj, key) {
+    if (!obj || typeof obj[key] !== 'function' || obj[key].__sg_wrapped) return;
+    const original = obj[key];
+    obj[key] = async function (...args) {
+      if (window.__storyguide_presend_guard) return original.apply(this, args);
+      const s = ensureSettings();
+      if (!s.wiRollEnabled && !s.wiTriggerEnabled) return original.apply(this, args);
+      const textarea = findTextarea();
+      if (textarea) await ensurePreSend(textarea);
+      window.__storyguide_presend_guard = true;
+      try {
+        return await original.apply(this, args);
+      } finally {
+        window.__storyguide_presend_guard = false;
+      }
+    };
+    obj[key].__sg_wrapped = true;
+  }
+
+  function installSendWrappers() {
+    const ctx = SillyTavern.getContext?.() ?? {};
+    const candidates = ['sendMessage', 'sendUserMessage', 'sendUserMessageInChat', 'submitUserMessage'];
+    for (const k of candidates) wrapSendFunction(ctx, k);
+    for (const k of candidates) wrapSendFunction(SillyTavern, k);
+    for (const k of candidates) wrapSendFunction(globalThis, k);
+  }
+
+  installSendWrappers();
+  setInterval(installSendWrappers, 2000);
 }
 
 function tokenizeForSimilarity(text) {
@@ -3435,6 +3544,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   if (!last || last.is_user !== true) return; // only on user send
   const lastText = String(last.mes ?? last.message ?? '').trim();
   if (!lastText || lastText.startsWith('/')) return;
+  if (lastText.includes(String(s.wiTriggerTag || 'SG_WI_TRIGGERS'))) return;
 
   // 仅在达到指定 AI 楼层后才开始索引触发（避免前期噪声/浪费）
   const startAfter = clampInt(s.wiTriggerStartAfterAssistantMessages, 0, 200000, 0);
