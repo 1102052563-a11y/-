@@ -1494,13 +1494,19 @@ body.sg-zoom-lock {
   }
 
   .sg-floating-panel {
-    bottom: clamp(12px, 12dvh, 120px);
-    right: 10px;
-    left: 10px;
-    width: auto;
-    max-width: none;
+    top: 50%;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    width: min(92vw, 420px);
+    max-width: 92vw;
     max-height: min(70dvh, calc(100dvh - 24px));
+    transform: translate(-50%, -50%) scale(0.95);
     z-index: 2147483641;
+  }
+
+  .sg-floating-panel.visible {
+    transform: translate(-50%, -50%) scale(1);
   }
 }
 
@@ -1517,23 +1523,6 @@ body.sg-zoom-lock {
 .sg-floating-body {
   flex: 1;
   overflow-y: auto;
-}
-
-/* Small viewport safety: keep floating panel visible */
-@media (max-width: 720px), (max-height: 560px) {
-  .sg-floating-panel {
-    bottom: 12px;
-    right: 12px;
-    left: 12px;
-    width: auto;
-    max-width: none;
-    max-height: min(80dvh, calc(100dvh - 24px));
-    resize: none;
-  }
-
-  .sg-floating-body {
-    max-height: calc(80dvh - 60px);
-  }
 }
 
 /* Zoom/Collapse styles for floating panel items */
@@ -1807,21 +1796,21 @@ body.sg-zoom-lock {
   /* 悬浮面板全屏底部弹出 */
   .sg-floating-panel {
     position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: min(92vw, 420px) !important;
+    max-width: 92vw !important;
     max-height: 80dvh !important;
     min-height: 200px;
-    border-radius: 16px 16px 0 0 !important;
+    border-radius: 16px !important;
     z-index: 2147483641 !important;
     resize: none !important;
   }
 
   .sg-floating-panel.visible {
-    transform: translateY(0) !important;
+    transform: translate(-50%, -50%) scale(1) !important;
   }
 
   /* 面板头部 */
@@ -2028,10 +2017,16 @@ body.sg-zoom-lock {
 @media (max-height: 500px) and (orientation: landscape) {
   .sg-floating-panel {
     max-height: calc(100dvh - 20px) !important;
-    width: min(400px, 50vw) !important;
-    right: 10px !important;
-    left: auto !important;
-    bottom: 10px !important;
+    width: min(400px, 92vw) !important;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translate(-50%, -50%) scale(0.95) !important;
+  }
+
+  .sg-floating-panel.visible {
+    transform: translate(-50%, -50%) scale(1) !important;
   }
 
   .sg-floating-btn {

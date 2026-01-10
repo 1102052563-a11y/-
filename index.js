@@ -4806,18 +4806,6 @@ function clampToViewport(left, top, w, h) {
   return { left: L, top: T };
 }
 
-function clampPanelToViewport(left, top, w, h) {
-  const pad = 8;
-  const minVisible = 48;
-  const minLeft = -w + minVisible + pad;
-  const maxLeft = window.innerWidth - minVisible - pad;
-  const minTop = -h + minVisible + pad;
-  const maxTop = window.innerHeight - minVisible - pad;
-  const L = Math.max(minLeft, Math.min(left, maxLeft));
-  const T = Math.max(minTop, Math.min(top, maxTop));
-  return { left: L, top: T };
-}
-
 function measureWrap(wrap) {
   const prevVis = wrap.style.visibility;
   wrap.style.visibility = 'hidden';
@@ -7011,7 +6999,7 @@ function createFloatingButton() {
 
       const w = btn.offsetWidth;
       const h = btn.offsetHeight;
-      const clamped = clampPanelToViewport(newLeft, newTop, w, h);
+      const clamped = clampToViewport(newLeft, newTop, w, h);
 
       btn.style.left = `${Math.round(clamped.left)}px`;
       btn.style.top = `${Math.round(clamped.top)}px`;
@@ -7078,7 +7066,7 @@ function createFloatingPanel() {
       const w = panel.offsetWidth || 300;
       const h = panel.offsetHeight || 400;
       // Use saved position but ensure it is on screen
-      const clamped = clampPanelToViewport(sgFloatingPinnedPos.left, sgFloatingPinnedPos.top, w, h);
+      const clamped = clampToViewport(sgFloatingPinnedPos.left, sgFloatingPinnedPos.top, w, h);
       panel.style.left = `${Math.round(clamped.left)}px`;
       panel.style.top = `${Math.round(clamped.top)}px`;
       panel.style.bottom = 'auto';
@@ -7137,7 +7125,7 @@ function createFloatingPanel() {
     // Constrain to viewport
     const w = panel.offsetWidth;
     const h = panel.offsetHeight;
-    const clamped = clampPanelToViewport(newLeft, newTop, w, h);
+    const clamped = clampToViewport(newLeft, newTop, w, h);
 
     panel.style.left = `${Math.round(clamped.left)}px`;
     panel.style.top = `${Math.round(clamped.top)}px`;
@@ -7204,12 +7192,11 @@ function ensureFloatingPanelInViewport(panel) {
     const w = rect.width || panel.offsetWidth || 300;
     const h = rect.height || panel.offsetHeight || 400;
 
-    const visibleX = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
-    const visibleY = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
-    const clamped = clampPanelToViewport(rect.left, rect.top, w, h);
+    // Clamp current on-screen position into viewport.
+    const clamped = clampToViewport(rect.left, rect.top, w, h);
 
-    // Only pull back if the panel is nearly completely off-screen.
-    if (visibleX < 48 || visibleY < 48) {
+    // If anything is out of bounds, switch to explicit top/left positioning.
+    if (rect.top < pad || rect.left < pad || rect.bottom > window.innerHeight - pad || rect.right > window.innerWidth - pad) {
       panel.style.left = `${Math.round(clamped.left)}px`;
       panel.style.top = `${Math.round(clamped.top)}px`;
       panel.style.right = 'auto';
