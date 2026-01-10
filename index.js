@@ -247,6 +247,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiRollThreshold: 50,
   wiRollInjectStyle: 'hidden',
   wiRollTag: 'SG_ROLL',
+  wiRollModsMode: 'filter', // filter | trust_api
   wiRollDebugLog: false,
   wiRollActionsJson: JSON.stringify(DEFAULT_ROLL_ACTIONS, null, 2),
   wiRollFormulaJson: JSON.stringify(DEFAULT_ROLL_FORMULAS, null, 2),
@@ -2772,6 +2773,11 @@ function normalizeRollMods(mods, sources) {
   return srcList.map(s => ({ source: String(s), value: map.has(s) ? map.get(s) : 0 }));
 }
 
+function shouldTrustRollMods(settings) {
+  const s = settings || ensureSettings();
+  return String(s.wiRollModsMode || 'filter') === 'trust_api';
+}
+
 function buildRollPromptMessages(actionKey, statData, settings, formula, randomWeight, threshold, randomRoll) {
   const s = settings || ensureSettings();
   const sys = String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT).trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
@@ -2817,8 +2823,11 @@ async function computeRollViaCustomProvider(actionKey, statData, settings, rando
   if (!parsed || typeof parsed !== 'object') return null;
   if (!Array.isArray(parsed.mods)) return null;
 
-  const sources = safeJsonParse(s.wiRollModifierSourcesJson) || DEFAULT_ROLL_MODIFIER_SOURCES;
-  parsed.mods = normalizeRollMods(parsed.mods, sources);
+  const useApiMods = shouldTrustRollMods(s) && String(s.wiRollProvider || 'custom') === 'custom';
+  if (!useApiMods) {
+    const sources = safeJsonParse(s.wiRollModifierSourcesJson) || DEFAULT_ROLL_MODIFIER_SOURCES;
+    parsed.mods = normalizeRollMods(parsed.mods, sources);
+  }
   parsed.action = String(parsed.action || actionKey || '');
   parsed.formula = String(parsed.formula || formula || '');
   return parsed;
@@ -2989,8 +2998,13 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
   if (!res) res = computeRollLocal(action.key, statData, s);
 
   if (res) {
-    const sources = safeJsonParse(s.wiRollModifierSourcesJson) || DEFAULT_ROLL_MODIFIER_SOURCES;
-    res.mods = normalizeRollMods(res.mods, sources);
+    const useApiMods = shouldTrustRollMods(s) && String(s.wiRollProvider || 'custom') === 'custom';
+    if (!useApiMods) {
+      const sources = safeJsonParse(s.wiRollModifierSourcesJson) || DEFAULT_ROLL_MODIFIER_SOURCES;
+      res.mods = normalizeRollMods(res.mods, sources);
+    } else if (!Array.isArray(res.mods)) {
+      res.mods = [];
+    }
     res.actionLabel = action.label || action.key;
     if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
     const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
@@ -3052,8 +3066,13 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
   if (!res) res = computeRollLocal(action.key, statData, s);
   if (!res) return null;
 
-  const sources = safeJsonParse(s.wiRollModifierSourcesJson) || DEFAULT_ROLL_MODIFIER_SOURCES;
-  res.mods = normalizeRollMods(res.mods, sources);
+  const useApiMods = shouldTrustRollMods(s) && String(s.wiRollProvider || 'custom') === 'custom';
+  if (!useApiMods) {
+    const sources = safeJsonParse(s.wiRollModifierSourcesJson) || DEFAULT_ROLL_MODIFIER_SOURCES;
+    res.mods = normalizeRollMods(res.mods, sources);
+  } else if (!Array.isArray(res.mods)) {
+    res.mods = [];
+  }
   res.actionLabel = action.label || action.key;
   if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
   const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
@@ -5377,6 +5396,14 @@ function buildModalHtml() {
                   <label>修正来源列表（JSON 数组）</label>
                   <textarea id="sg_wiRollModifierSourcesJson" rows="3"></textarea>
                 </div>
+                <div class="sg-row sg-inline">
+                  <label>修正来源处理</label>
+                  <select id="sg_wiRollModsMode" style="min-width:220px">
+                    <option value="filter">本地筛选（按来源列表）</option>
+                    <option value="trust_api">信任 API 返回</option>
+                  </select>
+                  <div class="sg-hint">“信任 API 返回”不会再按来源列表过滤（适用于独立 API 已做筛选）</div>
+                </div>
                 <div class="sg-grid2">
                   <div class="sg-field">
                     <label>ROLL Provider</label>
@@ -5710,7 +5737,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollThreshold, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollActionsJson, #sg_wiRollFormulaJson, #sg_wiRollModifierSourcesJson, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_wiRollUserTemplate').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollThreshold, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollActionsJson, #sg_wiRollFormulaJson, #sg_wiRollModifierSourcesJson, #sg_wiRollModsMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_wiRollUserTemplate').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -6156,6 +6183,7 @@ function pullSettingsToUi() {
   $('#sg_wiRollActionsJson').val(String(s.wiRollActionsJson || JSON.stringify(DEFAULT_ROLL_ACTIONS, null, 2)));
   $('#sg_wiRollFormulaJson').val(String(s.wiRollFormulaJson || JSON.stringify(DEFAULT_ROLL_FORMULAS, null, 2)));
   $('#sg_wiRollModifierSourcesJson').val(String(s.wiRollModifierSourcesJson || JSON.stringify(DEFAULT_ROLL_MODIFIER_SOURCES, null, 2)));
+  $('#sg_wiRollModsMode').val(String(s.wiRollModsMode || 'filter'));
   $('#sg_wiRollProvider').val(String(s.wiRollProvider || 'custom'));
   $('#sg_wiRollCustomEndpoint').val(String(s.wiRollCustomEndpoint || ''));
   $('#sg_wiRollCustomApiKey').val(String(s.wiRollCustomApiKey || ''));
@@ -6526,6 +6554,7 @@ function pullUiToSettings() {
   s.wiRollActionsJson = String($('#sg_wiRollActionsJson').val() || s.wiRollActionsJson || JSON.stringify(DEFAULT_ROLL_ACTIONS, null, 2));
   s.wiRollFormulaJson = String($('#sg_wiRollFormulaJson').val() || s.wiRollFormulaJson || JSON.stringify(DEFAULT_ROLL_FORMULAS, null, 2));
   s.wiRollModifierSourcesJson = String($('#sg_wiRollModifierSourcesJson').val() || s.wiRollModifierSourcesJson || JSON.stringify(DEFAULT_ROLL_MODIFIER_SOURCES, null, 2));
+  s.wiRollModsMode = String($('#sg_wiRollModsMode').val() || s.wiRollModsMode || 'filter');
   s.wiRollProvider = String($('#sg_wiRollProvider').val() || s.wiRollProvider || 'custom');
   s.wiRollCustomEndpoint = String($('#sg_wiRollCustomEndpoint').val() || s.wiRollCustomEndpoint || '').trim();
   s.wiRollCustomApiKey = String($('#sg_wiRollCustomApiKey').val() || s.wiRollCustomApiKey || '');
