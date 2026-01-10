@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
@@ -4884,9 +4884,29 @@ function clearFloatingPanelPos() {
 }
 
 function clampToViewport(left, top, w, h) {
-  const pad = 8;
-  const L = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
-  const T = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
+  // 放宽边界限制：允许窗口被拖到屏幕外，但至少保留 40% 或最少 40px（标题栏高度）可见
+  const minVisibleRatio = 0.4; // 至少 40% 可见
+  const minVisiblePx = 40;     // 或至少 40px（保证标题栏可拖回）
+
+  // 计算水平方向需要保持可见的最小宽度
+  const minVisibleW = Math.max(minVisiblePx, w * minVisibleRatio);
+  // 计算垂直方向需要保持可见的最小高度
+  const minVisibleH = Math.max(minVisiblePx, h * minVisibleRatio);
+
+  // 左边界：允许负值，但确保右侧至少 minVisibleW 在屏幕内
+  // 即 left + w >= minVisibleW → left >= minVisibleW - w
+  const minLeft = minVisibleW - w;
+  // 右边界：确保左侧至少 minVisibleW 在屏幕内
+  // 即 left + minVisibleW <= window.innerWidth → left <= window.innerWidth - minVisibleW
+  const maxLeft = window.innerWidth - minVisibleW;
+
+  // 上边界：允许负值，但确保底部至少 minVisibleH 在屏幕内
+  const minTop = minVisibleH - h;
+  // 下边界：确保顶部至少 minVisibleH 在屏幕内
+  const maxTop = window.innerHeight - minVisibleH;
+
+  const L = Math.max(minLeft, Math.min(left, maxLeft));
+  const T = Math.max(minTop, Math.min(top, maxTop));
   return { left: L, top: T };
 }
 
@@ -7127,8 +7147,7 @@ function createFloatingPanel() {
   panel.id = 'sg_floating_panel';
   panel.className = 'sg-floating-panel';
   panel.innerHTML = `
-    <div class="sg-drawer-handle" id="sg_drawer_handle" title="展开/收起面板"></div>
-    <div class="sg-floating-header">
+    <div class="sg-floating-header" style="cursor: move; touch-action: none;">
       <span class="sg-floating-title">📘 剧情指导</span>
       <div class="sg-floating-actions">
         <button class="sg-floating-action-btn" id="sg_floating_refresh" title="刷新分析">🔄</button>
@@ -7142,6 +7161,22 @@ function createFloatingPanel() {
   `;
 
   document.body.appendChild(panel);
+
+  // Restore position (Only on Desktop/Large screens)
+  // On mobile/tablets (< 1200px wide), we rely on CSS defaults (bottom sheet style) to ensure visibility
+  if (window.innerWidth >= 1200) {
+    loadFloatingPanelPos();
+    if (sgFloatingPinnedPos) {
+      const w = panel.offsetWidth || 300;
+      const h = panel.offsetHeight || 400;
+      // Use saved position but ensure it is on screen
+      const clamped = clampToViewport(sgFloatingPinnedPos.left, sgFloatingPinnedPos.top, w, h);
+      panel.style.left = `${Math.round(clamped.left)}px`;
+      panel.style.top = `${Math.round(clamped.top)}px`;
+      panel.style.bottom = 'auto';
+      panel.style.right = 'auto';
+    }
+  }
 
   // 事件绑定
   $('#sg_floating_close').on('click', () => {
@@ -7157,11 +7192,76 @@ function createFloatingPanel() {
     hideFloatingPanel();
   });
 
-  // 抽屉手柄点击：展开/收起
-  $('#sg_drawer_handle').on('click', () => {
-    panel.classList.toggle('expanded');
-  });
+  // Drag logic
+  const header = panel.querySelector('.sg-floating-header');
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let moved = false;
 
+  const onDown = (ev) => {
+    if (ev.target.closest('button')) return; // ignore buttons
+    dragging = true;
+    startX = ev.clientX;
+    startY = ev.clientY;
+
+    const rect = panel.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    moved = false;
+
+    panel.style.bottom = 'auto';
+    panel.style.right = 'auto';
+    panel.style.transition = 'none'; // disable transition during drag
+
+    header.setPointerCapture(ev.pointerId);
+  };
+
+  const onMove = (ev) => {
+    if (!dragging) return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+
+    if (!moved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) moved = true;
+
+    const newLeft = startLeft + dx;
+    const newTop = startTop + dy;
+
+    // Constrain to viewport
+    const w = panel.offsetWidth;
+    const h = panel.offsetHeight;
+    const clamped = clampToViewport(newLeft, newTop, w, h);
+
+    panel.style.left = `${Math.round(clamped.left)}px`;
+    panel.style.top = `${Math.round(clamped.top)}px`;
+  };
+
+  const onUp = (ev) => {
+    if (!dragging) return;
+    dragging = false;
+    header.releasePointerCapture(ev.pointerId);
+    panel.style.transition = ''; // restore transition
+
+    if (moved) {
+      const left = parseInt(panel.style.left || '0', 10);
+      const top = parseInt(panel.style.top || '0', 10);
+      saveFloatingPanelPos(left, top);
+    }
+  };
+
+  header.addEventListener('pointerdown', onDown);
+  header.addEventListener('pointermove', onMove);
+  header.addEventListener('pointerup', onUp);
+  header.addEventListener('pointercancel', onUp);
+
+  // Double click to reset
+  header.addEventListener('dblclick', (ev) => {
+    if (ev.target.closest('button')) return; // ignore buttons
+    clearFloatingPanelPos();
+    panel.style.left = '';
+    panel.style.top = '';
+    panel.style.bottom = ''; // restore CSS default
+    panel.style.right = '';  // restore CSS default
+  });
 }
 
 function toggleFloatingPanel() {
@@ -7185,22 +7285,30 @@ function ensureFloatingPanelInViewport(panel) {
 
     if (!shouldGuardFloatingPanelViewport()) return;
 
-    const pad = 8;
-
-    // Ensure the panel itself never exceeds viewport bounds
-    // (helps when the browser height is tiny, e.g. mobile landscape).
-    panel.style.maxWidth = `calc(100vw - ${pad * 2}px)`;
-    panel.style.maxHeight = `calc(100dvh - ${pad * 2}px)`;
+    // 与 clampToViewport 保持一致的边界逻辑
+    const minVisibleRatio = 0.4;
+    const minVisiblePx = 40;
 
     const rect = panel.getBoundingClientRect();
     const w = rect.width || panel.offsetWidth || 300;
     const h = rect.height || panel.offsetHeight || 400;
 
+    const minVisibleW = Math.max(minVisiblePx, w * minVisibleRatio);
+    const minVisibleH = Math.max(minVisiblePx, h * minVisibleRatio);
+
+    // Ensure the panel itself never exceeds viewport bounds for max size
+    panel.style.maxWidth = `calc(100vw - ${minVisiblePx}px)`;
+    panel.style.maxHeight = `calc(100dvh - ${minVisiblePx}px)`;
+
     // Clamp current on-screen position into viewport.
     const clamped = clampToViewport(rect.left, rect.top, w, h);
 
-    // If anything is out of bounds, switch to explicit top/left positioning.
-    if (rect.top < pad || rect.left < pad || rect.bottom > window.innerHeight - pad || rect.right > window.innerWidth - pad) {
+    // 检查是否需要调整位置（使用放宽的边界逻辑）
+    // 如果可见部分少于 minVisible，则需要调整
+    const visibleLeft = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(0, rect.left));
+    const visibleTop = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(0, rect.top));
+
+    if (visibleLeft < minVisibleW || visibleTop < minVisibleH) {
       panel.style.left = `${Math.round(clamped.left)}px`;
       panel.style.top = `${Math.round(clamped.top)}px`;
       panel.style.right = 'auto';
@@ -7228,10 +7336,24 @@ function showFloatingPanel() {
     panel.classList.add('visible');
     floatingPanelVisible = true;
 
+    // Force safe positioning on mobile/tablet (<1200px) every time it opens
+    // This ensures it doesn't get stuck in weird places or off-screen
+    if (window.innerWidth < 1200) {
+      panel.style.left = '';
+      panel.style.top = '';
+      panel.style.bottom = ''; // Revert to CSS default (fixed bottom)
+      panel.style.right = '';
+      panel.style.transform = ''; // Clear strict transform if needed, though CSS handles transition
+    }
+
     // 如果有缓存内容则显示
     if (lastFloatingContent) {
       updateFloatingPanelBody(lastFloatingContent);
     }
+
+    bindFloatingPanelResizeGuard();
+    // Final guard: make sure the panel is actually within the viewport on tiny screens.
+    requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
   }
 }
 
