@@ -2,7 +2,7 @@
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
- * v0.9.8
+ * v0.10.1
  *
  * 新增：输出模块自定义（更高自由度）
  * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
@@ -23,9 +23,10 @@
  * v0.9.9 改进：把“剧情指导 / 总结设置 / 索引设置”拆成三页（左侧分页标签），界面更清晰。
  * v0.9.8 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
  * v0.10.0 新增：手动楼层范围总结支持“按每 N 层拆分生成多条世界书条目”（例如 1-80 且 N=40 → 2 条）。
+ * v0.10.1 新增：一键导出“全局预设”（导出整个扩展全局配置；可选是否包含全部 API Key）。
  */
 
-const SG_VERSION = '0.10.0';
+const SG_VERSION = '0.10.1';
 
 const MODULE_NAME = 'storyguide';
 
@@ -56,14 +57,13 @@ const DEFAULT_MODULES = Object.freeze([
   { key: 'tips', title: '给主角的提示（基于原著后续/大纲）', type: 'list', prompt: '给出可执行提示（尽量具体）', maxItems: 4, required: true, panel: true, inline: true },
 ]);
 
+// ===== 总结提示词默认值（可在面板中自定义） =====
+const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
 
-// ===== 新版总结表系统（基于表格存储，移植自参考.txt） =====
+const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\n\n【对话片段】\n{{chunk}}`;
 
-// 总结表模板（定义"总结表"和"总体大纲"两个表格的结构）
-const DEFAULT_SUMMARY_TABLE_TEMPLATE = "{\n  \"sheet_summary\": {\n    \"uid\": \"sheet_summary\",\n    \"name\": \"总结表\",\n    \"sourceData\": {\n      \"note\": \"轮次日志，每轮交互后必须立即插入一条新记录。\\n- 列0: 时间跨度 - 本轮事件发生的精确时间范围。\\n- 列1: 地点 - 本轮事件发生的地点。\\n- 列2: 纪要 - 对正文的客观纪实描述，不低于300字。\\n- 列3: 重要对话 - 只摘录原文中重要对白。\\n- 列4: 编码索引 - 唯一编码，格式为 AMXX。\",\n      \"initNode\": \"故事初始化时，插入一条新记录用作记录正文剧情。\",\n      \"deleteNode\": \"禁止删除。\",\n      \"updateNode\": \"禁止操作。\",\n      \"insertNode\": \"每轮交互结束后，插入一条新记录。\"\n    },\n    \"content\": [[null, \"时间跨度\", \"地点\", \"纪要\", \"重要对话\", \"编码索引\"]],\n    \"orderNo\": 0\n  },\n  \"sheet_outline\": {\n    \"uid\": \"sheet_outline\",\n    \"name\": \"总体大纲\",\n    \"sourceData\": {\n      \"note\": \"对每轮的'总结表'进行精炼，形成故事主干。\\n- 列0: 时间跨度 - 总结表所记录的时间范围。\\n- 列1: 大纲 - 对本轮'总结表'核心事件的精炼概括。\\n- 列2: 编码索引 - 必须与当前轮次'总结表'表中的编码索引完全一致。\",\n      \"initNode\": \"故事初始化时，插入一条新记录。\",\n      \"deleteNode\": \"禁止删除。\",\n      \"updateNode\": \"禁止操作。\",\n      \"insertNode\": \"每轮交互结束后，插入一条新记录。\"\n    },\n    \"content\": [[null, \"时间跨度\", \"大纲\", \"编码索引\"]],\n    \"orderNo\": 1\n  },\n  \"meta\": {\"type\": \"summarySheets\", \"version\": 1}\n}";
-
-// 合并精简提示词（用于将多条总结合并精简到目标条数）
-const DEFAULT_MERGE_SUMMARY_PROMPT = "你接下来需要扮演一个填表用的美杜莎，你需要参考之前的背景设定以及对发送给你的数据进行合并与精简。\n\n你需要在 <现有基础数据> (已生成的底稿) 的基础上，将本批次的 <新增总结数据> 和 <新增大纲数据> 融合进去，并对整体内容进行重新梳理和精简。\n\n### 核心任务\n\n分别维护两个表格：\n\n1.  **总结表 (Table 0)**: 记录关键剧情总结。\n\n2.  **总体大纲 (Table 1)**: 记录时间线和事件大纲。\n\n目标总条目数：将两个表的所有条目分别精简为 $TARGET_COUNT 条后通过insertRow指令分别插入基础数据中对应的表格当中，注意保持两个表索引条目一致\n\n### 输入数据区\n\n<需要精简的总结数据>:\n\n$A\n\n<需要精简的大纲数据>:\n\n$B\n\n<已精简的数据> (你需要在此基础上插入，新增的编码索引从AM01开始，每次插入时+1):\n\n$BASE_DATA\n\n### 填写指南\n\n**严格格式**:\n\n`<tableEdit>` (表格编辑指令块):\n\n功能: 包含实际执行表格数据更新的操作指令 (`insertRow`)。所有指令必须被完整包含在 `<!--` 和 `-->` 注释块内。\n\n**输出格式强制要求:**\n\n- **纯文本输出:** 严格按照 `<tableThink>`,  `<tableEdit>` 顺序。\n\n- **禁止封装:** 严禁使用 markdown 代码块、引号包裹整个输出。\n\n**`<tableEdit>` 指令语法:**\n\n- **操作类型**: 仅限`insertRow`\n\n- **参数格式**:\n\n    - `tableIndex` (表序号): 0 表示总结表, 1 表示大纲表\n\n    - `rowIndex` (行序号): 对应表格中的行索引\n\n### 输出示例\n\n<tableThink>\n\n<!-- 思考：将新增的数据合并入现有记录... -->\n\n</tableThink>\n\n<tableEdit>\n\n<!--\n\ninsertRow(0, {\"0\":\"时间跨度1\", \"1\":\"地点1\", \"2\":\"纪要内容\", \"3\":\"重要对话\", \"4\":\"AM01\"})\n\ninsertRow(1, {\"0\":\"时间跨度1\", \"1\":\"大纲内容\", \"2\":\"AM01\"})\n\n-->\n\n</tableEdit>";
+// 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
+const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
 
 // ===== 索引提示词默认值（可在面板中自定义；用于“LLM 综合判断”模式） =====
@@ -122,6 +122,60 @@ const DEFAULT_SETTINGS = Object.freeze({
   worldbookWindowMessages: 18,
   worldbookJson: '',
 
+  // ===== 总结功能（独立于剧情提示的 API 设置） =====
+  summaryEnabled: false,
+  // 多少“楼层”总结一次（楼层统计方式见 summaryCountMode）
+  summaryEvery: 20,
+  // 手动楼层范围总结：是否按“每 N 层”拆分生成多条（N=summaryEvery）
+  summaryManualSplit: false,
+  // assistant: 仅统计 AI 回复；all: 统计全部消息（用户+AI）
+  summaryCountMode: 'assistant',
+  // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最近 summaryEvery 段
+  summaryMaxCharsPerMessage: 4000,
+  summaryMaxTotalChars: 24000,
+
+  // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
+  summaryProvider: 'st',
+  summaryTemperature: 0.4,
+
+  // 自定义总结提示词（可选）
+  // - system：决定总结风格/重点
+  // - userTemplate：决定如何把楼层范围/对话片段塞给模型（支持占位符）
+  summarySystemPrompt: DEFAULT_SUMMARY_SYSTEM_PROMPT,
+  summaryUserTemplate: DEFAULT_SUMMARY_USER_TEMPLATE,
+  summaryCustomEndpoint: '',
+  summaryCustomApiKey: '',
+  summaryCustomModel: 'gpt-4o-mini',
+  summaryCustomModelsCache: [],
+  summaryCustomMaxTokens: 2048,
+  summaryCustomStream: false,
+
+  // 总结结果写入世界书（Lorebook / World Info）
+  // —— 绿灯世界书（关键词触发）——
+  summaryToWorldInfo: true,
+  // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
+  summaryWorldInfoTarget: 'chatbook',
+  summaryWorldInfoFile: '',
+  summaryWorldInfoCommentPrefix: '剧情总结',
+
+  // 总结写入世界书 key（触发词）的来源
+  // - keywords: 使用模型输出的 keywords（默认）
+  // - indexId: 使用自动生成的索引编号（如 A-001），只写 1 个触发词，触发更精确
+  summaryWorldInfoKeyMode: 'keywords',
+  // 当 keyMode=indexId 时：索引编号格式
+  summaryIndexPrefix: 'A-',
+  summaryIndexPad: 3,
+  summaryIndexStart: 1,
+  // 是否把索引编号写入条目标题（comment），便于世界书列表定位
+  summaryIndexInComment: true,
+
+  // —— 蓝灯世界书（常开索引：给本插件做检索用）——
+  // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个。
+  summaryToBlueWorldInfo: false,
+  summaryBlueWorldInfoFile: '',
+  summaryBlueWorldInfoCommentPrefix: '剧情总结',
+
+  // —— 蓝灯索引 → 绿灯触发 ——
   wiTriggerEnabled: false,
 
 // 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API）
@@ -178,409 +232,32 @@ wiIndexCustomStream: false,
   wiBlueIndexMinRefreshSec: 20,
 
   // 蓝灯索引缓存（可选：用于检索；每条为 {title, summary, keywords, range?}）
+  summaryBlueIndex: [],
 
   // 模块自定义（JSON 字符串 + 解析备份）
   modulesJson: '',
   // 额外可自定义提示词“骨架”
   customSystemPreamble: '',     // 附加在默认 system 之后
-
-  // ===== 新版总结表功能（基于表格存储） =====
-  summaryTableEnabled: false,
-  // 总结表更新频率（每N条AI回复更新一次）
-  summaryTableUpdateFrequency: 1,
-  // 总结表上下文深度（读取最近N条消息）
-  summaryTableContextDepth: 5,
-  // 自动合并精简
-  summaryTableMergeEnabled: false,
-  // 合并触发条数（总结表超过此条数时触发合并）
-  summaryTableMergeThreshold: 20,
-  // 合并目标条数（合并后保留的条数）
-  summaryTableTargetCount: 10,
-
   customConstraints: '',        // 附加在默认 constraints 之后
 });
 
 const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
-  summaryTableMeta: 'storyguide_summary_table_meta',
+  summaryMeta: 'storyguide_summary_meta',
 });
 
 let lastReport = null;
 let lastJsonText = '';
+let lastSummary = null; // { title, summary, keywords, ... }
+let lastSummaryText = '';
 let refreshTimer = null;
 let appendTimer = null;
+let summaryTimer = null;
+let isSummarizing = false;
 
 // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
 let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
-
-
-// ===== 新版总结表核心功能（移植自参考.txt） =====
-
-// 全局状态变量
-let summaryTableData = null; // 当前解析的总结表数据
-let isMergingSummary = false; // 是否正在执行合并
-
-/**
- * 解析总结表模板JSON
- */
-function parseSummaryTableTemplate() {
-  try {
-    const templateStr = settings.summaryTableTemplate || DEFAULT_SUMMARY_TABLE_TEMPLATE;
-    const cleanTemplate = templateStr.trim()
-      .replace(/\/\/.*$/gm, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '');
-    return JSON.parse(cleanTemplate);
-  } catch (e) {
-    console.error('[StoryGuide] Failed to parse summary table template:', e);
-    return null;
-  }
-}
-
-/**
- * 获取总结表元数据（从聊天元数据读取）
- */
-function getSummaryTableMeta() {
-  const chat = SillyTavern.getContext()?.chat;
-  if (!chat || chat.length === 0) return getDefaultSummaryTableMeta();
-  
-  // 检查最近的消息是否有总结表数据
-  for (let i = chat.length - 1; i >= 0; i--) {
-    const msg = chat[i];
-    if (msg?.extra?.[META_KEYS.summaryTableMeta]) {
-      return msg.extra[META_KEYS.summaryTableMeta];
-    }
-  }
-  return getDefaultSummaryTableMeta();
-}
-
-/**
- * 获取默认总结表元数据
- */
-function getDefaultSummaryTableMeta() {
-  return {
-    version: 1,
-    lastFloor: 0,
-    lastMergeFloor: 0,
-    nextIndexCode: 1,
-    summaryTable: [], // [{timeSpan, location, summary, dialogue, indexCode}]
-    outlineTable: [], // [{timeSpan, outline, indexCode}]
-  };
-}
-
-/**
- * 保存总结表元数据到最后一条消息
- */
-async function setSummaryTableMeta(meta) {
-  const ctx = SillyTavern.getContext();
-  const chat = ctx?.chat;
-  if (!chat || chat.length === 0) return false;
-  
-  const lastIdx = chat.length - 1;
-  const lastMsg = chat[lastIdx];
-  if (!lastMsg.extra) lastMsg.extra = {};
-  lastMsg.extra[META_KEYS.summaryTableMeta] = meta;
-  
-  // 保存聊天
-  if (typeof ctx.saveChat === 'function') {
-    await ctx.saveChat();
-  }
-  return true;
-}
-
-/**
- * 生成下一个索引编码 (AM01, AM02, ...)
- */
-function generateNextIndexCode(meta) {
-  const num = meta.nextIndexCode || 1;
-  const code = 'AM' + String(num).padStart(2, '0');
-  meta.nextIndexCode = num + 1;
-  return code;
-}
-
-/**
- * 解析insertRow指令
- * 格式: insertRow(tableIndex, {colData})
- * 例如: insertRow(0, {"0":"时间", "1":"地点", "2":"内容"})
- */
-function parseInsertRowCommands(responseText) {
-  const commands = [];
-  
-  // 提取<tableEdit>块内容
-  const tableEditMatch = responseText.match(/<tableEdit>([\s\S]*?)<\/tableEdit>/i);
-  if (!tableEditMatch) return commands;
-  
-  const editContent = tableEditMatch[1];
-  
-  // 匹配insertRow指令
-  const insertRowRegex = /insertRow\s*\(\s*(\d+)\s*,\s*(\{[^}]+\}|\[[^\]]+\])\s*\)/g;
-  let match;
-  
-  while ((match = insertRowRegex.exec(editContent)) !== null) {
-    try {
-      const tableIndex = parseInt(match[1], 10);
-      const dataStr = match[2];
-      const data = JSON.parse(dataStr);
-      
-      commands.push({
-        type: 'insertRow',
-        tableIndex,
-        data, // 可能是对象{"0":"val"} 或数组["val1","val2"]
-      });
-    } catch (e) {
-      console.warn('[StoryGuide] Failed to parse insertRow command:', match[0], e);
-    }
-  }
-  
-  return commands;
-}
-
-/**
- * 将insertRow命令应用到总结表数据
- */
-function applyInsertRowCommands(meta, commands) {
-  for (const cmd of commands) {
-    if (cmd.type !== 'insertRow') continue;
-    
-    let rowData;
-    if (Array.isArray(cmd.data)) {
-      rowData = cmd.data;
-    } else {
-      // 对象格式转换为数组
-      const maxCol = Math.max(...Object.keys(cmd.data).map(k => parseInt(k, 10) || 0));
-      rowData = [];
-      for (let i = 0; i <= maxCol; i++) {
-        rowData.push(cmd.data[String(i)] || '');
-      }
-    }
-    
-    if (cmd.tableIndex === 0) {
-      // 总结表: [时间跨度, 地点, 纪要, 重要对话, 编码索引]
-      meta.summaryTable.push({
-        timeSpan: rowData[0] || '',
-        location: rowData[1] || '',
-        summary: rowData[2] || '',
-        dialogue: rowData[3] || '',
-        indexCode: rowData[4] || generateNextIndexCode(meta),
-      });
-    } else if (cmd.tableIndex === 1) {
-      // 大纲表: [时间跨度, 大纲, 编码索引]
-      meta.outlineTable.push({
-        timeSpan: rowData[0] || '',
-        outline: rowData[1] || '',
-        indexCode: rowData[2] || '',
-      });
-    }
-  }
-  return meta;
-}
-
-/**
- * 构建填表上下文（获取最近的对话历史）
- */
-function buildSummaryContext(depth = 5) {
-  const ctx = SillyTavern.getContext();
-  const chat = ctx?.chat;
-  if (!chat || chat.length === 0) return '';
-  
-  const messages = [];
-  const startIdx = Math.max(0, chat.length - depth);
-  
-  for (let i = startIdx; i < chat.length; i++) {
-    const msg = chat[i];
-    const role = msg.is_user ? '用户' : 'AI';
-    const content = (msg.mes || '').slice(0, 2000);
-    if (content.trim()) {
-      messages.push(`[${role}] ${content}`);
-    }
-  }
-  
-  return messages.join('\n\n---\n\n');
-}
-
-/**
- * 构建总结表填写提示词
- */
-function buildFillSummaryPrompt(context, meta) {
-  const currentData = JSON.stringify({
-    summaryTable: meta.summaryTable.slice(-5), // 最近5条
-    outlineTable: meta.outlineTable.slice(-5),
-  }, null, 2);
-  
-  return `你是一个剧情记录助手。请根据以下对话内容，为总结表和大纲表各插入一条新记录。
-
-### 对话内容
-${context}
-
-### 现有数据（参考格式）
-${currentData}
-
-### 输出要求
-严格使用以下格式输出，不要添加其他内容：
-
-<tableThink>
-<!-- 你的思考过程 -->
-</tableThink>
-
-<tableEdit>
-<!--
-insertRow(0, {"0":"时间跨度", "1":"地点", "2":"纪要内容(300字以上)", "3":"重要对话摘录", "4":"AM编码"})
-insertRow(1, {"0":"时间跨度", "1":"大纲内容", "2":"AM编码"})
--->
-</tableEdit>`;
-}
-
-/**
- * 执行单次总结表更新（调用LLM）
- */
-async function runSummaryTableUpdate() {
-  if (!settings.summaryTableEnabled) return null;
-  if (isMergingSummary) return null;
-  
-  const meta = getSummaryTableMeta();
-  const ctx = SillyTavern.getContext();
-  const chat = ctx?.chat;
-  
-  // 检查是否需要更新（基于楼层差）
-  const currentFloor = (chat || []).filter(m => !m.is_user).length;
-  const floorDiff = currentFloor - (meta.lastFloor || 0);
-  
-  if (floorDiff < settings.summaryTableUpdateFrequency) {
-    return null; // 还没到更新时机
-  }
-  
-  // 构建上下文和提示词
-  const context = buildSummaryContext(settings.summaryTableContextDepth || 5);
-  if (!context.trim()) return null;
-  
-  const prompt = buildFillSummaryPrompt(context, meta);
-  
-  try {
-    // 调用酒馆API生成
-    const response = await SillyTavern.getContext().generateQuietPrompt(prompt);
-    
-    // 解析响应中的insertRow命令
-    const commands = parseInsertRowCommands(response);
-    
-    if (commands.length > 0) {
-      // 应用命令
-      applyInsertRowCommands(meta, commands);
-      meta.lastFloor = currentFloor;
-      
-      // 保存更新后的元数据
-      await setSummaryTableMeta(meta);
-      
-      console.log('[StoryGuide] Summary table updated:', commands.length, 'rows inserted');
-      
-      // 检查是否需要触发合并
-      await checkAndTriggerMerge(meta);
-      
-      return meta;
-    }
-  } catch (e) {
-    console.error('[StoryGuide] Summary table update failed:', e);
-  }
-  
-  return null;
-}
-
-/**
- * 检查并触发合并（当条目数超过阈值时）
- */
-async function checkAndTriggerMerge(meta) {
-  if (!settings.summaryTableMergeEnabled) return;
-  
-  const threshold = settings.summaryTableMergeThreshold || 20;
-  const targetCount = settings.summaryTableTargetCount || 10;
-  
-  if (meta.summaryTable.length >= threshold) {
-    await runMergeSummary(meta, targetCount);
-  }
-}
-
-/**
- * 执行合并精简操作
- */
-async function runMergeSummary(meta, targetCount) {
-  if (isMergingSummary) return;
-  isMergingSummary = true;
-  
-  try {
-    // 构建合并提示词
-    const summaryData = meta.summaryTable.map(r => 
-      `[${r.indexCode}] ${r.timeSpan} | ${r.location} | ${r.summary}`
-    ).join('\n');
-    
-    const outlineData = meta.outlineTable.map(r =>
-      `[${r.indexCode}] ${r.timeSpan} | ${r.outline}`
-    ).join('\n');
-    
-    let mergePrompt = DEFAULT_MERGE_SUMMARY_PROMPT
-      .replace('$TARGET_COUNT', String(targetCount))
-      .replace('$A', summaryData)
-      .replace('$B', outlineData)
-      .replace('$BASE_DATA', '{}'); // 从空白开始重建
-    
-    const response = await SillyTavern.getContext().generateQuietPrompt(mergePrompt);
-    const commands = parseInsertRowCommands(response);
-    
-    if (commands.length > 0) {
-      // 清空现有数据，应用合并后的数据
-      meta.summaryTable = [];
-      meta.outlineTable = [];
-      meta.nextIndexCode = 1;
-      
-      applyInsertRowCommands(meta, commands);
-      meta.lastMergeFloor = meta.lastFloor;
-      
-      await setSummaryTableMeta(meta);
-      console.log('[StoryGuide] Summary tables merged to', targetCount, 'entries');
-    }
-  } catch (e) {
-    console.error('[StoryGuide] Merge summary failed:', e);
-  } finally {
-    isMergingSummary = false;
-  }
-}
-
-/**
- * 获取总结表数据用于显示
- */
-function getSummaryTableDisplay() {
-  const meta = getSummaryTableMeta();
-  return {
-    summaryCount: meta.summaryTable.length,
-    outlineCount: meta.outlineTable.length,
-    lastFloor: meta.lastFloor,
-    summaryTable: meta.summaryTable,
-    outlineTable: meta.outlineTable,
-  };
-}
-
-/**
- * 导出总结表为文本（用于注入World Info或其他用途）
- */
-function exportSummaryTableAsText() {
-  const meta = getSummaryTableMeta();
-  
-  let text = '【总结表】\n';
-  for (const row of meta.summaryTable) {
-    text += `[${row.indexCode}] ${row.timeSpan}\n`;
-    text += `  地点: ${row.location}\n`;
-    text += `  纪要: ${row.summary}\n`;
-    if (row.dialogue) text += `  对话: ${row.dialogue}\n`;
-    text += '\n';
-  }
-  
-  text += '\n【总体大纲】\n';
-  for (const row of meta.outlineTable) {
-    text += `[${row.indexCode}] ${row.timeSpan}: ${row.outline}\n`;
-  }
-  
-  return text;
-}
-
-
 
 // ============== 关键：DOM 追加缓存 & 观察者（抗重渲染） ==============
 /**
@@ -1915,13 +1592,13 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor) {
 
   // system prompt
   let sys = String(s.summarySystemPrompt || '').trim();
-  if (!sys) sys = '';
+  if (!sys) sys = DEFAULT_SUMMARY_SYSTEM_PROMPT;
   // 强制追加 JSON 结构要求，避免用户自定义提示词导致解析失败
   sys = sys + '\n\n' + SUMMARY_JSON_REQUIREMENT;
 
   // user template (supports placeholders)
   let tpl = String(s.summaryUserTemplate || '').trim();
-  if (!tpl) tpl = '';
+  if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
   let user = renderTemplate(tpl, {
     fromFloor: String(fromFloor),
     toFloor: String(toFloor),
@@ -2314,7 +1991,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     const mode = String(s.summaryCountMode || 'assistant');
     const floorNow = computeFloorCount(chat, mode);
 
-    let meta = getSummaryTableMeta();
+    let meta = getSummaryMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
     // choose range(s)
     const every = clampInt(s.summaryEvery, 1, 200, 20);
@@ -2503,8 +2180,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
     }
 
-    // [removed: updateSummaryInfoLabel()]
-    // [removed: renderSummaryPaneFromMeta()]
+    updateSummaryInfoLabel();
+    renderSummaryPaneFromMeta();
 
     // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
     if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
@@ -2583,7 +2260,7 @@ async function maybeAutoSummary(reason = '') {
   if (floorNow <= 0) return;
   if (floorNow % every !== 0) return;
 
-  const meta = getSummaryTableMeta();
+  const meta = getSummaryMeta();
   const last = Number(meta?.lastFloor || 0);
   if (floorNow <= last) return;
 
@@ -2705,7 +2382,7 @@ function getBlueIndexEntriesFast() {
 
 function collectBlueIndexCandidates() {
   const s = ensureSettings();
-  const meta = getSummaryTableMeta();
+  const meta = getSummaryMeta();
   const out = [];
   const seen = new Set();
 
@@ -3090,41 +2767,27 @@ function setCollapsed(boxEl, collapsed) {
   boxEl.classList.toggle('collapsed', !!collapsed);
 }
 
-
 function attachToggleHandler(boxEl, mesKey) {
   if (!boxEl) return;
+  const head = boxEl.querySelector('.sg-inline-head');
+  if (!head) return;
+  if (head.dataset.sgBound === '1') return;
+  head.dataset.sgBound = '1';
 
-  const bind = (el, isFooter = false) => {
-    if (!el) return;
-    const flag = isFooter ? 'sgBoundFoot' : 'sgBound';
-    if (el.dataset[flag] === '1') return;
-    el.dataset[flag] = '1';
+  head.addEventListener('click', (e) => {
+    if (e.target && (e.target.closest('a'))) return;
 
-    el.addEventListener('click', (e) => {
-      if (e.target && (e.target.closest('a'))) return;
+    const cur = boxEl.classList.contains('collapsed');
+    const next = !cur;
+    setCollapsed(boxEl, next);
 
-      const cur = boxEl.classList.contains('collapsed');
-      const next = !cur;
-      setCollapsed(boxEl, next);
-
-      const cached = inlineCache.get(String(mesKey));
-      if (cached) {
-        cached.collapsed = next;
-        inlineCache.set(String(mesKey), cached);
-      }
-
-      // Footer button: collapse then scroll back to the message正文
-      if (isFooter && next) {
-        const mesEl = boxEl.closest('.mes');
-        (mesEl || boxEl).scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    });
-  };
-
-  bind(boxEl.querySelector('.sg-inline-head'), false);
-  bind(boxEl.querySelector('.sg-inline-foot'), true);
+    const cached = inlineCache.get(String(mesKey));
+    if (cached) {
+      cached.collapsed = next;
+      inlineCache.set(String(mesKey), cached);
+    }
+  });
 }
-
 
 function createInlineBoxElement(mesKey, htmlInner, collapsed) {
   const box = document.createElement('div');
@@ -3139,11 +2802,7 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed) {
       <span class="sg-inline-chevron">▾</span>
     </div>
     <div class="sg-inline-body">${htmlInner}</div>
-    <div class="sg-inline-foot" title="点击折叠并回到正文">
-      <span class="sg-inline-foot-icon">▴</span>
-      <span class="sg-inline-foot-text">收起并回到正文</span>
-      <span class="sg-inline-foot-icon">▴</span>
-    </div>`.trim();
+  `.trim();
 
   setCollapsed(box, !!collapsed);
   attachToggleHandler(box, mesKey);
@@ -3151,40 +2810,27 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed) {
 }
 
 
-
 function attachPanelToggleHandler(boxEl, mesKey) {
   if (!boxEl) return;
+  const head = boxEl.querySelector('.sg-panel-head');
+  if (!head) return;
+  if (head.dataset.sgBound === '1') return;
+  head.dataset.sgBound = '1';
 
-  const bind = (el, isFooter = false) => {
-    if (!el) return;
-    const flag = isFooter ? 'sgBoundFoot' : 'sgBound';
-    if (el.dataset[flag] === '1') return;
-    el.dataset[flag] = '1';
+  head.addEventListener('click', (e) => {
+    if (e.target && (e.target.closest('a'))) return;
 
-    el.addEventListener('click', (e) => {
-      if (e.target && (e.target.closest('a'))) return;
+    const cur = boxEl.classList.contains('collapsed');
+    const next = !cur;
+    setCollapsed(boxEl, next);
 
-      const cur = boxEl.classList.contains('collapsed');
-      const next = !cur;
-      setCollapsed(boxEl, next);
-
-      const cached = panelCache.get(String(mesKey));
-      if (cached) {
-        cached.collapsed = next;
-        panelCache.set(String(mesKey), cached);
-      }
-
-      if (isFooter && next) {
-        const mesEl = boxEl.closest('.mes');
-        (mesEl || boxEl).scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    });
-  };
-
-  bind(boxEl.querySelector('.sg-panel-head'), false);
-  bind(boxEl.querySelector('.sg-panel-foot'), true);
+    const cached = panelCache.get(String(mesKey));
+    if (cached) {
+      cached.collapsed = next;
+      panelCache.set(String(mesKey), cached);
+    }
+  });
 }
-
 
 function createPanelBoxElement(mesKey, htmlInner, collapsed) {
   const box = document.createElement('div');
@@ -3199,11 +2845,7 @@ function createPanelBoxElement(mesKey, htmlInner, collapsed) {
       <span class="sg-inline-chevron">▾</span>
     </div>
     <div class="sg-panel-body">${htmlInner}</div>
-    <div class="sg-panel-foot" title="点击折叠并回到正文">
-      <span class="sg-inline-foot-icon">▴</span>
-      <span class="sg-inline-foot-text">收起并回到正文</span>
-      <span class="sg-inline-foot-icon">▴</span>
-    </div>`.trim();
+  `.trim();
 
   setCollapsed(box, !!collapsed);
   attachPanelToggleHandler(box, mesKey);
@@ -4094,131 +3736,6 @@ function installCardZoomDelegation() {
 
 
 
-
-// ===== 新版总结表 UI 事件绑定 =====
-
-function bindSummaryTableUI() {
-  // 启用开关
-  $('#sg_summaryTableEnabled').on('change', () => {
-    settings.summaryTableEnabled = $('#sg_summaryTableEnabled').is(':checked');
-    saveSettingsDebounced();
-  });
-  
-  // 更新频率
-  $('#sg_summaryTableUpdateFrequency').on('change', () => {
-    settings.summaryTableUpdateFrequency = parseInt($('#sg_summaryTableUpdateFrequency').val(), 10) || 1;
-    saveSettingsDebounced();
-  });
-  
-  // 上下文深度
-  $('#sg_summaryTableContextDepth').on('change', () => {
-    settings.summaryTableContextDepth = parseInt($('#sg_summaryTableContextDepth').val(), 10) || 5;
-    saveSettingsDebounced();
-  });
-  
-  // 合并开关
-  $('#sg_summaryTableMergeEnabled').on('change', () => {
-    settings.summaryTableMergeEnabled = $('#sg_summaryTableMergeEnabled').is(':checked');
-    saveSettingsDebounced();
-  });
-  
-  // 合并阈值
-  $('#sg_summaryTableMergeThreshold').on('change', () => {
-    settings.summaryTableMergeThreshold = parseInt($('#sg_summaryTableMergeThreshold').val(), 10) || 20;
-    saveSettingsDebounced();
-  });
-  
-  // 目标条数
-  $('#sg_summaryTableTargetCount').on('change', () => {
-    settings.summaryTableTargetCount = parseInt($('#sg_summaryTableTargetCount').val(), 10) || 10;
-    saveSettingsDebounced();
-  });
-  
-  // 刷新状态
-  $('#sg_refreshSummaryStatus').on('click', () => {
-    updateSummaryTableStatusUI();
-  });
-  
-  // 手动更新
-  $('#sg_manualUpdateSummary').on('click', async () => {
-    $('#sg_manualUpdateSummary').prop('disabled', true).text('更新中...');
-    try {
-      await runSummaryTableUpdate();
-      updateSummaryTableStatusUI();
-    } catch (e) {
-      console.error('[StoryGuide] Manual update failed:', e);
-    } finally {
-      $('#sg_manualUpdateSummary').prop('disabled', false).text('手动更新');
-    }
-  });
-  
-  // 强制合并
-  $('#sg_forceMergeSummary').on('click', async () => {
-    const meta = getSummaryTableMeta();
-    const targetCount = settings.summaryTableTargetCount || 10;
-    $('#sg_forceMergeSummary').prop('disabled', true).text('合并中...');
-    try {
-      await runMergeSummary(meta, targetCount);
-      updateSummaryTableStatusUI();
-    } catch (e) {
-      console.error('[StoryGuide] Force merge failed:', e);
-    } finally {
-      $('#sg_forceMergeSummary').prop('disabled', false).text('强制合并');
-    }
-  });
-  
-  // 导出文本
-  $('#sg_exportSummaryText').on('click', () => {
-    const text = exportSummaryTableAsText();
-    navigator.clipboard.writeText(text).then(() => {
-      toastr.success('总结表文本已复制到剪贴板');
-    }).catch(() => {
-      // Fallback: 下载文件
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'summary_export.txt';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  });
-}
-
-function updateSummaryTableStatusUI() {
-  const display = getSummaryTableDisplay();
-  $('#sg_summaryTableCount').text(display.summaryCount);
-  $('#sg_outlineTableCount').text(display.outlineCount);
-  $('#sg_summaryLastFloor').text(display.lastFloor);
-  
-  // 预览内容
-  let preview = '';
-  if (display.summaryTable.length > 0) {
-    preview += '--- 总结条目 ---\n';
-    display.summaryTable.slice(-5).forEach(r => {
-      preview += `[${r.indexCode}] ${r.timeSpan} @ ${r.location}\n  ${(r.summary || '').slice(0, 100)}...\n\n`;
-    });
-  }
-  if (display.outlineTable.length > 0) {
-    preview += '--- 大纲条目 ---\n';
-    display.outlineTable.slice(-5).forEach(r => {
-      preview += `[${r.indexCode}] ${r.timeSpan}: ${r.outline}\n`;
-    });
-  }
-  $('#sg_summaryTableContent').text(preview || '（暂无数据）');
-}
-
-function loadSummaryTableSettingsToUI() {
-  $('#sg_summaryTableEnabled').prop('checked', settings.summaryTableEnabled);
-  $('#sg_summaryTableUpdateFrequency').val(settings.summaryTableUpdateFrequency || 1);
-  $('#sg_summaryTableContextDepth').val(settings.summaryTableContextDepth || 5);
-  $('#sg_summaryTableMergeEnabled').prop('checked', settings.summaryTableMergeEnabled);
-  $('#sg_summaryTableMergeThreshold').val(settings.summaryTableMergeThreshold || 20);
-  $('#sg_summaryTableTargetCount').val(settings.summaryTableTargetCount || 10);
-  updateSummaryTableStatusUI();
-}
-
-
 function buildModalHtml() {
   return `
   <div id="sg_modal_backdrop" class="sg-backdrop" style="display:none;">
@@ -4229,6 +3746,7 @@ function buildModalHtml() {
           剧情指导 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
         </div>
         <div class="sg-modal-actions">
+          <button class="menu_button sg-btn" id="sg_exportGlobalPreset">导出全局预设</button>
           <button class="menu_button sg-btn" id="sg_close">关闭</button>
         </div>
       </div>
@@ -4393,7 +3911,7 @@ function buildModalHtml() {
             <div class="sg-card-title">预设与世界书</div>
 
             <div class="sg-row sg-inline">
-              <button class="menu_button sg-btn" id="sg_exportPreset">导出预设</button>
+              <button class="menu_button sg-btn" id="sg_exportPreset">导出全局预设</button>
               <label class="sg-check"><input type="checkbox" id="sg_presetIncludeApiKey">导出包含 API Key</label>
               <button class="menu_button sg-btn" id="sg_importPreset">导入预设</button>
             </div>
@@ -4432,69 +3950,324 @@ function buildModalHtml() {
 
           </div> <!-- sg_page_guide -->
 
-<div class="sg-page" id="sg_page_summary">
+          <div class="sg-page" id="sg_page_summary">
 
           <div class="sg-card">
-            <div class="sg-card-title">总结表系统（基于表格存储）</div>
-            <div class="sg-hint" style="margin-bottom:12px;">
-              新版总结系统使用表格存储对话历史，支持自动合并精简。数据保存在聊天元数据中。
-            </div>
+            <div class="sg-card-title">自动总结（写入世界书）</div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryTableEnabled">启用总结表系统</label>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryEnabled">启用自动总结</label>
+              <span>每</span>
+              <input id="sg_summaryEvery" type="number" min="1" max="200" style="width:90px">
+              <span>层</span>
+              <select id="sg_summaryCountMode">
+                <option value="assistant">按 AI 回复计数</option>
+                <option value="all">按全部消息计数</option>
+              </select>
             </div>
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>更新频率（每N条AI回复）</label>
-                <input id="sg_summaryTableUpdateFrequency" type="number" min="1" max="10" value="1">
+                <label>总结 Provider</label>
+                <select id="sg_summaryProvider">
+                  <option value="st">使用酒馆当前连接的模型</option>
+                  <option value="custom">使用独立 OpenAI 兼容 API</option>
+                </select>
               </div>
               <div class="sg-field">
-                <label>上下文深度（读取最近N条消息）</label>
-                <input id="sg_summaryTableContextDepth" type="number" min="1" max="20" value="5">
+                <label>总结 Temperature</label>
+                <input id="sg_summaryTemperature" type="number" min="0" max="2" step="0.1">
               </div>
             </div>
 
             <div class="sg-card sg-subcard">
-              <div class="sg-card-title">自动合并精简</div>
+              <div class="sg-field">
+                <label>自定义总结提示词（System，可选）</label>
+                <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON）"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>对话片段模板（User，可选）</label>
+                <textarea id="sg_summaryUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
+              </div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_summaryTableMergeEnabled">启用自动合并</label>
+                <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示词</button>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}}。插件会强制要求输出 JSON：{title, summary, keywords[]}。</div>
+              </div>
+            </div>
+
+            <div class="sg-card sg-subcard" id="sg_summary_custom_block" style="display:none">
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>独立API基础URL</label>
+                  <input id="sg_summaryCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
+                </div>
+                <div class="sg-field">
+                  <label>API Key</label>
+                  <input id="sg_summaryCustomApiKey" type="password" placeholder="sk-...">
+                </div>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>合并触发条数（超过此数触发）</label>
-                  <input id="sg_summaryTableMergeThreshold" type="number" min="5" max="100" value="20">
+                  <label>模型ID（可手填）</label>
+                  <input id="sg_summaryCustomModel" type="text" placeholder="gpt-4o-mini">
+                  <div class="sg-row sg-inline" style="margin-top:6px;">
+                    <button class="menu_button sg-btn" id="sg_refreshSummaryModels">刷新模型</button>
+                    <select id="sg_summaryModelSelect" class="sg-model-select">
+                      <option value="">（选择模型）</option>
+                    </select>
+                  </div>
                 </div>
                 <div class="sg-field">
-                  <label>合并目标条数（精简至此数）</label>
-                  <input id="sg_summaryTableTargetCount" type="number" min="3" max="50" value="10">
+                  <label>Max Tokens</label>
+                  <input id="sg_summaryCustomMaxTokens" type="number" min="128" max="200000">
                 </div>
+              </div>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryCustomStream">stream（若支持）</label>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用）</label>
+              <select id="sg_summaryWorldInfoTarget">
+                <option value="chatbook">写入当前聊天绑定世界书</option>
+                <option value="file">写入指定世界书文件名</option>
+              </select>
+              <input id="sg_summaryWorldInfoFile" type="text" placeholder="Target=file 时填写世界书文件名" style="flex:1; min-width: 220px;">
+            </div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo">同时写入蓝灯世界书（常开索引）</label>
+              <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
+            </div>
+
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>条目标题前缀（写入 comment，始终在最前）</label>
+                <input id="sg_summaryWorldInfoCommentPrefix" type="text" placeholder="剧情总结">
+              </div>
+              <div class="sg-field">
+                <label>限制：每条消息最多字符 / 总字符</label>
+                <div class="sg-row" style="margin-top:0">
+                  <input id="sg_summaryMaxChars" type="number" min="200" max="8000" style="width:110px">
+                  <input id="sg_summaryMaxTotalChars" type="number" min="2000" max="80000" style="width:120px">
+                </div>
+              </div>
+            </div>
+
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>世界书触发词写入 key</label>
+                <select id="sg_summaryWorldInfoKeyMode">
+                  <option value="keywords">使用模型输出的关键词（6~14 个）</option>
+                  <option value="indexId">使用索引编号（只写 1 个，如 A-001）</option>
+                </select>
+                <div class="sg-hint">想让“主要关键词”只显示 A-001，就选“索引编号”。</div>
+              </div>
+              <div class="sg-field" id="sg_summaryIndexFormat" style="display:none;">
+                <label>索引编号格式（keyMode=indexId）</label>
+                <div class="sg-row" style="margin-top:0; gap:8px; align-items:center;">
+                  <input id="sg_summaryIndexPrefix" type="text" placeholder="A-" style="width:90px">
+                  <span class="sg-hint">位数</span>
+                  <input id="sg_summaryIndexPad" type="number" min="1" max="12" style="width:80px">
+                  <span class="sg-hint">起始</span>
+                  <input id="sg_summaryIndexStart" type="number" min="1" max="1000000" style="width:100px">
+                </div>
+                <label class="sg-check" style="margin-top:6px;"><input type="checkbox" id="sg_summaryIndexInComment">条目标题（comment）包含编号</label>
               </div>
             </div>
 
             <div class="sg-card sg-subcard">
-              <div class="sg-card-title">当前数据状态</div>
               <div class="sg-row sg-inline">
-                <span>总结条目: <strong id="sg_summaryTableCount">0</strong></span>
-                <span style="margin-left:20px;">大纲条目: <strong id="sg_outlineTableCount">0</strong></span>
-                <span style="margin-left:20px;">已处理楼层: <strong id="sg_summaryLastFloor">0</strong></span>
+                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">启用“蓝灯索引 → 绿灯触发”（发送消息前自动注入触发词）</label>
               </div>
-              <div class="sg-row sg-inline" style="margin-top:10px;">
-                <button class="menu_button sg-btn" id="sg_refreshSummaryStatus">刷新状态</button>
-                <button class="menu_button sg-btn" id="sg_manualUpdateSummary">手动更新</button>
-                <button class="menu_button sg-btn" id="sg_forceMergeSummary">强制合并</button>
-                <button class="menu_button sg-btn" id="sg_exportSummaryText">导出文本</button>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>读取前 N 条消息正文</label>
+                  <input id="sg_wiTriggerLookbackMessages" type="number" min="5" max="120" placeholder="20">
+                </div>
+                <div class="sg-field">
+                  <label>最多触发条目数</label>
+                  <input id="sg_wiTriggerMaxEntries" type="number" min="1" max="20" placeholder="4">
+                </div>
+
+<div class="sg-grid2">
+  <div class="sg-field">
+    <label>匹配方式</label>
+    <select id="sg_wiTriggerMatchMode">
+      <option value="local">本地相似度（快）</option>
+      <option value="llm">LLM 综合判断（可自定义提示词）</option>
+    </select>
+  </div>
+  <div class="sg-field">
+    <label>预筛选 TopK（仅 LLM 模式）</label>
+    <input id="sg_wiIndexPrefilterTopK" type="number" min="5" max="80" placeholder="24">
+    <div class="sg-hint">先用相似度挑 TopK，再交给模型选出最相关的几条（省 tokens）。</div>
+  </div>
+</div>
+
+<div class="sg-card sg-subcard" id="sg_index_llm_block" style="display:none; margin-top:10px;">
+  <div class="sg-grid2">
+    <div class="sg-field">
+      <label>索引 Provider</label>
+      <select id="sg_wiIndexProvider">
+        <option value="st">使用酒馆当前连接的模型</option>
+        <option value="custom">使用独立 OpenAI 兼容 API</option>
+      </select>
+    </div>
+    <div class="sg-field">
+      <label>索引 Temperature</label>
+      <input id="sg_wiIndexTemperature" type="number" min="0" max="2" step="0.1">
+    </div>
+  </div>
+
+  <div class="sg-field">
+    <label>自定义索引提示词（System，可选）</label>
+    <textarea id="sg_wiIndexSystemPrompt" rows="6" placeholder="例如：更强调人物关系/线索回收/当前目标；或要求更严格的筛选…"></textarea>
+  </div>
+  <div class="sg-field">
+    <label>索引模板（User，可选）</label>
+    <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="支持占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}"></textarea>
+  </div>
+  <div class="sg-row sg-inline">
+    <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示词</button>
+    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}。插件会强制要求输出 JSON：{pickedIds:number[]}。</div>
+  </div>
+
+  <div class="sg-card sg-subcard" id="sg_index_custom_block" style="display:none">
+    <div class="sg-grid2">
+      <div class="sg-field">
+        <label>索引独立API基础URL</label>
+        <input id="sg_wiIndexCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
+      </div>
+      <div class="sg-field">
+        <label>API Key</label>
+        <input id="sg_wiIndexCustomApiKey" type="password" placeholder="sk-...">
+      </div>
+    </div>
+    <div class="sg-grid2">
+      <div class="sg-field">
+        <label>模型ID（可手填）</label>
+        <input id="sg_wiIndexCustomModel" type="text" placeholder="gpt-4o-mini">
+        <div class="sg-row sg-inline" style="margin-top:6px;">
+          <button class="menu_button sg-btn" id="sg_refreshIndexModels">刷新模型</button>
+          <select id="sg_wiIndexModelSelect" class="sg-model-select">
+            <option value="">（选择模型）</option>
+          </select>
+        </div>
+      </div>
+      <div class="sg-field">
+        <label>Max Tokens</label>
+        <input id="sg_wiIndexCustomMaxTokens" type="number" min="128" max="200000">
+        <div class="sg-row sg-inline" style="margin-top:6px;">
+          <span class="sg-hint">TopP</span>
+          <input id="sg_wiIndexTopP" type="number" min="0" max="1" step="0.01" style="width:110px">
+        </div>
+      </div>
+    </div>
+    <label class="sg-check"><input type="checkbox" id="sg_wiIndexCustomStream">stream（若支持）</label>
+  </div>
+</div>
+
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label class="sg-check"><input type="checkbox" id="sg_wiTriggerIncludeUserMessage">结合本次用户输入（综合判断）</label>
+                  <div class="sg-hint">开启后会综合“最近 N 条正文 + 你这句话”来决定与当前剧情最相关的条目。</div>
+                </div>
+                <div class="sg-field">
+                  <label>用户输入权重（0~10）</label>
+                  <input id="sg_wiTriggerUserMessageWeight" type="number" min="0" max="10" step="0.1" placeholder="1.6">
+                  <div class="sg-hint">越大越看重你这句话；1=与最近正文同权重。</div>
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>相关度阈值（0~1）</label>
+                  <input id="sg_wiTriggerMinScore" type="number" min="0" max="1" step="0.01" placeholder="0.08">
+                </div>
+                <div class="sg-field">
+                  <label>最多注入触发词</label>
+                  <input id="sg_wiTriggerMaxKeywords" type="number" min="1" max="200" placeholder="24">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>至少已有 N 条 AI 回复才开始索引（0=立即）</label>
+                  <input id="sg_wiTriggerStartAfterAssistantMessages" type="number" min="0" max="200000" placeholder="0">
+                </div>
+                <div class="sg-field">
+                  <label>说明</label>
+                  <div class="sg-hint" style="padding-top:8px;">（只统计 AI 回复楼层；例如填 100 表示第 100 层之后才注入）</div>
+                </div>
+              </div>
+              <div class="sg-row sg-inline">
+                <label>注入方式</label>
+                <select id="sg_wiTriggerInjectStyle" style="min-width:200px">
+                  <option value="hidden">隐藏注释（推荐）</option>
+                  <option value="plain">普通文本（更稳）</option>
+                </select>
+              </div>
+              <div class="sg-row sg-inline">
+                <label>蓝灯索引</label>
+                <select id="sg_wiBlueIndexMode" style="min-width:180px">
+                  <option value="live">实时读取蓝灯世界书</option>
+                  <option value="cache">使用导入/缓存</option>
+                </select>
+                <input id="sg_wiBlueIndexFile" type="text" placeholder="蓝灯世界书文件名（留空=使用上方蓝灯写入文件名）" style="flex:1; min-width: 260px;">
+                <button class="menu_button sg-btn" id="sg_refreshBlueIndexLive">刷新</button>
+              </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerDebugLog">调试：状态栏显示命中条目/触发词</label>
+                <button class="menu_button sg-btn" id="sg_importBlueIndex">导入蓝灯世界书JSON（备用）</button>
+                <button class="menu_button sg-btn" id="sg_clearBlueIndex">清空蓝灯索引</button>
+                <div class="sg-hint" id="sg_blueIndexInfo" style="margin-left:auto">（蓝灯索引：0 条）</div>
+              </div>
+              <div class="sg-hint">
+                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与 <b>最近 N 条正文</b>（可选再加上 <b>本次用户输入</b>）做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。
+              </div>
+
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-row sg-inline" style="margin-top:0;">
+                  <div class="sg-card-title" style="margin:0;">索引日志</div>
+                  <div class="sg-spacer"></div>
+                  <button class="menu_button sg-btn" id="sg_clearWiLogs">清空</button>
+                </div>
+                <div class="sg-loglist" id="sg_wiLogs" style="margin-top:8px;">(暂无)</div>
+                <div class="sg-hint" style="margin-top:8px;">提示：日志记录“这次发送消息时命中了哪些索引条目（等价于将触发的绿灯条目）”以及注入了哪些关键词。</div>
               </div>
             </div>
 
-            <div class="sg-card sg-subcard" id="sg_summaryTablePreview">
-              <div class="sg-card-title">总结表预览</div>
-              <div id="sg_summaryTableContent" style="max-height:200px; overflow:auto; font-size:12px; white-space:pre-wrap; background:#1a1a1a; padding:8px; border-radius:4px;">
-                （点击"刷新状态"查看数据）
+            <div class="sg-card sg-subcard" id="sg_indexMovedHint" style="margin-top:10px;">
+              <div class="sg-row sg-inline" style="margin-top:0;">
+                <div class="sg-hint">索引相关设置已移至上方“索引设置”页。</div>
+                <div class="sg-spacer"></div>
+                <button class="menu_button sg-btn" id="sg_gotoIndexPage">打开索引设置</button>
               </div>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <label>手动楼层范围</label>
+              <input id="sg_summaryManualFrom" type="number" min="1" style="width:110px" placeholder="起始层">
+              <span> - </span>
+              <input id="sg_summaryManualTo" type="number" min="1" style="width:110px" placeholder="结束层">
+              <button class="menu_button sg-btn" id="sg_summarizeRange">立即总结该范围</button>
+              <div class="sg-hint" id="sg_summaryManualHint" style="margin-left:auto">（可选范围：1-0）</div>
+            </div>
+
+            <div class="sg-row sg-inline" style="margin-top:6px;">
+              <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_summaryManualSplit">手动范围按每 N 层拆分生成多条（N=上方“每 N 层总结一次”）</label>
+              <div class="sg-hint" style="margin-left:auto">例如 1-80 且 N=40 → 2 条</div>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
+              <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
+              <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
+            </div>
+
+            <div class="sg-hint">
+              自动总结会按“每 N 层”触发；每次输出会生成 <b>摘要</b> + <b>关键词</b>，并可自动创建世界书条目（disable=0 绿灯启用，关键词写入 key 作为触发词）。
             </div>
           </div>
-
           </div> <!-- sg_page_summary -->
 
           <div class="sg-page" id="sg_page_index">
@@ -4662,8 +4435,8 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
 
   // summary prompt reset
   $('#sg_summaryResetPrompt').on('click', () => {
-    $('#sg_summarySystemPrompt').val('');
-    $('#sg_summaryUserTemplate').val('');
+    $('#sg_summarySystemPrompt').val(DEFAULT_SUMMARY_SYSTEM_PROMPT);
+    $('#sg_summaryUserTemplate').val(DEFAULT_SUMMARY_USER_TEMPLATE);
     pullUiToSettings();
     saveSettings();
     setStatus('已恢复默认总结提示词 ✅', 'ok');
@@ -4707,8 +4480,8 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
     try {
       const meta = getDefaultSummaryMeta();
       await setSummaryMeta(meta);
-      // [removed: updateSummaryInfoLabel()]
-      // [removed: renderSummaryPaneFromMeta()]
+      updateSummaryInfoLabel();
+      renderSummaryPaneFromMeta();
       setStatus('已重置本聊天总结进度 ✅', 'ok');
     } catch (e) {
       setStatus(`重置失败：${e?.message ?? e}`, 'err');
@@ -4719,7 +4492,7 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
   $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream').on('change input', () => {
     pullUiToSettings();
     saveSettings();
-    // [removed: updateSummaryInfoLabel()]
+    updateSummaryInfoLabel();
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
@@ -4811,7 +4584,7 @@ $('#sg_wiIndexModelSelect').on('change', () => {
 
   $('#sg_clearWiLogs').on('click', async () => {
     try {
-      const meta = getSummaryTableMeta();
+      const meta = getSummaryMeta();
       meta.wiTriggerLogs = [];
       await setSummaryMeta(meta);
       renderWiTriggerLogs(meta);
@@ -4823,18 +4596,45 @@ $('#sg_wiIndexModelSelect').on('change', () => {
 
   
   // presets actions
+  function exportGlobalPresetOneClick() {
+    pullUiToSettings();
+    const s = ensureSettings();
+    const out = clone(s);
+
+    const includeKey = $('#sg_presetIncludeApiKey').is(':checked');
+    if (!includeKey) {
+      // 注意：现在插件里有三套独立 API：剧情指导 / 总结 / 索引（都可能有 key）
+      out.customApiKey = '';
+      out.summaryCustomApiKey = '';
+      out.wiIndexCustomApiKey = '';
+    }
+
+    // 额外附带导出元信息（导入会自动忽略这些字段）
+    out._storyguide = {
+      type: 'global_preset',
+      version: SG_VERSION,
+      exportedAt: new Date().toISOString(),
+      includeApiKey: !!includeKey,
+    };
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(`storyguide-global-preset-${stamp}.json`, JSON.stringify(out, null, 2));
+  }
+
   $('#sg_exportPreset').on('click', () => {
     try {
-      pullUiToSettings();
-      const s = ensureSettings();
-      const out = clone(s);
+      exportGlobalPresetOneClick();
+      setStatus('已导出全局预设 ✅', 'ok');
+    } catch (e) {
+      setStatus(`导出失败：${e?.message ?? e}`, 'err');
+    }
+  });
 
-      const includeKey = $('#sg_presetIncludeApiKey').is(':checked');
-      if (!includeKey) out.customApiKey = '';
-
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`storyguide-preset-${stamp}.json`, JSON.stringify(out, null, 2));
-      setStatus('已导出预设 ✅', 'ok');
+  // 顶部一键导出（同上）
+  $('#sg_exportGlobalPreset').on('click', () => {
+    try {
+      exportGlobalPresetOneClick();
+      setStatus('已导出全局预设 ✅', 'ok');
     } catch (e) {
       setStatus(`导出失败：${e?.message ?? e}`, 'err');
     }
@@ -5059,8 +4859,8 @@ function pullSettingsToUi() {
   $('#sg_summaryCountMode').val(String(s.summaryCountMode || 'assistant'));
   $('#sg_summaryProvider').val(String(s.summaryProvider || 'st'));
   $('#sg_summaryTemperature').val(s.summaryTemperature);
-  $('#sg_summarySystemPrompt').val(String(s.summarySystemPrompt || ''));
-  $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || ''));
+  $('#sg_summarySystemPrompt').val(String(s.summarySystemPrompt || DEFAULT_SUMMARY_SYSTEM_PROMPT));
+  $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || DEFAULT_SUMMARY_USER_TEMPLATE));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -5119,8 +4919,8 @@ $('#sg_index_custom_block').toggle(mm === 'llm' && String(s.wiIndexProvider || '
 
   updateBlueIndexInfoLabel();
 
-  // [removed: updateSummaryInfoLabel()]
-  // [removed: renderSummaryPaneFromMeta()]
+  updateSummaryInfoLabel();
+  renderSummaryPaneFromMeta();
   renderWiTriggerLogs();
 
   updateButtonsEnabled();
@@ -5157,7 +4957,7 @@ function formatTimeShort(ts) {
 function renderWiTriggerLogs(metaOverride = null) {
   const $box = $('#sg_wiLogs');
   if (!$box.length) return;
-  const meta = metaOverride || getSummaryTableMeta();
+  const meta = metaOverride || getSummaryMeta();
   const logs = Array.isArray(meta?.wiTriggerLogs) ? meta.wiTriggerLogs : [];
   if (!logs.length) {
     $box.html('<div class="sg-hint">(暂无)</div>');
@@ -5217,7 +5017,7 @@ function renderWiTriggerLogs(metaOverride = null) {
 
 function appendWiTriggerLog(log) {
   try {
-    const meta = getSummaryTableMeta();
+    const meta = getSummaryMeta();
     const arr = Array.isArray(meta.wiTriggerLogs) ? meta.wiTriggerLogs : [];
     arr.unshift(log);
     meta.wiTriggerLogs = arr.slice(0, 50);
@@ -5264,7 +5064,7 @@ function updateSummaryInfoLabel() {
   const $info = $('#sg_summaryInfo');
   if (!$info.length) return;
   try {
-    const meta = getSummaryTableMeta();
+    const meta = getSummaryMeta();
     $info.text(formatSummaryMetaHint(meta));
   } catch {
     $info.text('（总结状态解析失败）');
@@ -5324,7 +5124,7 @@ function renderSummaryPaneFromMeta() {
   const $el = $('#sg_sum');
   if (!$el.length) return;
 
-  const meta = getSummaryTableMeta();
+  const meta = getSummaryMeta();
   const hist = Array.isArray(meta.history) ? meta.history : [];
 
   if (!hist.length) {
@@ -5401,8 +5201,8 @@ function pullUiToSettings() {
   s.summaryCountMode = String($('#sg_summaryCountMode').val() || 'assistant');
   s.summaryProvider = String($('#sg_summaryProvider').val() || 'st');
   s.summaryTemperature = clampFloat($('#sg_summaryTemperature').val(), 0, 2, s.summaryTemperature || 0.4);
-  s.summarySystemPrompt = String($('#sg_summarySystemPrompt').val() || '').trim() || '';
-  s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || '';
+  s.summarySystemPrompt = String($('#sg_summarySystemPrompt').val() || '').trim() || DEFAULT_SUMMARY_SYSTEM_PROMPT;
+  s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || DEFAULT_SUMMARY_USER_TEMPLATE;
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
