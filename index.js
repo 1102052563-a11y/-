@@ -86,7 +86,7 @@ const DEFAULT_ROLL_FORMULAS = Object.freeze({
   default: 'MOD.total',
 });
 const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze(['skill', 'talent', 'trait', 'buff', 'equipment']);
-const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判定/ROLL 点计算器。\n\n核心规则：\n- 只使用 statDataJson（变量数据），不要参考剧情描述。\n- 难度模式 difficulty：simple/normal/hard/hellãhard/hell ç´æ¥æé« DC åºé´æéä½æååºé´ï¼normal=DC15~20ï¼hard=DC20~25ï¼hell=DC25~30ï¼æå°æååºé´æ¶ç¼© (margin>=8ææ®éæåï¼margin 0~7 ä¸ºåå¼ºæåï¼margin -7~-1 ä¸ºå¤±è´¥ä½ææ¶è·ï¼margin<=-8 ä¸ºå¤§å¤±è´¥)ã\n- 依据轮回乐园设定处理位阶压制与属性壁障；若 statDataJson 中存在压制/壁障相关字段，需体现在判定修正中。\n- 若提供生物强度/等级差/等阶差字段，必须作为关键修正项，显著影响阈值或 mods。\n- 数值映射建议：等级差每 1 级=±2 修正；等阶差每 1 阶=±10 修正；生物强度差每 1 档=±5 修正（可按情况转为阈值调整）。
+- ???? difficulty?simple/normal/hard/hell?hard/hell ???? DC ??????????normal=DC15~20?hard=DC20~25?hell=DC25~30????????? (margin>=8??????margin 0~7 ??????margin -7~-1 ????????margin<=-8 ????)?
 - 技能/天赋/特性Buff 品级修正（若字段存在）：F=0，E=+0.5，D=+1，C=+2，B=+3，A=+4，S=+6，SS=+8，SSS=+10（可按场景缩放）。
 - 技能/天赋/特性Buff 等级修正：每 5 级=+1（向下取整）；用于对抗时，等级差每 5 级=±1。
 - 层级/熟练度修正（若有“层级/熟练度”字段）：入门=0，熟练=+1，精通=+2，大师=+3，宗师=+4。
@@ -107,7 +107,7 @@ const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrando
 const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，建议包含“修正来源汇总/映射应用”两段；explanation 建议 1~2 句。`;
 const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
 
-const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是“轮回乐园风格”的行动判定/ROLL 点助手。\n\n任务：\n- 先判断用户输入是否需要进行行动判定（ROLL）。\n- 若需要，选择一个合适的 action，并基于给定数据计算结果。\n- 只使用 statDataJson 里的数据（属性/装备/技能/天赋/特性Buff/状态/环境/性格等）。\n- 难度模式 difficulty：simple/normal/hard/hellãhard/hell ç´æ¥æé« DC åºé´æéä½æååºé´ï¼normal=DC15~20ï¼hard=DC20~25ï¼hell=DC25~30ï¼æå°æååºé´æ¶ç¼© (margin>=8ææ®éæåï¼margin 0~7 ä¸ºåå¼ºæåï¼margin -7~-1 ä¸ºå¤±è´¥ä½ææ¶è·ï¼margin<=-8 ä¸ºå¤§å¤±è´¥)ã\n- 处理位阶压制与属性壁障规则：若 statDataJson 中存在相关字段，必须影响判定。\n- 输出严格 JSON，不要任何额外文字。\n- 必须包含 outcomeTier 与 explanation（用于日志简述）。\n- explanation 控制在 1~2 句，避免过长影响日志可读性。\n- analysisSummary 可选，但若提供需包含“修正来源汇总/映射应用”两段（可简短）。\n\nD20 规则（D&D/PF 风格）：\n- 基础判定：1d20 + 修正 >= DC。\n- randomRoll 是 1~100 时，将其映射为 d20 点数：d20 = ceil(randomRoll / 5)。\n- 优势/劣势：掷两次 d20 取高/取低（若 statDataJson 提供优势/劣势标记则 적용）。\n- 自然 20 视为大成功，自然 1 视为大失败（若无明确规则冲突则 적용）。\n- 若非自然20/1，则按 success 判定为“成功/失败”。自然20=大成功，自然1=大失败。\n- 结果等级：
+- ???? difficulty?simple/normal/hard/hell?hard/hell ???? DC ??????????normal=DC15~20?hard=DC20~25?hell=DC25~30????????? (margin>=8??????margin 0~7 ??????margin -7~-1 ????????margin<=-8 ????)?
   - 大成功 / 暴击（critical）
   - 普通成功
   - 勉强成功 / 成功但有代价
