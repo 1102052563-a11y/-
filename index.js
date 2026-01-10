@@ -86,9 +86,13 @@ const DEFAULT_ROLL_FORMULAS = Object.freeze({
   default: 'MOD.total',
 });
 const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze(['skill', 'talent', 'trait', 'buff', 'equipment']);
-const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“行动判定/ROLL 点”计算器。\n\n任务：\n- 只使用给定的 statDataJson（来源于最新正文末尾的变量数据），不要参考剧情描述。\n- 按公式计算 base，并基于 randomRoll 生成最终结果。\n- 修正来源仅来自 statDataJson.mods（按 modifierSources 进行汇总）。\n- 输出严格 JSON，不要任何额外文字。\n\n公式规则：\n- base = 公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n`;
+const DEFAULT_ROLL_SYSTEM_PROMPT = `你是“行动判定/ROLL 点”计算器。\n\n任务：\n- 只使用给定的 statDataJson（来源于最新正文末尾的变量数据），不要参考剧情描述。\n- 按公式计算 base，并基于 randomRoll 生成最终结果。\n- 修正来源仅来自 statDataJson.mods（按 modifierSources 进行汇总）。\n- 输出严格 JSON，不要任何额外文字。\n- 可选输出 analysisSummary：1~3 句简短说明关键修正与计算步骤，不要输出内部思维链。\n\n公式规则：\n- base = 公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n`;
 const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\nthreshold={{threshold}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
-const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean}`;
+const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，1~3 句简短摘要即可。`;
+const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
+
+const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是“行动判定/ROLL 点”助手。\n\n任务：\n- 先判断用户输入是否需要进行行动判定（ROLL）。\n- 若需要，选择最合适的 action key，并基于给定公式与数据计算结果。\n- 修正来源仅来自 statDataJson.mods（按 modifierSources 进行汇总）。\n- 输出严格 JSON，不要任何额外文字。\n- 可选输出 analysisSummary：1~3 句简短说明关键修正与计算步骤，不要输出内部思维链。\n\n公式规则：\n- base = 公式计算结果\n- final = base + base * randomWeight * ((randomRoll - 50) / 50)\n- success = final >= threshold\n`;
+const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\n动作候选={{actionsJson}}\n公式={{formulasJson}}\nrandomWeight={{randomWeight}}\nthreshold={{threshold}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -247,7 +251,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiRollThreshold: 50,
   wiRollInjectStyle: 'hidden',
   wiRollTag: 'SG_ROLL',
-  wiRollModsMode: 'filter', // filter | trust_api
+  wiRollModsMode: 'trust_api', // filter | trust_api
   wiRollDebugLog: false,
   wiRollActionsJson: JSON.stringify(DEFAULT_ROLL_ACTIONS, null, 2),
   wiRollFormulaJson: JSON.stringify(DEFAULT_ROLL_FORMULAS, null, 2),
@@ -579,6 +583,7 @@ function getDefaultSummaryMeta() {
     nextIndex: 1,
     history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
     wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
+    rollLogs: [], // [{ts, action, summary, final, success, userText}]
   };
 }
 
@@ -593,6 +598,7 @@ function getSummaryMeta() {
       ...data,
       history: Array.isArray(data.history) ? data.history : [],
       wiTriggerLogs: Array.isArray(data.wiTriggerLogs) ? data.wiTriggerLogs : [],
+      rollLogs: Array.isArray(data.rollLogs) ? data.rollLogs : [],
     };
   } catch {
     return getDefaultSummaryMeta();
@@ -2778,6 +2784,12 @@ function shouldTrustRollMods(settings) {
   return String(s.wiRollModsMode || 'filter') === 'trust_api';
 }
 
+function getRollAnalysisSummary(res) {
+  if (!res || typeof res !== 'object') return '';
+  const raw = res.analysisSummary ?? res.analysis_summary ?? res.explanation ?? res.reason ?? '';
+  return String(raw || '').trim();
+}
+
 function buildRollPromptMessages(actionKey, statData, settings, formula, randomWeight, threshold, randomRoll) {
   const s = settings || ensureSettings();
   const sys = String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT).trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
@@ -2794,6 +2806,33 @@ function buildRollPromptMessages(actionKey, statData, settings, formula, randomW
     .replaceAll('{{statDataJson}}', statDataJson);
 
   const enforced = user + `\n\n` + ROLL_JSON_REQUIREMENT;
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: enforced },
+  ];
+}
+
+function buildRollDecisionPromptMessages(userText, statData, settings, randomRoll) {
+  const s = settings || ensureSettings();
+  const sys = DEFAULT_ROLL_DECISION_SYSTEM_PROMPT;
+  const actions = safeJsonParse(s.wiRollActionsJson) || DEFAULT_ROLL_ACTIONS;
+  const formulas = safeJsonParse(s.wiRollFormulaJson) || DEFAULT_ROLL_FORMULAS;
+  const randomWeight = clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
+  const threshold = clampFloat(s.wiRollThreshold, 1, 99, 50);
+  const statDataJson = JSON.stringify(statData || {}, null, 0);
+  const modifierSourcesJson = String(s.wiRollModifierSourcesJson || JSON.stringify(DEFAULT_ROLL_MODIFIER_SOURCES));
+
+  const user = DEFAULT_ROLL_DECISION_USER_TEMPLATE
+    .replaceAll('{{userText}}', String(userText || ''))
+    .replaceAll('{{actionsJson}}', JSON.stringify(actions, null, 0))
+    .replaceAll('{{formulasJson}}', JSON.stringify(formulas, null, 0))
+    .replaceAll('{{randomWeight}}', String(randomWeight))
+    .replaceAll('{{threshold}}', String(threshold))
+    .replaceAll('{{randomRoll}}', String(randomRoll))
+    .replaceAll('{{modifierSourcesJson}}', modifierSourcesJson)
+    .replaceAll('{{statDataJson}}', statDataJson);
+
+  const enforced = user + `\n\n` + ROLL_DECISION_JSON_REQUIREMENT;
   return [
     { role: 'system', content: sys },
     { role: 'user', content: enforced },
@@ -2831,6 +2870,31 @@ async function computeRollViaCustomProvider(actionKey, statData, settings, rando
   parsed.action = String(parsed.action || actionKey || '');
   parsed.formula = String(parsed.formula || formula || '');
   return parsed;
+}
+
+async function computeRollDecisionViaCustom(userText, statData, settings, randomRoll) {
+  const s = settings || ensureSettings();
+  const messages = buildRollDecisionPromptMessages(userText, statData, s, randomRoll);
+
+  const jsonText = await callViaCustom(
+    s.wiRollCustomEndpoint,
+    s.wiRollCustomApiKey,
+    s.wiRollCustomModel,
+    messages,
+    clampFloat(s.wiRollCustomTemperature, 0, 2, 0.2),
+    clampInt(s.wiRollCustomMaxTokens, 128, 200000, 512),
+    clampFloat(s.wiRollCustomTopP, 0, 1, 0.95),
+    !!s.wiRollCustomStream
+  );
+
+  const parsed = safeJsonParse(jsonText);
+  if (!parsed || typeof parsed !== 'object') return null;
+  if (parsed.needRoll === false) return { noRoll: true };
+
+  const res = parsed.result && typeof parsed.result === 'object' ? parsed.result : parsed;
+  if (!res || typeof res !== 'object') return null;
+
+  return res;
 }
 
 function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style = 'hidden') {
@@ -2959,14 +3023,6 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
   if (lastText.includes(rollTag)) return;
   lastText = stripTriggerInjection(lastText, rollTag);
 
-  const actions = safeJsonParse(s.wiRollActionsJson) || DEFAULT_ROLL_ACTIONS;
-  const combinedText = `${getLatestAssistantText(chat)}\n${lastText}`;
-  const action = detectRollAction(combinedText, actions);
-  if (!action?.key) {
-    logStatus('ROLL 未触发：未命中动作关键词', 'info');
-    return;
-  }
-
   const source = String(s.wiRollStatSource || 'variable');
   let statData = null;
   if (source === 'latest') {
@@ -2988,14 +3044,22 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
 
   const randomRoll = rollDice(100);
   let res = null;
-  if (String(s.wiRollProvider || 'custom') === 'custom' && String(s.wiRollCustomEndpoint || '').trim()) {
+  const canUseCustom = String(s.wiRollProvider || 'custom') === 'custom' && String(s.wiRollCustomEndpoint || '').trim();
+  if (canUseCustom) {
     try {
-      res = await computeRollViaCustomProvider(action.key, statData, s, randomRoll);
+      res = await computeRollDecisionViaCustom(lastText, statData, s, randomRoll);
+      if (res?.noRoll) {
+        logStatus('ROLL 未触发：AI 判定无需判定', 'info');
+        return;
+      }
     } catch (e) {
       console.warn('[StoryGuide] roll custom provider failed; fallback to local', e);
     }
   }
-  if (!res) res = computeRollLocal(action.key, statData, s);
+  if (!res) {
+    logStatus('ROLL 未触发：AI 判定失败或无结果', 'warn');
+    return;
+  }
 
   if (res) {
     const useApiMods = shouldTrustRollMods(s) && String(s.wiRollProvider || 'custom') === 'custom';
@@ -3005,8 +3069,29 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
     } else if (!Array.isArray(res.mods)) {
       res.mods = [];
     }
-    res.actionLabel = action.label || action.key;
+    res.actionLabel = res.actionLabel || res.action || '';
+    res.formula = res.formula || '';
     if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
+    if (res.threshold == null) res.threshold = clampFloat(s.wiRollThreshold, 1, 99, 50);
+    if (res.final == null && Number.isFinite(Number(res.base))) {
+      const randWeight = Number(res.random?.weight) || clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
+      const randRoll = Number(res.random?.roll) || randomRoll;
+      res.final = Number(res.base) + Number(res.base) * randWeight * ((randRoll - 50) / 50);
+    }
+    if (res.success == null && Number.isFinite(Number(res.final)) && Number.isFinite(Number(res.threshold))) {
+      res.success = Number(res.final) >= Number(res.threshold);
+    }
+    const summary = getRollAnalysisSummary(res);
+    if (summary) {
+      appendRollLog({
+        ts: Date.now(),
+        action: res.actionLabel || res.action,
+        summary,
+        final: res.final,
+        success: res.success,
+        userText: lastText,
+      });
+    }
     const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
     const rollText = buildRollInjectionFromResult(res, rollTag, style);
     if (rollText) {
@@ -3027,14 +3112,6 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
   const s = settings || ensureSettings();
   const rollTag = String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL';
   if (String(userText || '').includes(rollTag)) return null;
-  const actions = safeJsonParse(s.wiRollActionsJson) || DEFAULT_ROLL_ACTIONS;
-  const combinedText = `${getLatestAssistantText(chat)}\n${String(userText || '')}`;
-  const action = detectRollAction(combinedText, actions);
-  if (!action?.key) {
-    logStatus?.('ROLL 未触发：未命中动作关键词', 'info');
-    return null;
-  }
-
   const source = String(s.wiRollStatSource || 'variable');
   let statData = null;
   if (source === 'latest') {
@@ -3056,14 +3133,22 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
 
   const randomRoll = rollDice(100);
   let res = null;
-  if (String(s.wiRollProvider || 'custom') === 'custom' && String(s.wiRollCustomEndpoint || '').trim()) {
+  const canUseCustom = String(s.wiRollProvider || 'custom') === 'custom' && String(s.wiRollCustomEndpoint || '').trim();
+  if (canUseCustom) {
     try {
-      res = await computeRollViaCustomProvider(action.key, statData, s, randomRoll);
+      res = await computeRollDecisionViaCustom(userText, statData, s, randomRoll);
+      if (res?.noRoll) {
+        logStatus?.('ROLL 未触发：AI 判定无需判定', 'info');
+        return null;
+      }
     } catch (e) {
       console.warn('[StoryGuide] roll custom provider failed; fallback to local', e);
     }
   }
-  if (!res) res = computeRollLocal(action.key, statData, s);
+  if (!res) {
+    logStatus?.('ROLL 未触发：AI 判定失败或无结果', 'warn');
+    return null;
+  }
   if (!res) return null;
 
   const useApiMods = shouldTrustRollMods(s) && String(s.wiRollProvider || 'custom') === 'custom';
@@ -3073,7 +3158,29 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
   } else if (!Array.isArray(res.mods)) {
     res.mods = [];
   }
-  res.actionLabel = action.label || action.key;
+  res.actionLabel = res.actionLabel || res.action || '';
+  res.formula = res.formula || '';
+  if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
+  if (res.threshold == null) res.threshold = clampFloat(s.wiRollThreshold, 1, 99, 50);
+  if (res.final == null && Number.isFinite(Number(res.base))) {
+    const randWeight = Number(res.random?.weight) || clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
+    const randRoll = Number(res.random?.roll) || randomRoll;
+    res.final = Number(res.base) + Number(res.base) * randWeight * ((randRoll - 50) / 50);
+  }
+  if (res.success == null && Number.isFinite(Number(res.final)) && Number.isFinite(Number(res.threshold))) {
+    res.success = Number(res.final) >= Number(res.threshold);
+  }
+  const summary = getRollAnalysisSummary(res);
+  if (summary) {
+    appendRollLog({
+      ts: Date.now(),
+      action: res.actionLabel || res.action,
+      summary,
+      final: res.final,
+      success: res.success,
+      userText: String(userText || ''),
+    });
+  }
   if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
   const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
   const rollText = buildRollInjectionFromResult(res, rollTag, style);
@@ -5517,6 +5624,15 @@ function buildModalHtml() {
               <div class="sg-hint" style="margin-bottom:10px;">用于行动判定的 ROLL 注入与计算规则。</div>
               <div id="sg_roll_mount"></div>
             </div>
+            <div class="sg-card sg-subcard" style="margin-top:10px;">
+              <div class="sg-row sg-inline" style="margin-top:0;">
+                <div class="sg-card-title" style="margin:0;">ROLL 日志</div>
+                <div class="sg-spacer"></div>
+                <button class="menu_button sg-btn" id="sg_clearRollLogs">清空</button>
+              </div>
+              <div class="sg-loglist" id="sg_rollLogs" style="margin-top:8px;">(暂无)</div>
+              <div class="sg-hint" style="margin-top:8px;">提示：仅记录由 ROLL API 返回的简要计算摘要。</div>
+            </div>
           </div> <!-- sg_page_roll -->
 
           <div class="sg-status" id="sg_status"></div>
@@ -5839,6 +5955,18 @@ function ensureModal() {
       setStatus('已清空索引日志', 'ok');
     } catch (e) {
       setStatus(`清空索引日志失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_clearRollLogs').on('click', async () => {
+    try {
+      const meta = getSummaryMeta();
+      meta.rollLogs = [];
+      await setSummaryMeta(meta);
+      renderRollLogs(meta);
+      setStatus('已清空 ROLL 日志', 'ok');
+    } catch (e) {
+      setStatus(`清空 ROLL 日志失败：${e?.message ?? e}`, 'err');
     }
   });
 
@@ -6229,6 +6357,7 @@ function pullSettingsToUi() {
   updateSummaryInfoLabel();
   renderSummaryPaneFromMeta();
   renderWiTriggerLogs();
+  renderRollLogs();
 
   updateButtonsEnabled();
 }
@@ -6331,6 +6460,48 @@ function appendWiTriggerLog(log) {
     // 不 await：避免阻塞 MESSAGE_SENT
     setSummaryMeta(meta).catch(() => void 0);
     if ($('#sg_modal_backdrop').is(':visible')) renderWiTriggerLogs(meta);
+  } catch { /* ignore */ }
+}
+
+function renderRollLogs(metaOverride = null) {
+  const $box = $('#sg_rollLogs');
+  if (!$box.length) return;
+  const meta = metaOverride || getSummaryMeta();
+  const logs = Array.isArray(meta?.rollLogs) ? meta.rollLogs : [];
+  if (!logs.length) {
+    $box.html('(暂无)');
+    return;
+  }
+  const shown = logs.slice(0, 30);
+  const html = shown.map((l) => {
+    const ts = l?.ts ? new Date(l.ts).toLocaleString() : '';
+    const action = String(l?.action || '').trim();
+    const outcome = l?.success === true ? '成功' : (l?.success === false ? '失败' : '');
+    const finalVal = Number.isFinite(Number(l?.final)) ? Number(l.final).toFixed(2) : '';
+    const summary = String(l?.summary || '').trim();
+    const userShort = String(l?.userText || '').trim().slice(0, 160);
+
+    const detailsLines = [];
+    if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
+    if (summary) detailsLines.push(`<div><b>摘要</b>：${escapeHtml(summary)}</div>`);
+    return `
+      <details>
+        <summary>${escapeHtml(`${ts}｜${action || 'ROLL'}｜${outcome}${finalVal ? `｜最终=${finalVal}` : ''}`)}</summary>
+        <div class="sg-log-body">${detailsLines.join('')}</div>
+      </details>
+    `;
+  }).join('');
+  $box.html(html);
+}
+
+function appendRollLog(log) {
+  try {
+    const meta = getSummaryMeta();
+    const arr = Array.isArray(meta.rollLogs) ? meta.rollLogs : [];
+    arr.unshift(log);
+    meta.rollLogs = arr.slice(0, 50);
+    setSummaryMeta(meta).catch(() => void 0);
+    if ($('#sg_modal_backdrop').is(':visible')) renderRollLogs(meta);
   } catch { /* ignore */ }
 }
 
