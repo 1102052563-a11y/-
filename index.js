@@ -3283,7 +3283,9 @@ function installRollPreSendHook() {
   }, true);
 
   async function handleSendButtonEvent(e) {
-    const btn = e.target && e.target.closest ? e.target.closest('#send_but') : null;
+    const btn = e.target && e.target.closest
+      ? e.target.closest('#send_but, #send_button, button.send_button, .send_button')
+      : null;
     if (!btn) return;
     if (guard || window.__storyguide_presend_guard) return;
     const s = ensureSettings();
