@@ -276,7 +276,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   // —— 绿灯世界书（关键词触发）——
   summaryToWorldInfo: true,
   // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
-  summaryWorldInfoTarget: 'chatbook',
+  summaryWorldInfoTarget: 'file',
   summaryWorldInfoFile: '',
   summaryWorldInfoCommentPrefix: '剧情总结',
 
@@ -696,13 +696,27 @@ async function setChatMetaValue(key, value) {
 // -------------------- summary meta (per chat) --------------------
 function getDefaultSummaryMeta() {
   return {
+    version: 2,
     lastFloor: 0,
     lastChatLen: 0,
-    // 用于“索引编号触发”（A-001/A-002…）的递增计数器（按聊天存储）
     nextIndex: 1,
-    history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
-    wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
-    rollLogs: [], // [{ts, action, summary, final, success, userText}]
+    history: [], // [{title, summary, keywords, indexId, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}}]
+    wiTriggerLogs: [],
+    rollLogs: [],
+    lastSyncedAt: 0,
+  };
+}
+
+function normalizeSummaryMeta(data) {
+  if (!data || typeof data !== 'object') return getDefaultSummaryMeta();
+  const base = getDefaultSummaryMeta();
+  return {
+    ...base,
+    ...data,
+    version: 2,
+    history: Array.isArray(data.history) ? data.history : [],
+    wiTriggerLogs: Array.isArray(data.wiTriggerLogs) ? data.wiTriggerLogs : [],
+    rollLogs: Array.isArray(data.rollLogs) ? data.rollLogs : [],
   };
 }
 
@@ -711,21 +725,14 @@ function getSummaryMeta() {
   if (!raw) return getDefaultSummaryMeta();
   try {
     const data = JSON.parse(raw);
-    if (!data || typeof data !== 'object') return getDefaultSummaryMeta();
-    return {
-      ...getDefaultSummaryMeta(),
-      ...data,
-      history: Array.isArray(data.history) ? data.history : [],
-      wiTriggerLogs: Array.isArray(data.wiTriggerLogs) ? data.wiTriggerLogs : [],
-      rollLogs: Array.isArray(data.rollLogs) ? data.rollLogs : [],
-    };
+    return normalizeSummaryMeta(data);
   } catch {
     return getDefaultSummaryMeta();
   }
 }
 
 async function setSummaryMeta(meta) {
-  await setChatMetaValue(META_KEYS.summaryMeta, JSON.stringify(meta ?? getDefaultSummaryMeta()));
+  await setChatMetaValue(META_KEYS.summaryMeta, JSON.stringify(normalizeSummaryMeta(meta)));
 }
 
 // ===== 静态模块缓存（只在首次或手动刷新时生成的模块结果）=====
@@ -1339,6 +1346,41 @@ async function clearWorldInfoEntry(fileName, uid) {
   await setWorldInfoEntryField(fileName, uid, 'key', '');
 }
 
+async function getWorldbookEntriesCompat(fileName) {
+  const th = globalThis.TavernHelper;
+  if (th && typeof th.getLorebookEntries === 'function') {
+    try {
+      const list = await th.getLorebookEntries(String(fileName));
+      return Array.isArray(list) ? list : [];
+    } catch {
+      // fall back to REST read
+    }
+  }
+  return await loadWorldInfoEntries(String(fileName || ''));
+}
+
+function normalizeWorldbookEntries(entries) {
+  const out = [];
+  for (const e of (Array.isArray(entries) ? entries : [])) {
+    if (!e || typeof e !== 'object') continue;
+    const uid = e.uid ?? e.id ?? e.entryId ?? e.entry_id ?? e.entryID ?? e._uid ?? e._id ?? null;
+    const comment = String(e.comment ?? e.name ?? '').trim();
+    const title = String(e.title ?? e.name ?? e.comment ?? '').trim();
+    const content = String(e.content ?? e.entry ?? e.text ?? e.description ?? e.desc ?? e.body ?? e.value ?? '').trim();
+    const keys = Array.isArray(e.keys) ? e.keys : (Array.isArray(e.key) ? e.key : []);
+    const disable = Number(e.disable ?? e.disabled ?? e.isDisabled ?? e.is_disabled ?? 0) === 1;
+    out.push({
+      uid: (uid === null || uid === undefined) ? null : String(uid),
+      comment,
+      title,
+      content,
+      keys,
+      disable,
+    });
+  }
+  return out;
+}
+
 async function deleteWorldInfoEntries(fileName, uids) {
   const list = Array.isArray(uids) ? uids.map(x => String(x || '').trim()).filter(Boolean) : [];
   if (!fileName || !list.length) return 0;
@@ -1376,7 +1418,7 @@ async function deleteWorldInfoEntries(fileName, uids) {
 async function deleteSummaryEntriesInWorldbook(fileName, commentPrefix) {
   const prefix = String(commentPrefix || '').trim();
   if (!fileName || !prefix) return 0;
-  const entries = await loadWorldInfoEntries(fileName);
+  const entries = normalizeWorldbookEntries(await getWorldbookEntriesCompat(fileName));
   const uids = entries
     .filter(e => {
       const comment = String(e?.comment || '') || String(e?.title || '');
@@ -1388,8 +1430,7 @@ async function deleteSummaryEntriesInWorldbook(fileName, commentPrefix) {
   return await deleteWorldInfoEntries(fileName, uids);
 }
 
-async function createSummaryWorldbookEntry(rec, {
-  file = '',
+function buildSummaryEntryData(rec, {
   commentPrefix = '',
   constant = 0,
 } = {}) {
@@ -1398,7 +1439,6 @@ async function createSummaryWorldbookEntry(rec, {
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
   const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
   const rawTitle = String(rec?.title || '').trim();
-  const tag = getWorldbookTag();
 
   const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
   const indexId = String(rec?.indexId || '').trim();
@@ -1418,23 +1458,55 @@ async function createSummaryWorldbookEntry(rec, {
     }
   }
   if (!commentTitle) commentTitle = '剧情总结';
-  commentTitle = appendTagToComment(commentTitle, tag);
   const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
 
   const content = normalizeSummaryContent(rec?.summary || '');
-  if (!content) return false;
+  if (!content) return null;
 
   const keyValue = (kws.length ? kws.join(',') : prefix);
   const constantVal = (Number(constant) === 1) ? 1 : 0;
 
+  return {
+    comment,
+    content,
+    keys: kws.length ? kws : [prefix],
+    enabled: true,
+    type: (constantVal === 1) ? 'constant' : 'keyword',
+    constant: constantVal,
+    keyValue,
+  };
+}
+
+async function createSummaryWorldbookEntry(rec, {
+  file = '',
+  commentPrefix = '',
+  constant = 0,
+} = {}) {
+  const entry = buildSummaryEntryData(rec, { commentPrefix, constant });
+  if (!entry || !file) return false;
+
+  const th = globalThis.TavernHelper;
+  if (th && typeof th.createLorebookEntries === 'function') {
+    await th.createLorebookEntries(String(file), [{
+      comment: entry.comment,
+      content: entry.content,
+      keys: entry.keys,
+      enabled: true,
+      type: entry.type,
+      constant: entry.constant,
+      prevent_recursion: true,
+    }]);
+    return true;
+  }
+
   const parts = [];
-  parts.push(`/createentry file=${quoteSlashValue(file)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`);
+  parts.push(`/createentry file=${quoteSlashValue(file)} key=${quoteSlashValue(entry.keyValue)} ${quoteSlashValue(entry.content)}`);
   parts.push(`/setvar key=__sg_summary_uid`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=content ${quoteSlashValue(content)}`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=key ${quoteSlashValue(keyValue)}`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=comment ${quoteSlashValue(comment)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=content ${quoteSlashValue(entry.content)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=key ${quoteSlashValue(entry.keyValue)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=comment ${quoteSlashValue(entry.comment)}`);
   parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=disable 0`);
-  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=constant ${constantVal}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(file)} uid={{getvar::__sg_summary_uid}} field=constant ${entry.constant}`);
   parts.push(`/flushvar __sg_summary_uid`);
 
   const out = await execSlash(parts.join(' | '));
@@ -1448,7 +1520,9 @@ async function syncSummaryWorldbookForChat(reason = '') {
   const s = ensureSettings();
   const meta = getSummaryMeta();
   const records = Array.isArray(meta?.history) ? meta.history : [];
-  await ensureWorldbookTag();
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  const hasUser = chat.some(m => m && m.is_user);
 
   const result = {
     green: { deleted: 0, created: 0, error: '' },
@@ -1463,9 +1537,26 @@ async function syncSummaryWorldbookForChat(reason = '') {
     } else {
       try {
         result.green.deleted = await deleteSummaryEntriesInWorldbook(file, prefix);
-        for (const rec of records) {
-          const ok = await createSummaryWorldbookEntry(rec, { file, commentPrefix: prefix, constant: 0 });
-          if (ok) result.green.created += 1;
+        if (hasUser && records.length) {
+          const th = globalThis.TavernHelper;
+          const batch = records.map(r => buildSummaryEntryData(r, { commentPrefix: prefix, constant: 0 })).filter(Boolean);
+          if (batch.length && th && typeof th.createLorebookEntries === 'function') {
+            await th.createLorebookEntries(String(file), batch.map(e => ({
+              comment: e.comment,
+              content: e.content,
+              keys: e.keys,
+              enabled: true,
+              type: e.type,
+              constant: e.constant,
+              prevent_recursion: true,
+            })));
+            result.green.created = batch.length;
+          } else {
+            for (const rec of records) {
+              const ok = await createSummaryWorldbookEntry(rec, { file, commentPrefix: prefix, constant: 0 });
+              if (ok) result.green.created += 1;
+            }
+          }
         }
       } catch (e) {
         result.green.error = String(e?.message ?? e);
@@ -1481,9 +1572,26 @@ async function syncSummaryWorldbookForChat(reason = '') {
     } else {
       try {
         result.blue.deleted = await deleteSummaryEntriesInWorldbook(file, prefix);
-        for (const rec of records) {
-          const ok = await createSummaryWorldbookEntry(rec, { file, commentPrefix: prefix, constant: 1 });
-          if (ok) result.blue.created += 1;
+        if (hasUser && records.length) {
+          const th = globalThis.TavernHelper;
+          const batch = records.map(r => buildSummaryEntryData(r, { commentPrefix: prefix, constant: 1 })).filter(Boolean);
+          if (batch.length && th && typeof th.createLorebookEntries === 'function') {
+            await th.createLorebookEntries(String(file), batch.map(e => ({
+              comment: e.comment,
+              content: e.content,
+              keys: e.keys,
+              enabled: true,
+              type: e.type,
+              constant: e.constant,
+              prevent_recursion: true,
+            })));
+            result.blue.created = batch.length;
+          } else {
+            for (const rec of records) {
+              const ok = await createSummaryWorldbookEntry(rec, { file, commentPrefix: prefix, constant: 1 });
+              if (ok) result.blue.created += 1;
+            }
+          }
         }
       } catch (e) {
         result.blue.error = String(e?.message ?? e);
@@ -2706,7 +2814,6 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     let meta = getSummaryMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
-    await ensureWorldbookTag();
     // choose range(s)
     const every = clampInt(s.summaryEvery, 1, 200, 20);
     const segments = [];
@@ -2959,6 +3066,8 @@ async function maybeAutoSummary(reason = '') {
 
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const hasUser = chat.some(m => m && m.is_user);
+  if (!hasUser) return;
   const mode = String(s.summaryCountMode || 'assistant');
   const every = clampInt(s.summaryEvery, 1, 200, 20);
   const floorNow = computeFloorCount(chat, mode);
@@ -5622,11 +5731,10 @@ function buildModalHtml() {
 
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用）</label>
-              <select id="sg_summaryWorldInfoTarget">
-                <option value="chatbook">写入当前聊天绑定世界书</option>
+              <select id="sg_summaryWorldInfoTarget" disabled>
                 <option value="file">写入指定世界书文件名</option>
               </select>
-              <input id="sg_summaryWorldInfoFile" type="text" placeholder="Target=file 时填写世界书文件名" style="flex:1; min-width: 220px;">
+              <input id="sg_summaryWorldInfoFile" type="text" placeholder="绿灯世界书文件名（固定）" style="flex:1; min-width: 220px;">
             </div>
 
             <div class="sg-row sg-inline">
@@ -6132,8 +6240,7 @@ function ensureModal() {
   });
 
   $('#sg_summaryWorldInfoTarget').on('change', () => {
-    const t = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
-    $('#sg_summaryWorldInfoFile').toggle(t === 'file');
+    $('#sg_summaryWorldInfoFile').toggle(true);
     pullUiToSettings(); saveSettings();
   });
 
@@ -6201,6 +6308,7 @@ function ensureModal() {
       await setSummaryMeta(meta);
       updateSummaryInfoLabel();
       renderSummaryPaneFromMeta();
+      syncSummaryWorldbookForChat('reset').catch(() => void 0);
       setStatus('已重置本聊天总结进度 ✅', 'ok');
     } catch (e) {
       setStatus(`重置失败：${e?.message ?? e}`, 'err');
@@ -6636,7 +6744,7 @@ function pullSettingsToUi() {
   $('#sg_summaryCustomMaxTokens').val(s.summaryCustomMaxTokens || 2048);
   $('#sg_summaryCustomStream').prop('checked', !!s.summaryCustomStream);
   $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
-  $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
+  $('#sg_summaryWorldInfoTarget').val('file');
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
   $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
   $('#sg_summaryWorldInfoKeyMode').val(String(s.summaryWorldInfoKeyMode || 'keywords'));
@@ -6700,7 +6808,7 @@ function pullSettingsToUi() {
   $('#sg_summaryMaxTotalChars').val(s.summaryMaxTotalChars || 24000);
 
   $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
-  $('#sg_summaryWorldInfoFile').toggle(String(s.summaryWorldInfoTarget || 'chatbook') === 'file');
+  $('#sg_summaryWorldInfoFile').toggle(true);
   $('#sg_summaryBlueWorldInfoFile').toggle(!!s.summaryToBlueWorldInfo);
   $('#sg_summaryIndexFormat').toggle(String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId');
 
@@ -7054,7 +7162,7 @@ function pullUiToSettings() {
   s.summaryCustomMaxTokens = clampInt($('#sg_summaryCustomMaxTokens').val(), 128, 200000, s.summaryCustomMaxTokens || 2048);
   s.summaryCustomStream = $('#sg_summaryCustomStream').is(':checked');
   s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
-  s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
+  s.summaryWorldInfoTarget = 'file';
   s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
   s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
   s.summaryWorldInfoKeyMode = String($('#sg_summaryWorldInfoKeyMode').val() || 'keywords');
