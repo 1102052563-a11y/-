@@ -1020,8 +1020,14 @@ function parseWorldbookJson(rawText) {
     if (Array.isArray(maybe)) return maybe;
     if (typeof maybe === 'object') {
       // common: entries as map {uid: entry}
-      const vals = Object.values(maybe);
-      if (vals.length && vals.every(v => typeof v === 'object')) return vals;
+      const vals = [];
+      for (const [k, v] of Object.entries(maybe)) {
+        if (!v || typeof v !== 'object') continue;
+        const obj = { ...v };
+        if (obj.uid === undefined || obj.uid === null || obj.uid === '') obj.uid = String(k);
+        vals.push(obj);
+      }
+      if (vals.length) return vals;
     }
     return null;
   }
