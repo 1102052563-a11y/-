@@ -2314,7 +2314,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     const mode = String(s.summaryCountMode || 'assistant');
     const floorNow = computeFloorCount(chat, mode);
 
-    let meta = getSummaryMeta();
+    let meta = getSummaryTableMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
     // choose range(s)
     const every = clampInt(s.summaryEvery, 1, 200, 20);
@@ -2503,8 +2503,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
     }
 
-    updateSummaryInfoLabel();
-    renderSummaryPaneFromMeta();
+    // [removed: updateSummaryInfoLabel()]
+    // [removed: renderSummaryPaneFromMeta()]
 
     // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
     if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
@@ -2583,7 +2583,7 @@ async function maybeAutoSummary(reason = '') {
   if (floorNow <= 0) return;
   if (floorNow % every !== 0) return;
 
-  const meta = getSummaryMeta();
+  const meta = getSummaryTableMeta();
   const last = Number(meta?.lastFloor || 0);
   if (floorNow <= last) return;
 
@@ -2705,7 +2705,7 @@ function getBlueIndexEntriesFast() {
 
 function collectBlueIndexCandidates() {
   const s = ensureSettings();
-  const meta = getSummaryMeta();
+  const meta = getSummaryTableMeta();
   const out = [];
   const seen = new Set();
 
@@ -4707,8 +4707,8 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
     try {
       const meta = getDefaultSummaryMeta();
       await setSummaryMeta(meta);
-      updateSummaryInfoLabel();
-      renderSummaryPaneFromMeta();
+      // [removed: updateSummaryInfoLabel()]
+      // [removed: renderSummaryPaneFromMeta()]
       setStatus('已重置本聊天总结进度 ✅', 'ok');
     } catch (e) {
       setStatus(`重置失败：${e?.message ?? e}`, 'err');
@@ -4719,7 +4719,7 @@ $('#sg_wiIndexResetPrompt').on('click', () => {
   $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream').on('change input', () => {
     pullUiToSettings();
     saveSettings();
-    updateSummaryInfoLabel();
+    // [removed: updateSummaryInfoLabel()]
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
@@ -4811,7 +4811,7 @@ $('#sg_wiIndexModelSelect').on('change', () => {
 
   $('#sg_clearWiLogs').on('click', async () => {
     try {
-      const meta = getSummaryMeta();
+      const meta = getSummaryTableMeta();
       meta.wiTriggerLogs = [];
       await setSummaryMeta(meta);
       renderWiTriggerLogs(meta);
@@ -5119,8 +5119,8 @@ $('#sg_index_custom_block').toggle(mm === 'llm' && String(s.wiIndexProvider || '
 
   updateBlueIndexInfoLabel();
 
-  updateSummaryInfoLabel();
-  renderSummaryPaneFromMeta();
+  // [removed: updateSummaryInfoLabel()]
+  // [removed: renderSummaryPaneFromMeta()]
   renderWiTriggerLogs();
 
   updateButtonsEnabled();
@@ -5157,7 +5157,7 @@ function formatTimeShort(ts) {
 function renderWiTriggerLogs(metaOverride = null) {
   const $box = $('#sg_wiLogs');
   if (!$box.length) return;
-  const meta = metaOverride || getSummaryMeta();
+  const meta = metaOverride || getSummaryTableMeta();
   const logs = Array.isArray(meta?.wiTriggerLogs) ? meta.wiTriggerLogs : [];
   if (!logs.length) {
     $box.html('<div class="sg-hint">(暂无)</div>');
@@ -5217,7 +5217,7 @@ function renderWiTriggerLogs(metaOverride = null) {
 
 function appendWiTriggerLog(log) {
   try {
-    const meta = getSummaryMeta();
+    const meta = getSummaryTableMeta();
     const arr = Array.isArray(meta.wiTriggerLogs) ? meta.wiTriggerLogs : [];
     arr.unshift(log);
     meta.wiTriggerLogs = arr.slice(0, 50);
@@ -5264,7 +5264,7 @@ function updateSummaryInfoLabel() {
   const $info = $('#sg_summaryInfo');
   if (!$info.length) return;
   try {
-    const meta = getSummaryMeta();
+    const meta = getSummaryTableMeta();
     $info.text(formatSummaryMetaHint(meta));
   } catch {
     $info.text('（总结状态解析失败）');
@@ -5324,7 +5324,7 @@ function renderSummaryPaneFromMeta() {
   const $el = $('#sg_sum');
   if (!$el.length) return;
 
-  const meta = getSummaryMeta();
+  const meta = getSummaryTableMeta();
   const hist = Array.isArray(meta.history) ? meta.history : [];
 
   if (!hist.length) {
