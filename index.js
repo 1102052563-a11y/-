@@ -1327,6 +1327,12 @@ async function setWorldInfoEntryField(fileName, uid, field, value) {
   await execSlash(cmd);
 }
 
+async function clearWorldInfoEntry(fileName, uid) {
+  if (!fileName || !uid) return;
+  await setWorldInfoEntryField(fileName, uid, 'content', '');
+  await setWorldInfoEntryField(fileName, uid, 'key', '');
+}
+
 async function syncWorldbookEntriesForChat(records, {
   target = 'file',
   file = '',
@@ -1355,8 +1361,7 @@ async function syncWorldbookEntriesForChat(records, {
       .filter(Boolean)
   );
 
-  let enabled = 0;
-  let disabled = 0;
+  let cleared = 0;
   let tagged = 0;
 
   for (const e of entries) {
@@ -1369,9 +1374,6 @@ async function syncWorldbookEntriesForChat(records, {
 
     const keep = content && currentSet.has(content);
     if (keep) {
-      if (e.disable) {
-        try { await setWorldInfoEntryField(fileName, uid, 'disable', 0); enabled += 1; } catch { /* ignore */ }
-      }
       const tag = extractTagFromComment(comment);
       if (currentTag && tag !== currentTag) {
         const updated = appendTagToComment(comment, currentTag);
@@ -1380,13 +1382,11 @@ async function syncWorldbookEntriesForChat(records, {
         }
       }
     } else {
-      if (!e.disable) {
-        try { await setWorldInfoEntryField(fileName, uid, 'disable', 1); disabled += 1; } catch { /* ignore */ }
-      }
+      try { await clearWorldInfoEntry(fileName, uid); cleared += 1; } catch { /* ignore */ }
     }
   }
 
-  return { enabled, disabled, tagged, error: '' };
+  return { cleared, tagged, error: '' };
 }
 
 async function restoreSummariesToWorldInfoTarget(records, {
