@@ -400,6 +400,7 @@ const META_KEYS = Object.freeze({
   summaryMeta: 'storyguide_summary_meta',
   staticModulesCache: 'storyguide_static_modules_cache',
   blueIndexCache: 'storyguide_blue_index_cache',
+  worldbookTag: 'storyguide_worldbook_tag',
 });
 
 let lastReport = null;
@@ -743,6 +744,19 @@ async function setStaticModulesCache(cache) {
   await setChatMetaValue(META_KEYS.staticModulesCache, JSON.stringify(cache ?? {}));
 }
 
+function getWorldbookTag() {
+  const raw = String(getChatMetaValue(META_KEYS.worldbookTag) || '').trim();
+  return raw || '';
+}
+
+async function ensureWorldbookTag() {
+  let tag = getWorldbookTag();
+  if (tag) return tag;
+  tag = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  try { await setChatMetaValue(META_KEYS.worldbookTag, tag); } catch { /* ignore */ }
+  return tag;
+}
+
 function getBlueIndexCache() {
   const raw = String(getChatMetaValue(META_KEYS.blueIndexCache) || '').trim();
   if (!raw) return [];
@@ -1050,6 +1064,17 @@ function parseWorldbookJson(rawText) {
     if (!e || typeof e !== 'object') continue;
 
     const title = String(e.title ?? e.name ?? e.comment ?? e.uid ?? e.id ?? '').trim();
+    const comment = String(e.comment ?? '').trim() || String(e.name ?? '').trim();
+    const uid =
+      e.uid ??
+      e.id ??
+      e.entryId ??
+      e.entry_id ??
+      e.entryID ??
+      e._uid ??
+      e._id ??
+      null;
+    const disable = Number(e.disable ?? e.disabled ?? e.isDisabled ?? e.is_disabled ?? 0) === 1;
 
     // keys can be stored in many variants in ST exports
     const kRaw =
@@ -1090,7 +1115,14 @@ function parseWorldbookJson(rawText) {
     ).trim();
 
     if (!content) continue;
-    norm.push({ title: title || (keys[0] ? `条目：${keys[0]}` : '条目'), keys, content });
+    norm.push({
+      title: title || (keys[0] ? `条目：${keys[0]}` : '条目'),
+      keys,
+      content,
+      comment,
+      uid,
+      disable,
+    });
   }
   return norm;
 }
@@ -1277,15 +1309,84 @@ function buildWorldInfoContentSet(entries, prefixFilter = '') {
   const prefix = String(prefixFilter || '').trim();
   const set = new Set();
   for (const e of (Array.isArray(entries) ? entries : [])) {
+    if (e?.disable) continue;
     const content = normalizeSummaryContent(e?.content || '');
     if (!content) continue;
     if (prefix) {
-      const comment = String(e?.comment || '');
+      const comment = String(e?.comment || '') || String(e?.title || '');
       if (!comment.includes(prefix)) continue;
     }
     set.add(content);
   }
   return set;
+}
+
+async function setWorldInfoEntryField(fileName, uid, field, value) {
+  if (!fileName || !uid) return;
+  const cmd = `/setentryfield file=${quoteSlashValue(fileName)} uid=${quoteSlashValue(uid)} field=${field} ${quoteSlashValue(value)}`;
+  await execSlash(cmd);
+}
+
+async function syncWorldbookEntriesForChat(records, {
+  target = 'file',
+  file = '',
+  commentPrefix = '',
+  currentTag = '',
+} = {}) {
+  const recs = Array.isArray(records) ? records : [];
+  const t = String(target || 'file');
+  const prefix = String(commentPrefix || '').trim();
+  if (!prefix) return { enabled: 0, disabled: 0, tagged: 0, error: '' };
+
+  let fileName = String(file || '').trim();
+  if (t === 'chatbook') fileName = await resolveChatbookFileName();
+  if (!fileName) return { enabled: 0, disabled: 0, tagged: 0, error: 'missing worldbook file' };
+
+  let entries = [];
+  try {
+    entries = await loadWorldInfoEntries(fileName);
+  } catch (e) {
+    return { enabled: 0, disabled: 0, tagged: 0, error: String(e?.message ?? e) };
+  }
+
+  const currentSet = new Set(
+    recs
+      .map(r => normalizeSummaryContent(r?.summary || ''))
+      .filter(Boolean)
+  );
+
+  let enabled = 0;
+  let disabled = 0;
+  let tagged = 0;
+
+  for (const e of entries) {
+    const comment = String(e?.comment || '') || String(e?.title || '');
+    if (!comment.includes(prefix)) continue;
+
+    const content = normalizeSummaryContent(e?.content || '');
+    const uid = e?.uid ? String(e.uid) : '';
+    if (!uid) continue;
+
+    const keep = content && currentSet.has(content);
+    if (keep) {
+      if (e.disable) {
+        try { await setWorldInfoEntryField(fileName, uid, 'disable', 0); enabled += 1; } catch { /* ignore */ }
+      }
+      const tag = extractTagFromComment(comment);
+      if (currentTag && tag !== currentTag) {
+        const updated = appendTagToComment(comment, currentTag);
+        if (updated !== comment) {
+          try { await setWorldInfoEntryField(fileName, uid, 'comment', updated); tagged += 1; } catch { /* ignore */ }
+        }
+      }
+    } else {
+      if (!e.disable) {
+        try { await setWorldInfoEntryField(fileName, uid, 'disable', 1); disabled += 1; } catch { /* ignore */ }
+      }
+    }
+  }
+
+  return { enabled, disabled, tagged, error: '' };
 }
 
 async function restoreSummariesToWorldInfoTarget(records, {
@@ -1343,11 +1444,32 @@ async function restoreSummaryWorldInfoFromCache() {
   const s = ensureSettings();
   const meta = getSummaryMeta();
   const records = Array.isArray(meta?.history) ? meta.history : [];
-  if (!records.length) return;
   if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) return;
+
+  const tag = await ensureWorldbookTag();
+
+  if (s.summaryToWorldInfo) {
+    await syncWorldbookEntriesForChat(records, {
+      target: String(s.summaryWorldInfoTarget || 'chatbook'),
+      file: String(s.summaryWorldInfoFile || ''),
+      commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
+      currentTag: tag,
+    });
+  }
+
+  if (s.summaryToBlueWorldInfo) {
+    await syncWorldbookEntriesForChat(records, {
+      target: 'file',
+      file: String(s.summaryBlueWorldInfoFile || ''),
+      commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
+      currentTag: tag,
+    });
+  }
 
   let restoredGreen = 0;
   let restoredBlue = 0;
+
+  if (!records.length) return;
 
   if (s.summaryToWorldInfo) {
     const res = await restoreSummariesToWorldInfoTarget(records, {
@@ -2207,6 +2329,23 @@ function normalizeSummaryContent(text) {
     .replace(/\|/g, '｜');
 }
 
+const SG_TAG_PREFIX = 'SG:';
+
+function extractTagFromComment(comment) {
+  const s = String(comment || '');
+  const m = s.match(/(?:^|[｜|\s])SG:([a-z0-9_-]+)/i);
+  return m?.[1] ? String(m[1]) : '';
+}
+
+function appendTagToComment(comment, tag) {
+  const t = String(tag || '').trim();
+  if (!t) return String(comment || '').trim();
+  const s = String(comment || '').trim();
+  if (s.includes(`${SG_TAG_PREFIX}${t}`)) return s;
+  if (!s) return `${SG_TAG_PREFIX}${t}`;
+  return `${s}｜${SG_TAG_PREFIX}${t}`;
+}
+
 function appendToBlueIndexCache(rec) {
   const s = ensureSettings();
   const item = {
@@ -2461,6 +2600,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
   const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
   const rawTitle = String(rec.title || '').trim();
+  const tag = getWorldbookTag();
 
   const s = ensureSettings();
   const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
@@ -2482,6 +2622,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
     }
   }
   if (!commentTitle) commentTitle = '剧情总结';
+  commentTitle = appendTagToComment(commentTitle, tag);
   const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
 
   // normalize content and make it safe for slash parser (avoid accidental pipe split)
@@ -2563,6 +2704,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     let meta = getSummaryMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
+    await ensureWorldbookTag();
     // choose range(s)
     const every = clampInt(s.summaryEvery, 1, 200, 20);
     const segments = [];
