@@ -3249,6 +3249,31 @@ function installRollPreSendHook() {
     }
   }, true);
 
+  document.addEventListener('click', async (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest('#send_but') : null;
+    if (!btn) return;
+    if (guard || window.__storyguide_presend_guard) return;
+    const s = ensureSettings();
+    if (!s.wiRollEnabled && !s.wiTriggerEnabled) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    guard = true;
+
+    try {
+      const textarea = findTextarea();
+      if (textarea) await ensurePreSend(textarea);
+    } finally {
+      guard = false;
+      window.__storyguide_presend_guard = true;
+      try {
+        if (typeof btn.click === 'function') btn.click();
+      } finally {
+        window.__storyguide_presend_guard = false;
+      }
+    }
+  }, true);
+
   function wrapSendFunction(obj, key) {
     if (!obj || typeof obj[key] !== 'function' || obj[key].__sg_wrapped) return;
     const original = obj[key];
