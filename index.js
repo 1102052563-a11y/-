@@ -7151,10 +7151,7 @@ function createFloatingPanel() {
   });
 
   $('#sg_floating_roll_logs').on('click', () => {
-    openModal();
-    hideFloatingPanel();
-    // 切换到 ROLL 设置页
-    $('#sg_pgtab_roll').trigger('click');
+    showFloatingRollLogs();
   });
 
   $('#sg_floating_settings').on('click', () => {
@@ -7398,6 +7395,50 @@ function updateFloatingPanelBody(html) {
   if ($body.length) {
     $body.html(html);
   }
+}
+
+function showFloatingRollLogs() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+
+  const meta = getSummaryMeta();
+  const logs = Array.isArray(meta?.rollLogs) ? meta.rollLogs : [];
+
+  if (!logs.length) {
+    $body.html('<div class="sg-floating-loading">暂无 ROLL 日志</div>');
+    return;
+  }
+
+  const html = logs.slice(0, 50).map((l) => {
+    const ts = l?.ts ? new Date(l.ts).toLocaleString() : '';
+    const action = String(l?.action || '').trim();
+    const outcome = String(l?.outcomeTier || '').trim()
+      || (l?.success == null ? 'N/A' : (l.success ? '成功' : '失败'));
+    const finalVal = Number.isFinite(Number(l?.final)) ? Number(l.final).toFixed(2) : '';
+    let summary = '';
+    if (l?.summary && typeof l.summary === 'object') {
+      const pick = l.summary.summary ?? l.summary.text ?? l.summary.message;
+      summary = String(pick || '').trim();
+      if (!summary) {
+        try { summary = JSON.stringify(l.summary); } catch { summary = String(l.summary); }
+      }
+    } else {
+      summary = String(l?.summary || '').trim();
+    }
+    const userShort = String(l?.userText || '').trim().slice(0, 160);
+
+    const detailsLines = [];
+    if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
+    if (summary) detailsLines.push(`<div><b>摘要</b>：${escapeHtml(summary)}</div>`);
+    return `
+      <details style="margin-bottom:4px; padding:4px; border-bottom:1px solid rgba(128,128,128,0.3);">
+        <summary style="font-size:0.9em; cursor:pointer; outline:none;">${escapeHtml(`${ts}｜${action || 'ROLL'}｜${outcome}${finalVal ? `｜最终=${finalVal}` : ''}`)}</summary>
+        <div class="sg-log-body" style="padding-left:1em; opacity:0.9; font-size:0.85em; margin-top:4px;">${detailsLines.join('')}</div>
+      </details>
+    `;
+  }).join('');
+
+  $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
 }
 
 // -------------------- init --------------------
