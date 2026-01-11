@@ -7113,6 +7113,7 @@ function createFloatingPanel() {
       <span class="sg-floating-title">📘 剧情指导</span>
       <div class="sg-floating-actions">
         <button class="sg-floating-action-btn" id="sg_floating_refresh" title="刷新分析">🔄</button>
+        <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
         <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
         <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
       </div>
@@ -7147,6 +7148,13 @@ function createFloatingPanel() {
 
   $('#sg_floating_refresh').on('click', async () => {
     await refreshFloatingPanelContent();
+  });
+
+  $('#sg_floating_roll_logs').on('click', () => {
+    openModal();
+    hideFloatingPanel();
+    // 切换到 ROLL 设置页
+    $('#sg_pgtab_roll').trigger('click');
   });
 
   $('#sg_floating_settings').on('click', () => {
