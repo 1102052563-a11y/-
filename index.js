@@ -7119,8 +7119,8 @@ function createFloatingPanel() {
       </div>
     </div>
     <div class="sg-floating-body" id="sg_floating_body">
-      <div style="padding:20px; text-align:center;">
-        <button class="sg-inner-refresh-btn menu_button sg-btn" style="padding:8px 16px;">🔄 生成剧情分析</button>
+      <div style="padding:20px; text-align:center; color:#aaa;">
+        点击 <button class="sg-inner-refresh-btn" style="background:none; border:none; cursor:pointer; font-size:1.2em;">🔄</button> 生成
       </div>
     </div>
   `;
@@ -7390,8 +7390,8 @@ async function refreshFloatingPanelContent() {
     const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
 
     const refreshBtnHtml = `
-      <div style="padding:8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:8px; text-align:center;">
-        <button class="sg-inner-refresh-btn menu_button sg-btn" style="width:90%;">🔄 重新生成分析</button>
+      <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
+        <button class="sg-inner-refresh-btn" title="重新生成分析" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🔄</button>
       </div>
     `;
 
@@ -7465,8 +7465,8 @@ function showFloatingReport() {
     updateFloatingPanelBody(lastFloatingContent);
   } else {
     $body.html(`
-      <div style="padding:20px; text-align:center;">
-        <button class="sg-inner-refresh-btn menu_button sg-btn" style="padding:8px 16px;">🔄 生成剧情分析</button>
+      <div style="padding:20px; text-align:center; color:#aaa;">
+        点击 <button class="sg-inner-refresh-btn" style="background:none; border:none; cursor:pointer; font-size:1.2em;">🔄</button> 生成
       </div>
     `);
   }
