@@ -443,14 +443,8 @@ function ensureSettings() {
   }
   if (typeof extensionSettings[MODULE_NAME].wiRollSystemPrompt === 'string') {
     const cur = extensionSettings[MODULE_NAME].wiRollSystemPrompt;
-    const needsRefresh = !cur.includes('outcomeTier')
-      || !cur.includes('explanation')
-      || !cur.includes('\u96be\u5ea6\u6a21\u5f0f difficulty')
-      || !cur.includes('\u6210\u529f\u9608\u503c/DC');
-    const missingGradeMap = cur.includes('数值映射建议')
-      && !cur.includes('品级修正');
     const hasMojibake = /\?{5,}/.test(cur);
-    if (needsRefresh || missingGradeMap || hasMojibake) {
+    if (hasMojibake) {
       extensionSettings[MODULE_NAME].wiRollSystemPrompt = DEFAULT_ROLL_SYSTEM_PROMPT;
       saveSettingsDebounced();
     }
