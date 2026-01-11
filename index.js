@@ -7112,14 +7112,16 @@ function createFloatingPanel() {
     <div class="sg-floating-header" style="cursor: move; touch-action: none;">
       <span class="sg-floating-title">📘 剧情指导</span>
       <div class="sg-floating-actions">
-        <button class="sg-floating-action-btn" id="sg_floating_refresh" title="刷新分析">🔄</button>
+        <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
         <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
         <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
         <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
       </div>
     </div>
     <div class="sg-floating-body" id="sg_floating_body">
-      <div class="sg-floating-loading">点击 🔄 生成剧情分析</div>
+      <div style="padding:20px; text-align:center;">
+        <button class="sg-inner-refresh-btn menu_button sg-btn" style="padding:8px 16px;">🔄 生成剧情分析</button>
+      </div>
     </div>
   `;
 
@@ -7146,7 +7148,14 @@ function createFloatingPanel() {
     hideFloatingPanel();
   });
 
-  $('#sg_floating_refresh').on('click', async () => {
+  $('#sg_floating_show_report').on('click', () => {
+    showFloatingReport();
+  });
+
+  // Delegate inner refresh click
+  $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
+    // Only handle if inside our panel
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
     await refreshFloatingPanelContent();
   });
 
@@ -7380,7 +7389,13 @@ async function refreshFloatingPanelContent() {
     const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
     const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
 
-    const fullHtml = html + optionsHtml;
+    const refreshBtnHtml = `
+      <div style="padding:8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:8px; text-align:center;">
+        <button class="sg-inner-refresh-btn menu_button sg-btn" style="width:90%;">🔄 重新生成分析</button>
+      </div>
+    `;
+
+    const fullHtml = refreshBtnHtml + html + optionsHtml;
     lastFloatingContent = fullHtml;
     updateFloatingPanelBody(fullHtml);
 
@@ -7439,6 +7454,22 @@ function showFloatingRollLogs() {
   }).join('');
 
   $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+}
+
+function showFloatingReport() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+
+  // Use last cached content if available, otherwise show empty state
+  if (lastFloatingContent) {
+    updateFloatingPanelBody(lastFloatingContent);
+  } else {
+    $body.html(`
+      <div style="padding:20px; text-align:center;">
+        <button class="sg-inner-refresh-btn menu_button sg-btn" style="padding:8px 16px;">🔄 生成剧情分析</button>
+      </div>
+    `);
+  }
 }
 
 // -------------------- init --------------------
