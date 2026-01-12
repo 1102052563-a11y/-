@@ -314,8 +314,9 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // ROLL 判定（本回合行动判定）
   wiRollEnabled: false,
-  wiRollStatSource: 'variable', // variable (综合多来源) | template | latest
+  wiRollStatSource: 'variable', // variable (综合多来源) | messages (从正文读取) | template | latest
   wiRollStatVarName: 'stat_data',
+  wiRollStatLookbackMessages: 20, // 从正文读取时，扫描最近多少条消息
   wiRollRandomWeight: 0.3,
   wiRollDifficulty: 'normal',
   wiRollInjectStyle: 'hidden',
@@ -3011,6 +3012,48 @@ function resolveStatDataFromLatestAssistant(chat, settings) {
   return { statData: parsed, rawText: block };
 }
 
+/**
+ * 从最近 N 条消息中扫描读取变量数据（类似索引读取正文的方式）
+ * 这是最可靠的变量读取方式，因为直接从消息内容中提取
+ */
+function resolveStatDataFromMessages(chat, settings) {
+  const s = settings || ensureSettings();
+  const lookback = clampInt(s.wiRollStatLookbackMessages, 1, 200, 20);
+  const arr = Array.isArray(chat) ? chat : [];
+
+  // 从最新消息往前扫描
+  for (let i = arr.length - 1; i >= Math.max(0, arr.length - lookback); i--) {
+    const m = arr[i];
+    if (!m) continue;
+    if (m.is_system === true) continue;
+    // 优先检查 AI 回复，但也可以检查用户消息（某些卡可能在用户消息中包含状态）
+    if (m.is_user === true) continue;
+
+    const raw = String(m.mes ?? m.message ?? '');
+    if (!raw) continue;
+
+    // 尝试提取状态块
+    const block = extractStatusBlock(raw);
+    if (block) {
+      const parsed = parseStatData(block, s.wiRollStatParseMode || 'json');
+      if (parsed) {
+        console.debug(`[StoryGuide] resolveStatDataFromMessages: 在第 ${i + 1} 条消息中找到变量数据`);
+        return { statData: parsed, rawText: block, messageIndex: i };
+      }
+    }
+
+    // 如果没有专门的状态块，尝试直接解析整个消息
+    // （某些卡可能直接在消息末尾输出 JSON）
+    const directParsed = parseStatData(raw, s.wiRollStatParseMode || 'json');
+    if (directParsed) {
+      console.debug(`[StoryGuide] resolveStatDataFromMessages: 在第 ${i + 1} 条消息中直接解析到变量数据`);
+      return { statData: directParsed, rawText: raw, messageIndex: i };
+    }
+  }
+
+  return { statData: null, rawText: '', messageIndex: -1 };
+}
+
 function resolveStatDataFromVariableStore(settings) {
   const s = settings || ensureSettings();
   const key = String(s.wiRollStatVarName || 'stat_data').trim();
@@ -3189,16 +3232,26 @@ function resolveStatDataFromChatDOM(settings) {
 /**
  * 综合查找变量数据：尝试多种来源以确保能读取到最新数据
  * 按优先级依次尝试：
- * 1. /getvar 斜杠命令（最稳定）
- * 2. 变量存储对象
- * 3. 模板渲染
- * 4. 从 DOM 读取
- * 5. 从最新 AI 回复读取
+ * 1. 从最近消息正文扫描（最可靠，类似索引读取方式）
+ * 2. /getvar 斜杠命令
+ * 3. 变量存储对象
+ * 4. 模板渲染
+ * 5. 从 DOM 读取
+ * 6. 从最新 AI 回复读取
  */
 async function resolveStatDataComprehensive(chat, settings) {
   const s = settings || ensureSettings();
 
-  // 方法1：使用 /getvar 斜杠命令（最稳定）
+  // 方法1：从最近消息正文扫描（最可靠，类似索引读取方式）
+  try {
+    const { statData, rawText, messageIndex } = resolveStatDataFromMessages(chat, s);
+    if (statData) {
+      console.debug(`[StoryGuide] Variable loaded via message scanning (index: ${messageIndex})`);
+      return { statData, rawText, source: 'messages' };
+    }
+  } catch { /* continue */ }
+
+  // 方法2：使用 /getvar 斜杠命令
   try {
     const { statData, rawText } = await resolveStatDataViaSlashCommand(s);
     if (statData) {
@@ -3207,7 +3260,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法2：从变量存储对象读取
+  // 方法3：从变量存储对象读取
   try {
     const { statData, rawText } = resolveStatDataFromVariableStore(s);
     if (statData) {
@@ -3216,7 +3269,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法3：通过模板渲染读取
+  // 方法4：通过模板渲染读取
   try {
     const { statData, rawText } = await resolveStatDataFromTemplate(s);
     if (statData) {
@@ -3225,7 +3278,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法4：从 DOM 读取
+  // 方法5：从 DOM 读取
   try {
     const { statData, rawText } = resolveStatDataFromChatDOM(s);
     if (statData) {
@@ -3234,7 +3287,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法5：从最新 AI 回复读取
+  // 方法6：从最新 AI 回复读取
   try {
     const { statData, rawText } = resolveStatDataFromLatestAssistant(chat, s);
     if (statData) {
@@ -3273,7 +3326,17 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
   const source = String(s.wiRollStatSource || 'variable');
   let statData = null;
   let varSource = '';
-  if (source === 'latest') {
+  if (source === 'messages') {
+    // 从最近正文消息扫描（类似索引读取方式）
+    ({ statData } = resolveStatDataFromMessages(chat, s));
+    varSource = 'messages';
+    // 回退到综合方法
+    if (!statData) {
+      const result = await resolveStatDataComprehensive(chat, s);
+      statData = result.statData;
+      varSource = result.source || 'comprehensive';
+    }
+  } else if (source === 'latest') {
     ({ statData } = resolveStatDataFromLatestAssistant(chat, s));
     varSource = 'latest';
   } else if (source === 'template') {
@@ -3373,7 +3436,17 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
   const source = String(s.wiRollStatSource || 'variable');
   let statData = null;
   let varSource = '';
-  if (source === 'latest') {
+  if (source === 'messages') {
+    // 从最近正文消息扫描（类似索引读取方式）
+    ({ statData } = resolveStatDataFromMessages(chat, s));
+    varSource = 'messages';
+    // 回退到综合方法
+    if (!statData) {
+      const result = await resolveStatDataComprehensive(chat, s);
+      statData = result.statData;
+      varSource = result.source || 'comprehensive';
+    }
+  } else if (source === 'latest') {
     ({ statData } = resolveStatDataFromLatestAssistant(chat, s));
     varSource = 'latest';
   } else if (source === 'template') {
@@ -5821,10 +5894,11 @@ function buildModalHtml() {
                   <label>变量来源</label>
                   <select id="sg_wiRollStatSource">
                     <option value="variable">综合多来源（最稳定，推荐）</option>
+                    <option value="messages">从正文读取（扫描最近消息）</option>
                     <option value="template">模板渲染（stat_data）</option>
                     <option value="latest">最新正文末尾</option>
                   </select>
-                  <div class="sg-hint">综合模式按优先级尝试：/getvar命令 → 变量存储 → 模板渲染 → DOM读取 → 最新AI回复</div>
+                  <div class="sg-hint">综合模式按优先级尝试：正文扫描 → /getvar → 变量存储 → 模板渲染 → DOM读取 → 最新AI回复</div>
                 </div>
                 <div class="sg-field">
                   <label>变量解析模式</label>
@@ -5834,9 +5908,16 @@ function buildModalHtml() {
                   </select>
                 </div>
               </div>
-              <div class="sg-field">
-                <label>变量名（用于"变量存储"来源）</label>
-                <input id="sg_wiRollStatVarName" type="text" placeholder="stat_data">
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>变量名（用于"变量存储"来源）</label>
+                  <input id="sg_wiRollStatVarName" type="text" placeholder="stat_data">
+                </div>
+                <div class="sg-field">
+                  <label>扫描消息数（从正文读取时）</label>
+                  <input id="sg_wiRollStatLookbackMessages" type="number" min="1" max="200" placeholder="20">
+                  <div class="sg-hint">向前扫描最近多少条消息以查找变量数据</div>
+                </div>
               </div>
               <div class="sg-row sg-inline">
                 <label>注入方式</label>
@@ -6125,7 +6206,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollStatLookbackMessages, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -6568,6 +6649,7 @@ function pullSettingsToUi() {
   $('#sg_wiRollEnabled').prop('checked', !!s.wiRollEnabled);
   $('#sg_wiRollStatSource').val(String(s.wiRollStatSource || 'variable'));
   $('#sg_wiRollStatVarName').val(String(s.wiRollStatVarName || 'stat_data'));
+  $('#sg_wiRollStatLookbackMessages').val(s.wiRollStatLookbackMessages || 20);
   $('#sg_wiRollRandomWeight').val(s.wiRollRandomWeight ?? 0.3);
   $('#sg_wiRollDifficulty').val(String(s.wiRollDifficulty || 'normal'));
   $('#sg_wiRollInjectStyle').val(String(s.wiRollInjectStyle || 'hidden'));
