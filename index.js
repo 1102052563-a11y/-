@@ -7988,9 +7988,21 @@ function init() {
     createFloatingButton();
     injectFixedInputButton();
     installRollPreSendHook();
+  });
 
-    // 自动绑定世界书初始化
-    ensureBoundWorldInfo().catch(e => console.warn('[StoryGuide] 自动绑定世界书初始化失败:', e));
+  // 聊天切换时自动绑定世界书
+  eventSource.on(event_types.CHAT_CHANGED, async () => {
+    const ctx = SillyTavern.getContext();
+    // 确保已经有聊天选中
+    if (!ctx.chat || !Array.isArray(ctx.chat) || ctx.chat.length === 0) {
+      console.log('[StoryGuide] 聊天未加载，跳过自动绑定');
+      return;
+    }
+    try {
+      await onChatSwitched();
+    } catch (e) {
+      console.warn('[StoryGuide] 自动绑定世界书失败:', e);
+    }
   });
 
   globalThis.StoryGuide = {
