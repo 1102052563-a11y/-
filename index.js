@@ -828,65 +828,74 @@ async function ensureBoundWorldInfo(opts = {}) {
   return created;
 }
 
-// 创建世界书文件（通过 API 直接创建）
+// 创建世界书文件（通过多种方法尝试）
 async function createWorldInfoFile(fileName, initialContent = '初始化条目') {
   if (!fileName) throw new Error('文件名为空');
 
-  const headers = {
-    'Content-Type': 'application/json',
-    ...getStRequestHeadersCompat(),
-  };
+  console.log('[StoryGuide] 尝试创建世界书文件:', fileName);
 
-  // 尝试多个可能的 API 端点（不同 ST 版本可能不同）
-  const tryList = [
-    // 创建新世界书文件
-    { url: '/api/worldinfo/create', body: { name: fileName } },
-    { url: '/api/worldinfo/create', body: { file: fileName, name: fileName } },
-    { url: '/api/worldinfo/new', body: { name: fileName } },
-    // 有些版本需要传完整结构
-    {
-      url: '/api/worldinfo/create', body: {
-        name: fileName,
-        entries: {
-          0: {
-            uid: 0,
-            key: ['__SG_INIT__'],
-            keysecondary: [],
-            comment: '自动创建',
-            content: initialContent,
-            constant: false,
-            vectorized: false,
-            selective: true,
-            selectiveLogic: 0,
-            addMemo: true,
-            order: 100,
-            position: 0,
-            disable: false,
-            excludeRecursion: false,
-            preventRecursion: false,
-            delayUntilRecursion: false,
-            probability: 100,
-            useProbability: true,
-            depth: 4,
-            group: '',
-            groupOverride: false,
-            groupWeight: 100,
-            scanDepth: null,
-            caseSensitive: null,
-            matchWholeWords: null,
-            useGroupScoring: null,
-            automationId: '',
-            role: null,
-            sticky: 0,
-            cooldown: 0,
-            delay: 0,
-          }
+  // 方法1: 尝试使用 SillyTavern 内部的 world_info 模块
+  try {
+    const worldInfoModule = await import('/scripts/world-info.js');
+    if (worldInfoModule && typeof worldInfoModule.createNewWorldInfo === 'function') {
+      await worldInfoModule.createNewWorldInfo(fileName);
+      console.log('[StoryGuide] 使用内部模块创建成功:', fileName);
+      return true;
+    }
+  } catch (e) {
+    console.log('[StoryGuide] 内部模块方法失败:', e?.message || e);
+  }
+
+  // 方法2: 尝试使用导入 API (模拟文件上传)
+  try {
+    const headers = getStRequestHeadersCompat();
+    const worldInfoData = {
+      entries: {
+        0: {
+          uid: 0,
+          key: ['__SG_INIT__'],
+          keysecondary: [],
+          comment: '由 StoryGuide 自动创建',
+          content: initialContent,
+          constant: false,
+          disable: false,
+          order: 100,
+          position: 0,
         }
       }
-    },
-    // 直接保存到文件
-    {
-      url: '/api/worldinfo/save', body: {
+    };
+
+    // 创建一个 Blob 作为 JSON 文件
+    const blob = new Blob([JSON.stringify(worldInfoData)], { type: 'application/json' });
+    const formData = new FormData();
+    formData.append('avatar', blob, `${fileName}.json`);
+
+    const res = await fetch('/api/worldinfo/import', {
+      method: 'POST',
+      headers: { ...headers },
+      body: formData,
+    });
+
+    if (res.ok) {
+      console.log('[StoryGuide] 使用导入 API 创建成功:', fileName);
+      return true;
+    }
+    console.log('[StoryGuide] 导入 API 响应:', res.status);
+  } catch (e) {
+    console.log('[StoryGuide] 导入 API 方法失败:', e?.message || e);
+  }
+
+  // 方法3: 尝试直接 POST 到 /api/worldinfo/edit (编辑/创建)
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...getStRequestHeadersCompat(),
+    };
+
+    const res = await fetch('/api/worldinfo/edit', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
         name: fileName,
         data: {
           entries: {
@@ -894,41 +903,23 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条目')
               uid: 0,
               key: ['__SG_INIT__'],
               content: initialContent,
-              comment: '自动创建',
-              constant: false,
-              disable: false,
+              comment: '由 StoryGuide 自动创建',
             }
           }
         }
-      }
-    },
-  ];
+      }),
+    });
 
-  console.log('[StoryGuide] 尝试创建世界书文件:', fileName);
-
-  let lastErr = null;
-  for (const t of tryList) {
-    try {
-      const res = await fetch(t.url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(t.body),
-      });
-
-      console.log(`[StoryGuide] ${t.url} 响应:`, res.status);
-
-      if (res.ok) {
-        console.log('[StoryGuide] 世界书文件创建成功:', fileName);
-        return true;
-      }
-    } catch (e) {
-      console.log(`[StoryGuide] ${t.url} 失败:`, e?.message || e);
-      lastErr = e;
+    if (res.ok) {
+      console.log('[StoryGuide] 使用 edit API 创建成功:', fileName);
+      return true;
     }
+    console.log('[StoryGuide] edit API 响应:', res.status);
+  } catch (e) {
+    console.log('[StoryGuide] edit API 方法失败:', e?.message || e);
   }
 
-  // 如果 API 方式都失败，尝试 STscript 方式作为备用
-  console.log('[StoryGuide] API 方式失败，尝试 STscript 方式');
+  // 方法4: 最后尝试 STscript (可能需要文件已存在)
   try {
     const safeFileName = quoteSlashValue(fileName);
     const safeKey = quoteSlashValue('__SG_INIT__');
@@ -938,10 +929,12 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条目')
     console.log('[StoryGuide] STscript 方式可能成功');
     return true;
   } catch (e) {
-    console.error('[StoryGuide] STscript 方式也失败:', e);
+    console.log('[StoryGuide] STscript 方式失败:', e?.message || e);
   }
 
-  throw lastErr || new Error('创建世界书文件失败');
+  // 所有方法都失败 - 显示警告但不阻断
+  console.warn('[StoryGuide] 无法自动创建世界书文件，请手动创建:', fileName);
+  return false;
 }
 
 // 将绑定的世界书应用到设置
