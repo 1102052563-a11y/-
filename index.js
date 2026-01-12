@@ -925,13 +925,11 @@ function applyBoundWorldInfoToSettings() {
 // 更新自动绑定UI显示
 function updateAutoBindUI() {
   const s = ensureSettings();
-  const greenWI = getChatMetaValue(META_KEYS.boundGreenWI) || '';
-  const blueWI = getChatMetaValue(META_KEYS.boundBlueWI) || '';
-
   const $info = $('#sg_autoBindInfo');
+
   if ($info.length) {
-    if (s.autoBindWorldInfo && (greenWI || blueWI)) {
-      $info.html(`<span style="color: var(--SmartThemeQuoteColor)">📗 ${escapeHtml(greenWI)}</span><br><span style="color: var(--SmartThemeQuoteColor)">📘 ${escapeHtml(blueWI)}</span>`);
+    if (s.autoBindWorldInfo) {
+      $info.html(`<span style="color: var(--SmartThemeQuoteColor)">✅ 已启用：总结将写入聊天绑定的世界书</span>`);
       $info.show();
     } else {
       $info.hide();
