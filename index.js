@@ -926,18 +926,22 @@ function applyBoundWorldInfoToSettings() {
   const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
   const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
 
-  // 绿灯世界书：使用 chatbook 目标（/getchatbook 会自动创建）
+  console.log('[StoryGuide] 应用绑定世界书设置:', { greenWI, blueWI });
+
+  // 绿灯世界书：使用 file 目标
   if (greenWI) {
     s.summaryToWorldInfo = true;
-    s.summaryWorldInfoTarget = 'chatbook';  // 使用 chatbook 而不是 file
-    // summaryWorldInfoFile 不需要设置，因为使用 chatbook
+    s.summaryWorldInfoTarget = 'file';
+    s.summaryWorldInfoFile = greenWI;
+    console.log('[StoryGuide] 绿灯设置:', { target: 'file', file: greenWI });
   }
 
-  // 蓝灯世界书：使用 file 目标（需要手动创建文件）
+  // 蓝灯世界书：使用 file 目标
   if (blueWI) {
     s.summaryToBlueWorldInfo = true;
     s.summaryBlueWorldInfoFile = blueWI;
     s.wiBlueIndexFile = blueWI;
+    console.log('[StoryGuide] 蓝灯设置:', { file: blueWI });
   }
 
   // 更新 UI（如果面板已打开）
@@ -965,10 +969,18 @@ function updateAutoBindUI() {
 // 聊天切换时的处理（带提示）
 async function onChatSwitched() {
   const s = ensureSettings();
-  if (!s.autoBindWorldInfo) return;
+
+  console.log('[StoryGuide] onChatSwitched 被调用, autoBindWorldInfo =', s.autoBindWorldInfo);
+
+  if (!s.autoBindWorldInfo) {
+    console.log('[StoryGuide] autoBindWorldInfo 未开启，跳过自动绑定');
+    return;
+  }
 
   const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
   const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
+
+  console.log('[StoryGuide] 当前聊天绑定的世界书:', { greenWI, blueWI });
 
   if (greenWI || blueWI) {
     applyBoundWorldInfoToSettings();
@@ -976,7 +988,7 @@ async function onChatSwitched() {
       kind: 'info', spinner: false, sticky: false, duration: 2500
     });
   } else {
-    // 新聊天，需要创建
+    console.log('[StoryGuide] 新聊天，需要创建绑定');
     await ensureBoundWorldInfo();
   }
 }
