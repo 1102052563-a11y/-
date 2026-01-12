@@ -265,6 +265,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryBlueWorldInfoFile: '',
   summaryBlueWorldInfoCommentPrefix: '剧情总结',
 
+  // —— 自动绑定世界书（每个聊天自动生成专属世界书）——
+  autoBindWorldInfo: false,
+  autoBindWorldInfoPrefix: 'SG',
+
   // —— 蓝灯索引 → 绿灯触发 ——
   wiTriggerEnabled: false,
 
@@ -367,6 +371,9 @@ const META_KEYS = Object.freeze({
   world: 'storyguide_world_setup',
   summaryMeta: 'storyguide_summary_meta',
   staticModulesCache: 'storyguide_static_modules_cache',
+  boundGreenWI: 'storyguide_bound_green_wi',
+  boundBlueWI: 'storyguide_bound_blue_wi',
+  autoBindCreated: 'storyguide_auto_bind_created',
 });
 
 let lastReport = null;
@@ -744,6 +751,120 @@ async function updateStaticModulesCache(parsedJson, modules) {
 // 清除静态模块缓存（手动刷新时使用）
 async function clearStaticModulesCache() {
   await setStaticModulesCache({});
+}
+
+// -------------------- 自动绑定世界书（每个聊天专属世界书） --------------------
+// 生成唯一的世界书文件名
+function generateBoundWorldInfoName(type) {
+  const ctx = SillyTavern.getContext();
+  const charName = String(ctx.characterId || ctx.name2 || ctx.name || 'UnknownChar')
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '')
+    .slice(0, 20);
+  const ts = Date.now().toString(36);
+  const prefix = ensureSettings().autoBindWorldInfoPrefix || 'SG';
+  return `${prefix}_${charName}_${ts}_${type}`;
+}
+
+// 检查并确保当前聊天有绑定的世界书（带用户提示）
+async function ensureBoundWorldInfo(opts = {}) {
+  const s = ensureSettings();
+  if (!s.autoBindWorldInfo) return false;
+
+  const existingGreen = getChatMetaValue(META_KEYS.boundGreenWI);
+  const existingBlue = getChatMetaValue(META_KEYS.boundBlueWI);
+  const alreadyCreated = !!getChatMetaValue(META_KEYS.autoBindCreated);
+
+  // 如果已经创建过，只需应用设置
+  if (alreadyCreated && existingGreen && existingBlue) {
+    applyBoundWorldInfoToSettings();
+    return false;
+  }
+
+  // 创建新的绑定世界书
+  let greenName = existingGreen;
+  let blueName = existingBlue;
+  let created = false;
+
+  if (!greenName) {
+    greenName = generateBoundWorldInfoName('green');
+    await setChatMetaValue(META_KEYS.boundGreenWI, greenName);
+    created = true;
+  }
+  if (!blueName) {
+    blueName = generateBoundWorldInfoName('blue');
+    await setChatMetaValue(META_KEYS.boundBlueWI, blueName);
+    created = true;
+  }
+
+  if (created) {
+    await setChatMetaValue(META_KEYS.autoBindCreated, '1');
+    // 显示用户提示
+    showToast(`已为本聊天创建专属世界书\n绿灯：${greenName}\n蓝灯：${blueName}`, {
+      kind: 'ok', spinner: false, sticky: false, duration: 3500
+    });
+  }
+
+  // 应用到当前设置
+  applyBoundWorldInfoToSettings();
+  return created;
+}
+
+// 将绑定的世界书应用到设置
+function applyBoundWorldInfoToSettings() {
+  const s = ensureSettings();
+  if (!s.autoBindWorldInfo) return;
+
+  const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
+  const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
+
+  if (greenWI) {
+    s.summaryWorldInfoTarget = 'file';
+    s.summaryWorldInfoFile = greenWI;
+  }
+  if (blueWI) {
+    s.summaryBlueWorldInfoFile = blueWI;
+    s.wiBlueIndexFile = blueWI;
+  }
+
+  // 更新 UI（如果面板已打开）
+  updateAutoBindUI();
+  saveSettings();
+}
+
+// 更新自动绑定UI显示
+function updateAutoBindUI() {
+  const s = ensureSettings();
+  const greenWI = getChatMetaValue(META_KEYS.boundGreenWI) || '';
+  const blueWI = getChatMetaValue(META_KEYS.boundBlueWI) || '';
+
+  const $info = $('#sg_autoBindInfo');
+  if ($info.length) {
+    if (s.autoBindWorldInfo && (greenWI || blueWI)) {
+      $info.html(`<span style="color: var(--SmartThemeQuoteColor)">📗 ${escapeHtml(greenWI)}</span><br><span style="color: var(--SmartThemeQuoteColor)">📘 ${escapeHtml(blueWI)}</span>`);
+      $info.show();
+    } else {
+      $info.hide();
+    }
+  }
+}
+
+// 聊天切换时的处理（带提示）
+async function onChatSwitched() {
+  const s = ensureSettings();
+  if (!s.autoBindWorldInfo) return;
+
+  const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
+  const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
+
+  if (greenWI || blueWI) {
+    applyBoundWorldInfoToSettings();
+    showToast(`已切换到本聊天专属世界书\n绿灯：${greenWI || '(无)'}\n蓝灯：${blueWI || '(无)'}`, {
+      kind: 'info', spinner: false, sticky: false, duration: 2500
+    });
+  } else {
+    // 新聊天，需要创建
+    await ensureBoundWorldInfo();
+  }
 }
 
 function setStatus(text, kind = '') {
@@ -5548,6 +5669,15 @@ function buildModalHtml() {
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
             </div>
 
+            <div class="sg-card sg-subcard" style="background: var(--SmartThemeBlurTintColor); margin-top: 8px;">
+              <div class="sg-row sg-inline" style="align-items: center;">
+                <label class="sg-check"><input type="checkbox" id="sg_autoBindWorldInfo">📒 自动绑定世界书（每个聊天生成专属世界书）</label>
+                <input id="sg_autoBindWorldInfoPrefix" type="text" placeholder="前缀" style="width: 80px;" title="世界书文件名前缀，默认 SG">
+              </div>
+              <div class="sg-hint" style="margin-top: 4px;">开启后，每个聊天会自动创建专属的绿灯/蓝灯世界书，切换聊天时自动加载。</div>
+              <div id="sg_autoBindInfo" class="sg-hint" style="margin-top: 6px; display: none; font-size: 12px;"></div>
+            </div>
+
             <div class="sg-grid2">
               <div class="sg-field">
                 <label>条目标题前缀（写入 comment，始终在最前）</label>
@@ -6388,6 +6518,22 @@ function ensureModal() {
     }
   });
 
+  // 自动绑定世界书事件
+  $('#sg_autoBindWorldInfo').on('change', async () => {
+    pullUiToSettings();
+    saveSettings();
+    const s = ensureSettings();
+    if (s.autoBindWorldInfo) {
+      await ensureBoundWorldInfo();
+    }
+    updateAutoBindUI();
+  });
+
+  $('#sg_autoBindWorldInfoPrefix').on('input', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
+
   // 快捷选项按钮事件
   $('#sg_resetQuickOptions').on('click', () => {
     const defaultOptions = JSON.stringify([
@@ -6554,6 +6700,12 @@ function pullSettingsToUi() {
   $('#sg_summaryIndexInComment').prop('checked', !!s.summaryIndexInComment);
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
+
+  // 自动绑定世界书
+  $('#sg_autoBindWorldInfo').prop('checked', !!s.autoBindWorldInfo);
+  $('#sg_autoBindWorldInfoPrefix').val(String(s.autoBindWorldInfoPrefix || 'SG'));
+  updateAutoBindUI();
+
   $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
   $('#sg_wiTriggerLookbackMessages').val(s.wiTriggerLookbackMessages || 20);
   $('#sg_wiTriggerIncludeUserMessage').prop('checked', !!s.wiTriggerIncludeUserMessage);
@@ -6972,6 +7124,10 @@ function pullUiToSettings() {
   s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
   s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
+
+  // 自动绑定世界书
+  s.autoBindWorldInfo = $('#sg_autoBindWorldInfo').is(':checked');
+  s.autoBindWorldInfoPrefix = String($('#sg_autoBindWorldInfoPrefix').val() || 'SG').trim() || 'SG';
 
   s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
   s.wiTriggerLookbackMessages = clampInt($('#sg_wiTriggerLookbackMessages').val(), 5, 120, s.wiTriggerLookbackMessages || 20);
@@ -7784,6 +7940,9 @@ function init() {
     createFloatingButton();
     injectFixedInputButton();
     installRollPreSendHook();
+
+    // 自动绑定世界书初始化
+    ensureBoundWorldInfo().catch(e => console.warn('[StoryGuide] 自动绑定世界书初始化失败:', e));
   });
 
   globalThis.StoryGuide = {
