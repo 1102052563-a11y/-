@@ -832,13 +832,24 @@ async function ensureBoundWorldInfo(opts = {}) {
 async function createWorldInfoFile(fileName, initialContent = '初始化条目') {
   if (!fileName) throw new Error('文件名为空');
 
+  // 与 writeSummaryToWorldInfoEntry 使用相同的模式
+  const safeFileName = quoteSlashValue(fileName);
+  const safeKey = quoteSlashValue('__SG_INIT__');
+  const safeContent = quoteSlashValue(initialContent);
+
+  // 构建命令：/createentry file="xxx" key="xxx" "content"
+  const cmd = `/createentry file=${safeFileName} key=${safeKey} ${safeContent}`;
+
+  console.log('[StoryGuide] 创建世界书文件命令:', cmd);
+
   try {
-    const exec = await getSlashExecutor();
-    // 使用 /createentry 命令创建一个初始条目，这会自动创建世界书文件
-    const safeFileName = String(fileName).replace(/"/g, '\\"');
-    const safeContent = String(initialContent).replace(/"/g, '\\"');
-    const cmd = `/createentry file="${safeFileName}" key="__SG_INIT__" ${safeContent}`;
-    await exec(cmd);
+    const result = await execSlash(cmd);
+    console.log('[StoryGuide] 创建世界书文件结果:', result);
+
+    // 检查是否有错误
+    if (result && typeof result === 'object' && (result.isError || result.isAborted)) {
+      throw new Error(`命令执行失败: ${safeStringifyShort(result)}`);
+    }
     return true;
   } catch (e) {
     console.error('[StoryGuide] 创建世界书文件失败:', e);
