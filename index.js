@@ -828,33 +828,120 @@ async function ensureBoundWorldInfo(opts = {}) {
   return created;
 }
 
-// 创建世界书文件（通过创建初始条目来建立文件）
+// 创建世界书文件（通过 API 直接创建）
 async function createWorldInfoFile(fileName, initialContent = '初始化条目') {
   if (!fileName) throw new Error('文件名为空');
 
-  // 与 writeSummaryToWorldInfoEntry 使用相同的模式
-  const safeFileName = quoteSlashValue(fileName);
-  const safeKey = quoteSlashValue('__SG_INIT__');
-  const safeContent = quoteSlashValue(initialContent);
+  const headers = {
+    'Content-Type': 'application/json',
+    ...getStRequestHeadersCompat(),
+  };
 
-  // 构建命令：/createentry file="xxx" key="xxx" "content"
-  const cmd = `/createentry file=${safeFileName} key=${safeKey} ${safeContent}`;
+  // 尝试多个可能的 API 端点（不同 ST 版本可能不同）
+  const tryList = [
+    // 创建新世界书文件
+    { url: '/api/worldinfo/create', body: { name: fileName } },
+    { url: '/api/worldinfo/create', body: { file: fileName, name: fileName } },
+    { url: '/api/worldinfo/new', body: { name: fileName } },
+    // 有些版本需要传完整结构
+    {
+      url: '/api/worldinfo/create', body: {
+        name: fileName,
+        entries: {
+          0: {
+            uid: 0,
+            key: ['__SG_INIT__'],
+            keysecondary: [],
+            comment: '自动创建',
+            content: initialContent,
+            constant: false,
+            vectorized: false,
+            selective: true,
+            selectiveLogic: 0,
+            addMemo: true,
+            order: 100,
+            position: 0,
+            disable: false,
+            excludeRecursion: false,
+            preventRecursion: false,
+            delayUntilRecursion: false,
+            probability: 100,
+            useProbability: true,
+            depth: 4,
+            group: '',
+            groupOverride: false,
+            groupWeight: 100,
+            scanDepth: null,
+            caseSensitive: null,
+            matchWholeWords: null,
+            useGroupScoring: null,
+            automationId: '',
+            role: null,
+            sticky: 0,
+            cooldown: 0,
+            delay: 0,
+          }
+        }
+      }
+    },
+    // 直接保存到文件
+    {
+      url: '/api/worldinfo/save', body: {
+        name: fileName,
+        data: {
+          entries: {
+            0: {
+              uid: 0,
+              key: ['__SG_INIT__'],
+              content: initialContent,
+              comment: '自动创建',
+              constant: false,
+              disable: false,
+            }
+          }
+        }
+      }
+    },
+  ];
 
-  console.log('[StoryGuide] 创建世界书文件命令:', cmd);
+  console.log('[StoryGuide] 尝试创建世界书文件:', fileName);
 
-  try {
-    const result = await execSlash(cmd);
-    console.log('[StoryGuide] 创建世界书文件结果:', result);
+  let lastErr = null;
+  for (const t of tryList) {
+    try {
+      const res = await fetch(t.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(t.body),
+      });
 
-    // 检查是否有错误
-    if (result && typeof result === 'object' && (result.isError || result.isAborted)) {
-      throw new Error(`命令执行失败: ${safeStringifyShort(result)}`);
+      console.log(`[StoryGuide] ${t.url} 响应:`, res.status);
+
+      if (res.ok) {
+        console.log('[StoryGuide] 世界书文件创建成功:', fileName);
+        return true;
+      }
+    } catch (e) {
+      console.log(`[StoryGuide] ${t.url} 失败:`, e?.message || e);
+      lastErr = e;
     }
+  }
+
+  // 如果 API 方式都失败，尝试 STscript 方式作为备用
+  console.log('[StoryGuide] API 方式失败，尝试 STscript 方式');
+  try {
+    const safeFileName = quoteSlashValue(fileName);
+    const safeKey = quoteSlashValue('__SG_INIT__');
+    const safeContent = quoteSlashValue(initialContent);
+    const cmd = `/createentry file=${safeFileName} key=${safeKey} ${safeContent}`;
+    await execSlash(cmd);
+    console.log('[StoryGuide] STscript 方式可能成功');
     return true;
   } catch (e) {
-    console.error('[StoryGuide] 创建世界书文件失败:', e);
-    throw e;
+    console.error('[StoryGuide] STscript 方式也失败:', e);
   }
+
+  throw lastErr || new Error('创建世界书文件失败');
 }
 
 // 将绑定的世界书应用到设置
