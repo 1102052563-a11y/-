@@ -926,13 +926,16 @@ function applyBoundWorldInfoToSettings() {
   const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
   const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
 
+  // 绿灯世界书：使用 chatbook 目标（/getchatbook 会自动创建）
   if (greenWI) {
-    s.summaryToWorldInfo = true;  // 启用写入世界书
-    s.summaryWorldInfoTarget = 'file';
-    s.summaryWorldInfoFile = greenWI;
+    s.summaryToWorldInfo = true;
+    s.summaryWorldInfoTarget = 'chatbook';  // 使用 chatbook 而不是 file
+    // summaryWorldInfoFile 不需要设置，因为使用 chatbook
   }
+
+  // 蓝灯世界书：使用 file 目标（需要手动创建文件）
   if (blueWI) {
-    s.summaryToBlueWorldInfo = true;  // 启用写入蓝灯世界书
+    s.summaryToBlueWorldInfo = true;
     s.summaryBlueWorldInfoFile = blueWI;
     s.wiBlueIndexFile = blueWI;
   }
