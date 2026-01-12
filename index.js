@@ -923,26 +923,17 @@ function applyBoundWorldInfoToSettings() {
   const s = ensureSettings();
   if (!s.autoBindWorldInfo) return;
 
-  const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
-  const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
+  console.log('[StoryGuide] 应用自动绑定设置（使用 chatbook 模式）');
 
-  console.log('[StoryGuide] 应用绑定世界书设置:', { greenWI, blueWI });
+  // 绿灯世界书：使用 chatbook 目标（/getchatbook 会自动创建聊天绑定的世界书）
+  s.summaryToWorldInfo = true;
+  s.summaryWorldInfoTarget = 'chatbook';
+  console.log('[StoryGuide] 绿灯设置: chatbook（将使用聊天绑定的世界书）');
 
-  // 绿灯世界书：使用 file 目标
-  if (greenWI) {
-    s.summaryToWorldInfo = true;
-    s.summaryWorldInfoTarget = 'file';
-    s.summaryWorldInfoFile = greenWI;
-    console.log('[StoryGuide] 绿灯设置:', { target: 'file', file: greenWI });
-  }
-
-  // 蓝灯世界书：使用 file 目标
-  if (blueWI) {
-    s.summaryToBlueWorldInfo = true;
-    s.summaryBlueWorldInfoFile = blueWI;
-    s.wiBlueIndexFile = blueWI;
-    console.log('[StoryGuide] 蓝灯设置:', { file: blueWI });
-  }
+  // 蓝灯世界书：暂时禁用（因为无法自动创建独立文件）
+  // 用户如需蓝灯功能，需要手动创建世界书文件并在设置中指定
+  s.summaryToBlueWorldInfo = false;
+  console.log('[StoryGuide] 蓝灯设置: 禁用（无法自动创建独立文件）');
 
   // 更新 UI（如果面板已打开）
   updateAutoBindUI();
@@ -8070,12 +8061,20 @@ function init() {
 
   // 聊天切换时自动绑定世界书
   eventSource.on(event_types.CHAT_CHANGED, async () => {
+    console.log('[StoryGuide] CHAT_CHANGED 事件触发');
+
     const ctx = SillyTavern.getContext();
-    // 确保已经有聊天选中
-    if (!ctx.chat || !Array.isArray(ctx.chat) || ctx.chat.length === 0) {
-      console.log('[StoryGuide] 聊天未加载，跳过自动绑定');
+    const hasChat = ctx.chat && Array.isArray(ctx.chat);
+    const chatLength = hasChat ? ctx.chat.length : 0;
+
+    console.log('[StoryGuide] 聊天状态:', { hasChat, chatLength, chatMetadata: !!ctx.chatMetadata });
+
+    // 放宽检查：只要有 chatMetadata 就尝试运行
+    if (!ctx.chatMetadata) {
+      console.log('[StoryGuide] 没有 chatMetadata，跳过自动绑定');
       return;
     }
+
     try {
       await onChatSwitched();
     } catch (e) {
