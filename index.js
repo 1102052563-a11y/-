@@ -765,48 +765,30 @@ function generateBoundWorldInfoName(type) {
   return `${prefix}_${charName}_${ts}_${type}`;
 }
 
-// 检查并确保当前聊天有绑定的世界书（带用户提示）
+// 检查并确保当前聊天启用了自动绑定（使用 chatbook 模式）
 async function ensureBoundWorldInfo(opts = {}) {
   const s = ensureSettings();
   if (!s.autoBindWorldInfo) return false;
 
-  const existingGreen = getChatMetaValue(META_KEYS.boundGreenWI);
-  const existingBlue = getChatMetaValue(META_KEYS.boundBlueWI);
-  const alreadyCreated = !!getChatMetaValue(META_KEYS.autoBindCreated);
+  const alreadyApplied = !!getChatMetaValue(META_KEYS.autoBindCreated);
 
-  // 如果已经创建过，只需应用设置
-  if (alreadyCreated && existingGreen && existingBlue) {
+  // 如果已经应用过，只需重新应用设置
+  if (alreadyApplied) {
     applyBoundWorldInfoToSettings();
     return false;
   }
 
-  // 生成世界书文件名（不再预创建文件，由总结写入时自动创建）
-  let greenName = existingGreen;
-  let blueName = existingBlue;
-  let created = false;
+  // 首次启用：设置标记并应用
+  await setChatMetaValue(META_KEYS.autoBindCreated, '1');
 
-  if (!greenName) {
-    greenName = generateBoundWorldInfoName('green');
-    await setChatMetaValue(META_KEYS.boundGreenWI, greenName);
-    created = true;
-  }
-  if (!blueName) {
-    blueName = generateBoundWorldInfoName('blue');
-    await setChatMetaValue(META_KEYS.boundBlueWI, blueName);
-    created = true;
-  }
+  // 显示用户提示
+  showToast(`已启用自动写入世界书\n绿灯总结将写入聊天绑定的世界书\n（由 SillyTavern 自动创建和管理）`, {
+    kind: 'ok', spinner: false, sticky: false, duration: 3500
+  });
 
-  if (created) {
-    await setChatMetaValue(META_KEYS.autoBindCreated, '1');
-    // 显示用户提示
-    showToast(`已绑定专属世界书（首次总结时创建）\n📗 ${greenName}\n📘 ${blueName}`, {
-      kind: 'ok', spinner: false, sticky: false, duration: 3500
-    });
-  }
-
-  // 应用到当前设置
+  // 应用设置
   applyBoundWorldInfoToSettings();
-  return created;
+  return true;
 }
 
 // 创建世界书文件（通过多种方法尝试）
