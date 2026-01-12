@@ -784,14 +784,27 @@ async function ensureBoundWorldInfo(opts = {}) {
   let greenName = existingGreen;
   let blueName = existingBlue;
   let created = false;
+  let errors = [];
 
   if (!greenName) {
     greenName = generateBoundWorldInfoName('green');
+    // 实际创建世界书文件
+    try {
+      await createWorldInfoFile(greenName, '绿灯世界书初始化条目');
+    } catch (e) {
+      errors.push(`绿灯创建失败: ${e?.message || e}`);
+    }
     await setChatMetaValue(META_KEYS.boundGreenWI, greenName);
     created = true;
   }
   if (!blueName) {
     blueName = generateBoundWorldInfoName('blue');
+    // 实际创建世界书文件
+    try {
+      await createWorldInfoFile(blueName, '蓝灯世界书初始化条目');
+    } catch (e) {
+      errors.push(`蓝灯创建失败: ${e?.message || e}`);
+    }
     await setChatMetaValue(META_KEYS.boundBlueWI, blueName);
     created = true;
   }
@@ -799,14 +812,38 @@ async function ensureBoundWorldInfo(opts = {}) {
   if (created) {
     await setChatMetaValue(META_KEYS.autoBindCreated, '1');
     // 显示用户提示
-    showToast(`已为本聊天创建专属世界书\n绿灯：${greenName}\n蓝灯：${blueName}`, {
-      kind: 'ok', spinner: false, sticky: false, duration: 3500
-    });
+    if (errors.length) {
+      showToast(`世界书创建有错误:\n${errors.join('\n')}`, {
+        kind: 'warn', spinner: false, sticky: false, duration: 4000
+      });
+    } else {
+      showToast(`已创建专属世界书 ✅\n📗 ${greenName}\n📘 ${blueName}`, {
+        kind: 'ok', spinner: false, sticky: false, duration: 3500
+      });
+    }
   }
 
   // 应用到当前设置
   applyBoundWorldInfoToSettings();
   return created;
+}
+
+// 创建世界书文件（通过创建初始条目来建立文件）
+async function createWorldInfoFile(fileName, initialContent = '初始化条目') {
+  if (!fileName) throw new Error('文件名为空');
+
+  try {
+    const exec = await getSlashExecutor();
+    // 使用 /createentry 命令创建一个初始条目，这会自动创建世界书文件
+    const safeFileName = String(fileName).replace(/"/g, '\\"');
+    const safeContent = String(initialContent).replace(/"/g, '\\"');
+    const cmd = `/createentry file="${safeFileName}" key="__SG_INIT__" ${safeContent}`;
+    await exec(cmd);
+    return true;
+  } catch (e) {
+    console.error('[StoryGuide] 创建世界书文件失败:', e);
+    throw e;
+  }
 }
 
 // 将绑定的世界书应用到设置
