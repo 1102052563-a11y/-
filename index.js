@@ -780,31 +780,18 @@ async function ensureBoundWorldInfo(opts = {}) {
     return false;
   }
 
-  // 创建新的绑定世界书
+  // 生成世界书文件名（不再预创建文件，由总结写入时自动创建）
   let greenName = existingGreen;
   let blueName = existingBlue;
   let created = false;
-  let errors = [];
 
   if (!greenName) {
     greenName = generateBoundWorldInfoName('green');
-    // 实际创建世界书文件
-    try {
-      await createWorldInfoFile(greenName, '绿灯世界书初始化条目');
-    } catch (e) {
-      errors.push(`绿灯创建失败: ${e?.message || e}`);
-    }
     await setChatMetaValue(META_KEYS.boundGreenWI, greenName);
     created = true;
   }
   if (!blueName) {
     blueName = generateBoundWorldInfoName('blue');
-    // 实际创建世界书文件
-    try {
-      await createWorldInfoFile(blueName, '蓝灯世界书初始化条目');
-    } catch (e) {
-      errors.push(`蓝灯创建失败: ${e?.message || e}`);
-    }
     await setChatMetaValue(META_KEYS.boundBlueWI, blueName);
     created = true;
   }
@@ -812,15 +799,9 @@ async function ensureBoundWorldInfo(opts = {}) {
   if (created) {
     await setChatMetaValue(META_KEYS.autoBindCreated, '1');
     // 显示用户提示
-    if (errors.length) {
-      showToast(`世界书创建有错误:\n${errors.join('\n')}`, {
-        kind: 'warn', spinner: false, sticky: false, duration: 4000
-      });
-    } else {
-      showToast(`已创建专属世界书 ✅\n📗 ${greenName}\n📘 ${blueName}`, {
-        kind: 'ok', spinner: false, sticky: false, duration: 3500
-      });
-    }
+    showToast(`已绑定专属世界书（首次总结时创建）\n📗 ${greenName}\n📘 ${blueName}`, {
+      kind: 'ok', spinner: false, sticky: false, duration: 3500
+    });
   }
 
   // 应用到当前设置
@@ -946,10 +927,12 @@ function applyBoundWorldInfoToSettings() {
   const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
 
   if (greenWI) {
+    s.summaryToWorldInfo = true;  // 启用写入世界书
     s.summaryWorldInfoTarget = 'file';
     s.summaryWorldInfoFile = greenWI;
   }
   if (blueWI) {
+    s.summaryToBlueWorldInfo = true;  // 启用写入蓝灯世界书
     s.summaryBlueWorldInfoFile = blueWI;
     s.wiBlueIndexFile = blueWI;
   }
