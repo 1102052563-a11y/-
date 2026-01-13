@@ -7418,6 +7418,7 @@ function setupEventListeners() {
 let floatingPanelVisible = false;
 let lastFloatingContent = null;
 let sgFloatingResizeGuardBound = false;
+let sgFloatingToggleLock = 0;
 
 const SG_FLOATING_BTN_POS_KEY = 'storyguide_floating_btn_pos_v1';
 let sgBtnPos = null;
@@ -7724,6 +7725,9 @@ function createFloatingPanel() {
 }
 
 function toggleFloatingPanel() {
+  const now = Date.now();
+  if (now - sgFloatingToggleLock < 280) return;
+  sgFloatingToggleLock = now;
   if (floatingPanelVisible) {
     hideFloatingPanel();
   } else {
@@ -7824,6 +7828,11 @@ function showFloatingPanel() {
 
     panel.classList.add('visible');
     floatingPanelVisible = true;
+    // Prevent immediate tap-through from closing the panel on mobile.
+    panel.style.pointerEvents = 'none';
+    setTimeout(() => {
+      if (panel.classList.contains('visible')) panel.style.pointerEvents = '';
+    }, 280);
 
     // 如果有缓存内容则显示
     if (lastFloatingContent) {
@@ -7843,6 +7852,7 @@ function hideFloatingPanel() {
   if (panel) {
     panel.classList.remove('visible');
     floatingPanelVisible = false;
+    panel.style.pointerEvents = '';
   }
 }
 
