@@ -7724,6 +7724,9 @@ function ensureFloatingPanelInViewport(panel) {
   try {
     if (!panel || !panel.getBoundingClientRect) return;
 
+    // 移动端竖屏使用 CSS 底部弹出，不需要 JS 定位
+    if (isMobilePortrait()) return;
+
     // Remove viewport size guard to ensure panel is always kept reachable
     // if (!shouldGuardFloatingPanelViewport()) return;
 
@@ -7778,14 +7781,16 @@ function showFloatingPanel() {
     panel.classList.add('visible');
     floatingPanelVisible = true;
 
-    // Force safe positioning on mobile/tablet (<1200px) every time it opens
-    // This ensures it doesn't get stuck in weird places or off-screen
-    if (window.innerWidth < 1200) {
+    // Force safe positioning on mobile/tablet (<1200px) or mobile portrait
+    // This ensures panel uses CSS defaults (bottom sheet style) and doesn't get stuck
+    if (isMobilePortrait() || window.innerWidth < 1200) {
       panel.style.left = '';
       panel.style.top = '';
       panel.style.bottom = ''; // Revert to CSS default (fixed bottom)
       panel.style.right = '';
       panel.style.transform = ''; // Clear strict transform if needed, though CSS handles transition
+      panel.style.maxWidth = ''; // Let CSS handle sizing
+      panel.style.maxHeight = '';
     }
 
     // 如果有缓存内容则显示
