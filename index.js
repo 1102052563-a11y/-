@@ -7779,29 +7779,45 @@ function showFloatingPanel() {
   createFloatingPanel();
   const panel = document.getElementById('sg_floating_panel');
   if (panel) {
-    panel.classList.add('visible');
-    floatingPanelVisible = true;
-
-    // Force safe positioning on mobile/tablet (<1200px) or mobile portrait
-    // This ensures panel uses CSS defaults (bottom sheet style) and doesn't get stuck
-    if (isMobilePortrait() || window.innerWidth < 1200) {
+    // 移动端/平板：强制使用底部弹出样式
+    if (isMobilePortrait()) {
+      // 直接设置底部弹出样式，确保不被其他 CSS 覆盖
+      panel.style.position = 'fixed';
+      panel.style.bottom = '0';
+      panel.style.left = '0';
+      panel.style.right = '0';
+      panel.style.top = 'auto';
+      panel.style.width = '100%';
+      panel.style.maxWidth = '100%';
+      panel.style.maxHeight = '75dvh';
+      panel.style.borderRadius = '16px 16px 0 0';
+      panel.style.resize = 'none';
+      panel.style.transform = 'translateY(0)'; // 显示时在可见位置
+      panel.style.transition = 'transform 0.3s ease, opacity 0.2s ease';
+    } else if (window.innerWidth < 1200) {
+      // 桌面端小窗口：清除可能的内联样式，使用 CSS
       panel.style.left = '';
       panel.style.top = '';
-      panel.style.bottom = ''; // Revert to CSS default (fixed bottom)
+      panel.style.bottom = '';
       panel.style.right = '';
-      panel.style.transform = ''; // Clear strict transform if needed, though CSS handles transition
-      panel.style.maxWidth = ''; // Let CSS handle sizing
+      panel.style.transform = '';
+      panel.style.maxWidth = '';
       panel.style.maxHeight = '';
     }
+
+    panel.classList.add('visible');
+    floatingPanelVisible = true;
 
     // 如果有缓存内容则显示
     if (lastFloatingContent) {
       updateFloatingPanelBody(lastFloatingContent);
     }
 
-    bindFloatingPanelResizeGuard();
-    // Final guard: make sure the panel is actually within the viewport on tiny screens.
-    requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
+    // 非移动端才运行视口检测
+    if (!isMobilePortrait()) {
+      bindFloatingPanelResizeGuard();
+      requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
+    }
   }
 }
 
