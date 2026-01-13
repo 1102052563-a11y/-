@@ -7436,9 +7436,26 @@ function saveBtnPos(left, top) {
   } catch { }
 }
 
+// Sync CSS viewport units for mobile browsers with dynamic bars.
+function updateSgVh() {
+  const root = document.documentElement;
+  if (!root) return;
+  const h = window.visualViewport?.height || window.innerHeight || 0;
+  if (!h) return;
+  root.style.setProperty('--sg-vh', `${h * 0.01}px`);
+}
+
+updateSgVh();
+window.addEventListener('resize', updateSgVh);
+window.addEventListener('orientationchange', updateSgVh);
+window.visualViewport?.addEventListener('resize', updateSgVh);
+
 // 检测移动端/平板竖屏模式（禁用自定义定位，使用 CSS 底部弹出样式）
 // 匹配 CSS 媒体查询: (max-width: 768px), (max-aspect-ratio: 1/1)
 function isMobilePortrait() {
+  if (window.matchMedia) {
+    return window.matchMedia('(max-width: 768px), (max-aspect-ratio: 1/1)').matches;
+  }
   return window.innerWidth <= 768 || (window.innerHeight >= window.innerWidth);
 }
 
@@ -7789,7 +7806,7 @@ function showFloatingPanel() {
       panel.style.top = 'auto';
       panel.style.width = '100%';
       panel.style.maxWidth = '100%';
-      panel.style.maxHeight = '75dvh';
+      panel.style.maxHeight = 'calc(var(--sg-vh, 1vh) * 75)';
       panel.style.borderRadius = '16px 16px 0 0';
       panel.style.resize = 'none';
       panel.style.transform = 'translateY(0)'; // 显示时在可见位置

@@ -1501,7 +1501,7 @@ body.sg-zoom-lock {
     top: auto !important;
     width: 100% !important;
     max-width: 100% !important;
-    max-height: 75dvh !important;
+    max-height: calc(var(--sg-vh, 1vh) * 75) !important;
     min-height: 200px;
     border-radius: 16px 16px 0 0 !important;
     z-index: 2147483641 !important;
@@ -1812,7 +1812,7 @@ body.sg-zoom-lock {
     top: auto !important;
     width: 100% !important;
     max-width: 100% !important;
-    max-height: 75dvh !important;
+    max-height: calc(var(--sg-vh, 1vh) * 75) !important;
     min-height: 200px;
     border-radius: 16px 16px 0 0 !important;
     z-index: 2147483641 !important;
@@ -1853,7 +1853,7 @@ body.sg-zoom-lock {
   /* 面板内容 */
   .sg-floating-body {
     padding: 12px;
-    max-height: calc(80dvh - 60px);
+    max-height: calc(var(--sg-vh, 1vh) * 75 - 60px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -1914,7 +1914,7 @@ body.sg-zoom-lock {
 /* 更小屏幕的额外优化 */
 @media (max-width: 380px) {
   .sg-floating-panel {
-    max-height: 85dvh !important;
+    max-height: calc(var(--sg-vh, 1vh) * 85) !important;
   }
 
   .sg-floating-header {
