@@ -1801,9 +1801,13 @@ body.sg-zoom-lock {
     border-radius: 16px 16px 0 0 !important;
     z-index: 2147483641 !important;
     resize: none !important;
+    /* 初始状态：隐藏在屏幕底部下方 */
+    transform: translateY(100%) !important;
   }
 
   .sg-floating-panel.visible {
+    opacity: 1 !important;
+    visibility: visible !important;
     transform: translateY(0) !important;
   }
 
