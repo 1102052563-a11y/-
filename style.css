@@ -1784,8 +1784,10 @@ body.sg-zoom-lock {
   border-color: rgba(100, 160, 220, 0.4);
 }
 
-/* ===== 手机端竖屏优化 ===== */
-@media (max-width: 500px) and (orientation: portrait) {
+/* ===== 手机端/平板竖屏优化 ===== */
+/* 扩大匹配范围：768px 以下宽度，或窄高比（竖屏） */
+@media (max-width: 768px),
+(max-aspect-ratio: 1/1) {
 
   /* 悬浮面板全屏底部弹出 */
   .sg-floating-panel {
@@ -1796,13 +1798,16 @@ body.sg-zoom-lock {
     top: auto !important;
     width: 100% !important;
     max-width: 100% !important;
-    max-height: 80dvh !important;
+    max-height: 75dvh !important;
     min-height: 200px;
     border-radius: 16px 16px 0 0 !important;
     z-index: 2147483641 !important;
     resize: none !important;
     /* 初始状态：隐藏在屏幕底部下方 */
+    opacity: 0;
+    visibility: hidden;
     transform: translateY(100%) !important;
+    transition: transform 0.3s ease, opacity 0.2s ease, visibility 0.3s ease !important;
   }
 
   .sg-floating-panel.visible {

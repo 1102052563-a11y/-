@@ -7436,9 +7436,10 @@ function saveBtnPos(left, top) {
   } catch { }
 }
 
-// 检测移动端竖屏模式（禁用自定义定位，使用 CSS 底部弹出样式）
+// 检测移动端/平板竖屏模式（禁用自定义定位，使用 CSS 底部弹出样式）
+// 匹配 CSS 媒体查询: (max-width: 768px), (max-aspect-ratio: 1/1)
 function isMobilePortrait() {
-  return window.innerWidth <= 500 && window.matchMedia('(orientation: portrait)').matches;
+  return window.innerWidth <= 768 || (window.innerHeight >= window.innerWidth);
 }
 
 function createFloatingButton() {
