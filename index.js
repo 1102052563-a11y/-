@@ -7802,19 +7802,22 @@ function showFloatingPanel() {
   if (panel) {
     // 移动端/平板：强制使用底部弹出样式
     if (isMobilePortrait()) {
-      // 直接设置底部弹出样式，确保不被其他 CSS 覆盖
       panel.style.position = 'fixed';
+      panel.style.top = '0';
       panel.style.bottom = '0';
       panel.style.left = '0';
       panel.style.right = '0';
-      panel.style.top = 'auto';
       panel.style.width = '100%';
       panel.style.maxWidth = '100%';
-      panel.style.maxHeight = 'calc(var(--sg-vh, 1vh) * 75)';
-      panel.style.borderRadius = '16px 16px 0 0';
+      panel.style.height = 'calc(var(--sg-vh, 1vh) * 100)';
+      panel.style.maxHeight = 'calc(var(--sg-vh, 1vh) * 100)';
+      panel.style.borderRadius = '0';
       panel.style.resize = 'none';
-      panel.style.transform = 'translateY(0)'; // 显示时在可见位置
-      panel.style.transition = 'transform 0.3s ease, opacity 0.2s ease';
+      panel.style.transform = 'none';
+      panel.style.transition = 'none';
+      panel.style.opacity = '1';
+      panel.style.visibility = 'visible';
+      panel.style.display = 'flex';
     } else if (window.innerWidth < 1200) {
       // 桌面端小窗口：清除可能的内联样式，使用 CSS
       panel.style.left = '';
@@ -7824,16 +7827,18 @@ function showFloatingPanel() {
       panel.style.transform = '';
       panel.style.maxWidth = '';
       panel.style.maxHeight = '';
+      panel.style.display = '';
+      panel.style.height = '';
+      panel.style.opacity = '';
+      panel.style.visibility = '';
+      panel.style.transition = '';
+      panel.style.borderRadius = '';
+    } else {
+      panel.style.display = '';
     }
 
     panel.classList.add('visible');
     floatingPanelVisible = true;
-    // Prevent immediate tap-through from closing the panel on mobile.
-    panel.style.pointerEvents = 'none';
-    setTimeout(() => {
-      if (panel.classList.contains('visible')) panel.style.pointerEvents = '';
-    }, 280);
-
     // 如果有缓存内容则显示
     if (lastFloatingContent) {
       updateFloatingPanelBody(lastFloatingContent);
@@ -7852,7 +7857,9 @@ function hideFloatingPanel() {
   if (panel) {
     panel.classList.remove('visible');
     floatingPanelVisible = false;
-    panel.style.pointerEvents = '';
+    if (isMobilePortrait()) {
+      panel.style.display = 'none';
+    }
   }
 }
 
