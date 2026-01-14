@@ -61,12 +61,12 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
   mate: { type: 'chatSheets', version: 1 },
   sheet_main: {
     uid: 'sheet_main',
-    name: 'è®°å½•è¡¨',
+    name: '数据表',
     sourceData: {
-      note: 'è®°å½•å½“å‰å‰§æƒ…ä¸­éœ€è¦é•¿æœŸè·Ÿè¸ªçš„äººç‰©/ç‰©å“/åœ°ç‚¹/äº‹ä»¶ã€‚å¯ä»¥è‡ªå®šä¹‰è¡¨å¤´åˆ—ä¸Žå†…å®¹æ ¼å¼ã€‚'
+      note: '数据表用于记录剧情片段/关系/事件。可新增 sheet_* 作为表名，content[0] 为表头行。'
     },
     content: [
-      [null, 'ç±»åž‹', 'åç§°', 'æè¿°', 'çŠ¶æ€/å¤‡æ³¨']
+      [null, '主角', '时间点', '地点', '事件/动机', '备注']
     ],
     exportConfig: {},
     orderNo: 0
@@ -76,15 +76,14 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
 const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
   {
     role: 'system',
-    content: 'ä½ æ˜¯æ•°æ®è¡¨è®°å½•å‘˜ï¼Œè¯·æ ¹æ®èƒŒæ™¯è®¾å®šå’Œæ­£æ–‡æ•°æ®æ›´æ–°è¡¨æ ¼å†…å®¹ã€‚ä¸è¦æœæ’°ä¸å­˜åœ¨çš„ä¿¡æ¯ã€‚'
+    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：只输出表格 JSON，保持结构与字段名称不变。'
   },
   {
     role: 'user',
-    content: 'ã€èƒŒæ™¯è®¾å®šã€‘\\n{{world}}\\n\\nã€æ­£æ–‡æ•°æ®ã€‘\\n{{chat}}\\n\\nã€å½“å‰è¡¨æ ¼æ•°æ®ã€‘\\n{{table}}\\n\\nè¯·è¾“å‡ºæ›´æ–°åŽçš„è¡¨æ ¼ JSONï¼Œä¿æŒç»“æž„ä¸Žå­—æ®µç­‰ä¿¡æ¯ã€‚'
+    content: '【背景设定】\n{{world}}\n\n【正文数据】\n{{chat}}\n\n【当前表格数据】\n{{table}}\n\n请输出更新后的表格 JSON，保持结构与字段一致。'
   },
 ]);
 
-// ===== 总结提示词默认值（可在面板中自定义） =====
 const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
 
 const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\n\n【对话片段】\n{{chunk}}`;
@@ -6305,63 +6304,63 @@ function buildModalHtml() {
 
           <div class="sg-page" id="sg_page_table">
             <div class="sg-card">
-              <div class="sg-card-title">æ•°æ®è¡¨</div>
+              <div class="sg-card-title">数据表</div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_tableEnabled">å¯ç”¨æ•°æ®è¡¨</label>
-                <label class="sg-check"><input type="checkbox" id="sg_tableUpdateBody">æ›´æ–°è®°å½•æ­£æ–‡é‡Œçš„æ•°æ®</label>
+                <label class="sg-check"><input type="checkbox" id="sg_tableEnabled">启用数据表</label>
+                <label class="sg-check"><input type="checkbox" id="sg_tableUpdateBody">更新记录正文里的数据</label>
                 <select id="sg_tableInjectionStyle">
-                  <option value="hidden">éšè—æ³¨é‡Š</option>
-                  <option value="plain">æ­£æ–‡å¯è§</option>
+                  <option value="hidden">隐藏表格数据</option>
+                  <option value="plain">正文可见</option>
                 </select>
               </div>
-              <div class="sg-hint" id="sg_tableMetaInfo">ï¼ˆå°šæœªä¿å­˜æ•°æ®ï¼‰</div>
+              <div class="sg-hint" id="sg_tableMetaInfo">（尚未保存数据）</div>
             </div>
 
             <div class="sg-card">
-              <div class="sg-card-title">æ•°æ®è¡¨æ¨¡æ¿ï¼ˆJSONï¼‰</div>
-              <div class="sg-hint">ä½¿ç”¨ sheet_* ç»“æž„ï¼Œcontent[0] ä¸ºè¡¨å¤´ï¼Œå¯è‡ªå®šä¹‰å­—æ®µä¸Žé¡ºåºã€‚</div>
+              <div class="sg-card-title">数据表模板（JSON）</div>
+              <div class="sg-hint">支持多个 sheet_* 作为表名，content[0] 为表头行；其余行由你手动维护或模型补全。</div>
               <textarea id="sg_tableTemplateJson" rows="10" spellcheck="false"></textarea>
               <div class="sg-actions-row">
-                <button class="menu_button sg-btn" id="sg_tableValidateTemplate">æ ¡éªŒ</button>
-                <button class="menu_button sg-btn" id="sg_tableResetTemplate">æ¢å¤é»˜è®¤</button>
-                <button class="menu_button sg-btn" id="sg_tableApplyTemplate">åº”ç”¨æ¨¡æ¿</button>
-                <button class="menu_button sg-btn" id="sg_tableGenerateData">ç”Ÿæˆç©ºè¡¨</button>
+                <button class="menu_button sg-btn" id="sg_tableValidateTemplate">校验</button>
+                <button class="menu_button sg-btn" id="sg_tableResetTemplate">恢复默认</button>
+                <button class="menu_button sg-btn" id="sg_tableApplyTemplate">应用模板</button>
+                <button class="menu_button sg-btn" id="sg_tableGenerateData">生成空表</button>
               </div>
             </div>
 
             <div class="sg-card">
-              <div class="sg-card-title">æ•°æ®è¡¨æç¤ºè¯ï¼ˆJSONï¼‰</div>
-              <div class="sg-hint">æ ¼å¼ç¤ºä¾‹ï¼š[{ "role": "system", "content": "..." }, { "role": "user", "content": "..." }]</div>
+              <div class="sg-card-title">数据表提示词（JSON）</div>
+              <div class="sg-hint">格式示例：[{ "role": "system", "content": "..." }, { "role": "user", "content": "..." }]</div>
               <textarea id="sg_tablePromptJson" rows="8" spellcheck="false"></textarea>
               <div class="sg-actions-row">
-                <button class="menu_button sg-btn" id="sg_tableValidatePrompt">æ ¡éªŒ</button>
-                <button class="menu_button sg-btn" id="sg_tableResetPrompt">æ¢å¤é»˜è®¤</button>
-                <button class="menu_button sg-btn" id="sg_tableApplyPrompt">åº”ç”¨æç¤ºè¯</button>
+                <button class="menu_button sg-btn" id="sg_tableValidatePrompt">校验</button>
+                <button class="menu_button sg-btn" id="sg_tableResetPrompt">恢复默认</button>
+                <button class="menu_button sg-btn" id="sg_tableApplyPrompt">应用提示词</button>
               </div>
             </div>
 
             <div class="sg-card">
-              <div class="sg-card-title">å½“å‰è®°å½•æ•°æ®ï¼ˆJSONï¼‰</div>
+              <div class="sg-card-title">当前表格数据（JSON）</div>
               <textarea id="sg_tableDataJson" rows="10" spellcheck="false"></textarea>
               <div class="sg-actions-row">
-                <button class="menu_button sg-btn" id="sg_tableSaveData">ä¿å­˜åˆ°æœ¬èŠå¤©</button>
-                <button class="menu_button sg-btn" id="sg_tableLoadData">ä»Žæ­£æ–‡/å…ƒæ•°æ®è¯»å–</button>
-                <button class="menu_button sg-btn" id="sg_tableSyncBody">å†™å…¥æ­£æ–‡</button>
-                <button class="menu_button sg-btn" id="sg_tableClearData">æ¸…ç©º</button>
+                <button class="menu_button sg-btn" id="sg_tableSaveData">保存到本聊天</button>
+                <button class="menu_button sg-btn" id="sg_tableLoadData">从正文/元数据读取</button>
+                <button class="menu_button sg-btn" id="sg_tableSyncBody">写入正文</button>
+                <button class="menu_button sg-btn" id="sg_tableClearData">清空</button>
               </div>
             </div>
 
             <div class="sg-card">
-              <div class="sg-card-title">é¢„è®¾</div>
+              <div class="sg-card-title">预设</div>
               <div class="sg-row sg-inline">
                 <select id="sg_tablePresetSelect">
-                  <option value="">ï¼ˆé€‰æ‹©é¢„è®¾ï¼‰</option>
+                  <option value="">（选择预设）</option>
                 </select>
-                <button class="menu_button sg-btn" id="sg_tablePresetLoad">åŠ è½½</button>
-                <button class="menu_button sg-btn" id="sg_tablePresetSave">ä¿å­˜</button>
-                <button class="menu_button sg-btn" id="sg_tablePresetDelete">åˆ é™¤</button>
-                <button class="menu_button sg-btn" id="sg_tablePresetImport">å¯¼å…¥</button>
-                <button class="menu_button sg-btn" id="sg_tablePresetExport">å¯¼å‡º</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetLoad">加载</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetSave">保存</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetDelete">删除</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetImport">导入</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetExport">导出</button>
               </div>
             </div>
           </div> <!-- sg_page_table -->
