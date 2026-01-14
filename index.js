@@ -1002,6 +1002,380 @@ function validateDataTableData(obj) {
   return { ok: true, error: '', data: obj };
 }
 
+function isDataTableObject(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  return Object.keys(obj).some(k => k.startsWith('sheet_'));
+}
+
+function normalizeDataTableResponse(parsed) {
+  if (!parsed || typeof parsed !== 'object') return null;
+  if (isDataTableObject(parsed)) return parsed;
+  const candidates = ['data', 'table', 'tableData', 'tableJson', 'dataJson', 'payload', 'result', 'output'];
+  for (const key of candidates) {
+    const v = parsed[key];
+    if (!v) continue;
+    if (typeof v === 'object' && isDataTableObject(v)) return v;
+    if (typeof v === 'string') {
+      const inner = safeJsonParseAny(v) || safeJsonParse(v);
+      if (inner && isDataTableObject(inner)) return inner;
+    }
+  }
+  return null;
+}
+
+function getOrderedSheetKeysFromData(data) {
+  const keys = Object.keys(data || {}).filter(k => k.startsWith('sheet_'));
+  const entries = keys.map((key, idx) => {
+    const orderNo = Number(data?.[key]?.orderNo);
+    return { key, idx, orderNo: Number.isFinite(orderNo) ? orderNo : null };
+  });
+  entries.sort((a, b) => {
+    if (a.orderNo !== null && b.orderNo !== null && a.orderNo !== b.orderNo) return a.orderNo - b.orderNo;
+    if (a.orderNo !== null && b.orderNo === null) return -1;
+    if (a.orderNo === null && b.orderNo !== null) return 1;
+    return a.idx - b.idx;
+  });
+  return entries.map(e => e.key);
+}
+
+function buildDataTableTableText(data) {
+  if (!data || typeof data !== 'object') return '';
+  const keys = getOrderedSheetKeysFromData(data);
+  if (!keys.length) return '';
+  const lines = [];
+  const maxRows = 20;
+
+  keys.forEach((key, tableIndex) => {
+    const sheet = data[key];
+    if (!sheet || typeof sheet !== 'object') return;
+    const name = String(sheet.name || key);
+    lines.push(`[${tableIndex}:${name}]`);
+
+    const header = Array.isArray(sheet.content?.[0]) ? sheet.content[0] : [];
+    const headerLabels = header.slice(1).map((h, i) => `[${i}:${h ?? ''}]`).join(', ');
+    lines.push(`  Columns: ${headerLabels || 'No Headers'}`);
+
+    const source = sheet.sourceData && typeof sheet.sourceData === 'object' ? sheet.sourceData : null;
+    if (source) {
+      if (source.note) lines.push(`  - Note: ${source.note}`);
+      if (source.initNode || source.insertNode) lines.push(`  - Init Trigger: ${source.initNode || source.insertNode}`);
+      if (source.updateNode) lines.push(`  - Update Trigger: ${source.updateNode}`);
+      if (source.deleteNode) lines.push(`  - Delete Trigger: ${source.deleteNode}`);
+    }
+
+    const rows = Array.isArray(sheet.content) ? sheet.content.slice(1) : [];
+    if (!rows.length) {
+      lines.push('  (该表格为空，请进行初始化。)');
+      lines.push('');
+      return;
+    }
+
+    let rowsToShow = rows;
+    let startIndex = 0;
+    if (rows.length > maxRows) {
+      startIndex = rows.length - maxRows;
+      rowsToShow = rows.slice(-maxRows);
+      lines.push(`  - Note: Showing last ${rowsToShow.length} of ${rows.length} rows.`);
+    }
+
+    rowsToShow.forEach((row, idx) => {
+      const originalIndex = startIndex + idx;
+      const rowText = Array.isArray(row) ? row.slice(1).map(v => String(v ?? '')).join(', ') : '';
+      lines.push(`  [${originalIndex}] ${rowText}`);
+    });
+    lines.push('');
+  });
+
+  return lines.join('\n').trim();
+}
+
+function buildDataTableSeedObject() {
+  const info = getDataTableDataForUi();
+  if (info.dataJson) {
+    const parsed = safeJsonParseAny(info.dataJson) || safeJsonParse(info.dataJson);
+    if (parsed && typeof parsed === 'object' && validateDataTableData(parsed).ok) return parsed;
+  }
+  const s = ensureSettings();
+  const raw = String(s.dataTableTemplateJson || DEFAULT_DATA_TABLE_TEMPLATE).trim();
+  const v = validateDataTableTemplate(raw);
+  if (!v.ok) return null;
+  return buildEmptyDataTableData(v.template);
+}
+
+function buildRowFromTableEdit(rowData, headerLen) {
+  if (!Number.isFinite(headerLen) || headerLen <= 0) return null;
+  if (Array.isArray(rowData)) {
+    let row = rowData.slice();
+    if (row.length === headerLen - 1) row.unshift(null);
+    if (row.length > headerLen) row = row.slice(0, headerLen);
+    while (row.length < headerLen) row.push('');
+    row[0] = null;
+    return row;
+  }
+  if (rowData && typeof rowData === 'object') {
+    const row = Array.from({ length: headerLen }, () => '');
+    row[0] = null;
+    let hasValue = false;
+    Object.keys(rowData).forEach((key) => {
+      const idx = Number.parseInt(key, 10);
+      if (!Number.isFinite(idx)) return;
+      const pos = idx + 1;
+      if (pos < 1 || pos >= headerLen) return;
+      row[pos] = rowData[key];
+      hasValue = true;
+    });
+    return hasValue ? row : null;
+  }
+  return null;
+}
+
+function splitTableEditArgs(rawArgs) {
+  const args = [];
+  let buf = '';
+  let inString = false;
+  let quoteChar = '';
+  let escapeNext = false;
+  let depthBrace = 0;
+  let depthBracket = 0;
+  let depthParen = 0;
+
+  const flush = () => {
+    const trimmed = buf.trim();
+    if (trimmed) args.push(trimmed);
+    buf = '';
+  };
+
+  for (let i = 0; i < rawArgs.length; i++) {
+    const ch = rawArgs[i];
+    if (escapeNext) {
+      buf += ch;
+      escapeNext = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === '\\') {
+        buf += ch;
+        escapeNext = true;
+        continue;
+      }
+      if (ch === quoteChar) {
+        inString = false;
+      }
+      buf += ch;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quoteChar = ch;
+      buf += ch;
+      continue;
+    }
+
+    if (ch === '{') depthBrace += 1;
+    else if (ch === '}') depthBrace = Math.max(0, depthBrace - 1);
+    else if (ch === '[') depthBracket += 1;
+    else if (ch === ']') depthBracket = Math.max(0, depthBracket - 1);
+    else if (ch === '(') depthParen += 1;
+    else if (ch === ')') depthParen = Math.max(0, depthParen - 1);
+
+    if (ch === ',' && depthBrace === 0 && depthBracket === 0 && depthParen === 0) {
+      flush();
+      continue;
+    }
+
+    buf += ch;
+  }
+  flush();
+  return args;
+}
+
+function parseTableEditValue(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return null;
+  if (t.startsWith('{') || t.startsWith('[')) {
+    return safeJsonParseAny(t) || safeJsonParse(t) || null;
+  }
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    return t.slice(1, -1);
+  }
+  const n = Number(t);
+  if (Number.isFinite(n)) return n;
+  const parsed = safeJsonParseAny(t) || safeJsonParse(t);
+  if (parsed !== null) return parsed;
+  return t;
+}
+
+function extractTableEditBlock(rawText) {
+  const text = String(rawText || '');
+  if (!text) return { found: false, text: '' };
+  const tagMatch = text.match(/<tableEdit>([\s\S]*?)<\/tableEdit>/i);
+  if (tagMatch) {
+    const inner = tagMatch[1];
+    const commentMatch = inner.match(/<!--([\s\S]*?)-->/);
+    return { found: true, text: String(commentMatch ? commentMatch[1] : inner).trim() };
+  }
+  return { found: false, text };
+}
+
+function parseTableEditCommands(rawText, forceFound = false) {
+  const block = extractTableEditBlock(rawText);
+  const source = block.text || '';
+  const found = forceFound || block.found;
+  if (!source.trim()) return { commands: [], found };
+
+  const ops = ['insertRow', 'updateRow', 'deleteRow'];
+  const commands = [];
+
+  const findNextOp = (start) => {
+    let next = -1;
+    let opName = '';
+    for (const op of ops) {
+      const idx = source.indexOf(op, start);
+      if (idx !== -1 && (next === -1 || idx < next)) {
+        next = idx;
+        opName = op;
+      }
+    }
+    return { next, opName };
+  };
+
+  const findClosingParen = (start) => {
+    let depth = 0;
+    let inString = false;
+    let quoteChar = '';
+    let escapeNext = false;
+    for (let i = start; i < source.length; i++) {
+      const ch = source[i];
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      if (inString) {
+        if (ch === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        if (ch === quoteChar) inString = false;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quoteChar = ch;
+        continue;
+      }
+      if (ch === '(') depth += 1;
+      else if (ch === ')') {
+        depth -= 1;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  };
+
+  let cursor = 0;
+  while (cursor < source.length) {
+    const { next, opName } = findNextOp(cursor);
+    if (next === -1) break;
+    const open = source.indexOf('(', next + opName.length);
+    if (open === -1) {
+      cursor = next + opName.length;
+      continue;
+    }
+    const close = findClosingParen(open);
+    if (close === -1) {
+      cursor = open + 1;
+      continue;
+    }
+    const argsText = source.slice(open + 1, close);
+    const args = splitTableEditArgs(argsText).map(parseTableEditValue);
+    commands.push({ op: opName, args });
+    cursor = close + 1;
+  }
+  return { commands, found };
+}
+
+function getTableEditSource(parsed, fallbackText) {
+  if (parsed && typeof parsed === 'object') {
+    const keys = ['tableEdit', 'table_edit', 'tableEdits', 'table_edits', 'edits', 'commands'];
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(parsed, key)) continue;
+      const val = parsed[key];
+      if (typeof val === 'string') return val;
+      if (Array.isArray(val)) return val.join('\n');
+    }
+  }
+  return fallbackText;
+}
+
+function applyTableEditCommands(baseData, commands) {
+  if (!baseData || typeof baseData !== 'object') return { ok: false, error: '数据表基础数据无效', data: null, applied: 0 };
+  if (!Array.isArray(commands) || !commands.length) return { ok: false, error: '无可执行的 tableEdit 指令', data: null, applied: 0 };
+
+  const data = clone(baseData);
+  const keys = getOrderedSheetKeysFromData(data);
+  let applied = 0;
+
+  commands.forEach((cmd) => {
+    const op = cmd?.op;
+    const args = Array.isArray(cmd?.args) ? cmd.args : [];
+    const tableIndex = Number.parseInt(args[0], 10);
+    if (!Number.isFinite(tableIndex) || tableIndex < 0 || tableIndex >= keys.length) return;
+    const sheet = data[keys[tableIndex]];
+    if (!sheet || !Array.isArray(sheet.content) || !sheet.content.length) return;
+    const headerLen = Array.isArray(sheet.content[0]) ? sheet.content[0].length : 0;
+    if (!headerLen) return;
+
+    if (op === 'insertRow') {
+      let rowIndex = null;
+      let rowData = null;
+      if (args.length >= 3 && Number.isFinite(Number(args[1]))) {
+        rowIndex = Number.parseInt(args[1], 10);
+        rowData = args[2];
+      } else {
+        rowData = args[1];
+      }
+      const newRow = buildRowFromTableEdit(rowData, headerLen);
+      if (!newRow) return;
+      const insertAt = rowIndex !== null && Number.isFinite(rowIndex)
+        ? Math.min(sheet.content.length, Math.max(1, rowIndex + 1))
+        : sheet.content.length;
+      sheet.content.splice(insertAt, 0, newRow);
+      applied += 1;
+      return;
+    }
+
+    if (op === 'deleteRow') {
+      const rowIndex = Number.parseInt(args[1], 10);
+      if (!Number.isFinite(rowIndex)) return;
+      if (rowIndex < 0 || rowIndex + 1 >= sheet.content.length) return;
+      sheet.content.splice(rowIndex + 1, 1);
+      applied += 1;
+      return;
+    }
+
+    if (op === 'updateRow') {
+      const rowIndex = Number.parseInt(args[1], 10);
+      const rowData = args[2];
+      if (!Number.isFinite(rowIndex)) return;
+      if (!rowData || typeof rowData !== 'object') return;
+      if (rowIndex < 0 || rowIndex + 1 >= sheet.content.length) return;
+      const row = sheet.content[rowIndex + 1];
+      if (!Array.isArray(row)) return;
+      Object.keys(rowData).forEach((key) => {
+        const idx = Number.parseInt(key, 10);
+        if (!Number.isFinite(idx)) return;
+        const pos = idx + 1;
+        if (pos < 1 || pos >= headerLen) return;
+        row[pos] = rowData[key];
+      });
+      applied += 1;
+    }
+  });
+
+  return { ok: applied > 0, error: applied ? '' : 'tableEdit 未应用任何修改', data, applied };
+}
+
 function buildDataTableWorldText() {
   const ctx = SillyTavern.getContext();
   let charBlock = '';
@@ -1060,24 +1434,24 @@ function buildDataTableChatText() {
   return picked.length ? picked.join('\n\n') : '（空）';
 }
 
-function buildDataTablePromptMessages(worldText, chatText, tableText) {
+function buildDataTablePromptMessages(worldText, chatText, tableJson, tableText) {
   const s = ensureSettings();
   const raw = String(s.dataTablePromptJson || '').trim();
   const v = validateDataTablePrompt(raw);
   const prompts = v.ok ? v.prompts : DEFAULT_DATA_TABLE_PROMPT_MESSAGES;
-  const vars = { world: worldText, chat: chatText, table: tableText };
+  const vars = {
+    world: worldText,
+    chat: chatText,
+    table: tableJson,
+    tableText: tableText || tableJson,
+  };
   return prompts.map(p => ({ ...p, content: renderTemplate(p.content, vars) }));
 }
 
 function buildDataTableSeedJson() {
-  const info = getDataTableDataForUi();
-  if (info.dataJson) return String(info.dataJson || '').trim();
-  const s = ensureSettings();
-  const raw = String(s.dataTableTemplateJson || DEFAULT_DATA_TABLE_TEMPLATE).trim();
-  const v = validateDataTableTemplate(raw);
-  if (!v.ok) return '';
-  const data = buildEmptyDataTableData(v.template);
-  return JSON.stringify(data, null, 2);
+  const seed = buildDataTableSeedObject();
+  if (!seed) return '';
+  return JSON.stringify(seed, null, 2);
 }
 
 async function runDataTableUpdate() {
@@ -1090,22 +1464,24 @@ async function runDataTableUpdate() {
     if (!apiBase) { setStatus('请先填写“数据表独立API基础URL”', 'warn'); return; }
   }
 
-  const tableText = buildDataTableSeedJson();
-  if (!tableText) { setStatus('数据表模板无效，无法生成初始表', 'err'); return; }
+  const seedData = buildDataTableSeedObject();
+  if (!seedData) { setStatus('数据表模板无效，无法生成初始表', 'err'); return; }
+  const tableJson = JSON.stringify(seedData, null, 2);
+  const tableText = buildDataTableTableText(seedData) || tableJson;
 
   const worldText = buildDataTableWorldText();
   const chatText = buildDataTableChatText();
   if (!chatText || chatText === '（空）') setStatus('正文为空，将按空正文更新', 'warn');
 
-  const messages = buildDataTablePromptMessages(worldText, chatText, tableText);
+  const messages = buildDataTablePromptMessages(worldText, chatText, tableJson, tableText);
   const temperature = clampFloat(s.dataTableTemperature, 0, 2, 0.4);
 
   setStatus('正在读取正文并更新数据表…', 'warn');
 
   try {
-    let jsonText = '';
+    let responseText = '';
     if (provider === 'custom') {
-      jsonText = await callViaCustom(
+      responseText = await callViaCustom(
         s.dataTableCustomEndpoint,
         s.dataTableCustomApiKey,
         s.dataTableCustomModel,
@@ -1115,10 +1491,30 @@ async function runDataTableUpdate() {
         s.dataTableCustomTopP,
         s.dataTableCustomStream
       );
-      const parsedTry = safeJsonParseAny(jsonText);
-      if (!validateDataTableData(parsedTry).ok) {
-        try {
-          jsonText = await fallbackAskJsonCustom(
+    } else {
+      responseText = await callViaSillyTavern(messages, null, temperature);
+      if (typeof responseText !== 'string') responseText = JSON.stringify(responseText ?? '');
+    }
+
+    const parseResponse = (text) => {
+      const parsed = safeJsonParseAny(text);
+      const normalized = normalizeDataTableResponse(parsed) || normalizeDataTableResponse(safeJsonParse(text));
+      if (normalized) return { parsed, tableData: normalized, commands: [], found: false };
+
+      const forceFound = parsed && typeof parsed === 'object'
+        && ['tableEdit', 'table_edit', 'tableEdits', 'table_edits', 'edits', 'commands']
+          .some(key => Object.prototype.hasOwnProperty.call(parsed, key));
+      const source = getTableEditSource(parsed, text);
+      const parsedCommands = parseTableEditCommands(source, forceFound);
+      return { parsed, tableData: null, commands: parsedCommands.commands, found: parsedCommands.found };
+    };
+
+    let parsedResult = parseResponse(responseText);
+
+    if (!parsedResult.tableData && parsedResult.commands.length === 0 && !parsedResult.found) {
+      try {
+        if (provider === 'custom') {
+          responseText = await fallbackAskJsonCustom(
             s.dataTableCustomEndpoint,
             s.dataTableCustomApiKey,
             s.dataTableCustomModel,
@@ -1128,17 +1524,30 @@ async function runDataTableUpdate() {
             s.dataTableCustomTopP,
             s.dataTableCustomStream
           );
-        } catch { /* ignore */ }
-      }
-    } else {
-      jsonText = await callViaSillyTavern(messages, null, temperature);
-      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-      const parsedTry = safeJsonParseAny(jsonText);
-      if (!validateDataTableData(parsedTry).ok) jsonText = await fallbackAskJson(messages, temperature);
+        } else {
+          responseText = await fallbackAskJson(messages, temperature);
+        }
+      } catch { /* ignore */ }
+      if (responseText) parsedResult = parseResponse(responseText);
     }
 
-    const parsed = safeJsonParseAny(jsonText);
-    const check = validateDataTableData(parsed);
+    let finalData = parsedResult.tableData;
+    if (!finalData) {
+      if (parsedResult.found && parsedResult.commands.length === 0) {
+        finalData = clone(seedData);
+      } else if (parsedResult.commands.length > 0) {
+        const applied = applyTableEditCommands(seedData, parsedResult.commands);
+        if (!applied.ok) { setStatus(`数据表更新失败：${applied.error}`, 'err'); return; }
+        finalData = applied.data;
+      }
+    }
+
+    if (!finalData) {
+      setStatus('数据表更新失败：未解析到表格 JSON 或 tableEdit 指令', 'err');
+      return;
+    }
+
+    const check = validateDataTableData(finalData);
     if (!check.ok) { setStatus(`数据表更新失败：${check.error}`, 'err'); return; }
 
     const pretty = JSON.stringify(check.data, null, 2);
@@ -6679,7 +7088,7 @@ function buildModalHtml() {
 
             <div class="sg-card">
               <div class="sg-card-title">数据表提示词（JSON）</div>
-              <div class="sg-hint">格式示例：[{ "role": "system", "content": "..." }, { "role": "user", "content": "..." }]</div>
+              <div class="sg-hint">格式示例：[{ "role": "system", "content": "..." }, { "role": "user", "content": "..." }]；可用变量：{{world}} {{chat}} {{table}} {{tableText}}</div>
               <textarea id="sg_tablePromptJson" rows="8" spellcheck="false"></textarea>
               <div class="sg-actions-row">
                 <button class="menu_button sg-btn" id="sg_tableValidatePrompt">校验</button>
