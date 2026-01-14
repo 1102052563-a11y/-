@@ -11053,7 +11053,7 @@ function init() {
       const tab = $(this).data('tab');
       window.acuState.activeTab = tab;
       window.acuState.pageIndex = 0; // 切换标签重置页码
-      renderAcuApp($container); // 重新渲染（简单起见）
+      renderAcuApp($container, window.acuSettingsRef, window.acuSaveSettingsFn); // 重新渲染（简单起见）
     });
 
     $container.find('#sg_acu_refresh').on('click', async () => {
@@ -11062,7 +11062,7 @@ function init() {
         // 尝试触发一次数据更新（如果需要）
         // 这里只做重绘，如果是从服务器拉取，可能需要 reload
       }
-      renderAcuApp($container);
+      renderAcuApp($container, window.acuSettingsRef, window.acuSaveSettingsFn);
       setStatus('可视化视图已刷新', 'ok');
     });
 
@@ -11073,7 +11073,7 @@ function init() {
       const next = themes[(idx + 1) % themes.length].id;
       saveAcuConfig({ ...getAcuConfig(), theme: next });
       setStatus(`已切换主题: ${next}`, 'info');
-      renderAcuApp($container);
+      renderAcuApp($container, window.acuSettingsRef, window.acuSaveSettingsFn);
     });
 
     // 渲染具体内容
@@ -11104,6 +11104,11 @@ function init() {
 
     // 如果没有数据，使用模板作为数据源（此时是空表）
     if (!data) data = JSON.parse(JSON.stringify(template));
+
+    // 尝试修复乱码
+    if (data && typeof repairObjectMojibake === 'function') {
+      try { data = repairObjectMojibake(data); } catch (e) { console.warn('Repair Mojibake failed', e); }
+    }
 
     return { template, data };
   }
