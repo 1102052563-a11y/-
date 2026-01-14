@@ -399,6 +399,15 @@ const DEFAULT_SETTINGS = Object.freeze({
   dataTablePromptJson: JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2),
   dataTablePresets: [],
   dataTableActivePreset: '',
+  dataTableProvider: 'custom',
+  dataTableTemperature: 0.4,
+  dataTableCustomEndpoint: '',
+  dataTableCustomApiKey: '',
+  dataTableCustomModel: 'gpt-4o-mini',
+  dataTableCustomModelsCache: [],
+  dataTableCustomMaxTokens: 4096,
+  dataTableCustomTopP: 0.95,
+  dataTableCustomStream: false,
 });
 
 const META_KEYS = Object.freeze({
@@ -491,6 +500,9 @@ function ensureSettings() {
     }
     if (!Array.isArray(extensionSettings[MODULE_NAME].dataTablePresets)) {
       extensionSettings[MODULE_NAME].dataTablePresets = [];
+    }
+    if (!Array.isArray(extensionSettings[MODULE_NAME].dataTableCustomModelsCache)) {
+      extensionSettings[MODULE_NAME].dataTableCustomModelsCache = [];
     }
   }
   if (typeof extensionSettings[MODULE_NAME].wiRollSystemPrompt === 'string') {
@@ -972,6 +984,179 @@ function renderDataTablePresetSelect() {
     $select.append(`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`);
   });
   if (s.dataTableActivePreset) $select.val(String(s.dataTableActivePreset));
+}
+
+function validateDataTableData(obj) {
+  if (!obj || typeof obj !== 'object') return { ok: false, error: '数据 JSON 解析失败', data: null };
+  const sheetKeys = Object.keys(obj).filter(k => k.startsWith('sheet_'));
+  if (!sheetKeys.length) return { ok: false, error: '数据中未找到 sheet_* 表', data: null };
+  for (const key of sheetKeys) {
+    const sheet = obj[key];
+    if (!sheet || typeof sheet !== 'object' || !Array.isArray(sheet.content)) {
+      return { ok: false, error: `表 ${key} 的 content 必须为数组`, data: null };
+    }
+    if (!sheet.content.length) {
+      return { ok: false, error: `表 ${key} 的 content 不能为空`, data: null };
+    }
+  }
+  return { ok: true, error: '', data: obj };
+}
+
+function buildDataTableWorldText() {
+  const ctx = SillyTavern.getContext();
+  let charBlock = '';
+  try {
+    if (ctx.characterId !== undefined && ctx.characterId !== null && Array.isArray(ctx.characters)) {
+      const c = ctx.characters[ctx.characterId];
+      if (c) {
+        const name = c.name ?? '';
+        const desc = c.description ?? c.desc ?? '';
+        const personality = c.personality ?? '';
+        const scenario = c.scenario ?? '';
+        const first = c.first_mes ?? c.first_message ?? '';
+        charBlock =
+          `【角色卡】\n` +
+          `- 名称：${stripHtml(name)}\n` +
+          `- 描述：${stripHtml(desc)}\n` +
+          `- 性格：${stripHtml(personality)}\n` +
+          `- 场景/设定：${stripHtml(scenario)}\n` +
+          (first ? `- 开场白：${stripHtml(first)}\n` : '');
+      }
+    }
+  } catch (e) { console.warn('[StoryGuide] data table character read failed:', e); }
+
+  const canon = stripHtml(getChatMetaValue(META_KEYS.canon));
+  const world = stripHtml(getChatMetaValue(META_KEYS.world));
+
+  return [
+    charBlock ? charBlock : '【角色卡】（未获取到/可能是群聊）',
+    world ? `【世界观/设定补充】\n${world}` : '【世界观/设定补充】（未提供）',
+    canon ? `【原著后续/大纲】\n${canon}` : '【原著后续/大纲】（未提供）',
+  ].join('\n\n').trim();
+}
+
+function buildDataTableChatText() {
+  const s = ensureSettings();
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const maxMessages = clampInt(s.maxMessages, 5, 200, DEFAULT_SETTINGS.maxMessages);
+  const maxChars = clampInt(s.maxCharsPerMessage, 200, 8000, DEFAULT_SETTINGS.maxCharsPerMessage);
+
+  const picked = [];
+  for (let i = chat.length - 1; i >= 0 && picked.length < maxMessages; i--) {
+    const m = chat[i];
+    if (!isCountableMessage(m)) continue;
+    const isUser = m.is_user === true;
+    if (isUser && !s.includeUser) continue;
+    if (!isUser && !s.includeAssistant) continue;
+
+    const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
+    let text = stripHtml(m.mes ?? m.message ?? '');
+    if (!text) continue;
+    if (text.length > maxChars) text = text.slice(0, maxChars) + '…(截断)';
+    picked.push(`【${name}】${text}`);
+  }
+  picked.reverse();
+  return picked.length ? picked.join('\n\n') : '（空）';
+}
+
+function buildDataTablePromptMessages(worldText, chatText, tableText) {
+  const s = ensureSettings();
+  const raw = String(s.dataTablePromptJson || '').trim();
+  const v = validateDataTablePrompt(raw);
+  const prompts = v.ok ? v.prompts : DEFAULT_DATA_TABLE_PROMPT_MESSAGES;
+  const vars = { world: worldText, chat: chatText, table: tableText };
+  return prompts.map(p => ({ ...p, content: renderTemplate(p.content, vars) }));
+}
+
+function buildDataTableSeedJson() {
+  const info = getDataTableDataForUi();
+  if (info.dataJson) return String(info.dataJson || '').trim();
+  const s = ensureSettings();
+  const raw = String(s.dataTableTemplateJson || DEFAULT_DATA_TABLE_TEMPLATE).trim();
+  const v = validateDataTableTemplate(raw);
+  if (!v.ok) return '';
+  const data = buildEmptyDataTableData(v.template);
+  return JSON.stringify(data, null, 2);
+}
+
+async function runDataTableUpdate() {
+  const s = ensureSettings();
+  if (!s.dataTableEnabled) { setStatus('数据表未启用', 'warn'); return; }
+
+  const provider = String(s.dataTableProvider || 'custom');
+  if (provider === 'custom') {
+    const apiBase = String(s.dataTableCustomEndpoint || '').trim();
+    if (!apiBase) { setStatus('请先填写“数据表独立API基础URL”', 'warn'); return; }
+  }
+
+  const tableText = buildDataTableSeedJson();
+  if (!tableText) { setStatus('数据表模板无效，无法生成初始表', 'err'); return; }
+
+  const worldText = buildDataTableWorldText();
+  const chatText = buildDataTableChatText();
+  if (!chatText || chatText === '（空）') setStatus('正文为空，将按空正文更新', 'warn');
+
+  const messages = buildDataTablePromptMessages(worldText, chatText, tableText);
+  const temperature = clampFloat(s.dataTableTemperature, 0, 2, 0.4);
+
+  setStatus('正在读取正文并更新数据表…', 'warn');
+
+  try {
+    let jsonText = '';
+    if (provider === 'custom') {
+      jsonText = await callViaCustom(
+        s.dataTableCustomEndpoint,
+        s.dataTableCustomApiKey,
+        s.dataTableCustomModel,
+        messages,
+        temperature,
+        s.dataTableCustomMaxTokens,
+        s.dataTableCustomTopP,
+        s.dataTableCustomStream
+      );
+      const parsedTry = safeJsonParseAny(jsonText);
+      if (!validateDataTableData(parsedTry).ok) {
+        try {
+          jsonText = await fallbackAskJsonCustom(
+            s.dataTableCustomEndpoint,
+            s.dataTableCustomApiKey,
+            s.dataTableCustomModel,
+            messages,
+            temperature,
+            s.dataTableCustomMaxTokens,
+            s.dataTableCustomTopP,
+            s.dataTableCustomStream
+          );
+        } catch { /* ignore */ }
+      }
+    } else {
+      jsonText = await callViaSillyTavern(messages, null, temperature);
+      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+      const parsedTry = safeJsonParseAny(jsonText);
+      if (!validateDataTableData(parsedTry).ok) jsonText = await fallbackAskJson(messages, temperature);
+    }
+
+    const parsed = safeJsonParseAny(jsonText);
+    const check = validateDataTableData(parsed);
+    if (!check.ok) { setStatus(`数据表更新失败：${check.error}`, 'err'); return; }
+
+    const pretty = JSON.stringify(check.data, null, 2);
+    const meta = { dataJson: pretty, updatedAt: Date.now() };
+    await setDataTableMeta(meta);
+    $('#sg_tableDataJson').val(pretty);
+    updateDataTableMetaInfo({ ...meta, source: 'meta' });
+
+    if (s.dataTableUpdateBody) {
+      const res = await syncDataTableToChatBody(pretty, s, false);
+      if (!res.ok) setStatus(`已更新，但写入正文失败：${res.error}`, 'warn');
+      else setStatus('数据表已更新并写入正文 ✅', 'ok');
+    } else {
+      setStatus('数据表已更新 ✅', 'ok');
+    }
+  } catch (e) {
+    setStatus(`数据表更新失败：${e?.message ?? e}`, 'err');
+  }
 }
 
 // ===== 静态模块缓存（只在首次或手动刷新时生成的模块结果）=====
@@ -5126,6 +5311,116 @@ function fillIndexModelSelect(modelIds, selected) {
   });
 }
 
+function fillDataTableModelSelect(modelIds, selected) {
+  const $sel = $('#sg_tableModelSelect');
+  if (!$sel.length) return;
+  $sel.empty();
+  $sel.append(`<option value="">（选择模型）</option>`);
+  (modelIds || []).forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    if (selected && id === selected) opt.selected = true;
+    $sel.append(opt);
+  });
+}
+
+async function refreshDataTableModels() {
+  const s = ensureSettings();
+  const raw = String($('#sg_tableCustomEndpoint').val() || s.dataTableCustomEndpoint || '').trim();
+  const apiBase = normalizeBaseUrl(raw);
+  if (!apiBase) { setStatus('请先填写“数据表独立API基础URL”再刷新模型', 'warn'); return; }
+
+  setStatus('正在刷新“数据表独立API”模型列表…', 'warn');
+
+  const apiKey = String($('#sg_tableCustomApiKey').val() || s.dataTableCustomApiKey || '');
+  const statusUrl = '/api/backends/chat-completions/status';
+
+  const body = {
+    reverse_proxy: apiBase,
+    chat_completion_source: 'custom',
+    custom_url: apiBase,
+    custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : ''
+  };
+
+  try {
+    const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
+    const res = await fetch(statusUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    const data = await res.json().catch(() => ({}));
+
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) {
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      return;
+    }
+
+    s.dataTableCustomModelsCache = ids;
+    saveSettings();
+    fillDataTableModelSelect(ids, s.dataTableCustomModel);
+    setStatus(`已刷新数据表模型：${ids.length} 个（后端代理）`, 'ok');
+    return;
+  } catch (e) {
+    const status = e?.status;
+    if (!(status === 404 || status === 405)) console.warn('[StoryGuide] data table status check failed; fallback to direct /models', e);
+  }
+
+  try {
+    const modelsUrl = (function (base) {
+      const u = normalizeBaseUrl(base);
+      if (!u) return '';
+      if (/\/v1$/.test(u)) return u + '/models';
+      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      return u + '/v1/models';
+    })(apiBase);
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+    const res = await fetch(modelsUrl, { method: 'GET', headers });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+    }
+    const data = await res.json().catch(() => ({}));
+
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+
+    s.dataTableCustomModelsCache = ids;
+    saveSettings();
+    fillDataTableModelSelect(ids, s.dataTableCustomModel);
+    setStatus(`已刷新数据表模型：${ids.length} 个（直连 fallback）`, 'ok');
+  } catch (e) {
+    setStatus(`刷新数据表模型失败：${e?.message ?? e}`, 'err');
+  }
+}
+
 
 async function refreshSummaryModels() {
   const s = ensureSettings();
@@ -6317,6 +6612,60 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card">
+              <div class="sg-card-title">数据表更新</div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn-primary" id="sg_tableUpdateNow">读取正文并更新数据表</button>
+                <div class="sg-hint">读取最近 N 条正文（生成设置里的“最近消息条数/最大字符”）</div>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:8px;">
+                <label>Provider</label>
+                <select id="sg_tableProvider">
+                  <option value="st">使用当前 SillyTavern API</option>
+                  <option value="custom">独立API</option>
+                </select>
+                <label>temperature</label>
+                <input id="sg_tableTemperature" type="number" step="0.05" min="0" max="2">
+              </div>
+            </div>
+
+            <div class="sg-card sg-subcard" id="sg_table_custom_block" style="display:none;">
+              <div class="sg-card-title">独立API</div>
+              <div class="sg-field">
+                <label>API基础URL（例如 https://api.openai.com/v1 ）</label>
+                <input id="sg_tableCustomEndpoint" type="text" placeholder="https://xxx.com/v1">
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>API Key（可选）</label>
+                  <input id="sg_tableCustomApiKey" type="password" placeholder="sk-...">
+                </div>
+                <div class="sg-field">
+                  <label>模型（可手填）</label>
+                  <input id="sg_tableCustomModel" type="text" placeholder="gpt-4o-mini">
+                </div>
+              </div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_tableRefreshModels">检查/刷新模型</button>
+                <select id="sg_tableModelSelect" class="sg-model-select">
+                  <option value="">（选择模型）</option>
+                </select>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>最大回复token数</label>
+                  <input id="sg_tableCustomMaxTokens" type="number" min="128" max="200000" step="1" placeholder="例如：4096">
+                </div>
+                <div class="sg-field">
+                  <label>top_p</label>
+                  <input id="sg_tableCustomTopP" type="number" min="0" max="1" step="0.05" placeholder="0.95">
+                </div>
+              </div>
+              <label class="sg-check" style="margin-top:6px;">
+                <input type="checkbox" id="sg_tableCustomStream"> 使用流式返回（stream=true）
+              </label>
+            </div>
+
+            <div class="sg-card">
               <div class="sg-card-title">数据表模板（JSON）</div>
               <div class="sg-hint">支持多个 sheet_* 作为表名，content[0] 为表头行；其余行由你手动维护或模型补全。</div>
               <textarea id="sg_tableTemplateJson" rows="10" spellcheck="false"></textarea>
@@ -6584,6 +6933,13 @@ function ensureModal() {
     pullUiToSettings(); saveSettings();
   });
 
+  // data table provider toggle
+  $('#sg_tableProvider').on('change', () => {
+    const p = String($('#sg_tableProvider').val() || 'custom');
+    $('#sg_table_custom_block').toggle(p === 'custom');
+    pullUiToSettings(); saveSettings();
+  });
+
   // roll provider toggle
   $('#sg_wiRollProvider').on('change', () => {
     const p = String($('#sg_wiRollProvider').val() || 'custom');
@@ -6695,7 +7051,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_tableEnabled, #sg_tableUpdateBody, #sg_tableInjectionStyle').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_tableEnabled, #sg_tableUpdateBody, #sg_tableInjectionStyle, #sg_tableProvider, #sg_tableTemperature, #sg_tableCustomEndpoint, #sg_tableCustomApiKey, #sg_tableCustomModel, #sg_tableCustomMaxTokens, #sg_tableCustomTopP, #sg_tableCustomStream').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -6814,6 +7170,21 @@ function ensureModal() {
 
 
   // data table actions
+  $('#sg_tableUpdateNow').on('click', async () => {
+    pullUiToSettings();
+    saveSettings();
+    await runDataTableUpdate();
+  });
+
+  $('#sg_tableRefreshModels').on('click', async () => {
+    await refreshDataTableModels();
+  });
+
+  $('#sg_tableModelSelect').on('change', () => {
+    const id = String($('#sg_tableModelSelect').val() || '').trim();
+    if (id) $('#sg_tableCustomModel').val(id);
+  });
+
   $('#sg_tableValidateTemplate').on('click', () => {
     const txt = String($('#sg_tableTemplateJson').val() || '').trim();
     const v = validateDataTableTemplate(txt);
@@ -7375,6 +7746,16 @@ function pullSettingsToUi() {
   $('#sg_tableDataJson').val(String(tableInfo.dataJson || ''));
   updateDataTableMetaInfo(tableInfo);
   renderDataTablePresetSelect();
+  $('#sg_tableProvider').val(String(s.dataTableProvider || 'custom'));
+  $('#sg_tableTemperature').val(s.dataTableTemperature ?? 0.4);
+  $('#sg_tableCustomEndpoint').val(String(s.dataTableCustomEndpoint || ''));
+  $('#sg_tableCustomApiKey').val(String(s.dataTableCustomApiKey || ''));
+  $('#sg_tableCustomModel').val(String(s.dataTableCustomModel || ''));
+  fillDataTableModelSelect(Array.isArray(s.dataTableCustomModelsCache) ? s.dataTableCustomModelsCache : [], String(s.dataTableCustomModel || ''));
+  $('#sg_tableCustomMaxTokens').val(s.dataTableCustomMaxTokens ?? 4096);
+  $('#sg_tableCustomTopP').val(s.dataTableCustomTopP ?? 0.95);
+  $('#sg_tableCustomStream').prop('checked', !!s.dataTableCustomStream);
+  $('#sg_table_custom_block').toggle(String(s.dataTableProvider || 'custom') === 'custom');
 
   $('#sg_presetIncludeApiKey').prop('checked', !!s.presetIncludeApiKey);
 
@@ -7819,6 +8200,14 @@ function pullUiToSettings() {
   s.dataTableTemplateJson = String($('#sg_tableTemplateJson').val() || '').trim() || DEFAULT_DATA_TABLE_TEMPLATE;
   s.dataTablePromptJson = String($('#sg_tablePromptJson').val() || '').trim() || JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
   s.dataTableActivePreset = String($('#sg_tablePresetSelect').val() || s.dataTableActivePreset || '');
+  s.dataTableProvider = String($('#sg_tableProvider').val() || 'custom');
+  s.dataTableTemperature = clampFloat($('#sg_tableTemperature').val(), 0, 2, s.dataTableTemperature ?? 0.4);
+  s.dataTableCustomEndpoint = String($('#sg_tableCustomEndpoint').val() || '').trim();
+  s.dataTableCustomApiKey = String($('#sg_tableCustomApiKey').val() || '');
+  s.dataTableCustomModel = String($('#sg_tableCustomModel').val() || '').trim() || 'gpt-4o-mini';
+  s.dataTableCustomMaxTokens = clampInt($('#sg_tableCustomMaxTokens').val(), 128, 200000, s.dataTableCustomMaxTokens || 4096);
+  s.dataTableCustomTopP = clampFloat($('#sg_tableCustomTopP').val(), 0, 1, s.dataTableCustomTopP ?? 0.95);
+  s.dataTableCustomStream = $('#sg_tableCustomStream').is(':checked');
 
   s.presetIncludeApiKey = $('#sg_presetIncludeApiKey').is(':checked');
 
