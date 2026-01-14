@@ -10777,32 +10777,33 @@ function init() {
         console.error('[StoryGuide] AutoCardUpdaterAPI import error:', e);
         return false;
       }
-    },
-    manualUpdate: async () => {
-      // 触发一次分析/更新
-      console.log('[StoryGuide] AutoCardUpdaterAPI manualUpdate triggered');
-      if (typeof runAnalysis === 'function') {
-        try {
-          await runAnalysis();
-          return true;
-        } catch (e) {
-          console.error('[StoryGuide] runAnalysis failed:', e);
-          return false;
-        }
-      }
-      return false;
-    },
-    openVisualizer: () => {
-      // 打开原生编辑器 (这里映射为打开设置面板)
-      console.log('[StoryGuide] AutoCardUpdaterAPI openVisualizer triggered');
-      if (typeof openModal === 'function') {
-        openModal();
-      }
     }
   };
 
   // 挂载到各个可能的全局对象上，确保脚本能访问
   window.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl;
+
+  // Keep-alive loop
+  const exposeAPI = () => {
+    try {
+      if (window.AutoCardUpdaterAPI !== AutoCardUpdaterAPI_Impl) {
+        window.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl;
+        console.log('[StoryGuide] AutoCardUpdaterAPI re-exposed to window');
+      }
+    } catch (e) { }
+    try {
+      if (window.parent && window.parent.AutoCardUpdaterAPI !== AutoCardUpdaterAPI_Impl) {
+        window.parent.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl;
+      }
+    } catch (e) { }
+    try {
+      if (window.top && window.top.AutoCardUpdaterAPI !== AutoCardUpdaterAPI_Impl) {
+        window.top.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl;
+      }
+    } catch (e) { }
+  };
+  exposeAPI();
+  setInterval(exposeAPI, 1000);
   try { if (window.parent) window.parent.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl; } catch (e) { }
   try { if (window.top) window.top.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl; } catch (e) { }
   // 备用：挂载到 jQuery 对象上（如果可视化脚本有访问 jQuery）- 暂不使用
