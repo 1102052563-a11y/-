@@ -903,6 +903,70 @@ function buildEmptyDataTableData(templateObj) {
   return out;
 }
 
+// 从数据对象中获取排序后的sheet键名列表
+function getOrderedSheetKeysFromData(data) {
+  if (!data || typeof data !== 'object') return [];
+  const keys = Object.keys(data).filter(k => k.startsWith('sheet_'));
+  const entries = keys.map((key, idx) => {
+    const orderNo = Number(data[key]?.orderNo);
+    return { key, idx, orderNo: Number.isFinite(orderNo) ? orderNo : null };
+  });
+  entries.sort((a, b) => {
+    if (a.orderNo !== null && b.orderNo !== null && a.orderNo !== b.orderNo) return a.orderNo - b.orderNo;
+    if (a.orderNo !== null && b.orderNo === null) return -1;
+    if (a.orderNo === null && b.orderNo !== null) return 1;
+    return a.idx - b.idx;
+  });
+  return entries.map(e => e.key);
+}
+
+// 规范化预设对象格式
+function normalizeDataTablePreset(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = String(raw.name || '').trim();
+  if (!name) return null;
+
+  // 尝试从不同的字段名中获取模板和提示词
+  let templateJson = raw.templateJson || raw.template || raw.data_table_template || '';
+  let promptJson = raw.promptJson || raw.prompt || raw.prompts || raw.data_table_prompt || '';
+
+  // 如果是对象，则转换为字符串
+  if (templateJson && typeof templateJson === 'object') {
+    templateJson = JSON.stringify(templateJson, null, 2);
+  }
+  if (promptJson && typeof promptJson === 'object') {
+    promptJson = JSON.stringify(promptJson, null, 2);
+  }
+
+  templateJson = String(templateJson || '').trim();
+  promptJson = String(promptJson || '').trim();
+
+  // 至少需要一个有效内容
+  if (!templateJson && !promptJson) return null;
+
+  return { name, templateJson, promptJson };
+}
+
+// 渲染预设下拉列表
+function renderDataTablePresetSelect() {
+  const $select = $('#sg_tablePresetSelect');
+  if (!$select.length) return;
+
+  const s = ensureSettings();
+  const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
+  const active = String(s.dataTableActivePreset || '');
+
+  let html = '<option value="">(选择预设)</option>';
+  presets.forEach((p) => {
+    if (!p || !p.name) return;
+    const name = escapeHtml(String(p.name));
+    const selected = p.name === active ? ' selected' : '';
+    html += `<option value="${name}"${selected}>${name}</option>`;
+  });
+
+  $select.html(html);
+}
+
 function stripDataTableInjection(text, tag = DATA_TABLE_TAG) {
   const t = String(text || '');
   const et = escapeRegExp(tag);
@@ -9189,6 +9253,9 @@ function pullSettingsToUi() {
   renderSummaryPaneFromMeta();
   renderWiTriggerLogs();
   renderRollLogs();
+
+  // 渲染数据表预设下拉列表
+  renderDataTablePresetSelect();
 
   updateButtonsEnabled();
 }
