@@ -10484,19 +10484,31 @@ function showFloatingRollLogs() {
 }
 
 
+
 function showFloatingDataTable() {
   const $body = $('#sg_floating_body');
   if (!$body.length) return;
 
-  const s = ensureSettings();
-  if (!s.dataTableEnabled) {
-    $body.html('<div class="sg-floating-loading">数据表模块未启用<br><small>请在设置中启用数据表功能</small></div>');
-    return;
-  }
+  try {
+    const s = ensureSettings();
+    if (!s.dataTableEnabled) {
+      $body.html('<div class="sg-floating-loading">数据表模块未启用<br><small>请在设置中启用数据表功能</small></div>');
+      return;
+    }
 
-  // 使用 ACU 可视化UI渲染
-  renderAcuApp($body);
+    // 调试：确保函数存在
+    if (typeof renderAcuApp !== 'function') {
+      throw new Error('renderAcuApp is not defined. Please reload the plugin.');
+    }
+
+    // 使用 ACU 可视化UI渲染
+    renderAcuApp($body);
+  } catch (e) {
+    console.error(e);
+    $body.html(`<div class="sg-floating-loading" style="color:red">渲染错误:<br>${e.message}<br><small>${e.stack}</small></div>`);
+  }
 }
+
 
 function showFloatingDataTable_Legacy() {
   const $body = $('#sg_floating_body');
