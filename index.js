@@ -10497,12 +10497,12 @@ function showFloatingDataTable() {
     }
 
     // 调试：确保函数存在
-    if (typeof renderAcuApp !== 'function') {
+    if (typeof window.renderAcuApp !== 'function') {
       throw new Error('renderAcuApp is not defined. Please reload the plugin.');
     }
 
     // 使用 ACU 可视化UI渲染
-    renderAcuApp($body);
+    window.renderAcuApp($body);
   } catch (e) {
     console.error(e);
     $body.html(`<div class="sg-floating-loading" style="color:red">渲染错误:<br>${e.message}<br><small>${e.stack}</small></div>`);
@@ -11063,6 +11063,7 @@ function init() {
     // 渲染具体内容
     renderAcuContent($container.find('#sg_acu_content'), sheets);
   }
+  window.renderAcuApp = renderAcuApp;
 
   /**
    * 获取并解析数据
