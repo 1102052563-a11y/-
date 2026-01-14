@@ -578,6 +578,52 @@ function safeJsonParseAny(maybeJson) {
   try { return JSON.parse(t); } catch { return null; }
 }
 
+// 修复乱码（Mojibake）：UTF-8 文本被错误解释为 Latin-1/Windows-1252 后再编码成 UTF-8
+function repairMojibake(text) {
+  if (!text || typeof text !== 'string') return text || '';
+  // 检测是否包含典型的 Mojibake 特征（UTF-8 中文被当作 Latin-1 解释后的特征字符）
+  // 常见特征：0xC3, 0xC2, 0xE2, 0xC5 开头的组合
+  const mojibakePattern = /[\xC0-\xDF][\x80-\xBF]|[\xE0-\xEF][\x80-\xBF]{2}/;
+  if (!mojibakePattern.test(text)) return text;
+
+  try {
+    // 尝试将文本作为 Latin-1 字节序列转换回 UTF-8
+    const bytes = new Uint8Array(text.split('').map(c => c.charCodeAt(0) & 0xFF));
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    // 验证解码后的文本是否包含有效的中文字符
+    if (/[\u4e00-\u9fff]/.test(decoded)) {
+      return decoded;
+    }
+  } catch {
+    // 解码失败，返回原文本
+  }
+  return text;
+}
+
+// 深度修复对象中的所有字符串乱码
+function repairObjectMojibake(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => {
+      if (typeof item === 'string') return repairMojibake(item);
+      if (item && typeof item === 'object') return repairObjectMojibake(item);
+      return item;
+    });
+  }
+  const result = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (typeof val === 'string') {
+      result[key] = repairMojibake(val);
+    } else if (val && typeof val === 'object') {
+      result[key] = repairObjectMojibake(val);
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
 // ===== 快捷选项功能 =====
 
 function getQuickOptions() {
@@ -1766,8 +1812,9 @@ function loadTableEditorState() {
     : buildEmptyDataTableData(templateBase);
 
   const merged = normalizeTableEditorPair(dataBase, templateBase);
-  tableEditorState.data = merged.data;
-  tableEditorState.template = merged.template;
+  // 修复可能的乱码（Mojibake）
+  tableEditorState.data = repairObjectMojibake(merged.data);
+  tableEditorState.template = repairObjectMojibake(merged.template);
   const keys = getTableEditorSheetKeys();
   tableEditorState.activeKey = keys[0] || '';
   tableEditorState.dirtyData = false;
