@@ -1179,7 +1179,7 @@ function splitTableEditArgs(rawArgs) {
     else if (ch === '(') depthParen += 1;
     else if (ch === ')') depthParen = Math.max(0, depthParen - 1);
 
-    if (ch === ',' && depthBrace === 0 && depthBracket === 0 && depthParen === 0) {
+    if ((ch === ',' || ch === '，') && depthBrace === 0 && depthBracket === 0 && depthParen === 0) {
       flush();
       continue;
     }
@@ -1209,9 +1209,9 @@ function parseTableEditValue(raw) {
 function extractTableEditBlock(rawText) {
   const text = String(rawText || '');
   if (!text) return { found: false, text: '' };
-  const tagMatch = text.match(/<tableEdit>([\s\S]*?)<\/tableEdit>/i);
+  const tagMatch = text.match(/<(tableEdit|table_edit|tableedit)>([\s\S]*?)<\/(tableEdit|table_edit|tableedit)>/i);
   if (tagMatch) {
-    const inner = tagMatch[1];
+    const inner = tagMatch[2];
     const commentMatch = inner.match(/<!--([\s\S]*?)-->/);
     return { found: true, text: String(commentMatch ? commentMatch[1] : inner).trim() };
   }
@@ -1224,20 +1224,29 @@ function parseTableEditCommands(rawText, forceFound = false) {
   const found = forceFound || block.found;
   if (!source.trim()) return { commands: [], found };
 
-  const ops = ['insertRow', 'updateRow', 'deleteRow'];
+  const opAliases = [
+    { op: 'insertRow', aliases: ['insertrow', 'insert_row', 'insert-row'] },
+    { op: 'updateRow', aliases: ['updaterow', 'update_row', 'update-row'] },
+    { op: 'deleteRow', aliases: ['deleterow', 'delete_row', 'delete-row'] },
+  ];
   const commands = [];
+  const sourceLower = source.toLowerCase();
 
   const findNextOp = (start) => {
     let next = -1;
     let opName = '';
-    for (const op of ops) {
-      const idx = source.indexOf(op, start);
-      if (idx !== -1 && (next === -1 || idx < next)) {
-        next = idx;
-        opName = op;
+    let matchLen = 0;
+    for (const entry of opAliases) {
+      for (const alias of entry.aliases) {
+        const idx = sourceLower.indexOf(alias, start);
+        if (idx !== -1 && (next === -1 || idx < next)) {
+          next = idx;
+          opName = entry.op;
+          matchLen = alias.length;
+        }
       }
     }
-    return { next, opName };
+    return { next, opName, matchLen };
   };
 
   const findClosingParen = (start) => {
@@ -1264,8 +1273,8 @@ function parseTableEditCommands(rawText, forceFound = false) {
         quoteChar = ch;
         continue;
       }
-      if (ch === '(') depth += 1;
-      else if (ch === ')') {
+      if (ch === '(' || ch === '（') depth += 1;
+      else if (ch === ')' || ch === '）') {
         depth -= 1;
         if (depth === 0) return i;
       }
@@ -1275,11 +1284,16 @@ function parseTableEditCommands(rawText, forceFound = false) {
 
   let cursor = 0;
   while (cursor < source.length) {
-    const { next, opName } = findNextOp(cursor);
+    const { next, opName, matchLen } = findNextOp(cursor);
     if (next === -1) break;
-    const open = source.indexOf('(', next + opName.length);
+    const afterOp = next + (matchLen || opName.length);
+    const openAscii = source.indexOf('(', afterOp);
+    const openFull = source.indexOf('（', afterOp);
+    let open = -1;
+    if (openAscii !== -1 && openFull !== -1) open = Math.min(openAscii, openFull);
+    else open = (openAscii !== -1 ? openAscii : openFull);
     if (open === -1) {
-      cursor = next + opName.length;
+      cursor = afterOp;
       continue;
     }
     const close = findClosingParen(open);
@@ -1306,6 +1320,28 @@ function getTableEditSource(parsed, fallbackText) {
     }
   }
   return fallbackText;
+}
+
+function extractTextFromCompletionPayload(parsed) {
+  if (!parsed || typeof parsed !== 'object') return '';
+  if (typeof parsed.content === 'string') return parsed.content;
+  if (typeof parsed?.message?.content === 'string') return parsed.message.content;
+  if (Array.isArray(parsed?.choices)) {
+    const c0 = parsed.choices[0];
+    if (typeof c0?.message?.content === 'string') return c0.message.content;
+    if (typeof c0?.text === 'string') return c0.text;
+  }
+  if (typeof parsed?.data?.content === 'string') return parsed.data.content;
+  return '';
+}
+
+function extractErrorFromCompletionPayload(parsed) {
+  if (!parsed || typeof parsed !== 'object') return '';
+  const err = parsed.error || parsed.err || parsed?.data?.error;
+  if (!err) return '';
+  if (typeof err === 'string') return err;
+  if (typeof err?.message === 'string') return err.message;
+  return '';
 }
 
 function applyTableEditCommands(baseData, commands) {
@@ -1499,14 +1535,31 @@ async function runDataTableUpdate() {
     const parseResponse = (text) => {
       const parsed = safeJsonParseAny(text);
       const normalized = normalizeDataTableResponse(parsed) || normalizeDataTableResponse(safeJsonParse(text));
-      if (normalized) return { parsed, tableData: normalized, commands: [], found: false };
+      if (normalized) return { parsed, tableData: normalized, commands: [], found: false, errorMessage: '' };
+
+      const altText = extractTextFromCompletionPayload(parsed);
+      if (altText && altText !== text) {
+        const altParsed = safeJsonParseAny(altText);
+        const altNormalized = normalizeDataTableResponse(altParsed) || normalizeDataTableResponse(safeJsonParse(altText));
+        if (altNormalized) return { parsed: altParsed ?? parsed, tableData: altNormalized, commands: [], found: false, errorMessage: '' };
+
+        const altForceFound = altParsed && typeof altParsed === 'object'
+          && ['tableEdit', 'table_edit', 'tableEdits', 'table_edits', 'edits', 'commands']
+            .some(key => Object.prototype.hasOwnProperty.call(altParsed, key));
+        const altSource = getTableEditSource(altParsed, altText);
+        const altCommands = parseTableEditCommands(altSource, altForceFound);
+        if (altCommands.commands.length || altCommands.found) {
+          return { parsed: altParsed ?? parsed, tableData: null, commands: altCommands.commands, found: altCommands.found, errorMessage: '' };
+        }
+      }
 
       const forceFound = parsed && typeof parsed === 'object'
         && ['tableEdit', 'table_edit', 'tableEdits', 'table_edits', 'edits', 'commands']
           .some(key => Object.prototype.hasOwnProperty.call(parsed, key));
       const source = getTableEditSource(parsed, text);
       const parsedCommands = parseTableEditCommands(source, forceFound);
-      return { parsed, tableData: null, commands: parsedCommands.commands, found: parsedCommands.found };
+      const errorMessage = extractErrorFromCompletionPayload(parsed);
+      return { parsed, tableData: null, commands: parsedCommands.commands, found: parsedCommands.found, errorMessage };
     };
 
     let parsedResult = parseResponse(responseText);
@@ -1543,7 +1596,12 @@ async function runDataTableUpdate() {
     }
 
     if (!finalData) {
-      setStatus('数据表更新失败：未解析到表格 JSON 或 tableEdit 指令', 'err');
+      if (parsedResult.errorMessage) {
+        setStatus(`数据表更新失败：${parsedResult.errorMessage}`, 'err');
+      } else {
+        console.warn('[StoryGuide] data table update response:', responseText);
+        setStatus('数据表更新失败：未解析到表格 JSON 或 tableEdit 指令', 'err');
+      }
       return;
     }
 
