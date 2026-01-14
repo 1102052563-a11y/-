@@ -10738,12 +10738,20 @@ function init() {
   });
 
   // ===== 可视化表格脚本 API =====
-  window.AutoCardUpdaterAPI = {
+  const AutoCardUpdaterAPI_Impl = {
     exportTableAsJson: () => {
-      const meta = getChatMetaValue(META_KEYS.dataTableMeta);
+      // 确保能获取到 meta
+      let meta = null;
+      try {
+        meta = getChatMetaValue(META_KEYS.dataTableMeta);
+      } catch (e) {
+        console.warn('[StoryGuide] exportTableAsJson: getChatMetaValue failed', e);
+      }
+
       if (!meta) {
         // 返回默认模板对象
         try {
+          // 这里的 DEFAULT_DATA_TABLE_TEMPLATE 是字符串，需要 parse
           return JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
         } catch (e) {
           console.error('[StoryGuide] AutoCardUpdaterAPI export default error:', e);
@@ -10755,7 +10763,7 @@ function init() {
         return JSON.parse(meta);
       } catch (e) {
         console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
-        return null;
+        return null; // 或者返回默认值？
       }
     },
     importTableAsJson: async (jsonString) => {
@@ -10771,6 +10779,14 @@ function init() {
       }
     }
   };
+
+  // 挂载到各个可能的全局对象上，确保脚本能访问
+  window.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl;
+  try { if (window.parent) window.parent.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl; } catch (e) { }
+  try { if (window.top) window.top.AutoCardUpdaterAPI = AutoCardUpdaterAPI_Impl; } catch (e) { }
+  // 备用：挂载到 jQuery 对象上（如果可视化脚本有访问 jQuery）- 暂不使用
+
+  console.log('[StoryGuide] AutoCardUpdaterAPI initialized and exposed.');
 
   globalThis.StoryGuide = {
     open: openModal,
