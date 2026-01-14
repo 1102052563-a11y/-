@@ -10777,6 +10777,27 @@ function init() {
         console.error('[StoryGuide] AutoCardUpdaterAPI import error:', e);
         return false;
       }
+    },
+    manualUpdate: async () => {
+      // 触发一次分析/更新
+      console.log('[StoryGuide] AutoCardUpdaterAPI manualUpdate triggered');
+      if (typeof runAnalysis === 'function') {
+        try {
+          await runAnalysis();
+          return true;
+        } catch (e) {
+          console.error('[StoryGuide] runAnalysis failed:', e);
+          return false;
+        }
+      }
+      return false;
+    },
+    openVisualizer: () => {
+      // 打开原生编辑器 (这里映射为打开设置面板)
+      console.log('[StoryGuide] AutoCardUpdaterAPI openVisualizer triggered');
+      if (typeof openModal === 'function') {
+        openModal();
+      }
     }
   };
 
