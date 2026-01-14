@@ -1626,6 +1626,640 @@ async function runDataTableUpdate() {
   }
 }
 
+// ===== 数据表可视化编辑器 =====
+const TABLE_EDITOR_DEFAULT_COL = '列1';
+const TABLE_EDITOR_DEFAULT_NAME = '新表';
+
+const tableEditorState = {
+  open: false,
+  mode: 'data', // data | template
+  syncToTemplate: true,
+  syncToData: true,
+  data: null,
+  template: null,
+  activeKey: '',
+  dirtyData: false,
+  dirtyTemplate: false,
+};
+
+function normalizeTableEditorContent(content) {
+  const rows = Array.isArray(content) ? content : [];
+  let header = Array.isArray(rows[0]) ? rows[0].slice() : [null, TABLE_EDITOR_DEFAULT_COL];
+  if (header.length < 2) header = [null, TABLE_EDITOR_DEFAULT_COL];
+  header[0] = null;
+  const headerLen = header.length;
+  const out = [header];
+
+  for (let i = 1; i < rows.length; i++) {
+    const rowRaw = Array.isArray(rows[i]) ? rows[i].slice() : [];
+    let row = rowRaw;
+    if (row.length === headerLen - 1) row.unshift(null);
+    if (!row.length) row = [null];
+    while (row.length < headerLen) row.push('');
+    if (row.length > headerLen) row = row.slice(0, headerLen);
+    row[0] = null;
+    out.push(row);
+  }
+  return out;
+}
+
+function ensureTableEditorSheet(sheet, key, orderNo) {
+  const out = sheet && typeof sheet === 'object' ? sheet : {};
+  out.uid = out.uid || key;
+  out.name = out.name || TABLE_EDITOR_DEFAULT_NAME;
+  if (!out.sourceData || typeof out.sourceData !== 'object') out.sourceData = {};
+  if (!out.exportConfig || typeof out.exportConfig !== 'object') out.exportConfig = {};
+  if (!Number.isFinite(Number(out.orderNo))) out.orderNo = orderNo;
+  out.content = normalizeTableEditorContent(out.content);
+  return out;
+}
+
+function buildHeaderOnlySheet(source, key, orderNo) {
+  const base = source && typeof source === 'object' ? clone(source) : {};
+  base.uid = base.uid || key;
+  base.name = base.name || TABLE_EDITOR_DEFAULT_NAME;
+  if (!base.sourceData || typeof base.sourceData !== 'object') base.sourceData = {};
+  if (!base.exportConfig || typeof base.exportConfig !== 'object') base.exportConfig = {};
+  const normalized = normalizeTableEditorContent(base.content);
+  base.content = [normalized[0]];
+  base.orderNo = Number.isFinite(Number(base.orderNo)) ? Number(base.orderNo) : orderNo;
+  return base;
+}
+
+function getTableEditorSheetKeys() {
+  const dataKeys = Object.keys(tableEditorState.data || {}).filter(k => k.startsWith('sheet_'));
+  const templateKeys = Object.keys(tableEditorState.template || {}).filter(k => k.startsWith('sheet_'));
+  const allKeys = Array.from(new Set([...dataKeys, ...templateKeys]));
+
+  const entries = allKeys.map((key, idx) => {
+    const orderNo = Number(
+      tableEditorState.data?.[key]?.orderNo ??
+      tableEditorState.template?.[key]?.orderNo
+    );
+    return { key, idx, orderNo: Number.isFinite(orderNo) ? orderNo : null };
+  });
+
+  entries.sort((a, b) => {
+    if (a.orderNo !== null && b.orderNo !== null && a.orderNo !== b.orderNo) return a.orderNo - b.orderNo;
+    if (a.orderNo !== null && b.orderNo === null) return -1;
+    if (a.orderNo === null && b.orderNo !== null) return 1;
+    return a.idx - b.idx;
+  });
+
+  return entries.map(e => e.key);
+}
+
+function getTableEditorSheetKeysFromPair(data, template) {
+  const dataKeys = Object.keys(data || {}).filter(k => k.startsWith('sheet_'));
+  const templateKeys = Object.keys(template || {}).filter(k => k.startsWith('sheet_'));
+  const allKeys = Array.from(new Set([...dataKeys, ...templateKeys]));
+
+  const entries = allKeys.map((key, idx) => {
+    const orderNo = Number(data?.[key]?.orderNo ?? template?.[key]?.orderNo);
+    return { key, idx, orderNo: Number.isFinite(orderNo) ? orderNo : null };
+  });
+
+  entries.sort((a, b) => {
+    if (a.orderNo !== null && b.orderNo !== null && a.orderNo !== b.orderNo) return a.orderNo - b.orderNo;
+    if (a.orderNo !== null && b.orderNo === null) return -1;
+    if (a.orderNo === null && b.orderNo !== null) return 1;
+    return a.idx - b.idx;
+  });
+
+  return entries.map(e => e.key);
+}
+
+function normalizeTableEditorPair(data, template) {
+  const dataOut = clone(data || {});
+  const templateOut = clone(template || {});
+  const keys = getTableEditorSheetKeysFromPair(dataOut, templateOut);
+  let fallbackOrder = 0;
+
+  keys.forEach((key) => {
+    const orderNo = Number(
+      dataOut?.[key]?.orderNo ??
+      templateOut?.[key]?.orderNo ??
+      fallbackOrder
+    );
+    fallbackOrder += 1;
+
+    if (!dataOut[key]) dataOut[key] = buildHeaderOnlySheet(templateOut[key], key, orderNo);
+    dataOut[key] = ensureTableEditorSheet(dataOut[key], key, orderNo);
+
+    if (!templateOut[key]) templateOut[key] = buildHeaderOnlySheet(dataOut[key], key, orderNo);
+    templateOut[key] = ensureTableEditorSheet(templateOut[key], key, orderNo);
+  });
+
+  return { data: dataOut, template: templateOut };
+}
+
+function loadTableEditorState() {
+  const s = ensureSettings();
+  const templateRaw = String(s.dataTableTemplateJson || DEFAULT_DATA_TABLE_TEMPLATE).trim();
+  const templateVal = validateDataTableTemplate(templateRaw);
+  const templateBase = templateVal.ok ? templateVal.template : validateDataTableTemplate(DEFAULT_DATA_TABLE_TEMPLATE).template;
+
+  const info = getDataTableDataForUi();
+  const parsedData = info.dataJson ? safeJsonParseAny(info.dataJson) : null;
+  const dataBase = (parsedData && validateDataTableData(parsedData).ok)
+    ? parsedData
+    : buildEmptyDataTableData(templateBase);
+
+  const merged = normalizeTableEditorPair(dataBase, templateBase);
+  tableEditorState.data = merged.data;
+  tableEditorState.template = merged.template;
+  const keys = getTableEditorSheetKeys();
+  tableEditorState.activeKey = keys[0] || '';
+  tableEditorState.dirtyData = false;
+  tableEditorState.dirtyTemplate = false;
+}
+
+function getEditorSyncFlags() {
+  if (tableEditorState.mode === 'data') {
+    return { toData: true, toTemplate: tableEditorState.syncToTemplate };
+  }
+  return { toData: tableEditorState.syncToData, toTemplate: true };
+}
+
+function markTableEditorDirty(target) {
+  if (target === 'data') tableEditorState.dirtyData = true;
+  if (target === 'template') tableEditorState.dirtyTemplate = true;
+  updateTableEditorStatus();
+}
+
+function updateTableEditorStatus(text = '') {
+  const $status = $('#sg_tableEditorStatus');
+  if (!$status.length) return;
+  const flags = [];
+  if (tableEditorState.dirtyData) flags.push('数据未保存');
+  if (tableEditorState.dirtyTemplate) flags.push('模板未保存');
+  const base = flags.length ? flags.join('，') : '（未修改）';
+  $status.text(text ? `${base} · ${text}` : base);
+}
+
+function setTableEditorMode(mode) {
+  tableEditorState.mode = mode === 'template' ? 'template' : 'data';
+  $('#sg_tableEditorModeData').toggleClass('active', tableEditorState.mode === 'data');
+  $('#sg_tableEditorModeTemplate').toggleClass('active', tableEditorState.mode === 'template');
+  $('#sg_tableEditorSyncLabel').text(tableEditorState.mode === 'data' ? '结构同步到模板' : '结构同步到数据');
+  $('#sg_tableEditorSyncToggle').prop('checked', tableEditorState.mode === 'data'
+    ? tableEditorState.syncToTemplate
+    : tableEditorState.syncToData);
+  renderTableEditor();
+}
+
+function renderTableEditorList() {
+  const $list = $('#sg_tableEditorList');
+  if (!$list.length) return;
+  const keys = getTableEditorSheetKeys();
+  if (!keys.length) {
+    $list.html('<div class="sg-hint">暂无表格，请先新增。</div>');
+    return;
+  }
+
+  const items = keys.map((key) => {
+    const dataSheet = tableEditorState.data?.[key];
+    const templateSheet = tableEditorState.template?.[key];
+    const sheet = dataSheet || templateSheet;
+    const name = sheet?.name || key;
+    const rows = Array.isArray(dataSheet?.content) ? Math.max(dataSheet.content.length - 1, 0) : 0;
+    const cols = Array.isArray((dataSheet?.content || templateSheet?.content)?.[0])
+      ? Math.max((dataSheet?.content || templateSheet?.content)[0].length - 1, 0)
+      : 0;
+    const onlyFlag = dataSheet && !templateSheet ? '仅数据'
+      : (!dataSheet && templateSheet ? '仅模板' : '');
+    const active = key === tableEditorState.activeKey ? 'active' : '';
+
+    return `
+      <div class="sg-table-editor-item ${active}" data-key="${escapeHtml(key)}">
+        <div class="sg-table-editor-item-title">${escapeHtml(name)}${onlyFlag ? `<span class="sg-table-editor-badge">${onlyFlag}</span>` : ''}</div>
+        <div class="sg-table-editor-item-sub">${rows} 行 · ${cols} 列</div>
+        <div class="sg-table-editor-item-actions">
+          <button class="sg-mini-btn" data-action="up" title="上移">▲</button>
+          <button class="sg-mini-btn" data-action="down" title="下移">▼</button>
+          <button class="sg-mini-btn sg-danger" data-action="del" title="删除">✕</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  $list.html(items);
+}
+
+function renderTableEditorMeta() {
+  const key = tableEditorState.activeKey;
+  const sheet = tableEditorState.template?.[key] || tableEditorState.data?.[key];
+  $('#sg_tableEditorName').val(String(sheet?.name || ''));
+  $('#sg_tableEditorNote').val(String(sheet?.sourceData?.note || ''));
+  $('#sg_tableEditorInitNode').val(String(sheet?.sourceData?.initNode || ''));
+  $('#sg_tableEditorInsertNode').val(String(sheet?.sourceData?.insertNode || ''));
+  $('#sg_tableEditorUpdateNode').val(String(sheet?.sourceData?.updateNode || ''));
+  $('#sg_tableEditorDeleteNode').val(String(sheet?.sourceData?.deleteNode || ''));
+}
+
+function renderTableEditorGrid() {
+  const $grid = $('#sg_tableEditorGrid');
+  if (!$grid.length) return;
+  const key = tableEditorState.activeKey;
+  const dataSheet = tableEditorState.data?.[key];
+  const templateSheet = tableEditorState.template?.[key];
+  if (!dataSheet && !templateSheet) {
+    $grid.html('<div class="sg-hint">请选择或新增一张表。</div>');
+    return;
+  }
+
+  const headerRow = (templateSheet?.content?.[0] || dataSheet?.content?.[0] || [null, TABLE_EDITOR_DEFAULT_COL]);
+  const header = normalizeTableEditorContent([headerRow])[0];
+  const headerLen = header.length;
+
+  if (dataSheet) {
+    dataSheet.content = normalizeTableEditorContent(dataSheet.content);
+  }
+  if (templateSheet) {
+    templateSheet.content = normalizeTableEditorContent(templateSheet.content);
+  }
+
+  const rows = Array.isArray(dataSheet?.content) ? dataSheet.content.slice(1) : [];
+  const readOnly = tableEditorState.mode === 'template';
+
+  const theadCells = header.slice(1).map((label, idx) => {
+    const colIndex = idx;
+    return `
+      <th>
+        <div class="sg-table-header-cell">
+          <div class="sg-table-header-text" contenteditable="true" data-col="${colIndex}">${escapeHtml(String(label ?? ''))}</div>
+          <div class="sg-table-header-actions">
+            <button class="sg-mini-btn" data-action="col-left" data-col="${colIndex}" title="左移">◀</button>
+            <button class="sg-mini-btn" data-action="col-right" data-col="${colIndex}" title="右移">▶</button>
+            <button class="sg-mini-btn sg-danger" data-action="col-del" data-col="${colIndex}" title="删除">✕</button>
+          </div>
+        </div>
+      </th>
+    `;
+  }).join('');
+
+  const bodyRows = rows.length
+    ? rows.map((row, rowIndex) => {
+      const cells = row.slice(1).map((val, colIndex) => {
+        const text = val == null ? '' : String(val);
+        const editable = readOnly ? 'false' : 'true';
+        const cls = readOnly ? 'sg-table-cell sg-table-cell-readonly' : 'sg-table-cell';
+        return `<td><div class="${cls}" contenteditable="${editable}" data-row="${rowIndex}" data-col="${colIndex}">${escapeHtml(text)}</div></td>`;
+      }).join('');
+
+      return `
+        <tr data-row="${rowIndex}">
+          <th class="sg-table-rowhead">
+            <div class="sg-table-row-head">
+              <span class="sg-table-row-index">${rowIndex}</span>
+              <div class="sg-table-row-actions">
+                <button class="sg-mini-btn" data-action="row-up" data-row="${rowIndex}" title="上移">▲</button>
+                <button class="sg-mini-btn" data-action="row-down" data-row="${rowIndex}" title="下移">▼</button>
+                <button class="sg-mini-btn sg-danger" data-action="row-del" data-row="${rowIndex}" title="删除">✕</button>
+              </div>
+            </div>
+          </th>
+          ${cells}
+        </tr>
+      `;
+    }).join('')
+    : `
+      <tr>
+        <td colspan="${headerLen}" class="sg-table-empty">${readOnly ? '模板模式仅编辑表头/备注。' : '暂无数据行，请新增。'}</td>
+      </tr>
+    `;
+
+  const tableHtml = `
+    <table class="sg-table-grid">
+      <thead>
+        <tr>
+          <th class="sg-table-corner">#</th>
+          ${theadCells}
+        </tr>
+      </thead>
+      <tbody>
+        ${bodyRows}
+      </tbody>
+    </table>
+  `;
+
+  $grid.html(tableHtml);
+}
+
+function renderTableEditor() {
+  renderTableEditorList();
+  renderTableEditorMeta();
+  renderTableEditorGrid();
+  updateTableEditorStatus();
+}
+
+function openTableEditor() {
+  loadTableEditorState();
+  $('#sg_table_editor_backdrop').show();
+  tableEditorState.open = true;
+  setTableEditorMode(tableEditorState.mode || 'data');
+}
+
+function closeTableEditor() {
+  $('#sg_table_editor_backdrop').hide();
+  tableEditorState.open = false;
+}
+
+function updateTableEditorActiveKey(key) {
+  tableEditorState.activeKey = key;
+  renderTableEditor();
+}
+
+function updateTableEditorSheetField(field, value) {
+  const key = tableEditorState.activeKey;
+  if (!key) return;
+  const { toData, toTemplate } = getEditorSyncFlags();
+
+  const apply = (sheet) => {
+    if (!sheet) return;
+    if (!sheet.sourceData || typeof sheet.sourceData !== 'object') sheet.sourceData = {};
+    if (field === 'name') sheet.name = value;
+    if (field === 'note') sheet.sourceData.note = value;
+    if (field === 'initNode') sheet.sourceData.initNode = value;
+    if (field === 'insertNode') sheet.sourceData.insertNode = value;
+    if (field === 'updateNode') sheet.sourceData.updateNode = value;
+    if (field === 'deleteNode') sheet.sourceData.deleteNode = value;
+  };
+
+  if (toData) {
+    apply(tableEditorState.data?.[key]);
+    markTableEditorDirty('data');
+  }
+  if (toTemplate) {
+    apply(tableEditorState.template?.[key]);
+    markTableEditorDirty('template');
+  }
+
+  if (field === 'name') renderTableEditorList();
+}
+
+function updateTableEditorHeader(colIndex, value) {
+  const key = tableEditorState.activeKey;
+  const { toData, toTemplate } = getEditorSyncFlags();
+
+  const apply = (sheet) => {
+    if (!sheet) return;
+    sheet.content = normalizeTableEditorContent(sheet.content);
+    if (!sheet.content[0] || sheet.content[0].length <= colIndex + 1) return;
+    sheet.content[0][colIndex + 1] = value;
+  };
+
+  if (toData) {
+    apply(tableEditorState.data?.[key]);
+    markTableEditorDirty('data');
+  }
+  if (toTemplate) {
+    apply(tableEditorState.template?.[key]);
+    markTableEditorDirty('template');
+  }
+}
+
+function updateTableEditorCell(rowIndex, colIndex, value) {
+  const key = tableEditorState.activeKey;
+  const sheet = tableEditorState.data?.[key];
+  if (!sheet) return;
+  sheet.content = normalizeTableEditorContent(sheet.content);
+  if (!sheet.content[rowIndex + 1]) return;
+  if (sheet.content[rowIndex + 1].length <= colIndex + 1) return;
+  sheet.content[rowIndex + 1][colIndex + 1] = value;
+  markTableEditorDirty('data');
+}
+
+function addTableEditorRow() {
+  const key = tableEditorState.activeKey;
+  const sheet = tableEditorState.data?.[key];
+  if (!sheet) return;
+  sheet.content = normalizeTableEditorContent(sheet.content);
+  const headerLen = sheet.content[0].length;
+  const row = Array.from({ length: headerLen }, () => '');
+  row[0] = null;
+  sheet.content.push(row);
+  markTableEditorDirty('data');
+  renderTableEditorGrid();
+}
+
+function moveTableEditorRow(rowIndex, dir) {
+  const key = tableEditorState.activeKey;
+  const sheet = tableEditorState.data?.[key];
+  if (!sheet) return;
+  const rows = sheet.content.slice(1);
+  const target = rowIndex + dir;
+  if (target < 0 || target >= rows.length) return;
+  const a = rows[rowIndex];
+  rows[rowIndex] = rows[target];
+  rows[target] = a;
+  sheet.content = [sheet.content[0], ...rows];
+  markTableEditorDirty('data');
+  renderTableEditorGrid();
+}
+
+function deleteTableEditorRow(rowIndex) {
+  const key = tableEditorState.activeKey;
+  const sheet = tableEditorState.data?.[key];
+  if (!sheet) return;
+  if (sheet.content.length <= rowIndex + 1) return;
+  sheet.content.splice(rowIndex + 1, 1);
+  markTableEditorDirty('data');
+  renderTableEditorGrid();
+  renderTableEditorList();
+}
+
+function addTableEditorColumn() {
+  const key = tableEditorState.activeKey;
+  if (!key) return;
+  const name = window.prompt('请输入列名', `列${(tableEditorState.data?.[key]?.content?.[0]?.length || 1)}`);
+  if (name === null) return;
+  const { toData, toTemplate } = getEditorSyncFlags();
+
+  const apply = (sheet) => {
+    if (!sheet) return;
+    sheet.content = normalizeTableEditorContent(sheet.content);
+    sheet.content[0].push(name || '');
+    for (let i = 1; i < sheet.content.length; i++) {
+      sheet.content[i].push('');
+    }
+  };
+
+  if (toData) {
+    apply(tableEditorState.data?.[key]);
+    markTableEditorDirty('data');
+  }
+  if (toTemplate) {
+    apply(tableEditorState.template?.[key]);
+    markTableEditorDirty('template');
+  }
+  renderTableEditor();
+}
+
+function moveTableEditorColumn(colIndex, dir) {
+  const key = tableEditorState.activeKey;
+  const { toData, toTemplate } = getEditorSyncFlags();
+
+  const apply = (sheet) => {
+    if (!sheet) return;
+    sheet.content = normalizeTableEditorContent(sheet.content);
+    const header = sheet.content[0];
+    const from = colIndex + 1;
+    const to = from + dir;
+    if (to <= 0 || to >= header.length) return;
+    header[from] = header.splice(to, 1, header[from])[0];
+    for (let i = 1; i < sheet.content.length; i++) {
+      const row = sheet.content[i];
+      row[from] = row.splice(to, 1, row[from])[0];
+    }
+  };
+
+  if (toData) {
+    apply(tableEditorState.data?.[key]);
+    markTableEditorDirty('data');
+  }
+  if (toTemplate) {
+    apply(tableEditorState.template?.[key]);
+    markTableEditorDirty('template');
+  }
+  renderTableEditorGrid();
+}
+
+function deleteTableEditorColumn(colIndex) {
+  const key = tableEditorState.activeKey;
+  const { toData, toTemplate } = getEditorSyncFlags();
+
+  const apply = (sheet) => {
+    if (!sheet) return;
+    sheet.content = normalizeTableEditorContent(sheet.content);
+    const header = sheet.content[0];
+    if (header.length <= 2) return;
+    const index = colIndex + 1;
+    if (index <= 0 || index >= header.length) return;
+    header.splice(index, 1);
+    for (let i = 1; i < sheet.content.length; i++) {
+      sheet.content[i].splice(index, 1);
+    }
+  };
+
+  if (toData) {
+    apply(tableEditorState.data?.[key]);
+    markTableEditorDirty('data');
+  }
+  if (toTemplate) {
+    apply(tableEditorState.template?.[key]);
+    markTableEditorDirty('template');
+  }
+  renderTableEditor();
+}
+
+function addTableEditorTable() {
+  const name = window.prompt('请输入表名', TABLE_EDITOR_DEFAULT_NAME);
+  if (name === null) return;
+  const key = `sheet_${Date.now().toString(36)}`;
+  const keys = getTableEditorSheetKeys();
+  const orderNo = keys.length;
+  const newSheet = {
+    uid: key,
+    name: name || TABLE_EDITOR_DEFAULT_NAME,
+    sourceData: { note: '' },
+    content: [[null, TABLE_EDITOR_DEFAULT_COL]],
+    exportConfig: {},
+    orderNo,
+  };
+
+  const { toData, toTemplate } = getEditorSyncFlags();
+  if (toData) {
+    tableEditorState.data[key] = ensureTableEditorSheet(clone(newSheet), key, orderNo);
+    markTableEditorDirty('data');
+  }
+  if (toTemplate) {
+    tableEditorState.template[key] = ensureTableEditorSheet(buildHeaderOnlySheet(newSheet, key, orderNo), key, orderNo);
+    markTableEditorDirty('template');
+  }
+  tableEditorState.activeKey = key;
+  renderTableEditor();
+}
+
+function moveTableEditorTable(key, dir) {
+  const keys = getTableEditorSheetKeys();
+  const idx = keys.indexOf(key);
+  if (idx === -1) return;
+  const target = idx + dir;
+  if (target < 0 || target >= keys.length) return;
+  const moved = keys.slice();
+  const temp = moved[idx];
+  moved[idx] = moved[target];
+  moved[target] = temp;
+  moved.forEach((k, index) => {
+    if (tableEditorState.data?.[k]) {
+      tableEditorState.data[k].orderNo = index;
+      markTableEditorDirty('data');
+    }
+    if (tableEditorState.template?.[k]) {
+      tableEditorState.template[k].orderNo = index;
+      markTableEditorDirty('template');
+    }
+  });
+  renderTableEditorList();
+}
+
+function deleteTableEditorTable(key) {
+  const { toData, toTemplate } = getEditorSyncFlags();
+  if (toData && tableEditorState.data?.[key]) {
+    delete tableEditorState.data[key];
+    markTableEditorDirty('data');
+  }
+  if (toTemplate && tableEditorState.template?.[key]) {
+    delete tableEditorState.template[key];
+    markTableEditorDirty('template');
+  }
+  const keys = getTableEditorSheetKeys();
+  tableEditorState.activeKey = keys[0] || '';
+  renderTableEditor();
+}
+
+async function saveTableEditorData() {
+  const data = tableEditorState.data;
+  const check = validateDataTableData(data);
+  if (!check.ok) { setStatus(`保存数据失败：${check.error}`, 'err'); return; }
+  const pretty = JSON.stringify(check.data, null, 2);
+  const meta = { dataJson: pretty, updatedAt: Date.now() };
+  await setDataTableMeta(meta);
+  $('#sg_tableDataJson').val(pretty);
+  updateDataTableMetaInfo({ ...meta, source: 'meta' });
+  const s = ensureSettings();
+  if (s.dataTableUpdateBody) {
+    const res = await syncDataTableToChatBody(pretty, s, false);
+    if (!res.ok) setStatus(`已保存，但写入正文失败：${res.error}`, 'warn');
+  }
+  tableEditorState.dirtyData = false;
+  updateTableEditorStatus('数据已保存');
+}
+
+function saveTableEditorTemplate() {
+  const template = tableEditorState.template;
+  const check = validateDataTableTemplate(JSON.stringify(template));
+  if (!check.ok) { setStatus(`保存模板失败：${check.error}`, 'err'); return; }
+  const s = ensureSettings();
+  s.dataTableTemplateJson = JSON.stringify(check.template, null, 2);
+  saveSettings();
+  $('#sg_tableTemplateJson').val(s.dataTableTemplateJson);
+  tableEditorState.template = check.template;
+  tableEditorState.dirtyTemplate = false;
+  updateTableEditorStatus('模板已保存');
+}
+
+function applyTemplateToEditorData() {
+  if (!confirm('将模板重新生成数据？当前数据行将被清空。')) return;
+  const template = tableEditorState.template;
+  tableEditorState.data = buildEmptyDataTableData(template);
+  tableEditorState.dirtyData = true;
+  const keys = getTableEditorSheetKeys();
+  tableEditorState.activeKey = keys[0] || '';
+  renderTableEditor();
+}
+
 // ===== 静态模块缓存（只在首次或手动刷新时生成的模块结果）=====
 function getStaticModulesCache() {
   const raw = String(getChatMetaValue(META_KEYS.staticModulesCache) || '').trim();
@@ -7133,6 +7767,14 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card">
+              <div class="sg-card-title">可视化表格编辑器</div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_tableEditorOpen">打开编辑器</button>
+                <div class="sg-hint">支持模板/数据双模式，增删行列、编辑表头与备注。</div>
+              </div>
+            </div>
+
+            <div class="sg-card">
               <div class="sg-card-title">数据表模板（JSON）</div>
               <div class="sg-hint">支持多个 sheet_* 作为表名，content[0] 为表头行；其余行由你手动维护或模型补全。</div>
               <textarea id="sg_tableTemplateJson" rows="10" spellcheck="false"></textarea>
@@ -7317,6 +7959,86 @@ function buildModalHtml() {
             <div class="sg-pane" id="sg_pane_src"><pre class="sg-pre" id="sg_src"></pre></div>
             <div class="sg-pane" id="sg_pane_sum"><div class="sg-md" id="sg_sum">(尚未生成)</div></div>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="sg_table_editor_backdrop" class="sg-backdrop sg-table-editor-backdrop" style="display:none;">
+    <div id="sg_table_editor" class="sg-modal sg-table-editor-modal" role="dialog" aria-modal="true">
+      <div class="sg-modal-head">
+        <div class="sg-modal-title">
+          <span class="sg-badge">表</span>
+          数据表编辑器 <span class="sg-sub">可视化模板/数据</span>
+        </div>
+        <div class="sg-modal-actions">
+          <button class="menu_button sg-btn" id="sg_tableEditorSaveData">保存数据</button>
+          <button class="menu_button sg-btn" id="sg_tableEditorSaveTemplate">保存模板</button>
+          <button class="menu_button sg-btn" id="sg_tableEditorClose">关闭</button>
+        </div>
+      </div>
+
+      <div class="sg-table-editor-body">
+        <div class="sg-table-editor-left">
+          <div class="sg-table-editor-left-head">
+            <div class="sg-card-title" style="margin:0;">表格列表</div>
+            <button class="menu_button sg-btn" id="sg_tableEditorAddTable">新增表</button>
+          </div>
+          <div class="sg-table-editor-list" id="sg_tableEditorList"></div>
+        </div>
+
+        <div class="sg-table-editor-right">
+          <div class="sg-table-editor-toolbar">
+            <div class="sg-table-editor-modes">
+              <button class="sg-tab active" id="sg_tableEditorModeData">数据</button>
+              <button class="sg-tab" id="sg_tableEditorModeTemplate">模板</button>
+            </div>
+            <label class="sg-check">
+              <input type="checkbox" id="sg_tableEditorSyncToggle" checked>
+              <span id="sg_tableEditorSyncLabel">结构同步到模板</span>
+            </label>
+            <div class="sg-spacer"></div>
+            <button class="menu_button sg-btn" id="sg_tableEditorApplyTemplate">模板生成数据</button>
+          </div>
+
+          <div class="sg-table-editor-meta">
+            <div class="sg-field">
+              <label>表名</label>
+              <input id="sg_tableEditorName" type="text">
+            </div>
+            <div class="sg-field">
+              <label>填写说明/备注</label>
+              <textarea id="sg_tableEditorNote" rows="3"></textarea>
+            </div>
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>Init Trigger</label>
+                <input id="sg_tableEditorInitNode" type="text">
+              </div>
+              <div class="sg-field">
+                <label>Insert Trigger</label>
+                <input id="sg_tableEditorInsertNode" type="text">
+              </div>
+            </div>
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>Update Trigger</label>
+                <input id="sg_tableEditorUpdateNode" type="text">
+              </div>
+              <div class="sg-field">
+                <label>Delete Trigger</label>
+                <input id="sg_tableEditorDeleteNode" type="text">
+              </div>
+            </div>
+          </div>
+
+          <div class="sg-table-editor-actions">
+            <button class="menu_button sg-btn" id="sg_tableEditorAddRow">新增行</button>
+            <button class="menu_button sg-btn" id="sg_tableEditorAddCol">新增列</button>
+            <div class="sg-hint" id="sg_tableEditorStatus">（未修改）</div>
+          </div>
+
+          <div class="sg-table-editor-grid" id="sg_tableEditorGrid"></div>
         </div>
       </div>
     </div>
@@ -7914,6 +8636,88 @@ function ensureModal() {
     } catch (e) {
       setStatus(`导出失败：${e?.message ?? e}`, 'err');
     }
+  });
+
+  // data table visual editor
+  $('#sg_tableEditorOpen').on('click', () => openTableEditor());
+  $('#sg_tableEditorClose').on('click', () => closeTableEditor());
+  $('#sg_table_editor_backdrop').on('click', (e) => { if (e.target && e.target.id === 'sg_table_editor_backdrop') closeTableEditor(); });
+
+  $('#sg_tableEditorModeData').on('click', () => setTableEditorMode('data'));
+  $('#sg_tableEditorModeTemplate').on('click', () => setTableEditorMode('template'));
+  $('#sg_tableEditorSyncToggle').on('change', () => {
+    if (tableEditorState.mode === 'data') tableEditorState.syncToTemplate = $('#sg_tableEditorSyncToggle').is(':checked');
+    else tableEditorState.syncToData = $('#sg_tableEditorSyncToggle').is(':checked');
+  });
+
+  $('#sg_tableEditorAddTable').on('click', () => addTableEditorTable());
+  $('#sg_tableEditorAddRow').on('click', () => addTableEditorRow());
+  $('#sg_tableEditorAddCol').on('click', () => addTableEditorColumn());
+  $('#sg_tableEditorApplyTemplate').on('click', () => applyTemplateToEditorData());
+  $('#sg_tableEditorSaveData').on('click', async () => {
+    try { await saveTableEditorData(); } catch (e) { setStatus(`保存数据失败：${e?.message ?? e}`, 'err'); }
+  });
+  $('#sg_tableEditorSaveTemplate').on('click', () => saveTableEditorTemplate());
+
+  $('#sg_tableEditorName').on('change', (e) => updateTableEditorSheetField('name', String(e.target.value || '').trim()));
+  $('#sg_tableEditorNote').on('change', (e) => updateTableEditorSheetField('note', String(e.target.value || '').trim()));
+  $('#sg_tableEditorInitNode').on('change', (e) => updateTableEditorSheetField('initNode', String(e.target.value || '').trim()));
+  $('#sg_tableEditorInsertNode').on('change', (e) => updateTableEditorSheetField('insertNode', String(e.target.value || '').trim()));
+  $('#sg_tableEditorUpdateNode').on('change', (e) => updateTableEditorSheetField('updateNode', String(e.target.value || '').trim()));
+  $('#sg_tableEditorDeleteNode').on('change', (e) => updateTableEditorSheetField('deleteNode', String(e.target.value || '').trim()));
+
+  $('#sg_tableEditorList').on('click', '.sg-table-editor-item', (e) => {
+    const $item = $(e.currentTarget);
+    const key = String($item.data('key') || '');
+    const action = String($(e.target).data('action') || '');
+    if (action === 'up') { moveTableEditorTable(key, -1); return; }
+    if (action === 'down') { moveTableEditorTable(key, 1); return; }
+    if (action === 'del') {
+      if (confirm('确定删除这张表吗？')) deleteTableEditorTable(key);
+      return;
+    }
+    if (key) updateTableEditorActiveKey(key);
+  });
+
+  $('#sg_tableEditorGrid').on('blur', '.sg-table-header-text', (e) => {
+    const col = Number.parseInt($(e.currentTarget).data('col'), 10);
+    if (!Number.isFinite(col)) return;
+    const value = String($(e.currentTarget).text() || '').trim();
+    updateTableEditorHeader(col, value);
+  });
+
+  $('#sg_tableEditorGrid').on('blur', '.sg-table-cell', (e) => {
+    if (tableEditorState.mode === 'template') return;
+    const $cell = $(e.currentTarget);
+    const row = Number.parseInt($cell.data('row'), 10);
+    const col = Number.parseInt($cell.data('col'), 10);
+    if (!Number.isFinite(row) || !Number.isFinite(col)) return;
+    updateTableEditorCell(row, col, String($cell.text() || '').trim());
+  });
+
+  $('#sg_tableEditorGrid').on('click', '[data-action="row-up"]', (e) => {
+    const row = Number.parseInt($(e.currentTarget).data('row'), 10);
+    if (Number.isFinite(row)) moveTableEditorRow(row, -1);
+  });
+  $('#sg_tableEditorGrid').on('click', '[data-action="row-down"]', (e) => {
+    const row = Number.parseInt($(e.currentTarget).data('row'), 10);
+    if (Number.isFinite(row)) moveTableEditorRow(row, 1);
+  });
+  $('#sg_tableEditorGrid').on('click', '[data-action="row-del"]', (e) => {
+    const row = Number.parseInt($(e.currentTarget).data('row'), 10);
+    if (Number.isFinite(row)) deleteTableEditorRow(row);
+  });
+  $('#sg_tableEditorGrid').on('click', '[data-action="col-left"]', (e) => {
+    const col = Number.parseInt($(e.currentTarget).data('col'), 10);
+    if (Number.isFinite(col)) moveTableEditorColumn(col, -1);
+  });
+  $('#sg_tableEditorGrid').on('click', '[data-action="col-right"]', (e) => {
+    const col = Number.parseInt($(e.currentTarget).data('col'), 10);
+    if (Number.isFinite(col)) moveTableEditorColumn(col, 1);
+  });
+  $('#sg_tableEditorGrid').on('click', '[data-action="col-del"]', (e) => {
+    const col = Number.parseInt($(e.currentTarget).data('col'), 10);
+    if (Number.isFinite(col)) deleteTableEditorColumn(col);
   });
 
   // presets actions
@@ -8772,7 +9576,10 @@ function openModal() {
   $('#sg_modal_backdrop').show();
   showPane('md');
 }
-function closeModal() { $('#sg_modal_backdrop').hide(); }
+function closeModal() {
+  $('#sg_modal_backdrop').hide();
+  closeTableEditor();
+}
 
 function injectMinimalSettingsPanel() {
   const $root = $('#extensions_settings');
