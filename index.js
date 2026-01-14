@@ -9937,6 +9937,7 @@ function createFloatingPanel() {
       <div class="sg-floating-actions">
         <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
         <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
+        <button class="sg-floating-action-btn" id="sg_floating_data_table" title="数据表">📊</button>
         <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
         <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
       </div>
@@ -9984,6 +9985,10 @@ function createFloatingPanel() {
 
   $('#sg_floating_roll_logs').on('click', () => {
     showFloatingRollLogs();
+  });
+
+  $('#sg_floating_data_table').on('click', () => {
+    showFloatingDataTable();
   });
 
   $('#sg_floating_settings').on('click', () => {
@@ -10316,6 +10321,112 @@ function showFloatingRollLogs() {
   }).join('');
 
   $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+}
+
+function showFloatingDataTable() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+
+  const s = ensureSettings();
+  if (!s.dataTableEnabled) {
+    $body.html('<div class="sg-floating-loading">数据表模块未启用<br><small>请在设置中启用数据表功能</small></div>');
+    return;
+  }
+
+  const info = getDataTableDataForUi();
+  if (!info.dataJson) {
+    $body.html('<div class="sg-floating-loading">暂无数据表数据<br><small>请先更新数据表</small></div>');
+    return;
+  }
+
+  const parsed = safeJsonParseAny(info.dataJson);
+  if (!parsed || typeof parsed !== 'object') {
+    $body.html('<div class="sg-floating-loading">数据表解析失败</div>');
+    return;
+  }
+
+  // 修复可能的乱码
+  const repairedData = repairObjectMojibake(parsed);
+  const keys = getOrderedSheetKeysFromData(repairedData);
+
+  if (!keys.length) {
+    $body.html('<div class="sg-floating-loading">数据表为空</div>');
+    return;
+  }
+
+  // 生成表格HTML
+  const tablesHtml = keys.map((key, tableIndex) => {
+    const sheet = repairedData[key];
+    if (!sheet || !Array.isArray(sheet.content)) return '';
+
+    const name = String(sheet.name || key);
+    const header = Array.isArray(sheet.content[0]) ? sheet.content[0].slice(1) : [];
+    const rows = sheet.content.slice(1);
+
+    const headerHtml = header.map(h => `<th>${escapeHtml(String(h ?? ''))}</th>`).join('');
+    const rowsHtml = rows.length
+      ? rows.map((row, rowIdx) => {
+        const cells = Array.isArray(row) ? row.slice(1) : [];
+        const cellsHtml = cells.map(c => `<td>${escapeHtml(String(c ?? ''))}</td>`).join('');
+        return `<tr>${cellsHtml}</tr>`;
+      }).join('')
+      : `<tr><td colspan="${header.length}" style="text-align:center; opacity:0.6;">（空表）</td></tr>`;
+
+    return `
+      <details style="margin-bottom:8px;" ${tableIndex === 0 ? 'open' : ''}>
+        <summary style="font-weight:bold; cursor:pointer; padding:4px 0; border-bottom:1px solid rgba(128,128,128,0.3);">
+          📊 ${escapeHtml(name)} (${rows.length} 行)
+        </summary>
+        <div style="overflow-x:auto; margin-top:4px;">
+          <table class="sg-floating-table" style="width:100%; border-collapse:collapse; font-size:0.85em;">
+            <thead><tr style="background:rgba(128,128,128,0.15);">${headerHtml}</tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </details>
+    `;
+  }).join('');
+
+  const refreshBtnHtml = `
+    <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
+      <button class="sg-table-update-btn" title="读取正文并更新数据表" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🔄</button>
+      <button class="sg-table-edit-btn" title="打开表格编辑器" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8; margin-left:8px;">✏️</button>
+    </div>
+  `;
+
+  const style = `
+    <style>
+      .sg-floating-table th, .sg-floating-table td {
+        border: 1px solid rgba(128,128,128,0.3);
+        padding: 4px 6px;
+        text-align: left;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .sg-floating-table th { font-weight: bold; }
+      .sg-floating-table tr:nth-child(even) { background: rgba(128,128,128,0.05); }
+    </style>
+  `;
+
+  $body.html(`${style}${refreshBtnHtml}<div style="padding:10px; overflow-y:auto; max-height:calc(100% - 40px); box-sizing:border-box;">${tablesHtml}</div>`);
+
+  // 绑定按钮事件
+  $body.find('.sg-table-update-btn').on('click', async () => {
+    $body.html('<div class="sg-floating-loading">正在更新数据表...</div>');
+    try {
+      await runDataTableUpdate();
+      showFloatingDataTable(); // 刷新显示
+    } catch (e) {
+      $body.html(`<div class="sg-floating-loading">更新失败: ${e?.message ?? e}</div>`);
+    }
+  });
+
+  $body.find('.sg-table-edit-btn').on('click', () => {
+    hideFloatingPanel();
+    openTableEditor();
+  });
 }
 
 function showFloatingReport() {
