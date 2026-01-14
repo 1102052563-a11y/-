@@ -8486,17 +8486,35 @@ function ensureModal() {
       const file = await pickFile('.json,application/json');
       if (!file) return;
       const txt = await readFileText(file);
-      const parsed = safeJsonParseAny(txt);
+
+      // 尝试多种解析方式
+      let parsed = safeJsonParseAny(txt);
+
+      // 如果解析结果是字符串，可能是转义的 JSON，尝试再次解析
+      if (typeof parsed === 'string') {
+        parsed = safeJsonParseAny(parsed) || parsed;
+      }
+
+      // 如果直接解析失败，检查是否是纯文本 JSON 字符串
+      if (!parsed && txt.trim().startsWith('"') && txt.trim().endsWith('"')) {
+        try {
+          const unquoted = JSON.parse(txt);
+          if (typeof unquoted === 'string') {
+            parsed = safeJsonParseAny(unquoted);
+          }
+        } catch { }
+      }
+
       if (!parsed) {
         setStatus('导入失败：文件格式不正确', 'err');
         return;
       }
 
       // 检查是否是直接的表格数据（有 sheet_* 键）
-      const hasSheetKeys = Object.keys(parsed).some(k => k.startsWith('sheet_'));
+      const hasSheetKeys = (obj) => obj && typeof obj === 'object' && Object.keys(obj).some(k => k.startsWith('sheet_'));
       let templateData = null;
 
-      if (hasSheetKeys) {
+      if (hasSheetKeys(parsed)) {
         // 直接的表格数据
         templateData = {};
         for (const key of Object.keys(parsed)) {
@@ -8507,21 +8525,59 @@ function ensureModal() {
         if (!templateData.mate) {
           templateData.mate = { type: 'chatSheets', version: 1 };
         }
-      } else if (parsed.template && typeof parsed.template === 'object') {
-        // 标准预设格式 - template 字段
+      } else if (parsed.template && typeof parsed.template === 'object' && hasSheetKeys(parsed.template)) {
+        // 标准预设格式 - template 字段是对象
         templateData = parsed.template;
+      } else if (typeof parsed.template === 'string') {
+        // template 字段是 JSON 字符串
+        const inner = safeJsonParseAny(parsed.template);
+        if (hasSheetKeys(inner)) templateData = inner;
       } else if (typeof parsed.templateJson === 'string') {
         // 标准预设格式 - templateJson 字符串
         templateData = safeJsonParseAny(parsed.templateJson);
-      } else if (parsed.data && typeof parsed.data === 'object' && Object.keys(parsed.data).some(k => k.startsWith('sheet_'))) {
+      } else if (parsed.data && typeof parsed.data === 'object' && hasSheetKeys(parsed.data)) {
         // ACU 导出格式
         templateData = parsed.data;
         if (!templateData.mate) templateData.mate = { type: 'chatSheets', version: 1 };
+      } else if (typeof parsed.data === 'string') {
+        // data 是 JSON 字符串
+        const inner = safeJsonParseAny(parsed.data);
+        if (hasSheetKeys(inner)) templateData = inner;
+      } else if (parsed.tableData && typeof parsed.tableData === 'object' && hasSheetKeys(parsed.tableData)) {
+        templateData = parsed.tableData;
+      } else if (typeof parsed.tableData === 'string') {
+        const inner = safeJsonParseAny(parsed.tableData);
+        if (hasSheetKeys(inner)) templateData = inner;
+      } else if (parsed.tables && typeof parsed.tables === 'object' && hasSheetKeys(parsed.tables)) {
+        templateData = parsed.tables;
       }
 
-      if (!templateData || !Object.keys(templateData).some(k => k.startsWith('sheet_'))) {
-        setStatus('导入失败：未找到有效的表格模板数据', 'err');
+      // 如果仍未找到，尝试遍历所有顶层字段
+      if (!templateData) {
+        for (const key of Object.keys(parsed)) {
+          const val = parsed[key];
+          if (typeof val === 'object' && val !== null && hasSheetKeys(val)) {
+            templateData = val;
+            break;
+          }
+          if (typeof val === 'string') {
+            const inner = safeJsonParseAny(val);
+            if (hasSheetKeys(inner)) {
+              templateData = inner;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!templateData || !hasSheetKeys(templateData)) {
+        setStatus('导入失败：未找到有效的表格模板数据（需包含 sheet_* 键）', 'err');
         return;
+      }
+
+      // 确保有 mate 字段
+      if (!templateData.mate) {
+        templateData.mate = { type: 'chatSheets', version: 1 };
       }
 
       // 修复可能的乱码
