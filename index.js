@@ -10502,7 +10502,7 @@ function showFloatingDataTable() {
     }
 
     // 使用 ACU 可视化UI渲染
-    window.renderAcuApp($body);
+    window.renderAcuApp($body, extension_settings, saveSettingsDebounced);
   } catch (e) {
     console.error(e);
     $body.html(`<div class="sg-floating-loading" style="color:red">渲染错误:<br>${e.message}<br><small>${e.stack}</small></div>`);
@@ -10849,15 +10849,18 @@ function init() {
    * 获取可视化UI配置
    */
   function getAcuConfig() {
-    return { ...DEFAULT_ACU_CONFIG, ...(extension_settings.storyguide_acu_config || {}) };
+    const es = window.acuSettingsRef || {};
+    return { ...DEFAULT_ACU_CONFIG, ...(es.storyguide_acu_config || {}) };
   }
 
   /**
    * 保存可视化UI配置
    */
   function saveAcuConfig(config) {
-    extension_settings.storyguide_acu_config = config;
-    saveSettingsDebounced();
+    if (window.acuSettingsRef) {
+      window.acuSettingsRef.storyguide_acu_config = config;
+      if (window.acuSaveSettingsFn) window.acuSaveSettingsFn();
+    }
     applyAcuTheme();
   }
 
@@ -10969,12 +10972,22 @@ function init() {
 
 
 
+
   /**
    * ACU 可视化 UI 主入口
    * @param {JQuery} $container 容器元素
+   * @param {Object} [settings] extension_settings 引用
+   * @param {Function} [saveSettingsFn] saveSettingsDebounced 函数引用
    */
-  function renderAcuApp($container) {
+  function renderAcuApp($container, settings, saveSettingsFn) {
+    if (settings) {
+      window.acuSettingsRef = settings;
+    }
+    if (saveSettingsFn) {
+      window.acuSaveSettingsFn = saveSettingsFn;
+    }
     applyAcuTheme();
+
     const config = getAcuConfig();
     const parsed = getAcuTableData();
 
@@ -11070,7 +11083,8 @@ function init() {
    * 返回 { template, data }
    */
   function getAcuTableData() {
-    const s = ensureSettings();
+    const root = window.acuSettingsRef || {};
+    const s = root.storyguide || {};
     // 优先读取当前 UI 的编辑器内容（如果有改动但未保存），或者从 settings 读取
     // 但浮动面板通常直接读取 settings 里的 dataTableTemplateJson 和 dataJson
     // 注意：dataTableDataJson 是最新的实际数据， template 包含结构定义
@@ -11273,8 +11287,11 @@ window.acuEditCell = function (sheetUid, rowIdx, colIdx) {
 /**
  * 保存数据到设置
  */
+
 function saveAcuDataToSettings(dataObj) {
-  const s = ensureSettings();
+  const root = window.acuSettingsRef || {};
+  const s = root.storyguide || {};
+
   let newData = { mate: { type: 'chatSheets', version: 1 } };
   try {
     const old = safeJsonParseAny(s.dataTableDataJson);
@@ -11282,8 +11299,10 @@ function saveAcuDataToSettings(dataObj) {
   } catch { }
   Object.assign(newData, dataObj);
   s.dataTableDataJson = JSON.stringify(newData, null, 2);
-  saveSettingsDebounced();
+
+  if (window.acuSaveSettingsFn) window.acuSaveSettingsFn();
 }
+
 
 /**
  * 交互式表格渲染
