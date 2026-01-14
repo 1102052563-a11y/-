@@ -391,7 +391,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     { label: '行动', prompt: '描述接下来的具体行动' },
   ], null, 2),
 
-  // ===== æ•°æ®è¡¨æ¨¡å— =====
+  // ===== 数据表模块 =====
   dataTableEnabled: false,
   dataTableUpdateBody: false,
   dataTableInjectionStyle: 'hidden', // hidden | plain
@@ -796,16 +796,16 @@ function normalizeDataTableTemplate(obj) {
 
 function validateDataTableTemplate(rawText) {
   const parsed = safeJsonParseAny(rawText);
-  if (!parsed || typeof parsed !== 'object') return { ok: false, error: 'æ¨¡æ¿ JSON è§£æžå¤±è´¥', template: null };
+  if (!parsed || typeof parsed !== 'object') return { ok: false, error: '模板 JSON 解析失败', template: null };
   const sheetKeys = Object.keys(parsed).filter(k => k.startsWith('sheet_'));
-  if (!sheetKeys.length) return { ok: false, error: 'æ¨¡æ¿éœ€è¦è‡³å°‘1ä¸ª sheet_* è¡¨', template: null };
+  if (!sheetKeys.length) return { ok: false, error: '模板需要至少 1 个 sheet_* 表', template: null };
   for (const key of sheetKeys) {
     const sheet = parsed[key];
     if (!sheet || typeof sheet !== 'object' || !Array.isArray(sheet.content)) {
-      return { ok: false, error: `è¡¨ ${key} çš„ content å¿…é¡»ä¸ºæ•°ç»„`, template: null };
+      return { ok: false, error: `表 ${key} 的 content 必须为数组`, template: null };
     }
     if (!sheet.content.length) {
-      return { ok: false, error: `è¡¨ ${key} çš„ content ä¸èƒ½ä¸ºç©º`, template: null };
+      return { ok: false, error: `表 ${key} 的 content 不能为空`, template: null };
     }
   }
   return { ok: true, error: '', template: normalizeDataTableTemplate(parsed) };
@@ -813,7 +813,7 @@ function validateDataTableTemplate(rawText) {
 
 function validateDataTablePrompt(rawText) {
   const parsed = safeJsonParseAny(rawText);
-  if (!Array.isArray(parsed)) return { ok: false, error: 'æç¤ºè¯å¿…é¡»æ˜¯ JSON æ•°ç»„', prompts: null };
+  if (!Array.isArray(parsed)) return { ok: false, error: '提示词必须是 JSON 数组', prompts: null };
   const normalized = parsed.map((item) => {
     if (!item || typeof item !== 'object') return null;
     const role = String(item.role || '').trim().toLowerCase();
@@ -823,7 +823,7 @@ function validateDataTablePrompt(rawText) {
     const name = item.name ? String(item.name) : undefined;
     return name ? { role, content, name } : { role, content };
   }).filter(Boolean);
-  if (!normalized.length) return { ok: false, error: 'æç¤ºè¯å†…å®¹ä¸ºç©º', prompts: null };
+  if (!normalized.length) return { ok: false, error: '提示词内容为空', prompts: null };
   return { ok: true, error: '', prompts: normalized };
 }
 
@@ -887,14 +887,14 @@ async function syncDataTableToChatBody(dataJson, settings, removeIfEmpty = false
   const s = settings || ensureSettings();
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-  if (!chat.length) return { ok: false, error: 'èŠå¤©è®°å½•ä¸ºç©º' };
+  if (!chat.length) return { ok: false, error: '聊天记录为空' };
   const target = findLastAssistantMessage(chat);
-  if (!target) return { ok: false, error: 'æœªæ‰¾åˆ° AI æ¶ˆæ¯' };
+  if (!target) return { ok: false, error: '未找到 AI 回复' };
 
   const raw = String(target.msg.mes ?? target.msg.message ?? '');
   const cleaned = stripDataTableInjection(raw, DATA_TABLE_TAG);
   const body = String(dataJson || '').trim();
-  if (!body && !removeIfEmpty) return { ok: false, error: 'æ•°æ®ä¸ºç©º' };
+  if (!body && !removeIfEmpty) return { ok: false, error: '数据为空' };
 
   const injected = body ? buildDataTableInjection(body, DATA_TABLE_TAG, String(s.dataTableInjectionStyle || 'hidden')) : '';
   target.msg.mes = cleaned + injected;
@@ -926,13 +926,13 @@ function updateDataTableMetaInfo(info) {
   if (!$info.length) return;
   const data = String(info?.dataJson || '').trim();
   if (!data) {
-    $info.text('ï¼ˆå°šæœªä¿å­˜æ•°æ®ï¼‰');
+    $info.text('（尚未保存数据）');
     return;
   }
-  const sourceLabel = info?.source === 'body' ? 'æ­£æ–‡' : 'å…ƒæ•°æ®';
+  const sourceLabel = info?.source === 'body' ? '正文' : '元数据';
   const ts = info?.updatedAt ? new Date(Number(info.updatedAt)).toLocaleString() : '';
-  const timeText = ts ? `ï¼Œ${ts}` : '';
-  $info.text(`å·²ä¿å­˜æ•°æ®ï¼ˆæ¥æºï¼š${sourceLabel}${timeText}ï¼‰`);
+  const timeText = ts ? `，${ts}` : '';
+  $info.text(`已保存数据（来源：${sourceLabel}${timeText}）`);
 }
 
 function normalizeDataTablePreset(raw) {
@@ -966,7 +966,7 @@ function renderDataTablePresetSelect() {
   if (!$select.length) return;
   const s = ensureSettings();
   const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
-  $select.empty().append('<option value="">ï¼ˆé€‰æ‹©é¢„è®¾ï¼‰</option>');
+  $select.empty().append('<option value="">（选择预设）</option>');
   presets.forEach((p) => {
     if (!p || !p.name) return;
     $select.append(`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`);
@@ -6818,71 +6818,71 @@ function ensureModal() {
     const txt = String($('#sg_tableTemplateJson').val() || '').trim();
     const v = validateDataTableTemplate(txt);
     if (!v.ok) {
-      setStatus(`æ•°æ®è¡¨æ¨¡æ¿æ ¡éªŒå¤±è´¥ï¼š${v.error}`, 'err');
+      setStatus(`数据表模板校验失败：${v.error}`, 'err');
       return;
     }
     const count = Object.keys(v.template || {}).filter(k => k.startsWith('sheet_')).length;
-    setStatus(`æ•°æ®è¡¨æ¨¡æ¿æ ¡éªŒé€šè¿‡ âœ…ï¼ˆ${count} ä¸ªè¡¨ï¼‰`, 'ok');
+    setStatus(`数据表模板校验通过 ✅（${count} 个表）`, 'ok');
   });
 
   $('#sg_tableResetTemplate').on('click', () => {
     $('#sg_tableTemplateJson').val(DEFAULT_DATA_TABLE_TEMPLATE);
-    setStatus('å·²æ¢å¤é»˜è®¤æ¨¡æ¿ï¼ˆå°šæœªä¿å­˜ï¼‰', 'warn');
+    setStatus('已恢复默认模板（尚未保存）', 'warn');
   });
 
   $('#sg_tableApplyTemplate').on('click', () => {
     const txt = String($('#sg_tableTemplateJson').val() || '').trim();
     const v = validateDataTableTemplate(txt);
     if (!v.ok) {
-      setStatus(`æ•°æ®è¡¨æ¨¡æ¿æ ¡éªŒå¤±è´¥ï¼š${v.error}`, 'err');
+      setStatus(`数据表模板校验失败：${v.error}`, 'err');
       return;
     }
     const s = ensureSettings();
     s.dataTableTemplateJson = JSON.stringify(v.template, null, 2);
     saveSettings();
     $('#sg_tableTemplateJson').val(s.dataTableTemplateJson);
-    setStatus('æ•°æ®è¡¨æ¨¡æ¿å·²åº”ç”¨å¹¶ä¿å­˜ âœ…', 'ok');
+    setStatus('数据表模板已应用并保存 ✅', 'ok');
   });
 
   $('#sg_tableGenerateData').on('click', () => {
     const txt = String($('#sg_tableTemplateJson').val() || '').trim();
     const v = validateDataTableTemplate(txt);
     if (!v.ok) {
-      setStatus(`æ¨¡æ¿æ— æ³•è§£æžï¼š${v.error}`, 'err');
+      setStatus(`模板解析失败：${v.error}`, 'err');
       return;
     }
     const data = buildEmptyDataTableData(v.template);
     $('#sg_tableDataJson').val(JSON.stringify(data, null, 2));
-    setStatus('å·²ç”Ÿæˆç©ºè¡¨ï¼ˆå°šæœªä¿å­˜ï¼‰', 'ok');
+    setStatus('已生成空表（尚未保存）', 'ok');
   });
 
   $('#sg_tableValidatePrompt').on('click', () => {
     const txt = String($('#sg_tablePromptJson').val() || '').trim();
     const v = validateDataTablePrompt(txt);
     if (!v.ok) {
-      setStatus(`æç¤ºè¯æ ¡éªŒå¤±è´¥ï¼š${v.error}`, 'err');
+      setStatus(`提示词校验失败：${v.error}`, 'err');
       return;
     }
-    setStatus(`æç¤ºè¯æ ¡éªŒé€šè¿‡ âœ…ï¼ˆ${v.prompts.length} æ®µï¼‰`, 'ok');
+    setStatus(`提示词校验通过 ✅（${v.prompts.length} 段）`, 'ok');
   });
 
   $('#sg_tableResetPrompt').on('click', () => {
     $('#sg_tablePromptJson').val(JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2));
-    setStatus('å·²æ¢å¤é»˜è®¤æç¤ºè¯ï¼ˆå°šæœªä¿å­˜ï¼‰', 'warn');
+    setStatus('已恢复默认提示词（尚未保存）', 'warn');
   });
 
   $('#sg_tableApplyPrompt').on('click', () => {
     const txt = String($('#sg_tablePromptJson').val() || '').trim();
     const v = validateDataTablePrompt(txt);
     if (!v.ok) {
-      setStatus(`æç¤ºè¯æ ¡éªŒå¤±è´¥ï¼š${v.error}`, 'err');
+      setStatus(`提示词校验失败：${v.error}`, 'err');
       return;
     }
     const s = ensureSettings();
     s.dataTablePromptJson = JSON.stringify(v.prompts, null, 2);
     saveSettings();
     $('#sg_tablePromptJson').val(s.dataTablePromptJson);
-    setStatus('æç¤ºè¯å·²åº”ç”¨å¹¶ä¿å­˜ âœ…', 'ok');
+    setStatus('提示词已应用并保存 ✅', 'ok');
   });
 
   $('#sg_tableSaveData').on('click', async () => {
@@ -6891,12 +6891,12 @@ function ensureModal() {
       saveSettings();
       const raw = String($('#sg_tableDataJson').val() || '').trim();
       if (!raw) {
-        setStatus('æ•°æ®ä¸ºç©ºï¼Œæ— æ³•ä¿å­˜', 'warn');
+        setStatus('数据为空，未保存', 'warn');
         return;
       }
       const parsed = safeJsonParseAny(raw);
       if (!parsed || typeof parsed !== 'object') {
-        setStatus('æ•°æ® JSON è§£æžå¤±è´¥', 'err');
+        setStatus('数据 JSON 解析失败', 'err');
         return;
       }
       const pretty = JSON.stringify(parsed, null, 2);
@@ -6908,26 +6908,26 @@ function ensureModal() {
       const s = ensureSettings();
       if (s.dataTableUpdateBody) {
         const res = await syncDataTableToChatBody(pretty, s, false);
-        if (!res.ok) setStatus(`å·²ä¿å­˜ï¼Œä½†å†™å…¥æ­£æ–‡å¤±è´¥ï¼š${res.error}`, 'warn');
-        else setStatus('å·²ä¿å­˜å¹¶å†™å…¥æ­£æ–‡ âœ…', 'ok');
+        if (!res.ok) setStatus(`已保存，但写入正文失败：${res.error}`, 'warn');
+        else setStatus('已保存并写入正文 ✅', 'ok');
       } else {
-        setStatus('å·²ä¿å­˜åˆ°æœ¬èŠå¤©å…ƒæ•°æ® âœ…', 'ok');
+        setStatus('已保存到本聊天元数据 ✅', 'ok');
       }
     } catch (e) {
-      setStatus(`ä¿å­˜æ•°æ®å¤±è´¥ï¼š${e?.message ?? e}`, 'err');
+      setStatus(`保存数据失败：${e?.message ?? e}`, 'err');
     }
   });
 
   $('#sg_tableLoadData').on('click', () => {
     const info = getDataTableDataForUi();
     if (!info.dataJson) {
-      setStatus('æœªæ‰¾åˆ°å¯è¯»å–çš„æ•°æ®', 'warn');
+      setStatus('未找到可读取的数据', 'warn');
       return;
     }
     $('#sg_tableDataJson').val(String(info.dataJson || ''));
     updateDataTableMetaInfo(info);
-    const src = info.source === 'body' ? 'æ­£æ–‡' : 'å…ƒæ•°æ®';
-    setStatus(`å·²è¯»å–æ•°æ®ï¼ˆæ¥æºï¼š${src}ï¼‰`, 'ok');
+    const src = info.source === 'body' ? '正文' : '元数据';
+    setStatus(`已读取数据（来源：${src}）`, 'ok');
   });
 
   $('#sg_tableSyncBody').on('click', async () => {
@@ -6936,14 +6936,14 @@ function ensureModal() {
       saveSettings();
       const raw = String($('#sg_tableDataJson').val() || '').trim();
       if (!raw) {
-        setStatus('æ•°æ®ä¸ºç©ºï¼Œæ— æ³•å†™å…¥æ­£æ–‡', 'warn');
+        setStatus('数据为空，未写入正文', 'warn');
         return;
       }
       const res = await syncDataTableToChatBody(raw, ensureSettings(), false);
-      if (!res.ok) setStatus(`å†™å…¥æ­£æ–‡å¤±è´¥ï¼š${res.error}`, 'err');
-      else setStatus('å·²å†™å…¥æ­£æ–‡ âœ…', 'ok');
+      if (!res.ok) setStatus(`写入正文失败：${res.error}`, 'err');
+      else setStatus('已写入正文 ✅', 'ok');
     } catch (e) {
-      setStatus(`å†™å…¥æ­£æ–‡å¤±è´¥ï¼${e?.message ?? e}`, 'err');
+      setStatus(`写入正文失败：${e?.message ?? e}`, 'err');
     }
   });
 
@@ -6953,9 +6953,9 @@ function ensureModal() {
       await setDataTableMeta({ dataJson: '', updatedAt: 0 });
       await syncDataTableToChatBody('', ensureSettings(), true);
       updateDataTableMetaInfo({ dataJson: '', updatedAt: 0, source: 'meta' });
-      setStatus('å·²æ¸…ç©ºæ•°æ®', 'ok');
+      setStatus('已清空数据', 'ok');
     } catch (e) {
-      setStatus(`æ¸…ç©ºå¤±è´¥ï¼${e?.message ?? e}`, 'err');
+      setStatus(`清空失败：${e?.message ?? e}`, 'err');
     }
   });
 
@@ -6968,10 +6968,10 @@ function ensureModal() {
   $('#sg_tablePresetLoad').on('click', () => {
     const s = ensureSettings();
     const name = String($('#sg_tablePresetSelect').val() || '').trim();
-    if (!name) { setStatus('è¯·å…ˆé€‰æ‹©é¢„è®¾', 'warn'); return; }
+    if (!name) { setStatus('请先选择预设', 'warn'); return; }
     const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
     const preset = presets.find(p => p && p.name === name);
-    if (!preset) { setStatus('æœªæ‰¾åˆ°é¢„è®¾', 'err'); return; }
+    if (!preset) { setStatus('未找到预设', 'err'); return; }
     if (preset.templateJson) {
       $('#sg_tableTemplateJson').val(String(preset.templateJson));
       s.dataTableTemplateJson = String(preset.templateJson);
@@ -6982,25 +6982,25 @@ function ensureModal() {
     }
     s.dataTableActivePreset = name;
     saveSettings();
-    setStatus(`å·²åŠ è½½é¢„è®¾ "${name}" âœ…`, 'ok');
+    setStatus(`已加载预设 "${name}" ✅`, 'ok');
   });
 
   $('#sg_tablePresetSave').on('click', () => {
-    const name = prompt('è¯·è¾“å…¥é¢„è®¾åç§°ï¼š');
+    const name = prompt('请输入预设名称：');
     if (!name) return;
     const trimmed = String(name).trim();
     if (!trimmed) return;
     const templateJson = String($('#sg_tableTemplateJson').val() || '').trim();
     const promptJson = String($('#sg_tablePromptJson').val() || '').trim();
     if (!templateJson && !promptJson) {
-      setStatus('æ¨¡æ¿/æç¤ºè¯éƒ½ä¸ºç©ºï¼Œæ— æ³•ä¿å­˜é¢„è®¾', 'warn');
+      setStatus('模板/提示词均为空，未保存预设', 'warn');
       return;
     }
     const s = ensureSettings();
     const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
     const idx = presets.findIndex(p => p && p.name === trimmed);
     if (idx !== -1) {
-      if (!confirm(`é¢„è®¾ "${trimmed}" å·²å­˜åœ¨ï¼Œæ˜¯å¦è¦†ç›–ï¼Ÿ`)) return;
+      if (!confirm(`预设 "${trimmed}" 已存在，是否覆盖？`)) return;
       presets[idx] = { name: trimmed, templateJson, promptJson };
     } else {
       presets.push({ name: trimmed, templateJson, promptJson });
@@ -7009,21 +7009,21 @@ function ensureModal() {
     s.dataTableActivePreset = trimmed;
     saveSettings();
     renderDataTablePresetSelect();
-    setStatus(`é¢„è®¾ "${trimmed}" å·²ä¿å­˜ âœ…`, 'ok');
+    setStatus(`预设 "${trimmed}" 已保存 ✅`, 'ok');
   });
 
   $('#sg_tablePresetDelete').on('click', () => {
     const s = ensureSettings();
     const name = String($('#sg_tablePresetSelect').val() || '').trim();
-    if (!name) { setStatus('è¯·å…ˆé€‰æ‹©é¢„è®¾', 'warn'); return; }
-    if (!confirm(`ç¡®å®šåˆ é™¤é¢„è®¾ "${name}" å—ï¼Ÿ`)) return;
+    if (!name) { setStatus('请先选择预设', 'warn'); return; }
+    if (!confirm(`确定删除预设 "${name}" 吗？`)) return;
     const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
     const next = presets.filter(p => p && p.name !== name);
     s.dataTablePresets = next;
     if (s.dataTableActivePreset === name) s.dataTableActivePreset = '';
     saveSettings();
     renderDataTablePresetSelect();
-    setStatus(`é¢„è®¾ "${name}" å·²åˆ é™¤`, 'ok');
+    setStatus(`预设 "${name}" 已删除`, 'ok');
   });
 
   $('#sg_tablePresetImport').on('click', async () => {
@@ -7033,13 +7033,13 @@ function ensureModal() {
       const txt = await readFileText(file);
       const parsed = safeJsonParseAny(txt);
       if (!parsed) {
-        setStatus('å¯¼å…¥å¤±è´¥ï¼šæ–‡ä»¶æ ¼å¼ä¸å¯¹', 'err');
+        setStatus('导入失败：文件格式不正确', 'err');
         return;
       }
       const list = Array.isArray(parsed) ? parsed : [parsed];
       const incoming = list.map(normalizeDataTablePreset).filter(Boolean);
       if (!incoming.length) {
-        setStatus('å¯¼å…¥å¤±è´¥ï¼šæœªè¯†åˆ°å¯ç”¨é¢„è®¾', 'err');
+        setStatus('导入失败：未找到可用预设', 'err');
         return;
       }
       const s = ensureSettings();
@@ -7053,9 +7053,9 @@ function ensureModal() {
       s.dataTableActivePreset = incoming[0].name;
       saveSettings();
       renderDataTablePresetSelect();
-      setStatus(`å·²å¯¼å…¥é¢„è®¾ âœ…ï¼ˆ${incoming.length} ä¸ªï¼‰`, 'ok');
+      setStatus(`已导入预设 ✅（${incoming.length} 个）`, 'ok');
     } catch (e) {
-      setStatus(`å¯¼å…¥å¤±è´¥ï¼${e?.message ?? e}`, 'err');
+      setStatus(`导入失败：${e?.message ?? e}`, 'err');
     }
   });
 
@@ -7064,7 +7064,7 @@ function ensureModal() {
       const s = ensureSettings();
       const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
       if (!presets.length) {
-        setStatus('æ²¡æœ‰å¯å¯¼å‡ºçš„é¢„è®¾', 'warn');
+        setStatus('没有可导出的预设', 'warn');
         return;
       }
       const selected = String($('#sg_tablePresetSelect').val() || '').trim();
@@ -7072,9 +7072,9 @@ function ensureModal() {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const namePart = selected ? selected.replace(/[^a-z0-9]/gi, '_') : 'all';
       downloadTextFile(`storyguide-table-presets-${namePart}-${stamp}.json`, JSON.stringify(toExport, null, 2));
-      setStatus('å·²å¯¼å‡ºé¢„è®¾ âœ…', 'ok');
+      setStatus('已导出预设 ✅', 'ok');
     } catch (e) {
-      setStatus(`å¯¼å‡ºå¤±è´¥ï¼${e?.message ?? e}`, 'err');
+      setStatus(`导出失败：${e?.message ?? e}`, 'err');
     }
   });
 
@@ -7365,7 +7365,7 @@ function pullSettingsToUi() {
   $('#sg_quickOptionsShowIn').val(String(s.quickOptionsShowIn || 'inline'));
   $('#sg_quickOptionsJson').val(String(s.quickOptionsJson || '[]'));
 
-  // æ•°æ®è¡¨
+  // 数据表
   $('#sg_tableEnabled').prop('checked', !!s.dataTableEnabled);
   $('#sg_tableUpdateBody').prop('checked', !!s.dataTableUpdateBody);
   $('#sg_tableInjectionStyle').val(String(s.dataTableInjectionStyle || 'hidden'));
@@ -7812,7 +7812,7 @@ function pullUiToSettings() {
   s.quickOptionsShowIn = String($('#sg_quickOptionsShowIn').val() || 'inline');
   s.quickOptionsJson = String($('#sg_quickOptionsJson').val() || '[]');
 
-  // æ•°æ®è¡¨
+  // 数据表
   s.dataTableEnabled = $('#sg_tableEnabled').is(':checked');
   s.dataTableUpdateBody = $('#sg_tableUpdateBody').is(':checked');
   s.dataTableInjectionStyle = String($('#sg_tableInjectionStyle').val() || 'hidden');
