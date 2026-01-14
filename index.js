@@ -10502,7 +10502,9 @@ function showFloatingDataTable() {
     }
 
     // 使用 ACU 可视化UI渲染
-    window.renderAcuApp($body, extension_settings, saveSettingsDebounced);
+    // 构造模拟的 settings 根对象，并在 try-catch 中安全传递保存函数
+    const saveFn = (typeof saveSettingsDebounced !== 'undefined') ? saveSettingsDebounced : undefined;
+    window.renderAcuApp($body, { storyguide: s }, saveFn);
   } catch (e) {
     console.error(e);
     $body.html(`<div class="sg-floating-loading" style="color:red">渲染错误:<br>${e.message}<br><small>${e.stack}</small></div>`);
@@ -10849,16 +10851,17 @@ function init() {
    * 获取可视化UI配置
    */
   function getAcuConfig() {
-    const es = window.acuSettingsRef || {};
-    return { ...DEFAULT_ACU_CONFIG, ...(es.storyguide_acu_config || {}) };
+    const root = window.acuSettingsRef || {};
+    const s = root.storyguide || {};
+    return { ...DEFAULT_ACU_CONFIG, ...(s.storyguide_acu_config || {}) };
   }
 
   /**
    * 保存可视化UI配置
    */
   function saveAcuConfig(config) {
-    if (window.acuSettingsRef) {
-      window.acuSettingsRef.storyguide_acu_config = config;
+    if (window.acuSettingsRef && window.acuSettingsRef.storyguide) {
+      window.acuSettingsRef.storyguide.storyguide_acu_config = config;
       if (window.acuSaveSettingsFn) window.acuSaveSettingsFn();
     }
     applyAcuTheme();
