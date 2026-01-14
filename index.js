@@ -57,6 +57,33 @@ const DEFAULT_MODULES = Object.freeze([
   { key: 'quick_actions', title: '快捷选项', type: 'list', prompt: '根据当前剧情走向，给出4~6个玩家可以发送的具体行动选项（每项15~40字，可直接作为对话输入发送）', maxItems: 6, required: true, panel: true, inline: true },
 ]);
 
+const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
+  mate: { type: 'chatSheets', version: 1 },
+  sheet_main: {
+    uid: 'sheet_main',
+    name: 'è®°å½•è¡¨',
+    sourceData: {
+      note: 'è®°å½•å½“å‰å‰§æƒ…ä¸­éœ€è¦é•¿æœŸè·Ÿè¸ªçš„äººç‰©/ç‰©å“/åœ°ç‚¹/äº‹ä»¶ã€‚å¯ä»¥è‡ªå®šä¹‰è¡¨å¤´åˆ—ä¸Žå†…å®¹æ ¼å¼ã€‚'
+    },
+    content: [
+      [null, 'ç±»åž‹', 'åç§°', 'æè¿°', 'çŠ¶æ€/å¤‡æ³¨']
+    ],
+    exportConfig: {},
+    orderNo: 0
+  }
+}, null, 2);
+
+const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
+  {
+    role: 'system',
+    content: 'ä½ æ˜¯æ•°æ®è¡¨è®°å½•å‘˜ï¼Œè¯·æ ¹æ®èƒŒæ™¯è®¾å®šå’Œæ­£æ–‡æ•°æ®æ›´æ–°è¡¨æ ¼å†…å®¹ã€‚ä¸è¦æœæ’°ä¸å­˜åœ¨çš„ä¿¡æ¯ã€‚'
+  },
+  {
+    role: 'user',
+    content: 'ã€èƒŒæ™¯è®¾å®šã€‘\\n{{world}}\\n\\nã€æ­£æ–‡æ•°æ®ã€‘\\n{{chat}}\\n\\nã€å½“å‰è¡¨æ ¼æ•°æ®ã€‘\\n{{table}}\\n\\nè¯·è¾“å‡ºæ›´æ–°åŽçš„è¡¨æ ¼ JSONï¼Œä¿æŒç»“æž„ä¸Žå­—æ®µç­‰ä¿¡æ¯ã€‚'
+  },
+]);
+
 // ===== 总结提示词默认值（可在面板中自定义） =====
 const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
 
@@ -364,12 +391,22 @@ const DEFAULT_SETTINGS = Object.freeze({
     { label: '对话', prompt: '让角色之间展开更多对话' },
     { label: '行动', prompt: '描述接下来的具体行动' },
   ], null, 2),
+
+  // ===== æ•°æ®è¡¨æ¨¡å— =====
+  dataTableEnabled: false,
+  dataTableUpdateBody: false,
+  dataTableInjectionStyle: 'hidden', // hidden | plain
+  dataTableTemplateJson: DEFAULT_DATA_TABLE_TEMPLATE,
+  dataTablePromptJson: JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2),
+  dataTablePresets: [],
+  dataTableActivePreset: '',
 });
 
 const META_KEYS = Object.freeze({
   canon: 'storyguide_canon_outline',
   world: 'storyguide_world_setup',
   summaryMeta: 'storyguide_summary_meta',
+  dataTableMeta: 'storyguide_data_table_meta',
   staticModulesCache: 'storyguide_static_modules_cache',
   boundGreenWI: 'storyguide_bound_green_wi',
   boundBlueWI: 'storyguide_bound_blue_wi',
@@ -447,6 +484,15 @@ function ensureSettings() {
     if (!extensionSettings[MODULE_NAME].modulesJson) {
       extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
     }
+    if (!extensionSettings[MODULE_NAME].dataTableTemplateJson) {
+      extensionSettings[MODULE_NAME].dataTableTemplateJson = DEFAULT_DATA_TABLE_TEMPLATE;
+    }
+    if (!extensionSettings[MODULE_NAME].dataTablePromptJson) {
+      extensionSettings[MODULE_NAME].dataTablePromptJson = JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
+    }
+    if (!Array.isArray(extensionSettings[MODULE_NAME].dataTablePresets)) {
+      extensionSettings[MODULE_NAME].dataTablePresets = [];
+    }
   }
   if (typeof extensionSettings[MODULE_NAME].wiRollSystemPrompt === 'string') {
     const cur = extensionSettings[MODULE_NAME].wiRollSystemPrompt;
@@ -511,6 +557,13 @@ function safeJsonParse(maybeJson) {
   const first = t.indexOf('{');
   const last = t.lastIndexOf('}');
   if (first !== -1 && last !== -1 && last > first) t = t.slice(first, last + 1);
+  try { return JSON.parse(t); } catch { return null; }
+}
+
+function safeJsonParseAny(maybeJson) {
+  if (!maybeJson) return null;
+  let t = String(maybeJson).trim();
+  t = t.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
   try { return JSON.parse(t); } catch { return null; }
 }
 
@@ -693,6 +746,233 @@ function getSummaryMeta() {
 
 async function setSummaryMeta(meta) {
   await setChatMetaValue(META_KEYS.summaryMeta, JSON.stringify(meta ?? getDefaultSummaryMeta()));
+}
+
+// -------------------- data table meta (per chat) --------------------
+const DATA_TABLE_TAG = 'SG_TABLE';
+
+function getDefaultDataTableMeta() {
+  return { dataJson: '', updatedAt: 0 };
+}
+
+function getDataTableMeta() {
+  const raw = String(getChatMetaValue(META_KEYS.dataTableMeta) || '').trim();
+  if (!raw) return getDefaultDataTableMeta();
+  const parsed = safeJsonParseAny(raw);
+  if (parsed && typeof parsed === 'object') {
+    return {
+      dataJson: String(parsed.dataJson || parsed.data || '').trim(),
+      updatedAt: Number(parsed.updatedAt || 0) || 0,
+    };
+  }
+  return { dataJson: raw, updatedAt: 0 };
+}
+
+async function setDataTableMeta(meta) {
+  const payload = {
+    dataJson: String(meta?.dataJson || '').trim(),
+    updatedAt: Number(meta?.updatedAt || 0) || 0,
+  };
+  await setChatMetaValue(META_KEYS.dataTableMeta, JSON.stringify(payload));
+}
+
+function normalizeDataTableTemplate(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  const out = clone(obj);
+  if (!out.mate || typeof out.mate !== 'object') out.mate = { type: 'chatSheets', version: 1 };
+  if (!out.mate.type) out.mate.type = 'chatSheets';
+  if (!out.mate.version) out.mate.version = 1;
+  let orderNo = 0;
+  for (const key of Object.keys(out)) {
+    if (!key.startsWith('sheet_')) continue;
+    const sheet = out[key];
+    if (!sheet || typeof sheet !== 'object') continue;
+    if (!Array.isArray(sheet.content)) sheet.content = [];
+    if (!sheet.content.length) sheet.content = [[null]];
+    if (!Number.isFinite(Number(sheet.orderNo))) sheet.orderNo = orderNo;
+    orderNo += 1;
+  }
+  return out;
+}
+
+function validateDataTableTemplate(rawText) {
+  const parsed = safeJsonParseAny(rawText);
+  if (!parsed || typeof parsed !== 'object') return { ok: false, error: 'æ¨¡æ¿ JSON è§£æžå¤±è´¥', template: null };
+  const sheetKeys = Object.keys(parsed).filter(k => k.startsWith('sheet_'));
+  if (!sheetKeys.length) return { ok: false, error: 'æ¨¡æ¿éœ€è¦è‡³å°‘1ä¸ª sheet_* è¡¨', template: null };
+  for (const key of sheetKeys) {
+    const sheet = parsed[key];
+    if (!sheet || typeof sheet !== 'object' || !Array.isArray(sheet.content)) {
+      return { ok: false, error: `è¡¨ ${key} çš„ content å¿…é¡»ä¸ºæ•°ç»„`, template: null };
+    }
+    if (!sheet.content.length) {
+      return { ok: false, error: `è¡¨ ${key} çš„ content ä¸èƒ½ä¸ºç©º`, template: null };
+    }
+  }
+  return { ok: true, error: '', template: normalizeDataTableTemplate(parsed) };
+}
+
+function validateDataTablePrompt(rawText) {
+  const parsed = safeJsonParseAny(rawText);
+  if (!Array.isArray(parsed)) return { ok: false, error: 'æç¤ºè¯å¿…é¡»æ˜¯ JSON æ•°ç»„', prompts: null };
+  const normalized = parsed.map((item) => {
+    if (!item || typeof item !== 'object') return null;
+    const role = String(item.role || '').trim().toLowerCase();
+    const content = String(item.content || '').trim();
+    if (!role || !content) return null;
+    if (!['system', 'user', 'assistant'].includes(role)) return null;
+    const name = item.name ? String(item.name) : undefined;
+    return name ? { role, content, name } : { role, content };
+  }).filter(Boolean);
+  if (!normalized.length) return { ok: false, error: 'æç¤ºè¯å†…å®¹ä¸ºç©º', prompts: null };
+  return { ok: true, error: '', prompts: normalized };
+}
+
+function buildEmptyDataTableData(templateObj) {
+  const out = {};
+  if (!templateObj || typeof templateObj !== 'object') return out;
+  Object.keys(templateObj).forEach((key) => {
+    if (key === 'mate') {
+      out[key] = clone(templateObj[key]);
+      return;
+    }
+    if (!key.startsWith('sheet_')) return;
+    const sheet = clone(templateObj[key]);
+    if (Array.isArray(sheet.content) && sheet.content.length > 1) {
+      sheet.content = [sheet.content[0]];
+    }
+    out[key] = sheet;
+  });
+  return out;
+}
+
+function stripDataTableInjection(text, tag = DATA_TABLE_TAG) {
+  const t = String(text || '');
+  const et = escapeRegExp(tag);
+  const reComment = new RegExp(`\\n?\\s*<!--\\s*${et}\\b[\\s\\S]*?-->`, 'g');
+  const rePlain = new RegExp(`\\n?\\s*\\[${et}\\][\\s\\S]*?(?=\\n\\[|$)`, 'g');
+  return t.replace(reComment, '').replace(rePlain, '').trimEnd();
+}
+
+function extractDataTableInjection(text, tag = DATA_TABLE_TAG) {
+  const t = String(text || '');
+  const et = escapeRegExp(tag);
+  const reComment = new RegExp(`<!--\\s*${et}\\b([\\s\\S]*?)-->`, 'i');
+  const m = t.match(reComment);
+  if (m && m[1]) return String(m[1]).trim();
+  const rePlain = new RegExp(`\\[${et}\\]([\\s\\S]*?)(?:\\n\\[|$)`, 'i');
+  const m2 = t.match(rePlain);
+  if (m2 && m2[1]) return String(m2[1]).trim();
+  return '';
+}
+
+function buildDataTableInjection(dataJson, tag = DATA_TABLE_TAG, style = 'hidden') {
+  const body = String(dataJson || '').trim();
+  if (!body) return '';
+  if (String(style || 'hidden') === 'plain') {
+    return `\n\n[${tag}]\n${body}\n`;
+  }
+  return `\n\n<!--${tag}\n${body}\n-->`;
+}
+
+function findLastAssistantMessage(chat) {
+  const arr = Array.isArray(chat) ? chat : [];
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const m = arr[i];
+    if (m && m.is_user !== true && m.is_system !== true) return { msg: m, index: i };
+  }
+  return null;
+}
+
+async function syncDataTableToChatBody(dataJson, settings, removeIfEmpty = false) {
+  const s = settings || ensureSettings();
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  if (!chat.length) return { ok: false, error: 'èŠå¤©è®°å½•ä¸ºç©º' };
+  const target = findLastAssistantMessage(chat);
+  if (!target) return { ok: false, error: 'æœªæ‰¾åˆ° AI æ¶ˆæ¯' };
+
+  const raw = String(target.msg.mes ?? target.msg.message ?? '');
+  const cleaned = stripDataTableInjection(raw, DATA_TABLE_TAG);
+  const body = String(dataJson || '').trim();
+  if (!body && !removeIfEmpty) return { ok: false, error: 'æ•°æ®ä¸ºç©º' };
+
+  const injected = body ? buildDataTableInjection(body, DATA_TABLE_TAG, String(s.dataTableInjectionStyle || 'hidden')) : '';
+  target.msg.mes = cleaned + injected;
+  if (typeof target.msg.message === 'string') target.msg.message = target.msg.mes;
+
+  try {
+    if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
+    else if (typeof ctx.saveChat === 'function') ctx.saveChat();
+  } catch { /* ignore */ }
+
+  return { ok: true };
+}
+
+function getDataTableDataForUi() {
+  const meta = getDataTableMeta();
+  if (meta.dataJson) return { ...meta, source: 'meta' };
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const target = findLastAssistantMessage(chat);
+  if (target) {
+    const injected = extractDataTableInjection(target.msg.mes ?? target.msg.message ?? '', DATA_TABLE_TAG);
+    if (injected) return { dataJson: injected, updatedAt: 0, source: 'body' };
+  }
+  return { dataJson: '', updatedAt: 0, source: 'empty' };
+}
+
+function updateDataTableMetaInfo(info) {
+  const $info = $('#sg_tableMetaInfo');
+  if (!$info.length) return;
+  const data = String(info?.dataJson || '').trim();
+  if (!data) {
+    $info.text('ï¼ˆå°šæœªä¿å­˜æ•°æ®ï¼‰');
+    return;
+  }
+  const sourceLabel = info?.source === 'body' ? 'æ­£æ–‡' : 'å…ƒæ•°æ®';
+  const ts = info?.updatedAt ? new Date(Number(info.updatedAt)).toLocaleString() : '';
+  const timeText = ts ? `ï¼Œ${ts}` : '';
+  $info.text(`å·²ä¿å­˜æ•°æ®ï¼ˆæ¥æºï¼š${sourceLabel}${timeText}ï¼‰`);
+}
+
+function normalizeDataTablePreset(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = String(raw.name || raw.title || '').trim();
+  if (!name) return null;
+
+  let templateJson = '';
+  if (typeof raw.templateJson === 'string') templateJson = raw.templateJson;
+  else if (typeof raw.tableTemplateJson === 'string') templateJson = raw.tableTemplateJson;
+  else if (typeof raw.template === 'string') templateJson = raw.template;
+  else if (raw.template && typeof raw.template === 'object') templateJson = JSON.stringify(raw.template, null, 2);
+
+  let promptJson = '';
+  if (typeof raw.promptJson === 'string') promptJson = raw.promptJson;
+  else if (Array.isArray(raw.prompts)) promptJson = JSON.stringify(raw.prompts, null, 2);
+  else if (raw.prompts && typeof raw.prompts === 'object') {
+    const arr = [];
+    if (raw.prompts.mainPrompt) arr.push({ role: 'system', content: String(raw.prompts.mainPrompt) });
+    if (raw.prompts.systemPrompt) arr.push({ role: 'user', content: String(raw.prompts.systemPrompt) });
+    if (raw.prompts.finalSystemDirective) arr.push({ role: 'system', content: String(raw.prompts.finalSystemDirective) });
+    if (arr.length) promptJson = JSON.stringify(arr, null, 2);
+  }
+
+  if (!templateJson && !promptJson) return null;
+  return { name, templateJson, promptJson };
+}
+
+function renderDataTablePresetSelect() {
+  const $select = $('#sg_tablePresetSelect');
+  if (!$select.length) return;
+  const s = ensureSettings();
+  const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
+  $select.empty().append('<option value="">ï¼ˆé€‰æ‹©é¢„è®¾ï¼‰</option>');
+  presets.forEach((p) => {
+    if (!p || !p.name) return;
+    $select.append(`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`);
+  });
+  if (s.dataTableActivePreset) $select.val(String(s.dataTableActivePreset));
 }
 
 // ===== 静态模块缓存（只在首次或手动刷新时生成的模块结果）=====
@@ -5458,6 +5738,7 @@ function buildModalHtml() {
             <button class="sg-pgtab active" id="sg_pgtab_guide">剧情指导</button>
             <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_table">数据表</button>
             <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
           </div>
 
@@ -6022,6 +6303,69 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_index -->
 
+          <div class="sg-page" id="sg_page_table">
+            <div class="sg-card">
+              <div class="sg-card-title">æ•°æ®è¡¨</div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_tableEnabled">å¯ç”¨æ•°æ®è¡¨</label>
+                <label class="sg-check"><input type="checkbox" id="sg_tableUpdateBody">æ›´æ–°è®°å½•æ­£æ–‡é‡Œçš„æ•°æ®</label>
+                <select id="sg_tableInjectionStyle">
+                  <option value="hidden">éšè—æ³¨é‡Š</option>
+                  <option value="plain">æ­£æ–‡å¯è§</option>
+                </select>
+              </div>
+              <div class="sg-hint" id="sg_tableMetaInfo">ï¼ˆå°šæœªä¿å­˜æ•°æ®ï¼‰</div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">æ•°æ®è¡¨æ¨¡æ¿ï¼ˆJSONï¼‰</div>
+              <div class="sg-hint">ä½¿ç”¨ sheet_* ç»“æž„ï¼Œcontent[0] ä¸ºè¡¨å¤´ï¼Œå¯è‡ªå®šä¹‰å­—æ®µä¸Žé¡ºåºã€‚</div>
+              <textarea id="sg_tableTemplateJson" rows="10" spellcheck="false"></textarea>
+              <div class="sg-actions-row">
+                <button class="menu_button sg-btn" id="sg_tableValidateTemplate">æ ¡éªŒ</button>
+                <button class="menu_button sg-btn" id="sg_tableResetTemplate">æ¢å¤é»˜è®¤</button>
+                <button class="menu_button sg-btn" id="sg_tableApplyTemplate">åº”ç”¨æ¨¡æ¿</button>
+                <button class="menu_button sg-btn" id="sg_tableGenerateData">ç”Ÿæˆç©ºè¡¨</button>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">æ•°æ®è¡¨æç¤ºè¯ï¼ˆJSONï¼‰</div>
+              <div class="sg-hint">æ ¼å¼ç¤ºä¾‹ï¼š[{ "role": "system", "content": "..." }, { "role": "user", "content": "..." }]</div>
+              <textarea id="sg_tablePromptJson" rows="8" spellcheck="false"></textarea>
+              <div class="sg-actions-row">
+                <button class="menu_button sg-btn" id="sg_tableValidatePrompt">æ ¡éªŒ</button>
+                <button class="menu_button sg-btn" id="sg_tableResetPrompt">æ¢å¤é»˜è®¤</button>
+                <button class="menu_button sg-btn" id="sg_tableApplyPrompt">åº”ç”¨æç¤ºè¯</button>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">å½“å‰è®°å½•æ•°æ®ï¼ˆJSONï¼‰</div>
+              <textarea id="sg_tableDataJson" rows="10" spellcheck="false"></textarea>
+              <div class="sg-actions-row">
+                <button class="menu_button sg-btn" id="sg_tableSaveData">ä¿å­˜åˆ°æœ¬èŠå¤©</button>
+                <button class="menu_button sg-btn" id="sg_tableLoadData">ä»Žæ­£æ–‡/å…ƒæ•°æ®è¯»å–</button>
+                <button class="menu_button sg-btn" id="sg_tableSyncBody">å†™å…¥æ­£æ–‡</button>
+                <button class="menu_button sg-btn" id="sg_tableClearData">æ¸…ç©º</button>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">é¢„è®¾</div>
+              <div class="sg-row sg-inline">
+                <select id="sg_tablePresetSelect">
+                  <option value="">ï¼ˆé€‰æ‹©é¢„è®¾ï¼‰</option>
+                </select>
+                <button class="menu_button sg-btn" id="sg_tablePresetLoad">åŠ è½½</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetSave">ä¿å­˜</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetDelete">åˆ é™¤</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetImport">å¯¼å…¥</button>
+                <button class="menu_button sg-btn" id="sg_tablePresetExport">å¯¼å‡º</button>
+              </div>
+            </div>
+          </div> <!-- sg_page_table -->
+
           <div class="sg-page" id="sg_page_roll">
             <div class="sg-card">
               <div class="sg-card-title">ROLL 设置（判定）</div>
@@ -6352,7 +6696,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_tableEnabled, #sg_tableUpdateBody, #sg_tableInjectionStyle').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -6469,6 +6813,271 @@ function ensureModal() {
     }
   });
 
+
+  // data table actions
+  $('#sg_tableValidateTemplate').on('click', () => {
+    const txt = String($('#sg_tableTemplateJson').val() || '').trim();
+    const v = validateDataTableTemplate(txt);
+    if (!v.ok) {
+      setStatus(`æ•°æ®è¡¨æ¨¡æ¿æ ¡éªŒå¤±è´¥ï¼š${v.error}`, 'err');
+      return;
+    }
+    const count = Object.keys(v.template || {}).filter(k => k.startsWith('sheet_')).length;
+    setStatus(`æ•°æ®è¡¨æ¨¡æ¿æ ¡éªŒé€šè¿‡ âœ…ï¼ˆ${count} ä¸ªè¡¨ï¼‰`, 'ok');
+  });
+
+  $('#sg_tableResetTemplate').on('click', () => {
+    $('#sg_tableTemplateJson').val(DEFAULT_DATA_TABLE_TEMPLATE);
+    setStatus('å·²æ¢å¤é»˜è®¤æ¨¡æ¿ï¼ˆå°šæœªä¿å­˜ï¼‰', 'warn');
+  });
+
+  $('#sg_tableApplyTemplate').on('click', () => {
+    const txt = String($('#sg_tableTemplateJson').val() || '').trim();
+    const v = validateDataTableTemplate(txt);
+    if (!v.ok) {
+      setStatus(`æ•°æ®è¡¨æ¨¡æ¿æ ¡éªŒå¤±è´¥ï¼š${v.error}`, 'err');
+      return;
+    }
+    const s = ensureSettings();
+    s.dataTableTemplateJson = JSON.stringify(v.template, null, 2);
+    saveSettings();
+    $('#sg_tableTemplateJson').val(s.dataTableTemplateJson);
+    setStatus('æ•°æ®è¡¨æ¨¡æ¿å·²åº”ç”¨å¹¶ä¿å­˜ âœ…', 'ok');
+  });
+
+  $('#sg_tableGenerateData').on('click', () => {
+    const txt = String($('#sg_tableTemplateJson').val() || '').trim();
+    const v = validateDataTableTemplate(txt);
+    if (!v.ok) {
+      setStatus(`æ¨¡æ¿æ— æ³•è§£æžï¼š${v.error}`, 'err');
+      return;
+    }
+    const data = buildEmptyDataTableData(v.template);
+    $('#sg_tableDataJson').val(JSON.stringify(data, null, 2));
+    setStatus('å·²ç”Ÿæˆç©ºè¡¨ï¼ˆå°šæœªä¿å­˜ï¼‰', 'ok');
+  });
+
+  $('#sg_tableValidatePrompt').on('click', () => {
+    const txt = String($('#sg_tablePromptJson').val() || '').trim();
+    const v = validateDataTablePrompt(txt);
+    if (!v.ok) {
+      setStatus(`æç¤ºè¯æ ¡éªŒå¤±è´¥ï¼š${v.error}`, 'err');
+      return;
+    }
+    setStatus(`æç¤ºè¯æ ¡éªŒé€šè¿‡ âœ…ï¼ˆ${v.prompts.length} æ®µï¼‰`, 'ok');
+  });
+
+  $('#sg_tableResetPrompt').on('click', () => {
+    $('#sg_tablePromptJson').val(JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2));
+    setStatus('å·²æ¢å¤é»˜è®¤æç¤ºè¯ï¼ˆå°šæœªä¿å­˜ï¼‰', 'warn');
+  });
+
+  $('#sg_tableApplyPrompt').on('click', () => {
+    const txt = String($('#sg_tablePromptJson').val() || '').trim();
+    const v = validateDataTablePrompt(txt);
+    if (!v.ok) {
+      setStatus(`æç¤ºè¯æ ¡éªŒå¤±è´¥ï¼š${v.error}`, 'err');
+      return;
+    }
+    const s = ensureSettings();
+    s.dataTablePromptJson = JSON.stringify(v.prompts, null, 2);
+    saveSettings();
+    $('#sg_tablePromptJson').val(s.dataTablePromptJson);
+    setStatus('æç¤ºè¯å·²åº”ç”¨å¹¶ä¿å­˜ âœ…', 'ok');
+  });
+
+  $('#sg_tableSaveData').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      const raw = String($('#sg_tableDataJson').val() || '').trim();
+      if (!raw) {
+        setStatus('æ•°æ®ä¸ºç©ºï¼Œæ— æ³•ä¿å­˜', 'warn');
+        return;
+      }
+      const parsed = safeJsonParseAny(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        setStatus('æ•°æ® JSON è§£æžå¤±è´¥', 'err');
+        return;
+      }
+      const pretty = JSON.stringify(parsed, null, 2);
+      const meta = { dataJson: pretty, updatedAt: Date.now() };
+      await setDataTableMeta(meta);
+      $('#sg_tableDataJson').val(pretty);
+      updateDataTableMetaInfo({ ...meta, source: 'meta' });
+
+      const s = ensureSettings();
+      if (s.dataTableUpdateBody) {
+        const res = await syncDataTableToChatBody(pretty, s, false);
+        if (!res.ok) setStatus(`å·²ä¿å­˜ï¼Œä½†å†™å…¥æ­£æ–‡å¤±è´¥ï¼š${res.error}`, 'warn');
+        else setStatus('å·²ä¿å­˜å¹¶å†™å…¥æ­£æ–‡ âœ…', 'ok');
+      } else {
+        setStatus('å·²ä¿å­˜åˆ°æœ¬èŠå¤©å…ƒæ•°æ® âœ…', 'ok');
+      }
+    } catch (e) {
+      setStatus(`ä¿å­˜æ•°æ®å¤±è´¥ï¼š${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_tableLoadData').on('click', () => {
+    const info = getDataTableDataForUi();
+    if (!info.dataJson) {
+      setStatus('æœªæ‰¾åˆ°å¯è¯»å–çš„æ•°æ®', 'warn');
+      return;
+    }
+    $('#sg_tableDataJson').val(String(info.dataJson || ''));
+    updateDataTableMetaInfo(info);
+    const src = info.source === 'body' ? 'æ­£æ–‡' : 'å…ƒæ•°æ®';
+    setStatus(`å·²è¯»å–æ•°æ®ï¼ˆæ¥æºï¼š${src}ï¼‰`, 'ok');
+  });
+
+  $('#sg_tableSyncBody').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      const raw = String($('#sg_tableDataJson').val() || '').trim();
+      if (!raw) {
+        setStatus('æ•°æ®ä¸ºç©ºï¼Œæ— æ³•å†™å…¥æ­£æ–‡', 'warn');
+        return;
+      }
+      const res = await syncDataTableToChatBody(raw, ensureSettings(), false);
+      if (!res.ok) setStatus(`å†™å…¥æ­£æ–‡å¤±è´¥ï¼š${res.error}`, 'err');
+      else setStatus('å·²å†™å…¥æ­£æ–‡ âœ…', 'ok');
+    } catch (e) {
+      setStatus(`å†™å…¥æ­£æ–‡å¤±è´¥ï¼${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_tableClearData').on('click', async () => {
+    try {
+      $('#sg_tableDataJson').val('');
+      await setDataTableMeta({ dataJson: '', updatedAt: 0 });
+      await syncDataTableToChatBody('', ensureSettings(), true);
+      updateDataTableMetaInfo({ dataJson: '', updatedAt: 0, source: 'meta' });
+      setStatus('å·²æ¸…ç©ºæ•°æ®', 'ok');
+    } catch (e) {
+      setStatus(`æ¸…ç©ºå¤±è´¥ï¼${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_tablePresetSelect').on('change', () => {
+    const s = ensureSettings();
+    s.dataTableActivePreset = String($('#sg_tablePresetSelect').val() || '');
+    saveSettings();
+  });
+
+  $('#sg_tablePresetLoad').on('click', () => {
+    const s = ensureSettings();
+    const name = String($('#sg_tablePresetSelect').val() || '').trim();
+    if (!name) { setStatus('è¯·å…ˆé€‰æ‹©é¢„è®¾', 'warn'); return; }
+    const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
+    const preset = presets.find(p => p && p.name === name);
+    if (!preset) { setStatus('æœªæ‰¾åˆ°é¢„è®¾', 'err'); return; }
+    if (preset.templateJson) {
+      $('#sg_tableTemplateJson').val(String(preset.templateJson));
+      s.dataTableTemplateJson = String(preset.templateJson);
+    }
+    if (preset.promptJson) {
+      $('#sg_tablePromptJson').val(String(preset.promptJson));
+      s.dataTablePromptJson = String(preset.promptJson);
+    }
+    s.dataTableActivePreset = name;
+    saveSettings();
+    setStatus(`å·²åŠ è½½é¢„è®¾ "${name}" âœ…`, 'ok');
+  });
+
+  $('#sg_tablePresetSave').on('click', () => {
+    const name = prompt('è¯·è¾“å…¥é¢„è®¾åç§°ï¼š');
+    if (!name) return;
+    const trimmed = String(name).trim();
+    if (!trimmed) return;
+    const templateJson = String($('#sg_tableTemplateJson').val() || '').trim();
+    const promptJson = String($('#sg_tablePromptJson').val() || '').trim();
+    if (!templateJson && !promptJson) {
+      setStatus('æ¨¡æ¿/æç¤ºè¯éƒ½ä¸ºç©ºï¼Œæ— æ³•ä¿å­˜é¢„è®¾', 'warn');
+      return;
+    }
+    const s = ensureSettings();
+    const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
+    const idx = presets.findIndex(p => p && p.name === trimmed);
+    if (idx !== -1) {
+      if (!confirm(`é¢„è®¾ "${trimmed}" å·²å­˜åœ¨ï¼Œæ˜¯å¦è¦†ç›–ï¼Ÿ`)) return;
+      presets[idx] = { name: trimmed, templateJson, promptJson };
+    } else {
+      presets.push({ name: trimmed, templateJson, promptJson });
+    }
+    s.dataTablePresets = presets;
+    s.dataTableActivePreset = trimmed;
+    saveSettings();
+    renderDataTablePresetSelect();
+    setStatus(`é¢„è®¾ "${trimmed}" å·²ä¿å­˜ âœ…`, 'ok');
+  });
+
+  $('#sg_tablePresetDelete').on('click', () => {
+    const s = ensureSettings();
+    const name = String($('#sg_tablePresetSelect').val() || '').trim();
+    if (!name) { setStatus('è¯·å…ˆé€‰æ‹©é¢„è®¾', 'warn'); return; }
+    if (!confirm(`ç¡®å®šåˆ é™¤é¢„è®¾ "${name}" å—ï¼Ÿ`)) return;
+    const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
+    const next = presets.filter(p => p && p.name !== name);
+    s.dataTablePresets = next;
+    if (s.dataTableActivePreset === name) s.dataTableActivePreset = '';
+    saveSettings();
+    renderDataTablePresetSelect();
+    setStatus(`é¢„è®¾ "${name}" å·²åˆ é™¤`, 'ok');
+  });
+
+  $('#sg_tablePresetImport').on('click', async () => {
+    try {
+      const file = await pickFile('.json,application/json');
+      if (!file) return;
+      const txt = await readFileText(file);
+      const parsed = safeJsonParseAny(txt);
+      if (!parsed) {
+        setStatus('å¯¼å…¥å¤±è´¥ï¼šæ–‡ä»¶æ ¼å¼ä¸å¯¹', 'err');
+        return;
+      }
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      const incoming = list.map(normalizeDataTablePreset).filter(Boolean);
+      if (!incoming.length) {
+        setStatus('å¯¼å…¥å¤±è´¥ï¼šæœªè¯†åˆ°å¯ç”¨é¢„è®¾', 'err');
+        return;
+      }
+      const s = ensureSettings();
+      const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
+      incoming.forEach((p) => {
+        const idx = presets.findIndex(x => x && x.name === p.name);
+        if (idx !== -1) presets[idx] = p;
+        else presets.push(p);
+      });
+      s.dataTablePresets = presets;
+      s.dataTableActivePreset = incoming[0].name;
+      saveSettings();
+      renderDataTablePresetSelect();
+      setStatus(`å·²å¯¼å…¥é¢„è®¾ âœ…ï¼ˆ${incoming.length} ä¸ªï¼‰`, 'ok');
+    } catch (e) {
+      setStatus(`å¯¼å…¥å¤±è´¥ï¼${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_tablePresetExport').on('click', () => {
+    try {
+      const s = ensureSettings();
+      const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
+      if (!presets.length) {
+        setStatus('æ²¡æœ‰å¯å¯¼å‡ºçš„é¢„è®¾', 'warn');
+        return;
+      }
+      const selected = String($('#sg_tablePresetSelect').val() || '').trim();
+      const toExport = selected ? presets.filter(p => p && p.name === selected) : presets;
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const namePart = selected ? selected.replace(/[^a-z0-9]/gi, '_') : 'all';
+      downloadTextFile(`storyguide-table-presets-${namePart}-${stamp}.json`, JSON.stringify(toExport, null, 2));
+      setStatus('å·²å¯¼å‡ºé¢„è®¾ âœ…', 'ok');
+    } catch (e) {
+      setStatus(`å¯¼å‡ºå¤±è´¥ï¼${e?.message ?? e}`, 'err');
+    }
+  });
 
   // presets actions
   $('#sg_exportPreset').on('click', () => {
@@ -6667,8 +7276,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_table, #sg_pgtab_roll').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_table, #sg_page_roll').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -6676,6 +7285,9 @@ function showSettingsPage(page) {
   } else if (p === 'index') {
     $('#sg_pgtab_index').addClass('active');
     $('#sg_page_index').addClass('active');
+  } else if (p === 'table') {
+    $('#sg_pgtab_table').addClass('active');
+    $('#sg_page_table').addClass('active');
   } else if (p === 'roll') {
     $('#sg_pgtab_roll').addClass('active');
     $('#sg_page_roll').addClass('active');
@@ -6705,6 +7317,7 @@ function setupSettingsPages() {
   $('#sg_pgtab_guide').on('click', () => showSettingsPage('guide'));
   $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
+  $('#sg_pgtab_table').on('click', () => showSettingsPage('table'));
   $('#sg_pgtab_roll').on('click', () => showSettingsPage('roll'));
 
   // quick jump
@@ -6752,6 +7365,17 @@ function pullSettingsToUi() {
   $('#sg_quickOptionsEnabled').prop('checked', !!s.quickOptionsEnabled);
   $('#sg_quickOptionsShowIn').val(String(s.quickOptionsShowIn || 'inline'));
   $('#sg_quickOptionsJson').val(String(s.quickOptionsJson || '[]'));
+
+  // æ•°æ®è¡¨
+  $('#sg_tableEnabled').prop('checked', !!s.dataTableEnabled);
+  $('#sg_tableUpdateBody').prop('checked', !!s.dataTableUpdateBody);
+  $('#sg_tableInjectionStyle').val(String(s.dataTableInjectionStyle || 'hidden'));
+  $('#sg_tableTemplateJson').val(String(s.dataTableTemplateJson || DEFAULT_DATA_TABLE_TEMPLATE));
+  $('#sg_tablePromptJson').val(String(s.dataTablePromptJson || JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2)));
+  const tableInfo = getDataTableDataForUi();
+  $('#sg_tableDataJson').val(String(tableInfo.dataJson || ''));
+  updateDataTableMetaInfo(tableInfo);
+  renderDataTablePresetSelect();
 
   $('#sg_presetIncludeApiKey').prop('checked', !!s.presetIncludeApiKey);
 
@@ -7188,6 +7812,14 @@ function pullUiToSettings() {
   s.quickOptionsEnabled = $('#sg_quickOptionsEnabled').is(':checked');
   s.quickOptionsShowIn = String($('#sg_quickOptionsShowIn').val() || 'inline');
   s.quickOptionsJson = String($('#sg_quickOptionsJson').val() || '[]');
+
+  // æ•°æ®è¡¨
+  s.dataTableEnabled = $('#sg_tableEnabled').is(':checked');
+  s.dataTableUpdateBody = $('#sg_tableUpdateBody').is(':checked');
+  s.dataTableInjectionStyle = String($('#sg_tableInjectionStyle').val() || 'hidden');
+  s.dataTableTemplateJson = String($('#sg_tableTemplateJson').val() || '').trim() || DEFAULT_DATA_TABLE_TEMPLATE;
+  s.dataTablePromptJson = String($('#sg_tablePromptJson').val() || '').trim() || JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
+  s.dataTableActivePreset = String($('#sg_tablePresetSelect').val() || s.dataTableActivePreset || '');
 
   s.presetIncludeApiKey = $('#sg_presetIncludeApiKey').is(':checked');
 
