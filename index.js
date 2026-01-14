@@ -903,70 +903,6 @@ function buildEmptyDataTableData(templateObj) {
   return out;
 }
 
-// 从数据对象中获取排序后的sheet键名列表
-function getOrderedSheetKeysFromData(data) {
-  if (!data || typeof data !== 'object') return [];
-  const keys = Object.keys(data).filter(k => k.startsWith('sheet_'));
-  const entries = keys.map((key, idx) => {
-    const orderNo = Number(data[key]?.orderNo);
-    return { key, idx, orderNo: Number.isFinite(orderNo) ? orderNo : null };
-  });
-  entries.sort((a, b) => {
-    if (a.orderNo !== null && b.orderNo !== null && a.orderNo !== b.orderNo) return a.orderNo - b.orderNo;
-    if (a.orderNo !== null && b.orderNo === null) return -1;
-    if (a.orderNo === null && b.orderNo !== null) return 1;
-    return a.idx - b.idx;
-  });
-  return entries.map(e => e.key);
-}
-
-// 规范化预设对象格式
-function normalizeDataTablePreset(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const name = String(raw.name || '').trim();
-  if (!name) return null;
-
-  // 尝试从不同的字段名中获取模板和提示词
-  let templateJson = raw.templateJson || raw.template || raw.data_table_template || '';
-  let promptJson = raw.promptJson || raw.prompt || raw.prompts || raw.data_table_prompt || '';
-
-  // 如果是对象，则转换为字符串
-  if (templateJson && typeof templateJson === 'object') {
-    templateJson = JSON.stringify(templateJson, null, 2);
-  }
-  if (promptJson && typeof promptJson === 'object') {
-    promptJson = JSON.stringify(promptJson, null, 2);
-  }
-
-  templateJson = String(templateJson || '').trim();
-  promptJson = String(promptJson || '').trim();
-
-  // 至少需要一个有效内容
-  if (!templateJson && !promptJson) return null;
-
-  return { name, templateJson, promptJson };
-}
-
-// 渲染预设下拉列表
-function renderDataTablePresetSelect() {
-  const $select = $('#sg_tablePresetSelect');
-  if (!$select.length) return;
-
-  const s = ensureSettings();
-  const presets = Array.isArray(s.dataTablePresets) ? s.dataTablePresets : [];
-  const active = String(s.dataTableActivePreset || '');
-
-  let html = '<option value="">(选择预设)</option>';
-  presets.forEach((p) => {
-    if (!p || !p.name) return;
-    const name = escapeHtml(String(p.name));
-    const selected = p.name === active ? ' selected' : '';
-    html += `<option value="${name}"${selected}>${name}</option>`;
-  });
-
-  $select.html(html);
-}
-
 function stripDataTableInjection(text, tag = DATA_TABLE_TAG) {
   const t = String(text || '');
   const et = escapeRegExp(tag);
@@ -1059,22 +995,70 @@ function updateDataTableMetaInfo(info) {
 
 function normalizeDataTablePreset(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const name = String(raw.name || raw.title || '').trim();
+
+  // 尝试获取名称，支持多种字段名
+  let name = String(raw.name || raw.title || raw.preset_name || raw.presetName || '').trim();
+
+  // 如果没有名称但有 sheet_* 键，则这可能是直接的表格数据而非预设
+  const hasSheetKeys = Object.keys(raw).some(k => k.startsWith('sheet_'));
+
+  if (!name && hasSheetKeys) {
+    // 这是直接的表格数据，用第一个表的名称作为预设名称
+    const firstSheetKey = Object.keys(raw).find(k => k.startsWith('sheet_'));
+    const firstSheet = firstSheetKey ? raw[firstSheetKey] : null;
+    name = String(firstSheet?.name || '导入的数据表').trim();
+  }
+
   if (!name) return null;
 
   let templateJson = '';
+
+  // 情况1: 标准预设格式 - templateJson 或类似字段
   if (typeof raw.templateJson === 'string') templateJson = raw.templateJson;
   else if (typeof raw.tableTemplateJson === 'string') templateJson = raw.tableTemplateJson;
   else if (typeof raw.template === 'string') templateJson = raw.template;
-  else if (raw.template && typeof raw.template === 'object') templateJson = JSON.stringify(raw.template, null, 2);
+  else if (typeof raw.dataTableTemplateJson === 'string') templateJson = raw.dataTableTemplateJson;
+
+  // 情况2: template 是对象而非字符串
+  else if (raw.template && typeof raw.template === 'object') {
+    templateJson = JSON.stringify(raw.template, null, 2);
+  }
+
+  // 情况3: 直接的表格数据（有 sheet_* 键）
+  else if (hasSheetKeys) {
+    // 过滤出仅表格相关的键
+    const tableData = {};
+    for (const key of Object.keys(raw)) {
+      if (key.startsWith('sheet_') || key === 'mate') {
+        tableData[key] = raw[key];
+      }
+    }
+    if (!tableData.mate) {
+      tableData.mate = { type: 'chatSheets', version: 1 };
+    }
+    templateJson = JSON.stringify(tableData, null, 2);
+  }
+
+  // 情况4: ACU脚本导出格式 - data 或 tableData 字段
+  else if (raw.data && typeof raw.data === 'object' && Object.keys(raw.data).some(k => k.startsWith('sheet_'))) {
+    const tableData = { ...raw.data };
+    if (!tableData.mate) tableData.mate = { type: 'chatSheets', version: 1 };
+    templateJson = JSON.stringify(tableData, null, 2);
+  }
+  else if (raw.tableData && typeof raw.tableData === 'object') {
+    templateJson = JSON.stringify(raw.tableData, null, 2);
+  }
 
   let promptJson = '';
   if (typeof raw.promptJson === 'string') promptJson = raw.promptJson;
+  else if (typeof raw.dataTablePromptJson === 'string') promptJson = raw.dataTablePromptJson;
   else if (Array.isArray(raw.prompts)) promptJson = JSON.stringify(raw.prompts, null, 2);
+  else if (Array.isArray(raw.messages)) promptJson = JSON.stringify(raw.messages, null, 2);
   else if (raw.prompts && typeof raw.prompts === 'object') {
     const arr = [];
     if (raw.prompts.mainPrompt) arr.push({ role: 'system', content: String(raw.prompts.mainPrompt) });
-    if (raw.prompts.systemPrompt) arr.push({ role: 'user', content: String(raw.prompts.systemPrompt) });
+    if (raw.prompts.systemPrompt) arr.push({ role: 'system', content: String(raw.prompts.systemPrompt) });
+    if (raw.prompts.userPrompt) arr.push({ role: 'user', content: String(raw.prompts.userPrompt) });
     if (raw.prompts.finalSystemDirective) arr.push({ role: 'system', content: String(raw.prompts.finalSystemDirective) });
     if (arr.length) promptJson = JSON.stringify(arr, null, 2);
   }
@@ -9253,9 +9237,6 @@ function pullSettingsToUi() {
   renderSummaryPaneFromMeta();
   renderWiTriggerLogs();
   renderRollLogs();
-
-  // 渲染数据表预设下拉列表
-  renderDataTablePresetSelect();
 
   updateButtonsEnabled();
 }
