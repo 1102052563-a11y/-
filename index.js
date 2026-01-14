@@ -7874,6 +7874,7 @@ function buildModalHtml() {
               <div class="sg-hint">支持多个 sheet_* 作为表名，content[0] 为表头行；其余行由你手动维护或模型补全。</div>
               <textarea id="sg_tableTemplateJson" rows="10" spellcheck="false"></textarea>
               <div class="sg-actions-row">
+                <button class="menu_button sg-btn" id="sg_tableImportTemplate">导入模板</button>
                 <button class="menu_button sg-btn" id="sg_tableValidateTemplate">校验</button>
                 <button class="menu_button sg-btn" id="sg_tableResetTemplate">恢复默认</button>
                 <button class="menu_button sg-btn" id="sg_tableApplyTemplate">应用模板</button>
@@ -8478,6 +8479,61 @@ function ensureModal() {
     }
     const count = Object.keys(v.template || {}).filter(k => k.startsWith('sheet_')).length;
     setStatus(`数据表模板校验通过 ✅（${count} 个表）`, 'ok');
+  });
+
+  $('#sg_tableImportTemplate').on('click', async () => {
+    try {
+      const file = await pickFile('.json,application/json');
+      if (!file) return;
+      const txt = await readFileText(file);
+      const parsed = safeJsonParseAny(txt);
+      if (!parsed) {
+        setStatus('导入失败：文件格式不正确', 'err');
+        return;
+      }
+
+      // 检查是否是直接的表格数据（有 sheet_* 键）
+      const hasSheetKeys = Object.keys(parsed).some(k => k.startsWith('sheet_'));
+      let templateData = null;
+
+      if (hasSheetKeys) {
+        // 直接的表格数据
+        templateData = {};
+        for (const key of Object.keys(parsed)) {
+          if (key.startsWith('sheet_') || key === 'mate') {
+            templateData[key] = parsed[key];
+          }
+        }
+        if (!templateData.mate) {
+          templateData.mate = { type: 'chatSheets', version: 1 };
+        }
+      } else if (parsed.template && typeof parsed.template === 'object') {
+        // 标准预设格式 - template 字段
+        templateData = parsed.template;
+      } else if (typeof parsed.templateJson === 'string') {
+        // 标准预设格式 - templateJson 字符串
+        templateData = safeJsonParseAny(parsed.templateJson);
+      } else if (parsed.data && typeof parsed.data === 'object' && Object.keys(parsed.data).some(k => k.startsWith('sheet_'))) {
+        // ACU 导出格式
+        templateData = parsed.data;
+        if (!templateData.mate) templateData.mate = { type: 'chatSheets', version: 1 };
+      }
+
+      if (!templateData || !Object.keys(templateData).some(k => k.startsWith('sheet_'))) {
+        setStatus('导入失败：未找到有效的表格模板数据', 'err');
+        return;
+      }
+
+      // 修复可能的乱码
+      const repairedData = repairObjectMojibake(templateData);
+      const prettyJson = JSON.stringify(repairedData, null, 2);
+      $('#sg_tableTemplateJson').val(prettyJson);
+
+      const count = Object.keys(repairedData).filter(k => k.startsWith('sheet_')).length;
+      setStatus(`模板导入成功 ✅（${count} 个表，尚未保存）`, 'ok');
+    } catch (e) {
+      setStatus(`导入失败：${e?.message ?? e}`, 'err');
+    }
   });
 
   $('#sg_tableResetTemplate').on('click', () => {
