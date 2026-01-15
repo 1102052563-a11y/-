@@ -10531,25 +10531,54 @@ function showFloatingDataTable() {
   let dataObj = null;
   if (api && api.exportTableAsJson) {
     dataObj = api.exportTableAsJson();
+    console.log('[StoryGuide] showFloatingDataTable: Got data from API', Object.keys(dataObj || {}));
+  } else {
+    console.warn('[StoryGuide] showFloatingDataTable: API not found');
   }
 
   // Fallback if API returns null but we have raw data
   if (!dataObj) {
     const info = getDataTableDataForUi();
     if (info.dataJson) dataObj = safeJsonParseAny(info.dataJson);
+    console.log('[StoryGuide] showFloatingDataTable: Fallback to raw data', !!dataObj);
   }
 
   if (!dataObj || typeof dataObj !== 'object') {
+    console.log('[StoryGuide] showFloatingDataTable: dataObj is empty/invalid');
     $body.html('<div class="sg-floating-loading">暂无数据表数据<br><small>请先更新数据表</small></div>');
     return;
   }
 
-  // 修复可能的乱码
-  const repairedData = repairObjectMojibake(dataObj);
+  // 修复可能的乱码 (Try-catch to be safe if function missing or fails)
+  let repairedData = dataObj;
+  try {
+    if (typeof repairObjectMojibake === 'function') {
+      repairedData = repairObjectMojibake(dataObj);
+    }
+  } catch (e) {
+    console.warn('[StoryGuide] repairObjectMojibake failed', e);
+  }
+
   const keys = getOrderedSheetKeysFromData(repairedData);
+  console.log('[StoryGuide] showFloatingDataTable: keys found', keys);
 
   if (!keys.length) {
-    $body.html('<div class="sg-floating-loading">数据表为空</div>');
+    const rawKeys = Object.keys(dataObj || {}).join(', ');
+    const repKeys = Object.keys(repairedData || {}).join(', ');
+    const apiStatus = window.AutoCardUpdaterAPI ? 'Present' : 'Missing';
+
+    $body.html(`
+      <div class="sg-floating-loading">
+        <div style="color:red; font-weight:bold;">数据表为空</div>
+        <div style="text-align:left; font-size:0.8em; margin-top:8px; opacity:0.8; font-family:monospace;">
+          Debug Info:<br>
+          API: ${apiStatus}<br>
+          Raw Keys: [${rawKeys}]<br>
+          Repaired Keys: [${repKeys}]<br>
+        </div>
+        <div style="margin-top:10px;"><small>请尝试手动点击“更新数据表”</small></div>
+      </div>
+    `);
     return;
   }
 
