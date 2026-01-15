@@ -10728,14 +10728,29 @@ async function execDataTableUpdate() {
 
       // 尝试多种方式获取消息内容
       let text = '';
-      if (m.mes && typeof m.mes === 'string') {
-        text = m.mes;
-      } else if (m.message && typeof m.message === 'string') {
-        text = m.message;
-      } else if (m.content && typeof m.content === 'string') {
-        text = m.content;
-      } else if (m.text && typeof m.text === 'string') {
-        text = m.text;
+
+      // 对于 AI 消息，优先从 swipes 数组获取正文（mes 可能被 stat_data 等变量覆盖）
+      if (!isUser && Array.isArray(m.swipes) && m.swipes.length > 0) {
+        // 使用当前选中的 swipe，如果没有 swipe_id 则使用第一个
+        const swipeIndex = typeof m.swipe_id === 'number' ? m.swipe_id : 0;
+        const swipeContent = m.swipes[swipeIndex];
+        if (swipeContent && typeof swipeContent === 'string') {
+          text = swipeContent;
+          console.log(`[StoryGuide] DataTable: AI message #${i} using swipes[${swipeIndex}], len=${text.length}`);
+        }
+      }
+
+      // 如果 swipes 没有内容，回退到其他字段
+      if (!text) {
+        if (m.mes && typeof m.mes === 'string') {
+          text = m.mes;
+        } else if (m.message && typeof m.message === 'string') {
+          text = m.message;
+        } else if (m.content && typeof m.content === 'string') {
+          text = m.content;
+        } else if (m.text && typeof m.text === 'string') {
+          text = m.text;
+        }
       }
       text = stripHtml(text);
 
