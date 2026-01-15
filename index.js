@@ -5957,6 +5957,7 @@ function buildModalHtml() {
         <div class="sg-left">
           <div class="sg-pagetabs">
             <button class="sg-pgtab active" id="sg_pgtab_guide">剧情指导</button>
+            <button class="sg-pgtab" id="sg_pgtab_datatable">数据表</button>
             <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
             <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
@@ -6177,6 +6178,120 @@ function buildModalHtml() {
           </div>
 
           </div> <!-- sg_page_guide -->
+
+          <!-- 数据表设置页 -->
+          <div class="sg-page" id="sg_page_datatable" style="display:none;">
+            <div class="sg-card">
+              <div class="sg-card-title">数据表基础设置</div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <div class="sg-row sg-inline">
+                    <label class="sg-switch">
+                      <input type="checkbox" id="sg_dt_enabled">
+                      <span class="sg-slider"></span>
+                    </label>
+                    <label>启用数据表模块</label>
+                  </div>
+                </div>
+                <div class="sg-field">
+                  <div class="sg-row sg-inline">
+                    <label class="sg-switch">
+                      <input type="checkbox" id="sg_dt_auto_update">
+                      <span class="sg-slider"></span>
+                    </label>
+                    <label>自动更新 (收到回复后)</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>更新频率 (每N消息)</label>
+                  <input type="number" id="sg_dt_frequency" min="1" max="20" placeholder="1">
+                </div>
+                <div class="sg-field">
+                  <label>上下文消息数量 (Context)</label>
+                  <input type="number" id="sg_dt_threshold" min="1" max="50" placeholder="3">
+                </div>
+              </div>
+
+              <div class="sg-field">
+                <label>跳过前N层 (Skip Floors)</label>
+                <input type="number" id="sg_dt_skip_floors" min="0" placeholder="0">
+              </div>
+
+              <div class="sg-field">
+                <label>API Provider</label>
+                <select id="sg_dt_provider">
+                  <option value="main">使用主 API (Shared)</option>
+                  <option value="custom">独立 API (Custom)</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="sg_dt_custom_api_block" class="sg-card sg-subcard" style="display:none;">
+              <div class="sg-card-title">自定义 API 详细配置</div>
+
+              <div class="sg-field">
+                <label>API 基础 URL</label>
+                <input type="text" id="sg_dt_api_url" placeholder="https://api.example.com/v1">
+                <div class="sg-hint">优先走酒馆后端代理接口（/api/backends/...）</div>
+              </div>
+
+              <div class="sg-field">
+                <label>API Key</label>
+                <input type="password" id="sg_dt_api_key" placeholder="sk-...">
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>模型名称 (Model)</label>
+                  <input type="text" id="sg_dt_api_model" placeholder="gpt-4o-mini">
+                </div>
+                <div class="sg-field">
+                  <label>Max Tokens</label>
+                  <input type="number" id="sg_dt_api_max_tokens" placeholder="60000" step="100">
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>Temperature</label>
+                  <input type="number" id="sg_dt_api_temp" step="0.05" min="0" max="2" placeholder="0.9">
+                </div>
+                <div class="sg-field">
+                  <label>Top P</label>
+                  <input type="number" id="sg_dt_api_top_p" step="0.05" min="0" max="1" placeholder="0.95">
+                </div>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">高级定制 (JSON)</div>
+              
+              <div class="sg-field">
+                <label>自定义提示词 (为空则使用默认，支持 {{...}} 占位符)</label>
+                <textarea id="sg_dt_prompt" rows="4" class="sg-textarea" placeholder='["..."]'></textarea>
+              </div>
+              
+              <div class="sg-field">
+                <label>自定义表格模板 (为空则使用默认)</label>
+                <textarea id="sg_dt_template" rows="4" class="sg-textarea" placeholder='{"sheet_global": ...}'></textarea>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">状态与操作</div>
+              <div class="sg-field" style="margin-bottom:10px;">
+                <div id="sg_dt_status_text" class="sg-hint" style="color:#aaa;">表格数: 0 | 最后更新层: 0</div>
+              </div>
+              <div class="sg-row">
+                <button class="menu_button sg-btn" id="sg_dt_manual_update_btn">⚡ 立即更新</button>
+                <button class="menu_button sg-btn" id="sg_dt_view_table_btn">📋 查看当前表格内容</button>
+              </div>
+            </div>
+          </div>
 
           <div class="sg-page" id="sg_page_summary">
 
@@ -7204,9 +7319,47 @@ function setupSettingsPages() {
 
   // tabs
   $('#sg_pgtab_guide').on('click', () => showSettingsPage('guide'));
+  $('#sg_pgtab_datatable').on('click', () => showSettingsPage('datatable'));
   $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
   $('#sg_pgtab_roll').on('click', () => showSettingsPage('roll'));
+
+  // Data Table UI events
+  $('#sg_dt_provider').on('change', function () {
+    $('#sg_dt_custom_api_block').toggle($(this).val() === 'custom');
+  });
+
+  // Manual update button
+  $('#sg_dt_manual_update_btn').on('click', async () => {
+    const btn = $('#sg_dt_manual_update_btn');
+    btn.prop('disabled', true).text('更新中...');
+    try {
+      await runDataTableUpdate();
+      showToast('数据表更新成功', { kind: 'ok' });
+      // Update status text
+      const meta = getDataTableMeta();
+      const tableData = dtLoadTableFromChat();
+      const count = tableData ? Object.keys(tableData).filter(k => k.startsWith('sheet_')).length : 0;
+      $('#sg_dt_status_text').text(`表格数: ${count} | 最后更新层: ${meta.lastFloor || 0}`);
+    } catch (e) {
+      showToast('更新失败: ' + e.message, { kind: 'err' });
+    } finally {
+      btn.prop('disabled', false).text('⚡ 立即更新');
+    }
+  });
+
+  $('#sg_dt_view_table_btn').on('click', () => {
+    // We can reuse showFloatingDataTableView logic but show in modal?
+    // Or just open the floating panel view?
+    // For now, let's just use the floating view function but maybe adapt it?
+    // The user moved settings to modal, but viewing table might still be better in floating or just a modal popup?
+    // Let's call showFloatingDataTableView() for now, which puts it in floating panel.
+    // Ensure floating panel is shown
+    if (!$('#sg_floating_panel').is(':visible')) {
+      showFloatingPanel();
+    }
+    showFloatingDataTableView();
+  });
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
@@ -7298,6 +7451,37 @@ function pullSettingsToUi() {
   $('#sg_summaryIndexInComment').prop('checked', !!s.summaryIndexInComment);
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
+
+  // Data Table Settings Loading
+  $('#sg_dt_enabled').prop('checked', !!s.dataTableEnabled);
+  $('#sg_dt_auto_update').prop('checked', !!s.dataTableAutoUpdateEnabled);
+  $('#sg_dt_frequency').val(s.dataTableAutoUpdateFrequency || 1);
+  $('#sg_dt_threshold').val(s.dataTableAutoUpdateThreshold || 3);
+  $('#sg_dt_skip_floors').val(s.dataTableSkipFloors || 0);
+  const dtUseMain = s.dataTableUseMainApi !== false;
+  $('#sg_dt_provider').val(dtUseMain ? 'main' : 'custom');
+  $('#sg_dt_custom_api_block').toggle(!dtUseMain);
+
+  const dtApi = s.dataTableApiConfig || {};
+  $('#sg_dt_api_url').val(dtApi.url || '');
+  $('#sg_dt_api_key').val(dtApi.apiKey || '');
+  $('#sg_dt_api_model').val(dtApi.model || '');
+  $('#sg_dt_api_max_tokens').val(dtApi.maxTokens || 60000);
+  $('#sg_dt_api_temp').val(dtApi.temperature !== undefined ? dtApi.temperature : 0.9);
+  $('#sg_dt_api_top_p').val(dtApi.topP !== undefined ? dtApi.topP : 0.95);
+
+  $('#sg_dt_prompt').val(s.dataTableCharCardPrompt ? JSON.stringify(s.dataTableCharCardPrompt, null, 2) : '');
+  $('#sg_dt_template').val(s.dataTableTemplate ? JSON.stringify(s.dataTableTemplate, null, 2) : '');
+
+  // Update status info if available
+  try {
+    const meta = getDataTableMeta();
+    // Assuming we can read table data directly or need async? 
+    // dtLoadTableFromChat is sync if using cache/DOM
+    const tData = dtLoadTableFromChat();
+    const tCount = tData ? Object.keys(tData).filter(k => k.startsWith('sheet_')).length : 0;
+    $('#sg_dt_status_text').text(`表格数: ${tCount} | 最后更新层: ${meta.lastFloor || 0}`);
+  } catch (e) { console.error(e); }
 
   // 自动绑定世界书
   $('#sg_autoBindWorldInfo').prop('checked', !!s.autoBindWorldInfo);
@@ -7723,6 +7907,37 @@ function pullUiToSettings() {
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
   s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
 
+  // Data Table Settings Saving
+  s.dataTableEnabled = $('#sg_dt_enabled').is(':checked');
+  s.dataTableAutoUpdateEnabled = $('#sg_dt_auto_update').is(':checked');
+  s.dataTableAutoUpdateFrequency = parseInt($('#sg_dt_frequency').val()) || 1;
+  s.dataTableAutoUpdateThreshold = parseInt($('#sg_dt_threshold').val()) || 3;
+  s.dataTableSkipFloors = parseInt($('#sg_dt_skip_floors').val()) || 0;
+  s.dataTableUseMainApi = $('#sg_dt_provider').val() === 'main';
+
+  s.dataTableApiConfig = {
+    url: ($('#sg_dt_api_url').val() || '').trim(),
+    apiKey: ($('#sg_dt_api_key').val() || '').trim(),
+    model: ($('#sg_dt_api_model').val() || '').trim(),
+    maxTokens: parseInt($('#sg_dt_api_max_tokens').val()) || 60000,
+    temperature: parseFloat($('#sg_dt_api_temp').val()) || 0.9,
+    topP: parseFloat($('#sg_dt_api_top_p').val()) || 0.95,
+  };
+
+  try {
+    const pVal = $('#sg_dt_prompt').val();
+    s.dataTableCharCardPrompt = pVal ? JSON.parse(pVal) : null;
+  } catch (e) {
+    console.warn('Invalid JSON for Data Table Prompt');
+  }
+
+  try {
+    const tVal = $('#sg_dt_template').val();
+    s.dataTableTemplate = tVal ? JSON.parse(tVal) : null;
+  } catch (e) {
+    console.warn('Invalid JSON for Data Table Template');
+  }
+
   // 自动绑定世界书
   s.autoBindWorldInfo = $('#sg_autoBindWorldInfo').is(':checked');
   s.autoBindWorldInfoPrefix = String($('#sg_autoBindWorldInfoPrefix').val() || 'SG').trim() || 'SG';
@@ -8097,7 +8312,6 @@ function createFloatingPanel() {
       <div class="sg-floating-actions">
         <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
         <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
-        <button class="sg-floating-action-btn" id="sg_floating_datatable" title="数据表设置">📊</button>
         <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
         <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
       </div>
@@ -8145,10 +8359,6 @@ function createFloatingPanel() {
 
   $('#sg_floating_roll_logs').on('click', () => {
     showFloatingRollLogs();
-  });
-
-  $('#sg_floating_datatable').on('click', () => {
-    showFloatingDataTableSettings();
   });
 
   $('#sg_floating_settings').on('click', () => {
@@ -8499,155 +8709,138 @@ function showFloatingReport() {
   }
 }
 
-// -------------------- 数据表设置面板 --------------------
+// -------------------- 数据表设置面板 (Deprecated, moved to main settings) --------------------
 function showFloatingDataTableSettings() {
-  const s = ensureSettings();
-  const panel = document.getElementById('sg_floating_panel');
-  if (!panel) return;
-
-  const body = panel.querySelector('#sg_floating_body');
-  if (!body) return;
-
-  const isEnabled = s.dataTableEnabled || false;
-  const autoEnabled = s.dataTableAutoUpdateEnabled || false;
-  const useMainApi = s.dataTableUseMainApi !== false;
-  const frequency = s.dataTableAutoUpdateFrequency || 1;
-  const threshold = s.dataTableAutoUpdateThreshold || 3;
-  const skipFloors = s.dataTableSkipFloors || 0;
-  const apiConfig = s.dataTableApiConfig || {};
-
-  // 获取当前表格状态
-  let tableData = dtLoadTableFromChat();
-  const tableCount = tableData ? Object.keys(tableData).filter(k => k.startsWith('sheet_')).length : 0;
-  const meta = getDataTableMeta();
-
-  const html = `
-    <div style="padding:15px; font-family: var(--font1, 'Segoe UI', sans-serif);">
-      <h3 style="margin:0 0 15px 0; color:var(--accent_color, #4a90d9); font-size:1.1em; border-bottom:1px solid #333; padding-bottom:8px;">📊 数据表模块设置</h3>
-      
-      <!-- 基础开关 -->
-      <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-        <label style="font-weight:bold;">启用数据表模块</label>
-        <input type="checkbox" id="sg_dt_enabled" ${isEnabled ? 'checked' : ''} style="width:18px; height:18px;">
-      </div>
-      
-      <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-        <label>自动更新</label>
-        <input type="checkbox" id="sg_dt_auto_update" ${autoEnabled ? 'checked' : ''} style="width:18px; height:18px;">
-      </div>
-      
-      <!-- 更新频率 -->
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px;">更新频率（每N条消息）</label>
-        <input type="number" id="sg_dt_frequency" value="${frequency}" min="1" max="20" 
-               style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee;">
-      </div>
-      
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px;">上下文消息数量</label>
-        <input type="number" id="sg_dt_threshold" value="${threshold}" min="1" max="50" 
-               style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee;">
-      </div>
-      
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px;">跳过前N层</label>
-        <input type="number" id="sg_dt_skip_floors" value="${skipFloors}" min="0" max="100" 
-               style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee;">
-      </div>
-      
-      <!-- API 设置 -->
-      <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-        <label>使用主 API</label>
-        <input type="checkbox" id="sg_dt_use_main_api" ${useMainApi ? 'checked' : ''} style="width:18px; height:18px;">
-      </div>
-      
-      <div id="sg_dt_custom_api_section" style="display:${useMainApi ? 'none' : 'block'}; margin-bottom:12px; padding:10px; background:#222; border-radius:6px; border:1px solid #444;">
-        <label style="display:block; margin-bottom:4px; font-size:0.9em; color:#888;">自定义 API URL</label>
-        <input type="text" id="sg_dt_api_url" value="${apiConfig.url || ''}" placeholder="https://api.example.com/v1"
-               style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee; margin-bottom:8px;">
+  console.warn('showFloatingDataTableSettings is deprecated.');
+  return;
+  /*
+      <div style="padding:15px; font-family: var(--font1, 'Segoe UI', sans-serif);">
+        <h3 style="margin:0 0 15px 0; color:var(--accent_color, #4a90d9); font-size:1.1em; border-bottom:1px solid #333; padding-bottom:8px;">📊 数据表模块设置</h3>
         
-        <label style="display:block; margin-bottom:4px; font-size:0.9em; color:#888;">API Key</label>
-        <input type="password" id="sg_dt_api_key" value="${apiConfig.apiKey || ''}" placeholder="sk-xxxxxxxx"
-               style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee; margin-bottom:8px;">
+        <!-- 基础开关 -->
+        <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <label style="font-weight:bold;">启用数据表模块</label>
+          <input type="checkbox" id="sg_dt_enabled" ${isEnabled ? 'checked' : ''} style="width:18px; height:18px;">
+        </div>
         
-        <label style="display:block; margin-bottom:4px; font-size:0.9em; color:#888;">模型名称</label>
-        <input type="text" id="sg_dt_api_model" value="${apiConfig.model || ''}" placeholder="gpt-4o-mini"
-               style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee;">
-      </div>
-      
-      <!-- 状态显示 -->
-      <div style="margin:15px 0; padding:10px; background:#1a2a1a; border-radius:6px; border:1px solid #2a4a2a;">
-        <div style="font-size:0.9em; color:#8a8;">状态信息</div>
-        <div style="margin-top:5px; font-size:0.85em; color:#aaa;">
-          表格数：<strong style="color:#6c6;">${tableCount}</strong> | 
-          最后更新层：<strong style="color:#6c6;">${meta.lastFloor || 0}</strong>
+        <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <label>自动更新</label>
+          <input type="checkbox" id="sg_dt_auto_update" ${autoEnabled ? 'checked' : ''} style="width:18px; height:18px;">
+        </div>
+        
+        <!-- 更新频率 -->
+        <div style="margin-bottom:12px;">
+          <label style="display:block; margin-bottom:4px;">更新频率（每N条消息）</label>
+          <input type="number" id="sg_dt_frequency" value="${frequency}" min="1" max="20" 
+                 style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee;">
+        </div>
+        
+        <div style="margin-bottom:12px;">
+          <label style="display:block; margin-bottom:4px;">上下文消息数量</label>
+          <input type="number" id="sg_dt_threshold" value="${threshold}" min="1" max="50" 
+                 style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee;">
+        </div>
+        
+        <div style="margin-bottom:12px;">
+          <label style="display:block; margin-bottom:4px;">跳过前N层</label>
+          <input type="number" id="sg_dt_skip_floors" value="${skipFloors}" min="0" max="100" 
+                 style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee;">
+        </div>
+        
+        <!-- API 设置 -->
+        <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <label>使用主 API</label>
+          <input type="checkbox" id="sg_dt_use_main_api" ${useMainApi ? 'checked' : ''} style="width:18px; height:18px;">
+        </div>
+        
+        <div id="sg_dt_custom_api_section" style="display:${useMainApi ? 'none' : 'block'}; margin-bottom:12px; padding:10px; background:#222; border-radius:6px; border:1px solid #444;">
+          <label style="display:block; margin-bottom:4px; font-size:0.9em; color:#888;">自定义 API URL</label>
+          <input type="text" id="sg_dt_api_url" value="${apiConfig.url || ''}" placeholder="https://api.example.com/v1"
+                 style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee; margin-bottom:8px;">
+          
+          <label style="display:block; margin-bottom:4px; font-size:0.9em; color:#888;">API Key</label>
+          <input type="password" id="sg_dt_api_key" value="${apiConfig.apiKey || ''}" placeholder="sk-xxxxxxxx"
+                 style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee; margin-bottom:8px;">
+          
+          <label style="display:block; margin-bottom:4px; font-size:0.9em; color:#888;">模型名称</label>
+          <input type="text" id="sg_dt_api_model" value="${apiConfig.model || ''}" placeholder="gpt-4o-mini"
+                 style="width:100%; padding:6px; border:1px solid #444; border-radius:4px; background:#2a2a2a; color:#eee;">
+        </div>
+        
+        <!-- 状态显示 -->
+        <div style="margin:15px 0; padding:10px; background:#1a2a1a; border-radius:6px; border:1px solid #2a4a2a;">
+          <div style="font-size:0.9em; color:#8a8;">状态信息</div>
+          <div style="margin-top:5px; font-size:0.85em; color:#aaa;">
+            表格数：<strong style="color:#6c6;">${tableCount}</strong> | 
+            最后更新层：<strong style="color:#6c6;">${meta.lastFloor || 0}</strong>
+          </div>
+        </div>
+        
+        <!-- 操作按钮 -->
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button id="sg_dt_save_btn" style="flex:1; padding:10px; background:linear-gradient(to bottom, #4a90d9, #3a80c9); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+            💾 保存设置
+          </button>
+          <button id="sg_dt_manual_update_btn" style="flex:1; padding:10px; background:linear-gradient(to bottom, #d97a4a, #c96a3a); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+            ⚡ 立即更新
+          </button>
+        </div>
+        
+        <div style="margin-top:10px;">
+          <button id="sg_dt_view_table_btn" style="width:100%; padding:8px; background:#333; color:#aaa; border:1px solid #444; border-radius:6px; cursor:pointer;">
+            📋 查看当前数据表
+          </button>
         </div>
       </div>
-      
-      <!-- 操作按钮 -->
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button id="sg_dt_save_btn" style="flex:1; padding:10px; background:linear-gradient(to bottom, #4a90d9, #3a80c9); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
-          💾 保存设置
-        </button>
-        <button id="sg_dt_manual_update_btn" style="flex:1; padding:10px; background:linear-gradient(to bottom, #d97a4a, #c96a3a); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
-          ⚡ 立即更新
-        </button>
-      </div>
-      
-      <div style="margin-top:10px;">
-        <button id="sg_dt_view_table_btn" style="width:100%; padding:8px; background:#333; color:#aaa; border:1px solid #444; border-radius:6px; cursor:pointer;">
-          📋 查看当前数据表
-        </button>
-      </div>
-    </div>
-  `;
-
-  body.innerHTML = html;
-
-  // 绑定事件
-  $('#sg_dt_use_main_api').on('change', function () {
-    const useMain = $(this).is(':checked');
-    $('#sg_dt_custom_api_section').toggle(!useMain);
-  });
-
-  $('#sg_dt_save_btn').on('click', () => {
-    const newSettings = {
-      dataTableEnabled: $('#sg_dt_enabled').is(':checked'),
-      dataTableAutoUpdateEnabled: $('#sg_dt_auto_update').is(':checked'),
-      dataTableAutoUpdateFrequency: parseInt($('#sg_dt_frequency').val()) || 1,
-      dataTableAutoUpdateThreshold: parseInt($('#sg_dt_threshold').val()) || 3,
-      dataTableSkipFloors: parseInt($('#sg_dt_skip_floors').val()) || 0,
-      dataTableUseMainApi: $('#sg_dt_use_main_api').is(':checked'),
-      dataTableApiConfig: {
-        url: $('#sg_dt_api_url').val() || '',
-        apiKey: $('#sg_dt_api_key').val() || '',
-        model: $('#sg_dt_api_model').val() || '',
-        maxTokens: 60000,
-        temperature: 0.9,
-      },
-    };
-
-    Object.assign(s, newSettings);
-    saveSettings();
-    showToast('数据表设置已保存', { kind: 'ok' });
-  });
-
-  $('#sg_dt_manual_update_btn').on('click', async () => {
-    const btn = $('#sg_dt_manual_update_btn');
-    btn.prop('disabled', true).text('更新中...');
-    try {
-      await runDataTableUpdate();
-      showFloatingDataTableSettings(); // 刷新面板
-    } catch (e) {
-      showToast('更新失败: ' + e.message, { kind: 'err' });
-    } finally {
-      btn.prop('disabled', false).text('⚡ 立即更新');
-    }
-  });
-
-  $('#sg_dt_view_table_btn').on('click', () => {
-    showFloatingDataTableView();
-  });
+    `;
+  
+    body.innerHTML = html;
+  
+    // 绑定事件
+    $('#sg_dt_use_main_api').on('change', function () {
+      const useMain = $(this).is(':checked');
+      $('#sg_dt_custom_api_section').toggle(!useMain);
+    });
+  
+    $('#sg_dt_save_btn').on('click', () => {
+      const newSettings = {
+        dataTableEnabled: $('#sg_dt_enabled').is(':checked'),
+        dataTableAutoUpdateEnabled: $('#sg_dt_auto_update').is(':checked'),
+        dataTableAutoUpdateFrequency: parseInt($('#sg_dt_frequency').val()) || 1,
+        dataTableAutoUpdateThreshold: parseInt($('#sg_dt_threshold').val()) || 3,
+        dataTableSkipFloors: parseInt($('#sg_dt_skip_floors').val()) || 0,
+        dataTableUseMainApi: $('#sg_dt_use_main_api').is(':checked'),
+        dataTableApiConfig: {
+          url: $('#sg_dt_api_url').val() || '',
+          apiKey: $('#sg_dt_api_key').val() || '',
+          model: $('#sg_dt_api_model').val() || '',
+          maxTokens: 60000,
+          temperature: 0.9,
+        },
+      };
+  
+      Object.assign(s, newSettings);
+      saveSettings();
+      showToast('数据表设置已保存', { kind: 'ok' });
+    });
+  
+    $('#sg_dt_manual_update_btn').on('click', async () => {
+      const btn = $('#sg_dt_manual_update_btn');
+      btn.prop('disabled', true).text('更新中...');
+      try {
+        await runDataTableUpdate();
+        showFloatingDataTableSettings(); // 刷新面板
+      } catch (e) {
+        showToast('更新失败: ' + e.message, { kind: 'err' });
+      } finally {
+        btn.prop('disabled', false).text('⚡ 立即更新');
+      }
+    });
+  
+    $('#sg_dt_view_table_btn').on('click', () => {
+      showFloatingDataTableView();
+    });
+  */
 }
 
 // 显示数据表内容视图
