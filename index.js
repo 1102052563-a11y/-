@@ -98,17 +98,25 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
     content: [[null, '任务名称', '状态', '目标/奖励']],
     exportConfig: {},
     orderNo: 4
+  },
+  sheet_npc: {
+    uid: 'sheet_npc',
+    name: '人物档案',
+    sourceData: { note: '记录出现的主要NPC与关系' },
+    content: [[null, '角色名', '关系/阵营', '状态/近况', '备注']],
+    exportConfig: {},
+    orderNo: 5
   }
 }, null, 2);
 
 const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
   {
     role: 'system',
-    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：只输出表格 JSON，保持结构与字段名称不变。'
+    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：1. 只输出表格 JSON，保持结构与字段名称不变。 2. **sheet_char** 仅记录主角状态；其他重要角色请记录在 **sheet_npc** 表中。 3. 捕捉关键状态变化与行为。'
   },
   {
     role: 'user',
-    content: '【背景设定】\n{{world}}\n\n【正文数据】\n{{chat}}\n\n【当前表格数据】\n{{table}}\n\n请输出更新后的表格 JSON，保持结构与字段一致。'
+    content: '【背景设定】\n{{world}}\n\n【正文数据】\n{{chat}}\n\n【当前表格数据】\n{{table}}\n\n请输出更新后的表格 JSON。请确保捕捉**所有关键人物**的最新状态与剧情发展，保持结构一致。'
   },
 ]);
 
@@ -10841,7 +10849,7 @@ async function execDataTableUpdate() {
     // 6. Save
     // 6. Save
     const finalStr = JSON.stringify(parsed);
-    await setDataTableMeta({ dataJson: finalStr, updatedAt: Date.now() });
+    await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
 
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
