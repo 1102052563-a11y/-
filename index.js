@@ -462,6 +462,7 @@ const META_KEYS = Object.freeze({
   boundGreenWI: 'storyguide_bound_green_wi',
   boundBlueWI: 'storyguide_bound_blue_wi',
   autoBindCreated: 'storyguide_auto_bind_created',
+  lastReport: 'storyguide_last_report',
 });
 
 let lastReport = null;
@@ -880,6 +881,26 @@ async function setDataTableMeta(meta) {
     updatedAt: Number(meta?.updatedAt || 0) || 0,
   };
   await setChatMetaValue(META_KEYS.dataTableMeta, JSON.stringify(payload));
+}
+
+function loadLastReportFromMeta() {
+  const raw = String(getChatMetaValue(META_KEYS.lastReport) || '').trim();
+  if (!raw) return null;
+  const parsed = safeJsonParseAny(raw);
+  if (parsed && typeof parsed === 'object') return parsed;
+  return null;
+}
+
+async function saveLastReportToMeta(report) {
+  if (!report) return;
+  // Minimize storage: only keep json, markdown, sourceSummary, createdAt
+  const payload = {
+    json: report.json,
+    markdown: report.markdown,
+    createdAt: report.createdAt,
+    sourceSummary: report.sourceSummary
+  };
+  await setChatMetaValue(META_KEYS.lastReport, JSON.stringify(payload));
 }
 
 function normalizeDataTableTemplate(obj) {
@@ -3624,6 +3645,7 @@ async function runAnalysis() {
 
     const md = renderReportMarkdownFromModules(parsed, modules);
     lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
+    saveLastReportToMeta(lastReport).catch(e => console.error('[StoryGuide] save lastReport failed', e));
     renderMarkdownInto($('#sg_md'), md);
 
     // 同步面板报告到聊天末尾
@@ -10563,20 +10585,13 @@ function showFloatingDataTable() {
   console.log('[StoryGuide] showFloatingDataTable: keys found', keys);
 
   if (!keys.length) {
-    const rawKeys = Object.keys(dataObj || {}).join(', ');
-    const repKeys = Object.keys(repairedData || {}).join(', ');
-    const apiStatus = window.AutoCardUpdaterAPI ? 'Present' : 'Missing';
-
     $body.html(`
       <div class="sg-floating-loading">
-        <div style="color:red; font-weight:bold;">数据表为空</div>
-        <div style="text-align:left; font-size:0.8em; margin-top:8px; opacity:0.8; font-family:monospace;">
-          Debug Info:<br>
-          API: ${apiStatus}<br>
-          Raw Keys: [${rawKeys}]<br>
-          Repaired Keys: [${repKeys}]<br>
+        <div style="font-weight:bold; margin-bottom:8px;">数据表暂无内容</div>
+        <div style="font-size:0.9em; opacity:0.8;">
+          <p>请点击右上角 <span class="sg-icon">🔄</span> 分析剧情以生成虚拟表</p>
+          <p>或点击 <span class="sg-icon">📝</span> 更新数据表以填充默认表</p>
         </div>
-        <div style="margin-top:10px;"><small>请尝试手动点击“更新数据表”</small></div>
       </div>
     `);
     return;
@@ -10925,9 +10940,32 @@ function init() {
     installRollPreSendHook();
   });
 
-  // 聊天切换时自动绑定世界书
+  // 聊天切换时自动绑定世界书 & 恢复 lastReport
   eventSource.on(event_types.CHAT_CHANGED, async () => {
     console.log('[StoryGuide] CHAT_CHANGED 事件触发');
+
+    // 尝试恢复 lastReport
+    try {
+      const restored = loadLastReportFromMeta();
+      if (restored) {
+        lastReport = restored;
+        // 也恢复 lastJsonText 以支持“复制JSON”按钮
+        if (lastReport.json) {
+          lastJsonText = JSON.stringify(lastReport.json, null, 2);
+          $('#sg_json').text(lastJsonText);
+        }
+        if (lastReport.sourceSummary) {
+          $('#sg_src').text(JSON.stringify(lastReport.sourceSummary, null, 2));
+        }
+        if (lastReport.markdown) {
+          renderMarkdownInto($('#sg_md'), lastReport.markdown);
+          showPane('md'); // 默认切回报告页? 或者保持现状
+        }
+        console.log('[StoryGuide] lastReport restored from meta ✅');
+      } else {
+        lastReport = null; // 清空上一段聊天的 cache
+      }
+    } catch (e) { console.error(e); }
 
     const ctx = SillyTavern.getContext();
     const hasChat = ctx.chat && Array.isArray(ctx.chat);
