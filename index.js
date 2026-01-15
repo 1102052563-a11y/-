@@ -2301,6 +2301,101 @@ function extractTableEditBlock(rawText) {
   return { found: false, text };
 }
 
+// ============== CoAT Command Processing Helper Functions ==============
+
+function splitTableEditArgs(argsText) {
+  // Split arguments by comma, respecting nested objects/arrays and strings
+  const args = [];
+  let current = '';
+  let depth = 0;
+  let inString = false;
+  let quoteChar = '';
+
+  for (let i = 0; i < argsText.length; i++) {
+    const ch = argsText[i];
+
+    if (inString) {
+      current += ch;
+      if (ch === '\\' && i + 1 < argsText.length) {
+        i++;
+        current += argsText[i];
+      } else if (ch === quoteChar) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quoteChar = ch;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '{' || ch === '[' || ch === '(') {
+      depth++;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '}' || ch === ']' || ch === ')') {
+      depth--;
+      current += ch;
+      continue;
+    }
+
+    if (ch === ',' && depth === 0) {
+      args.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
+function parseTableEditValue(str) {
+  if (!str) return null;
+  const trimmed = str.trim();
+
+  // Parse JSON objects/arrays
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (e) {
+      return trimmed;
+    }
+  }
+
+  // Parse numbers
+  if (/^-?\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  if (/^-?\d+\.\d+$/.test(trimmed)) return parseFloat(trimmed);
+
+  // Remove quotes
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+}
+
+function buildRowFromTableEdit(rowData, headerLen) {
+  // Build row array from rowData object: {"0": "val1", "1": "val2", ...}
+  if (!rowData || typeof rowData !== 'object') return null;
+
+  const row = [null]; // First column is always null (row number)
+  for (let i = 1; i < headerLen; i++) {
+    const colIndex = String(i - 1);
+    row.push(rowData[colIndex] || '');
+  }
+
+  return row;
+}
+
 function parseTableEditCommands(rawText, forceFound = false) {
   const block = extractTableEditBlock(rawText);
   const source = block.text || '';
