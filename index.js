@@ -7409,7 +7409,19 @@ function pullSettingsToUi() {
   $('#sg_dt_main_prompt').val(String(promptVal || ''));
 
   // Bind events here for simplicity (ensuring no duplicate bindings)
-  $('#sg_dt_main_use_main_api').off('change').on('change', function () {
+  const dtInputs = [
+    '#sg_dt_main_enabled', '#sg_dt_main_auto', '#sg_dt_main_freq', '#sg_dt_main_threshold', '#sg_dt_main_skip',
+    '#sg_dt_main_use_main_api', '#sg_dt_main_url', '#sg_dt_main_key', '#sg_dt_main_model',
+    '#sg_dt_main_max_tokens', '#sg_dt_main_temp', '#sg_dt_main_template', '#sg_dt_main_prompt'
+  ].join(', ');
+
+  $(dtInputs).off('change input').on('change input', () => {
+    pullUiToSettings();
+    const { saveSettingsDebounced } = SillyTavern.getContext();
+    saveSettingsDebounced();
+  });
+
+  $('#sg_dt_main_use_main_api').on('change', function () {
     $('#sg_dt_main_custom_api_block').toggle(!$(this).is(':checked'));
   });
 
@@ -7417,8 +7429,14 @@ function pullSettingsToUi() {
     const btn = $(this);
     btn.prop('disabled', true).text('更新中...');
     try {
-      await runDataTableUpdate();
-      showToast('数据表更新成功', { kind: 'ok' });
+      const success = await runDataTableUpdate();
+      if (success) {
+        showToast('数据表更新成功', { kind: 'ok' });
+      } else {
+        // runDataTableUpdate internally shows specific warnings, so we might not need another one here,
+        // or we can show a generic failure if needed. 
+        // But let's rely on internal toasts.
+      }
     } catch (e) {
       showToast('更新失败: ' + e.message, { kind: 'err' });
     } finally {
