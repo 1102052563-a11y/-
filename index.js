@@ -10752,6 +10752,8 @@ async function execDataTableUpdate() {
 
       if (text.length > maxChars) text = text.slice(0, maxChars) + '…(截断)';
       picked.push(`【${name}】${text}`);
+      // 调试：显示每条被选中的消息
+      console.log(`[StoryGuide] DataTable picked[${picked.length - 1}]: ${isUser ? 'USER' : 'AI'} "${name}" len=${text.length}`);
     }
     picked.reverse();
     const snapshotText = picked.join('\n\n');
