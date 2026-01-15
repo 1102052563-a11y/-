@@ -10591,7 +10591,18 @@ function showFloatingDataTable() {
   }
 
   if (!keys.length) {
-    $body.html('<div class="sg-floating-loading">数据表为空</div>');
+    const debugKeys = Object.keys(repairedData).slice(0, 10).join(', ');
+    const debugType = typeof repairedData;
+    const debugSnippet = JSON.stringify(repairedData).slice(0, 100);
+    $body.html(`<div class="sg-floating-loading">
+      数据表为空<br>
+      <small>未找到有效表格</small><br>
+      <div style="font-size:0.7em; text-align:left; color:#888; margin-top:5px;">
+        Type: ${debugType}<br>
+        Keys: ${debugKeys || 'NONE'}<br>
+        Snippet: ${escapeHtml(debugSnippet)}
+      </div>
+    </div>`);
     return;
   }
 
