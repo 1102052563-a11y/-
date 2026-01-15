@@ -61,15 +61,43 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
   mate: { type: 'chatSheets', version: 1 },
   sheet_main: {
     uid: 'sheet_main',
-    name: '数据表',
-    sourceData: {
-      note: '数据表用于记录剧情片段/关系/事件。可新增 sheet_* 作为表名，content[0] 为表头行。'
-    },
-    content: [
-      [null, '主角', '时间点', '地点', '事件/动机', '备注']
-    ],
+    name: '数据表', // 基础流水账
+    sourceData: { note: '用于记录通用剧情片段/线索' },
+    content: [[null, '主角', '时间', '地点', '事件', '备注']],
     exportConfig: {},
     orderNo: 0
+  },
+  sheet_char: {
+    uid: 'sheet_char',
+    name: '主角状态',
+    sourceData: { note: '记录主角当前属性/状态' },
+    content: [[null, '属性/状态', '当前值', '说明']],
+    exportConfig: {},
+    orderNo: 1
+  },
+  sheet_bag: {
+    uid: 'sheet_bag',
+    name: '背包物品',
+    sourceData: { note: '记录持有物品/装备' },
+    content: [[null, '物品名称', '数量', '描述/效果']],
+    exportConfig: {},
+    orderNo: 2
+  },
+  sheet_skill: {
+    uid: 'sheet_skill',
+    name: '技能列表',
+    sourceData: { note: '记录掌握的技能/功法' },
+    content: [[null, '技能名称', '熟练度/等级', '效果描述']],
+    exportConfig: {},
+    orderNo: 3
+  },
+  sheet_quest: {
+    uid: 'sheet_quest',
+    name: '任务列表',
+    sourceData: { note: '记录当前任务/目标' },
+    content: [[null, '任务名称', '状态', '目标/奖励']],
+    exportConfig: {},
+    orderNo: 4
   }
 }, null, 2);
 
@@ -10754,8 +10782,28 @@ function init() {
 
       // 2. Current Table
       let currentTableStr = getChatMetaValue(META_KEYS.dataTableMeta);
-      if (!currentTableStr) {
+      let currentTableObj = null;
+      try { currentTableObj = JSON.parse(currentTableStr); } catch { }
+
+      if (!currentTableObj) {
         currentTableStr = DEFAULT_DATA_TABLE_TEMPLATE;
+      } else {
+        // Migration: merge missing sheets from default template (Dashboard support)
+        try {
+          const defaultObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
+          const requiredSheets = ['sheet_char', 'sheet_bag', 'sheet_skill', 'sheet_quest'];
+          let changed = false;
+          for (const key of requiredSheets) {
+            if (!currentTableObj[key] && defaultObj[key]) {
+              currentTableObj[key] = defaultObj[key];
+              changed = true;
+            }
+          }
+          if (changed) {
+            currentTableStr = JSON.stringify(currentTableObj);
+            console.log('[StoryGuide] Migrated table data with missing sheets');
+          }
+        } catch (e) { console.warn('[StoryGuide] Migration check failed', e); }
       }
 
       // 3. Prompt
@@ -10839,6 +10887,12 @@ function init() {
         await setChatMetaValue(META_KEYS.dataTableMeta, jsonString);
         console.log('[StoryGuide] AutoCardUpdaterAPI import success');
         if (window.toastr) window.toastr.success('StoryGuide: 数据表已更新');
+
+        // Trigger callback if registered
+        if (AutoCardUpdaterAPI_Impl._updateCb) {
+          try { AutoCardUpdaterAPI_Impl._updateCb(); } catch (e) { console.error(e); }
+        }
+
         return true;
       } catch (e) {
         console.error('[StoryGuide] AutoCardUpdaterAPI import error:', e);
@@ -10848,9 +10902,17 @@ function init() {
     },
     manualUpdate: async () => {
       console.log('[StoryGuide] AutoCardUpdaterAPI: manualUpdate called');
-      await runDataTableUpdate();
+      const success = await runDataTableUpdate();
+      if (success && AutoCardUpdaterAPI_Impl._updateCb) {
+        try { AutoCardUpdaterAPI_Impl._updateCb(); } catch (e) { console.error('[StoryGuide] callback failed', e); }
+      }
       return true;
-    }
+    },
+    registerTableUpdateCallback: (cb) => {
+      console.log('[StoryGuide] removeTableUpdateCallback registered');
+      AutoCardUpdaterAPI_Impl._updateCb = cb;
+    },
+    _updateCb: null
   };
 
   // 挂载到各个可能的全局对象上，确保脚本能访问
