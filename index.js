@@ -869,8 +869,10 @@ function getDataTableMeta() {
   const parsed = safeJsonParseAny(raw);
   if (parsed && typeof parsed === 'object') {
     if (parsed.dataJson || parsed.data) {
+      let d = parsed.dataJson || parsed.data;
+      if (typeof d === 'object') d = JSON.stringify(d);
       return {
-        dataJson: String(parsed.dataJson || parsed.data || '').trim(),
+        dataJson: String(d || '').trim(),
         updatedAt: Number(parsed.updatedAt || 0) || 0,
       };
     }
