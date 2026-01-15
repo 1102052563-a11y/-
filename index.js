@@ -11036,8 +11036,12 @@ function init() {
         // meta 存储的是 JSON 字符串，直接 parse 返回对象
         try {
           dataObj = JSON.parse(meta);
+          // 关键：确保转换语义树为表格结构，供可视化脚本使用
+          if (dataObj && typeof repairObjectMojibake === 'function') {
+            dataObj = repairObjectMojibake(dataObj);
+          }
         } catch (e) {
-          console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
+          console.warn('[StoryGuide] exportTableAsJson parse error:', e);
           return null; // 或者返回默认值？
         }
       }
