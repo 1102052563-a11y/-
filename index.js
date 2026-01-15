@@ -101,18 +101,16 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
   }
 }, null, 2);
 
-const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze(
-  [
-    {
-      "role": "system",
-      "content": "??????????????????????????????????????\n1) ????? JSON??? Markdown/???/?????\n2) ??????? sheet_* ?????? mate?????? dataJson / data / tableData / tables ??????\n3) ???????????????????????\n4) ??????????sheet_main / sheet_char / sheet_bag / sheet_skill / sheet_quest????????????????????\n5) ?????????????????????"
-    },
-    {
-      "role": "user",
-      "content": "??????\n{{world}}\n\n??????\n{{chat}}\n\n????????\n{{table}}\n\n??????????????????????? JSON???? sheet_*??"
-    }
-  ]
-);
+const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
+  {
+    role: 'system',
+    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：1. 只输出表格 JSON，保持结构与字段名称不变。 2. 关注正文出现的所有**主要角色**（不仅是主角），记录他们的关键状态变化与行为。 3. 若有重要配角数据，请在对应表中注明角色名。'
+  },
+  {
+    role: 'user',
+    content: '【背景设定】\n{{world}}\n\n【正文数据】\n{{chat}}\n\n【当前表格数据】\n{{table}}\n\n请输出更新后的表格 JSON。请确保捕捉**所有关键人物**的最新状态与剧情发展，保持结构一致。'
+  },
+]);
 
 const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
 
@@ -464,7 +462,6 @@ const META_KEYS = Object.freeze({
   boundGreenWI: 'storyguide_bound_green_wi',
   boundBlueWI: 'storyguide_bound_blue_wi',
   autoBindCreated: 'storyguide_auto_bind_created',
-  lastReport: 'storyguide_last_report',
 });
 
 let lastReport = null;
@@ -885,26 +882,6 @@ async function setDataTableMeta(meta) {
   await setChatMetaValue(META_KEYS.dataTableMeta, JSON.stringify(payload));
 }
 
-function loadLastReportFromMeta() {
-  const raw = String(getChatMetaValue(META_KEYS.lastReport) || '').trim();
-  if (!raw) return null;
-  const parsed = safeJsonParseAny(raw);
-  if (parsed && typeof parsed === 'object') return parsed;
-  return null;
-}
-
-async function saveLastReportToMeta(report) {
-  if (!report) return;
-  // Minimize storage: only keep json, markdown, sourceSummary, createdAt
-  const payload = {
-    json: report.json,
-    markdown: report.markdown,
-    createdAt: report.createdAt,
-    sourceSummary: report.sourceSummary
-  };
-  await setChatMetaValue(META_KEYS.lastReport, JSON.stringify(payload));
-}
-
 function normalizeDataTableTemplate(obj) {
   if (!obj || typeof obj !== 'object') return null;
   const out = clone(obj);
@@ -1172,134 +1149,6 @@ function isDataTableObject(obj) {
   if (!obj || typeof obj !== 'object') return false;
   return Object.keys(obj).some(k => k.startsWith('sheet_'));
 }
-
-function repairDataTableKeys(data) {
-  if (!data || typeof data !== 'object') return data;
-
-  // 0. Unwrap nested data if common wrappers exist (e.g. dataJson, data)
-  // This fixes the issue where the entire table set is wrapped in a "dataJson" property
-  const wrappers = ['dataJson', 'data', 'tableData', 'table'];
-  for (const w of wrappers) {
-    if (data[w] && typeof data[w] === 'object' && !Array.isArray(data[w])) {
-      const innerKeys = Object.keys(data[w]);
-      // If inner object has sheets or looks like a collection of tables
-      if (innerKeys.some(k => k.startsWith('sheet_') || k === 'content')) {
-        // Merge inner data up
-        data = { ...data, ...data[w] };
-        // We don't delete the original wrapper to avoid side effects, but the sheet_ keys are now top-level
-      }
-    }
-  }
-
-  // 1. Check if it's a single sheet at root (common LLM mistake)
-  if (Array.isArray(data.content)) {
-    return {
-      sheet_main: {
-        uid: 'sheet_main',
-        name: data.name || '主要数据表',
-        content: data.content,
-        sourceData: data.sourceData || {},
-        orderNo: 1
-      }
-    };
-  }
-
-  // 2. Initialize new data with existing valid sheets
-  const newData = {};
-  const entries = Object.entries(data);
-  const usedKeys = new Set();
-
-  // First pass: Copy existing valid sheet_* keys
-  for (const [key, val] of entries) {
-    if (key.startsWith('sheet_')) {
-      newData[key] = val;
-      usedKeys.add(key);
-    }
-  }
-
-  // Helper to generate unique ID
-  let autoCount = 1;
-  const getNextId = () => {
-    while (usedKeys.has(`sheet_custom_${autoCount}`)) {
-      autoCount++;
-    }
-    const id = `sheet_custom_${autoCount}`;
-    usedKeys.add(id);
-    return id;
-  };
-
-  // 3. Second pass: Process other keys (semantic keys)
-  for (const [key, val] of entries) {
-    if (key.startsWith('sheet_')) continue; // Already handled
-    if (!val || typeof val !== 'object') {
-      newData[key] = val; // Keep metadata/unknowns
-      continue;
-    }
-
-    // Detect if we should convert this
-    // A. It is a TABLE (has content array) -> Rename to sheet_
-    if (Array.isArray(val.content)) {
-      // Logic to preserve special keys like 'Main' if needed, or just auto-assign
-      let newKey = '';
-      if ((key === 'Main' || key === 'main' || key.includes('主表')) && !newData['sheet_main']) {
-        newKey = 'sheet_main';
-        usedKeys.add(newKey);
-      } else {
-        newKey = getNextId();
-      }
-
-      // Clone to avoid mutating original if referenced elsewhere
-      const newSheet = { ...val };
-      if (!newSheet.uid) newSheet.uid = newKey;
-      if (!newSheet.name) newSheet.name = key;
-      newData[newKey] = newSheet;
-    }
-    // B. It is a DATA OBJECT (no content array) -> Convert to Key-Value Table
-    else if (!Array.isArray(val)) {
-      // Treat as Key-Value object
-      const subKeys = Object.keys(val);
-      if (subKeys.length > 0) {
-        const newKey = getNextId();
-        const rows = [[null, 'Key', 'Value']];
-
-        for (const k of subKeys) {
-          let v = val[k];
-          if (typeof v === 'object' && v !== null) {
-            try { v = JSON.stringify(v); } catch { v = '[Object]'; }
-          }
-          rows.push([null, k, String(v ?? '')]);
-        }
-
-        newData[newKey] = {
-          uid: newKey,
-          name: key, // Use the object key as the Table Name (e.g. "主角")
-          content: rows,
-          sourceData: { note: 'Auto-converted from object' },
-          orderNo: 10 + autoCount
-        };
-      } else {
-        newData[key] = val; // Empty object, keep as is
-      }
-    } else {
-      newData[key] = val; // It's an array but not content? Keep as is.
-    }
-  }
-
-  return newData;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function normalizeDataTableResponse(parsed) {
   if (!parsed || typeof parsed !== 'object') return null;
@@ -3775,7 +3624,6 @@ async function runAnalysis() {
 
     const md = renderReportMarkdownFromModules(parsed, modules);
     lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
-    saveLastReportToMeta(lastReport).catch(e => console.error('[StoryGuide] save lastReport failed', e));
     renderMarkdownInto($('#sg_md'), md);
 
     // 同步面板报告到聊天末尾
@@ -10678,54 +10526,24 @@ function showFloatingDataTable() {
     return;
   }
 
-  // Use the API to get the fully processed table object (includes defaults + virtual sheets)
-  const api = window.AutoCardUpdaterAPI || window.parent?.AutoCardUpdaterAPI;
-  let dataObj = null;
-  if (api && api.exportTableAsJson) {
-    dataObj = api.exportTableAsJson();
-    console.log('[StoryGuide] showFloatingDataTable: Got data from API', Object.keys(dataObj || {}));
-  } else {
-    console.warn('[StoryGuide] showFloatingDataTable: API not found');
-  }
-
-  // Fallback if API returns null but we have raw data
-  if (!dataObj) {
-    const info = getDataTableDataForUi();
-    if (info.dataJson) dataObj = safeJsonParseAny(info.dataJson);
-    console.log('[StoryGuide] showFloatingDataTable: Fallback to raw data', !!dataObj);
-  }
-
-  if (!dataObj || typeof dataObj !== 'object') {
-    console.log('[StoryGuide] showFloatingDataTable: dataObj is empty/invalid');
+  const info = getDataTableDataForUi();
+  if (!info.dataJson) {
     $body.html('<div class="sg-floating-loading">暂无数据表数据<br><small>请先更新数据表</small></div>');
     return;
   }
 
-  // 修复可能的乱码 (Try-catch to be safe if function missing or fails)
-  let repairedData = dataObj;
-  try {
-    if (typeof repairObjectMojibake === 'function') {
-      repairedData = repairObjectMojibake(repairedData);
-    }
-    // Also repair structural issues (missing sheet_ keys)
-    repairedData = repairDataTableKeys(repairedData);
-  } catch (e) {
-    console.warn('[StoryGuide] repairObjectMojibake failed', e);
+  const parsed = safeJsonParseAny(info.dataJson);
+  if (!parsed || typeof parsed !== 'object') {
+    $body.html('<div class="sg-floating-loading">数据表解析失败</div>');
+    return;
   }
 
+  // 修复可能的乱码
+  const repairedData = repairObjectMojibake(parsed);
   const keys = getOrderedSheetKeysFromData(repairedData);
-  console.log('[StoryGuide] showFloatingDataTable: keys found', keys);
 
   if (!keys.length) {
-    $body.html(`
-      <div class="sg-floating-loading">
-        <div style="font-weight:bold; margin-bottom:8px;">数据表暂无内容</div>
-        <div style="font-size:0.9em; opacity:0.8;">
-          <p>请点击右上角 <span class="sg-icon">🔄</span> 分析剧情以生成虚拟表</p>
-          <p>或点击 <span class="sg-icon">📝</span> 更新数据表以填充默认表</p>
-        </div>
-      </div>
-    `);
+    $body.html('<div class="sg-floating-loading">数据表为空</div>');
     return;
   }
 
@@ -11015,13 +10833,10 @@ async function execDataTableUpdate() {
     console.log('[StoryGuide] LLM response received, length:', jsonText.length);
 
     // 5. Parse
-    let parsed = safeJsonParse(jsonText) || safeJsonParseAny(jsonText);
+    const parsed = safeJsonParse(jsonText) || safeJsonParseAny(jsonText);
     if (!parsed) {
       throw new Error('无法解析 LLM 返回的 JSON');
     }
-
-    // Fix structure if missing sheet_ keys (LLM sometimes uses semantic names)
-    parsed = repairDataTableKeys(parsed);
 
     // 6. Save
     // 6. Save
@@ -11075,32 +10890,9 @@ function init() {
     installRollPreSendHook();
   });
 
-  // 聊天切换时自动绑定世界书 & 恢复 lastReport
+  // 聊天切换时自动绑定世界书
   eventSource.on(event_types.CHAT_CHANGED, async () => {
     console.log('[StoryGuide] CHAT_CHANGED 事件触发');
-
-    // 尝试恢复 lastReport
-    try {
-      const restored = loadLastReportFromMeta();
-      if (restored) {
-        lastReport = restored;
-        // 也恢复 lastJsonText 以支持“复制JSON”按钮
-        if (lastReport.json) {
-          lastJsonText = JSON.stringify(lastReport.json, null, 2);
-          $('#sg_json').text(lastJsonText);
-        }
-        if (lastReport.sourceSummary) {
-          $('#sg_src').text(JSON.stringify(lastReport.sourceSummary, null, 2));
-        }
-        if (lastReport.markdown) {
-          renderMarkdownInto($('#sg_md'), lastReport.markdown);
-          showPane('md'); // 默认切回报告页? 或者保持现状
-        }
-        console.log('[StoryGuide] lastReport restored from meta ✅');
-      } else {
-        lastReport = null; // 清空上一段聊天的 cache
-      }
-    } catch (e) { console.error(e); }
 
     const ctx = SillyTavern.getContext();
     const hasChat = ctx.chat && Array.isArray(ctx.chat);
@@ -11124,49 +10916,32 @@ function init() {
   // ===== 可视化表格脚本 API =====
   const AutoCardUpdaterAPI_Impl = {
     exportTableAsJson: () => {
-      // Prefer parsed meta payload (dataJson/updatedAt), but tolerate legacy raw table JSON.
+      // 确保能获取到 meta
       let meta = null;
       try {
-        meta = getDataTableMeta();
+        meta = getChatMetaValue(META_KEYS.dataTableMeta);
       } catch (e) {
-        console.warn('[StoryGuide] exportTableAsJson: getDataTableMeta failed', e);
+        console.warn('[StoryGuide] exportTableAsJson: getChatMetaValue failed', e);
       }
 
       let dataObj = null;
-      if (!meta || !meta.dataJson) {
+      if (!meta) {
+        // 返回默认模板对象
         try {
+          // 这里的 DEFAULT_DATA_TABLE_TEMPLATE 是字符串，需要 parse
           dataObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
         } catch (e) {
           console.error('[StoryGuide] AutoCardUpdaterAPI export default error:', e);
           return null;
         }
       } else {
-        dataObj = safeJsonParseAny(meta.dataJson);
-        if (!dataObj || typeof dataObj !== 'object') {
-          dataObj = safeJsonParseAny(meta);
-        }
-        if (!dataObj || typeof dataObj !== 'object') {
-          console.error('[StoryGuide] AutoCardUpdaterAPI export parse error: invalid data');
-          return null;
-        }
-      }
-
-      // [New] 运行时修正：自动修复表名/缺失表 (Fix user issue: visual panel missing "sheet_main")
-      if (dataObj && typeof dataObj === 'object') {
-        // 1. Rename '数据表' -> '全剧情概览 (全局)'
-        if (dataObj.sheet_main && dataObj.sheet_main.name === '数据表') {
-          dataObj.sheet_main.name = '全剧情概览 (全局)';
-        }
-        // 2. Ensure all default sheets exist (merge defaults)
+        // meta 存储的是 JSON 字符串，直接 parse 返回对象
         try {
-          const defaultObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
-          const requiredSheets = ['sheet_main', 'sheet_char', 'sheet_bag', 'sheet_skill', 'sheet_quest'];
-          for (const key of requiredSheets) {
-            if (!dataObj[key]) {
-              dataObj[key] = defaultObj[key];
-            }
-          }
-        } catch (e) { }
+          dataObj = JSON.parse(meta);
+        } catch (e) {
+          console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
+          return null; // 或者返回默认值？
+        }
       }
 
       // [New] 动态注入 lastReport (剧情模块分析结果) 作为虚拟表
