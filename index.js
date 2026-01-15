@@ -89,58 +89,36 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
     sourceData: { note: '记录掌握的技能/功法' },
     content: [[null, '技能名称', '熟练度/等级', '效果描述']],
     exportConfig: {},
-    orderNo: 3
-  },
-  sheet_quest: {
-    uid: 'sheet_quest',
-    name: '任务列表',
-    sourceData: { note: '记录当前任务/目标' },
-    content: [[null, '任务名称', '状态', '目标/奖励']],
-    exportConfig: {},
-    orderNo: 4
-  }
-}, null, 2);
+    const DEFAULT_DATA_TABLE_TEMPLATE = `{"sheet_dCudvUnH":{"uid":"sheet_dCudvUnH","name":"全局数据表","sourceData":{"note":"记录当前主角所在地点及时间相关参数。此表有且仅有一行。\\n- 列0: 主角当前所在地点 - 主角当前所在的具体场景名称。\\n- 列1: 当前时间 - 游戏世界的当前时间。格式：“YYYY-MM-DD HH:MM”，初始化时如果剧情没有明确具体的日期和时间，则必须根据世界观和设定自行设定一个明确的日期时间，不能用未知数代替。\\n- 列2: 上轮场景时间 - 上一轮交互结束时的时间。\\n- 列3: 经过的时间 - 根据当前与上轮时间计算得出的文本描述（如：“几分钟”）。","initNode":"插入一条关于当前世界状态的记录。","deleteNode":"禁止删除。","updateNode":"当主角从当前所在区域离开时，更新所在地点。每轮必须更新时间。","insertNode":"禁止操作。"},"content":[[null,"主角当前所在地点","当前时间","上轮场景时间","经过的时间"]],"exportConfig":{},"orderNo":0},"sheet_DpKcVGqg":{"uid":"sheet_DpKcVGqg","name":"主角信息","sourceData":{"note":"记录主角的核心身份信息。此表有且仅有一行。\\n- 列0: 人物名称 - 主角的名字。\\n- 列1: 性别/年龄 - 主角的生理性别和年龄。\\n- 列2: 外貌特征 - 对主角外貌的客观文字描写。\\n- 列3: 职业/身份 - 主角在社会中的主要角色。\\n- 列4: 过往经历 - 记录主角的背景故事和后续的关键经历。该列会根据剧情发展持续增量更新，最高不超过300字，超过300字会进行精炼压缩到300字以下（压缩时尽可能保持经历的完整性，从开头到最新的事件前后逻辑贯通）。\\n- 列5: 性格特点 - 对主角核心性格的概括。\\n【检查】检查主角的状态与经历是否已根据剧情摘要进行了规划更新。","initNode":"游戏初始化时，插入主角的唯一条目。","deleteNode":"禁止删除。","updateNode":"‘过往经历’列会根据剧情发展持续增量更新，当主角各项状态发生改变时更新。","insertNode":"禁止操作。"},"content":[[null,"人物名称","性别/年龄","外貌特征","职业/身份","过往经历","性格特点"]],"exportConfig":{},"orderNo":1},"sheet_NcBlYRH5":{"uid":"sheet_NcBlYRH5","name":"重要人物表","sourceData":{"note":"记录所有关键NPC的详细信息和动态状态。\\n- 列0: 姓名 - NPC的名字。\\n- 列1: 性别/年龄 - NPC的生理性别和年龄。\\n- 列2: 外貌特征 - 对NPC外貌和当前衣着的详细描述，对女性角色需详细描述其三维和身材，支持NSFW；对男性角色无需描写。\\n- 列3: 持有的重要物品 - NPC拥有的关键重要物品列表，用分号分隔。\\n- 列4: 是否离场 - 每轮需判断该角色是否能直接与主角互动，不能就视为已离场，填写“是”或“否”。\\n- 列5: 过往经历 - 记录该角色的背景故事和后续的关键经历。该列会根据剧情发展持续增量更新，最高不超过300字，超过300字会进行精炼压缩到300字以下。（压缩时尽可能保持经历的完整性，从开头到最新的事件前后逻辑贯通）\\n【检查】检查重要人物的状态与经历是否已根据剧情摘要进行了规划更新，每轮需检查该所有角色的过往经历是否超过了300字，超过了需要安排进行精炼压缩。","initNode":"游戏初始化时为当前在场的重要人物分别插入一个条目","deleteNode":"禁止删除","updateNode":"条目中已有角色的状态、关系、想法或经历等动态信息变化时更新，如果该角色在剧情中死亡则必须在其姓名旁用小括号备注（已死亡）。","insertNode":"剧情中有未记录的重要人物登场时添加。"},"content":[[null,"姓名","性别/年龄","外貌特征","持有的重要物品","是否离场","过往经历"]],"exportConfig":{"enabled":false,"splitByRow":false,"entryName":"重要人物表","entryType":"constant","keywords":"","preventRecursion":true,"injectionTemplate":""},"orderNo":2},"sheet_lEARaBa8":{"uid":"sheet_lEARaBa8","name":"主角技能表","sourceData":{"note":"记录主角获得的所有技能项目。\\n- 列0: 技能名称 - 技能的名称。\\n- 列1: 技能类型 - 技能的类别（如：“被动”、“主动”）。\\n- 列2: 等级/阶段 - 技能的当前等级或阶段。\\n- 列3: 效果描述 - 技能在当前等级下的具体效果。","initNode":"游戏初始化时，根据设定为主角添加初始技能。","deleteNode":"技能因剧情被剥夺或替换时删除。","updateNode":"已有技能被升级时，更新其等级/阶段和效果描述。","insertNode":"主角获得新的技能时添加。"},"content":[[null,"技能名称","技能类型","等级/阶段","效果描述"]],"exportConfig":{},"orderNo":3},"sheet_in05z9vz":{"uid":"sheet_in05z9vz","name":"背包物品表","sourceData":{"note":"记录主角拥有的所有物品、装备。\\n- 列0: 物品名称 - 物品的名称。\\n- 列1: 数量 - 拥有的数量。\\n- 列2: 描述/效果 - 物品的功能或背景描述。\\n- 列3: 类别 - 物品的类别（如：“武器”、“消耗品”、“杂物”）。","initNode":"游戏初始化时，根据剧情与设定添加主角的初始携带物品。","deleteNode":"物品被完全消耗、丢弃或摧毁时删除。","updateNode":"获得已有的物品，使其数量增加时更新，已有物品状态变化时更新。","insertNode":"主角获得背包中没有的全新物品时添加。"},"content":[[null,"物品名称","数量","描述/效果","类别"]],"exportConfig":{"enabled":false,"splitByRow":false,"entryName":"背包物品表","entryType":"constant","keywords":"","preventRecursion":true,"injectionTemplate":""},"orderNo":4},"sheet_etak47Ve":{"uid":"sheet_etak47Ve","name":"任务与事件表","sourceData":{"note":"记录所有当前正在进行的任务。\\n- 列0: 任务名称 - 任务的标题。\\n- 列1: 任务类型 - “主线任务”或“支线任务”。\\n- 列2: 发布者 - 发布该任务的角色或势力。\\n- 列3: 详细描述 - 任务的目标和要求。\\n- 列4: 当前进度 - 对任务完成度的简要描述。\\n- 列5: 任务时限 - 完成任务的剩余时间。\\n- 列6: 奖励 - 完成任务可获得的奖励。\\n- 列7: 惩罚 - 任务失败的后果。","initNode":"游戏初始化时，根据剧情与设定添加一条主线剧情","deleteNode":"任务完成、失败或过期时删除。","updateNode":"任务取得关键进展时进行更新","insertNode":"主角接取或触发新的主线或支线任务时添加。"},"content":[[null,"任务名称","任务类型","发布者","详细描述","当前进度","任务时限","奖励","惩罚"]],"exportConfig":{},"orderNo":5},"sheet_3NoMc1wI":{"uid":"sheet_3NoMc1wI","name":"总结表","sourceData":{"note":"轮次日志，每轮交互后必须立即插入一条新记录。\\n- 列0: 时间跨度 - 本轮事件发生的精确时间范围。\\n- 列1: 地点 - 本轮事件发生的地点，从大到小描述（例如：国家-城市-具体地点）。\\n- 列2: 纪要 - 对正文的客观纪实描述。要求移除记录正文里的所有修辞、对话，以第三方的视角中立客观地记录所有正文中发生的事情，不加任何评论，内容不低于300字。如果上下文包含多轮交互，将其总结为一条记录。\\n- 列3: 重要对话 - 只摘录原文中造成事实重点的重要对白本身(需标明由谁说的)，总token不得超过80token。\\n- 列4: 编码索引 - 为本轮总结表生成一个唯一的编码索引，格式为 AMXX，XX从01开始递增。\\n【检查】检查本轮总结表及总体大纲表插入的条目中是否均带有一个相同的编码索引，且格式为AM+数字（如AM01），若任一方缺失或二者不一致，则需修正。","initNode":"故事初始化时，插入一条新记录用作记录正文剧情，如果提供的正文包含多轮交互，将其总结为一条记录后插入。","deleteNode":"禁止删除。","updateNode":"禁止操作。","insertNode":"每轮交互结束后，插入一条新记录，如果提供的正文包含多轮交互，将其总结为一条记录后插入。"},"content":[[null,"时间跨度","地点","纪要","重要对话","编码索引"]],"exportConfig":{"enabled":false,"splitByRow":false,"entryName":"总结表","entryType":"constant","keywords":"","preventRecursion":true,"injectionTemplate":""},"orderNo":6},"sheet_PfzcX5v2":{"uid":"sheet_PfzcX5v2","name":"总体大纲","sourceData":{"note":"对每轮的‘总结表’进行精炼，形成故事主干。\\n- 列0: 时间跨度 - 总结表所记录的时间范围。\\n- 列1: 大纲 - 对本轮‘总结表’核心事件的精炼概括。\\n- 列2: 编码索引 - 必须与当前轮次‘总结表’表中的编码索引完全一致。\\n【检查】检查本轮总结表及总体大纲表插入的条目中是否均带有一个相同的编码索引，且格式为AM+数字（如AM01），若任一方缺失或二者不一致，则需修正。\\n","initNode":"故事初始化时，插入一条新记录用作记录初始化剧情。","deleteNode":"禁止删除。","updateNode":"禁止操作。","insertNode":"每轮交互结束后，插入一条新记录。"},"content":[[null,"时间跨度","大纲","编码索引"]],"exportConfig":{"enabled":false,"splitByRow":false,"entryName":"总体大纲","entryType":"constant","keywords":"","preventRecursion":true,"injectionTemplate":""},"orderNo":7},"sheet_OptionsNew":{"uid":"sheet_OptionsNew","name":"选项表","sourceData":{"note":"记录每轮主角可以进行的动作选项。此表有且仅有一行。\\n- 列0: 选项一 - 每轮生成一个符合主角可以进行的动作选项。（符合逻辑的）\\n- 列1: 选项二 - 每轮生成一个符合主角可以进行的动作选项。（中立的）。\\n- 列2: 选项三 - 每轮生成一个符合主角可以进行的动作选项。（善良的）\\n- 列3: 选项四 - 每轮生成一个符合主角可以进行的动作选项。（NSFW相关的）","initNode":"游戏初始化时，生成四个初始选项。","deleteNode":"禁止删除。","updateNode":"每轮交互后必须更新此表，根据当前剧情生成新的四个选项覆盖原有内容。","insertNode":"禁止操作。"},"content":[[null,"选项一","选项二","选项三","选项四"]],"exportConfig":{"injectIntoWorldbook":false},"orderNo":8},"mate":{"type":"chatSheets","version":1}}`;
 
-const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
-  {
-    role: 'system',
-    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：1. 只输出表格 JSON，保持结构与字段名称不变。 2. 关注正文出现的所有**主要角色**（不仅是主角），记录他们的关键状态变化与行为。 3. 若有重要配角数据，请在对应表中注明角色名。'
-  },
-  {
-    role: 'user',
-    content: '【背景设定】\n{{world}}\n\n【正文数据】\n{{chat}}\n\n【当前表格数据】\n{{table}}\n\n请输出更新后的表格 JSON。请确保捕捉**所有关键人物**的最新状态与剧情发展，保持结构一致。'
-  },
-]);
-
-const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
-
+    const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
 const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\n\n【对话片段】\n{{chunk}}`;
 
-// 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
-const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
+    // 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
+    const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
 
-// ===== 索引提示词默认值（可在面板中自定义；用于“LLM 综合判断”模式） =====
-const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个“剧情索引匹配”助手。\n\n任务：\n- 输入包含：最近剧情正文（节选）、用户当前输入、以及若干候选索引条目（每条含标题/摘要/触发词）。\n- 你的目标是：综合判断哪些候选条目与“当前剧情”最相关（不是只匹配用户这一句话），并返回这些候选的 id。\n\n要求：\n- 优先选择与当前剧情主线/关键人物/关键地点/关键物品/未解决悬念相关的条目。\n- 避免选择明显无关或过于泛的条目。\n- 返回条目数量应 <= maxPick。`;
+    // ===== 索引提示词默认值（可在面板中自定义；用于“LLM 综合判断”模式） =====
+    const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个“剧情索引匹配”助手。\n\n任务：\n- 输入包含：最近剧情正文（节选）、用户当前输入、以及若干候选索引条目（每条含标题/摘要/触发词）。\n- 你的目标是：综合判断哪些候选条目与“当前剧情”最相关（不是只匹配用户这一句话），并返回这些候选的 id。\n\n要求：\n- 优先选择与当前剧情主线/关键人物/关键地点/关键物品/未解决悬念相关的条目。\n- 避免选择明显无关或过于泛的条目。\n- 返回条目数量应 <= maxPick。`;
 
-const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】\n{{userMessage}}\n\n【最近剧情（节选）】\n{{recentText}}\n\n【候选索引条目（JSON）】\n{{candidates}}\n\n请从候选中选出与当前剧情最相关的条目（不超过 {{maxPick}} 条），并仅输出 JSON。`;
+    const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】\n{{userMessage}}\n\n【最近剧情（节选）】\n{{recentText}}\n\n【候选索引条目（JSON）】\n{{candidates}}\n\n请从候选中选出与当前剧情最相关的条目（不超过 {{maxPick}} 条），并仅输出 JSON。`;
 
-const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"pickedIds": number[]}。\n- pickedIds 必须是候选列表里的 id（整数）。\n- 返回的 pickedIds 数量 <= maxPick。`;
+    const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"pickedIds": number[]}。\n- pickedIds 必须是候选列表里的 id（整数）。\n- 返回的 pickedIds 数量 <= maxPick。`;
 
-// ===== ROLL 判定默认配置 =====
-const DEFAULT_ROLL_ACTIONS = Object.freeze([
-  { key: 'combat', label: '战斗', keywords: ['战斗', '攻击', '出手', '挥剑', '射击', '格挡', '闪避', '搏斗', '砍', '杀', '打', 'fight', 'attack', 'strike'] },
-  { key: 'persuade', label: '劝说', keywords: ['劝说', '说服', '谈判', '交涉', '威胁', '恐吓', '欺骗', 'persuade', 'negotiate', 'intimidate', 'deceive'] },
-  { key: 'learn', label: '学习', keywords: ['学习', '修炼', '练习', '研究', '掌握', '学会', '技能', 'learn', 'train', 'practice'] },
-]);
-const DEFAULT_ROLL_FORMULAS = Object.freeze({
-  combat: '(PC.str + PC.dex + PC.atk + MOD.total + CTX.bonus + CTX.penalty) / 4',
-  persuade: '(PC.cha + PC.int + MOD.total) / 3',
-  learn: '(PC.int + PC.wis + MOD.total) / 3',
-  default: 'MOD.total',
-});
-const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze(['skill', 'talent', 'trait', 'buff', 'equipment']);
-const DEFAULT_ROLL_SYSTEM_PROMPT = `你是一个专业的TRPG/ROLL点裁判。
+    // ===== ROLL 判定默认配置 =====
+    const DEFAULT_ROLL_ACTIONS = Object.freeze([
+      { key: 'combat', label: '战斗', keywords: ['战斗', '攻击', '出手', '挥剑', '射击', '格挡', '闪避', '搏斗', '砍', '杀', '打', 'fight', 'attack', 'strike'] },
+      { key: 'persuade', label: '劝说', keywords: ['劝说', '说服', '谈判', '交涉', '威胁', '恐吓', '欺骗', 'persuade', 'negotiate', 'intimidate', 'deceive'] },
+      { key: 'learn', label: '学习', keywords: ['学习', '修炼', '练习', '研究', '掌握', '学会', '技能', 'learn', 'train', 'practice'] },
+    ]);
+    const DEFAULT_ROLL_FORMULAS = Object.freeze({
+      combat: '(PC.str + PC.dex + PC.atk + MOD.total + CTX.bonus + CTX.penalty) / 4',
+      persuade: '(PC.cha + PC.int + MOD.total) / 3',
+      learn: '(PC.int + PC.wis + MOD.total) / 3',
+      default: 'MOD.total',
+    });
+    const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze(['skill', 'talent', 'trait', 'buff', 'equipment']);
+    const DEFAULT_ROLL_SYSTEM_PROMPT = `你是一个专业的TRPG/ROLL点裁判。
 
 【任务】
 - 根据用户行为与属性数据 (statDataJson) 进行动作判定。
@@ -181,11 +159,11 @@ const DEFAULT_ROLL_SYSTEM_PROMPT = `你是一个专业的TRPG/ROLL点裁判。
 - analysisSummary: 汇总修正来源与关键映射逻辑。
 `;
 
-const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
-const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，建议包含“修正来源汇总/映射应用”两段；explanation 建议 1~2 句。`;
-const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
+    const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
+    const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，建议包含“修正来源汇总/映射应用”两段；explanation 建议 1~2 句。`;
+    const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
 
-const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是一个判定动作是否需要ROLL点的辅助AI。
+    const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是一个判定动作是否需要ROLL点的辅助AI。
 
 【任务】
 - 核心任务是判断用户的行为是否需要进行随机性判定 (ROLL)。
@@ -215,285 +193,285 @@ const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是一个判定动作是否需�
 - 严格遵循 JSON Requirement 格式，不要输出 Markdown 代码块。
 `;
 
-const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
+    const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
 
-const DEFAULT_SETTINGS = Object.freeze({
-  enabled: true,
+    const DEFAULT_SETTINGS = Object.freeze({
+      enabled: true,
 
-  // 输入截取
-  maxMessages: 40,
-  maxCharsPerMessage: 1600,
-  includeUser: true,
-  includeAssistant: true,
+      // 输入截取
+      maxMessages: 40,
+      maxCharsPerMessage: 1600,
+      includeUser: true,
+      includeAssistant: true,
 
-  // 生成控制（仍保留剧透与 temperature；更多风格可通过自定义 system/constraints 做）
-  spoilerLevel: 'mild', // none | mild | full
-  temperature: 0.4,
+      // 生成控制（仍保留剧透与 temperature；更多风格可通过自定义 system/constraints 做）
+      spoilerLevel: 'mild', // none | mild | full
+      temperature: 0.4,
 
-  // 自动刷新（面板报告）
-  autoRefresh: false,
-  autoRefreshOn: 'received', // received | sent | both
-  debounceMs: 1200,
+      // 自动刷新（面板报告）
+      autoRefresh: false,
+      autoRefreshOn: 'received', // received | sent | both
+      debounceMs: 1200,
 
-  // 数据表自动更新
-  autoUpdateDataTable: false,
+      // 数据表自动更新
+      autoUpdateDataTable: false,
 
-  // 数据表专用消息读取设置
-  dataTableMaxMessages: 20,           // 读取最近 N 条消息
-  dataTableMaxCharsPerMessage: 2000,  // 每条消息最大字符数
-  dataTableStatEnabled: false,        // 是否读取 stat_data 变量
-  dataTableStatVarName: 'stat_data',  // 变量名
-  dataTableStatParseMode: 'json',     // 解析模式：json | kv
+      // 数据表专用消息读取设置
+      dataTableMaxMessages: 20,           // 读取最近 N 条消息
+      dataTableMaxCharsPerMessage: 2000,  // 每条消息最大字符数
+      dataTableStatEnabled: false,        // 是否读取 stat_data 变量
+      dataTableStatVarName: 'stat_data',  // 变量名
+      dataTableStatParseMode: 'json',     // 解析模式：json | kv
 
-  // 自动追加到正文末尾
-  autoAppendBox: true,
-  appendMode: 'compact', // compact | standard
-  appendDebounceMs: 700,
+      // 自动追加到正文末尾
+      autoAppendBox: true,
+      appendMode: 'compact', // compact | standard
+      appendDebounceMs: 700,
 
-  // 追加框展示哪些模块
-  inlineModulesSource: 'inline', // inline | panel | all
-  inlineShowEmpty: false,        // 是否显示空字段占位
+      // 追加框展示哪些模块
+      inlineModulesSource: 'inline', // inline | panel | all
+      inlineShowEmpty: false,        // 是否显示空字段占位
 
-  // provider
-  provider: 'st', // st | custom
+      // provider
+      provider: 'st', // st | custom
 
-  // custom API（建议填“API基础URL”，如 https://api.openai.com/v1 ）
-  customEndpoint: '',
-  customApiKey: '',
-  customModel: 'gpt-4o-mini',
-  customModelsCache: [],
-  customTopP: 0.95,
-  customMaxTokens: 8192,
-  customStream: false,
+      // custom API（建议填“API基础URL”，如 https://api.openai.com/v1 ）
+      customEndpoint: '',
+      customApiKey: '',
+      customModel: 'gpt-4o-mini',
+      customModelsCache: [],
+      customTopP: 0.95,
+      customMaxTokens: 8192,
+      customStream: false,
 
-  // 预设导入/导出
-  presetIncludeApiKey: false,
+      // 预设导入/导出
+      presetIncludeApiKey: false,
 
-  // 世界书（World Info/Lorebook）导入与注入
-  worldbookEnabled: false,
-  worldbookMode: 'active', // active | all
-  worldbookMaxChars: 6000,
-  worldbookWindowMessages: 18,
-  worldbookJson: '',
+      // 世界书（World Info/Lorebook）导入与注入
+      worldbookEnabled: false,
+      worldbookMode: 'active', // active | all
+      worldbookMaxChars: 6000,
+      worldbookWindowMessages: 18,
+      worldbookJson: '',
 
-  // ===== 总结功能（独立于剧情提示的 API 设置） =====
-  summaryEnabled: false,
-  // 多少“楼层”总结一次（楼层统计方式见 summaryCountMode）
-  summaryEvery: 20,
-  // 手动楼层范围总结：是否按“每 N 层”拆分生成多条（N=summaryEvery）
-  summaryManualSplit: false,
-  // assistant: 仅统计 AI 回复；all: 统计全部消息（用户+AI）
-  summaryCountMode: 'assistant',
-  // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最近 summaryEvery 段
-  summaryMaxCharsPerMessage: 4000,
-  summaryMaxTotalChars: 24000,
+      // ===== 总结功能（独立于剧情提示的 API 设置） =====
+      summaryEnabled: false,
+      // 多少“楼层”总结一次（楼层统计方式见 summaryCountMode）
+      summaryEvery: 20,
+      // 手动楼层范围总结：是否按“每 N 层”拆分生成多条（N=summaryEvery）
+      summaryManualSplit: false,
+      // assistant: 仅统计 AI 回复；all: 统计全部消息（用户+AI）
+      summaryCountMode: 'assistant',
+      // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最近 summaryEvery 段
+      summaryMaxCharsPerMessage: 4000,
+      summaryMaxTotalChars: 24000,
 
-  // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
-  summaryProvider: 'st',
-  summaryTemperature: 0.4,
+      // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
+      summaryProvider: 'st',
+      summaryTemperature: 0.4,
 
-  // 自定义总结提示词（可选）
-  // - system：决定总结风格/重点
-  // - userTemplate：决定如何把楼层范围/对话片段塞给模型（支持占位符）
-  summarySystemPrompt: DEFAULT_SUMMARY_SYSTEM_PROMPT,
-  summaryUserTemplate: DEFAULT_SUMMARY_USER_TEMPLATE,
-  summaryCustomEndpoint: '',
-  summaryCustomApiKey: '',
-  summaryCustomModel: 'gpt-4o-mini',
-  summaryCustomModelsCache: [],
-  summaryCustomMaxTokens: 2048,
-  summaryCustomStream: false,
+      // 自定义总结提示词（可选）
+      // - system：决定总结风格/重点
+      // - userTemplate：决定如何把楼层范围/对话片段塞给模型（支持占位符）
+      summarySystemPrompt: DEFAULT_SUMMARY_SYSTEM_PROMPT,
+      summaryUserTemplate: DEFAULT_SUMMARY_USER_TEMPLATE,
+      summaryCustomEndpoint: '',
+      summaryCustomApiKey: '',
+      summaryCustomModel: 'gpt-4o-mini',
+      summaryCustomModelsCache: [],
+      summaryCustomMaxTokens: 2048,
+      summaryCustomStream: false,
 
-  // 总结结果写入世界书（Lorebook / World Info）
-  // —— 绿灯世界书（关键词触发）——
-  summaryToWorldInfo: true,
-  // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
-  summaryWorldInfoTarget: 'chatbook',
-  summaryWorldInfoFile: '',
-  summaryWorldInfoCommentPrefix: '剧情总结',
+      // 总结结果写入世界书（Lorebook / World Info）
+      // —— 绿灯世界书（关键词触发）——
+      summaryToWorldInfo: true,
+      // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
+      summaryWorldInfoTarget: 'chatbook',
+      summaryWorldInfoFile: '',
+      summaryWorldInfoCommentPrefix: '剧情总结',
 
-  // 总结写入世界书 key（触发词）的来源
-  // - keywords: 使用模型输出的 keywords（默认）
-  // - indexId: 使用自动生成的索引编号（如 A-001），只写 1 个触发词，触发更精确
-  summaryWorldInfoKeyMode: 'keywords',
-  // 当 keyMode=indexId 时：索引编号格式
-  summaryIndexPrefix: 'A-',
-  summaryIndexPad: 3,
-  summaryIndexStart: 1,
-  // 是否把索引编号写入条目标题（comment），便于世界书列表定位
-  summaryIndexInComment: true,
+      // 总结写入世界书 key（触发词）的来源
+      // - keywords: 使用模型输出的 keywords（默认）
+      // - indexId: 使用自动生成的索引编号（如 A-001），只写 1 个触发词，触发更精确
+      summaryWorldInfoKeyMode: 'keywords',
+      // 当 keyMode=indexId 时：索引编号格式
+      summaryIndexPrefix: 'A-',
+      summaryIndexPad: 3,
+      summaryIndexStart: 1,
+      // 是否把索引编号写入条目标题（comment），便于世界书列表定位
+      summaryIndexInComment: true,
 
-  // —— 蓝灯世界书（常开索引：给本插件做检索用）——
-  // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个。
-  summaryToBlueWorldInfo: false,
-  summaryBlueWorldInfoFile: '',
-  summaryBlueWorldInfoCommentPrefix: '剧情总结',
+      // —— 蓝灯世界书（常开索引：给本插件做检索用）——
+      // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个。
+      summaryToBlueWorldInfo: false,
+      summaryBlueWorldInfoFile: '',
+      summaryBlueWorldInfoCommentPrefix: '剧情总结',
 
-  // —— 自动绑定世界书（每个聊天自动生成专属世界书）——
-  autoBindWorldInfo: false,
-  autoBindWorldInfoPrefix: 'SG',
+      // —— 自动绑定世界书（每个聊天自动生成专属世界书）——
+      autoBindWorldInfo: false,
+      autoBindWorldInfoPrefix: 'SG',
 
-  // —— 蓝灯索引 → 绿灯触发 ——
-  wiTriggerEnabled: false,
+      // —— 蓝灯索引 → 绿灯触发 ——
+      wiTriggerEnabled: false,
 
-  // 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API）
-  wiTriggerMatchMode: 'local',
+      // 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API）
+      wiTriggerMatchMode: 'local',
 
-  // —— 索引 LLM（独立于总结 API 的第二套配置）——
-  wiIndexProvider: 'st',         // st | custom
-  wiIndexTemperature: 0.2,
-  wiIndexTopP: 0.95,
-  wiIndexSystemPrompt: DEFAULT_INDEX_SYSTEM_PROMPT,
-  wiIndexUserTemplate: DEFAULT_INDEX_USER_TEMPLATE,
+      // —— 索引 LLM（独立于总结 API 的第二套配置）——
+      wiIndexProvider: 'st',         // st | custom
+      wiIndexTemperature: 0.2,
+      wiIndexTopP: 0.95,
+      wiIndexSystemPrompt: DEFAULT_INDEX_SYSTEM_PROMPT,
+      wiIndexUserTemplate: DEFAULT_INDEX_USER_TEMPLATE,
 
-  // LLM 模式：先用本地相似度预筛选 TopK，再交给模型综合判断（更省 tokens）
-  wiIndexPrefilterTopK: 24,
-  // 每条候选摘要截断字符（控制 tokens）
-  wiIndexCandidateMaxChars: 420,
+      // LLM 模式：先用本地相似度预筛选 TopK，再交给模型综合判断（更省 tokens）
+      wiIndexPrefilterTopK: 24,
+      // 每条候选摘要截断字符（控制 tokens）
+      wiIndexCandidateMaxChars: 420,
 
-  // 索引独立 OpenAI 兼容 API
-  wiIndexCustomEndpoint: '',
-  wiIndexCustomApiKey: '',
-  wiIndexCustomModel: 'gpt-4o-mini',
-  wiIndexCustomModelsCache: [],
-  wiIndexCustomMaxTokens: 1024,
-  wiIndexCustomStream: false,
+      // 索引独立 OpenAI 兼容 API
+      wiIndexCustomEndpoint: '',
+      wiIndexCustomApiKey: '',
+      wiIndexCustomModel: 'gpt-4o-mini',
+      wiIndexCustomModelsCache: [],
+      wiIndexCustomMaxTokens: 1024,
+      wiIndexCustomStream: false,
 
-  // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
-  wiTriggerLookbackMessages: 20,
-  // 是否把“本次用户输入”纳入索引匹配（综合判断）。
-  wiTriggerIncludeUserMessage: true,
-  // 本次用户输入在相似度向量中的权重（越大越看重用户输入；1=与最近正文同权重）
-  wiTriggerUserMessageWeight: 1.6,
-  // 至少已有 N 条 AI 回复（楼层）才开始索引触发；0=立即
-  wiTriggerStartAfterAssistantMessages: 0,
-  // 最多选择多少条 summary 条目来触发
-  wiTriggerMaxEntries: 4,
-  // 相关度阈值（0~1，越大越严格）
-  wiTriggerMinScore: 0.08,
-  // 最多注入多少个触发词（去重后）
-  wiTriggerMaxKeywords: 24,
-  // 注入模式：appendToUser = 追加到用户消息末尾
-  wiTriggerInjectMode: 'appendToUser',
-  // 注入样式：hidden=HTML 注释隐藏；plain=直接文本（更稳）
-  wiTriggerInjectStyle: 'hidden',
-  wiTriggerTag: 'SG_WI_TRIGGERS',
-  wiTriggerDebugLog: false,
+      // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
+      wiTriggerLookbackMessages: 20,
+      // 是否把“本次用户输入”纳入索引匹配（综合判断）。
+      wiTriggerIncludeUserMessage: true,
+      // 本次用户输入在相似度向量中的权重（越大越看重用户输入；1=与最近正文同权重）
+      wiTriggerUserMessageWeight: 1.6,
+      // 至少已有 N 条 AI 回复（楼层）才开始索引触发；0=立即
+      wiTriggerStartAfterAssistantMessages: 0,
+      // 最多选择多少条 summary 条目来触发
+      wiTriggerMaxEntries: 4,
+      // 相关度阈值（0~1，越大越严格）
+      wiTriggerMinScore: 0.08,
+      // 最多注入多少个触发词（去重后）
+      wiTriggerMaxKeywords: 24,
+      // 注入模式：appendToUser = 追加到用户消息末尾
+      wiTriggerInjectMode: 'appendToUser',
+      // 注入样式：hidden=HTML 注释隐藏；plain=直接文本（更稳）
+      wiTriggerInjectStyle: 'hidden',
+      wiTriggerTag: 'SG_WI_TRIGGERS',
+      wiTriggerDebugLog: false,
 
-  // ROLL 判定（本回合行动判定）
-  wiRollEnabled: false,
-  wiRollStatSource: 'variable', // variable (综合多来源) | template | latest
-  wiRollStatVarName: 'stat_data',
-  wiRollRandomWeight: 0.3,
-  wiRollDifficulty: 'normal',
-  wiRollInjectStyle: 'hidden',
-  wiRollTag: 'SG_ROLL',
-  wiRollDebugLog: false,
-  wiRollStatParseMode: 'json', // json | kv
-  wiRollProvider: 'custom', // custom | local
-  wiRollSystemPrompt: DEFAULT_ROLL_SYSTEM_PROMPT,
-  wiRollCustomEndpoint: '',
-  wiRollCustomApiKey: '',
-  wiRollCustomModel: 'gpt-4o-mini',
-  wiRollCustomMaxTokens: 512,
-  wiRollCustomTopP: 0.95,
-  wiRollCustomTemperature: 0.2,
-  wiRollCustomStream: false,
+      // ROLL 判定（本回合行动判定）
+      wiRollEnabled: false,
+      wiRollStatSource: 'variable', // variable (综合多来源) | template | latest
+      wiRollStatVarName: 'stat_data',
+      wiRollRandomWeight: 0.3,
+      wiRollDifficulty: 'normal',
+      wiRollInjectStyle: 'hidden',
+      wiRollTag: 'SG_ROLL',
+      wiRollDebugLog: false,
+      wiRollStatParseMode: 'json', // json | kv
+      wiRollProvider: 'custom', // custom | local
+      wiRollSystemPrompt: DEFAULT_ROLL_SYSTEM_PROMPT,
+      wiRollCustomEndpoint: '',
+      wiRollCustomApiKey: '',
+      wiRollCustomModel: 'gpt-4o-mini',
+      wiRollCustomMaxTokens: 512,
+      wiRollCustomTopP: 0.95,
+      wiRollCustomTemperature: 0.2,
+      wiRollCustomStream: false,
 
-  // 蓝灯索引读取方式：默认“实时读取蓝灯世界书文件”
-  // - live：每次触发前会按需拉取蓝灯世界书（带缓存/节流）
-  // - cache：只使用导入/缓存的 summaryBlueIndex
-  wiBlueIndexMode: 'live',
-  // 读取蓝灯索引时使用的世界书文件名；留空则回退使用 summaryBlueWorldInfoFile
-  wiBlueIndexFile: '',
-  // 实时读取的最小刷新间隔（秒），防止每条消息都请求一次
-  wiBlueIndexMinRefreshSec: 20,
+      // 蓝灯索引读取方式：默认“实时读取蓝灯世界书文件”
+      // - live：每次触发前会按需拉取蓝灯世界书（带缓存/节流）
+      // - cache：只使用导入/缓存的 summaryBlueIndex
+      wiBlueIndexMode: 'live',
+      // 读取蓝灯索引时使用的世界书文件名；留空则回退使用 summaryBlueWorldInfoFile
+      wiBlueIndexFile: '',
+      // 实时读取的最小刷新间隔（秒），防止每条消息都请求一次
+      wiBlueIndexMinRefreshSec: 20,
 
-  // 蓝灯索引缓存（可选：用于检索；每条为 {title, summary, keywords, range?}）
-  summaryBlueIndex: [],
+      // 蓝灯索引缓存（可选：用于检索；每条为 {title, summary, keywords, range?}）
+      summaryBlueIndex: [],
 
-  // 模块自定义（JSON 字符串 + 解析备份）
-  modulesJson: '',
-  // 额外可自定义提示词“骨架”
-  customSystemPreamble: '',     // 附加在默认 system 之后
-  customConstraints: '',        // 附加在默认 constraints 之后
+      // 模块自定义（JSON 字符串 + 解析备份）
+      modulesJson: '',
+      // 额外可自定义提示词“骨架”
+      customSystemPreamble: '',     // 附加在默认 system 之后
+      customConstraints: '',        // 附加在默认 constraints 之后
 
-  // ===== 快捷选项功能 =====
-  quickOptionsEnabled: true,
-  quickOptionsShowIn: 'inline', // inline | panel | both
-  // 预设默认选项（JSON 字符串）: [{label, prompt}]
-  quickOptionsJson: JSON.stringify([
-    { label: '继续', prompt: '继续当前剧情发展' },
-    { label: '详述', prompt: '请更详细地描述当前场景' },
-    { label: '对话', prompt: '让角色之间展开更多对话' },
-    { label: '行动', prompt: '描述接下来的具体行动' },
-  ], null, 2),
+      // ===== 快捷选项功能 =====
+      quickOptionsEnabled: true,
+      quickOptionsShowIn: 'inline', // inline | panel | both
+      // 预设默认选项（JSON 字符串）: [{label, prompt}]
+      quickOptionsJson: JSON.stringify([
+        { label: '继续', prompt: '继续当前剧情发展' },
+        { label: '详述', prompt: '请更详细地描述当前场景' },
+        { label: '对话', prompt: '让角色之间展开更多对话' },
+        { label: '行动', prompt: '描述接下来的具体行动' },
+      ], null, 2),
 
-  // ===== 数据表模块 =====
-  dataTableEnabled: false,
-  dataTableUpdateBody: false,
-  dataTableInjectionStyle: 'hidden', // hidden | plain
-  dataTableTemplateJson: DEFAULT_DATA_TABLE_TEMPLATE,
-  dataTablePromptJson: JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2),
-  dataTablePresets: [],
-  dataTableActivePreset: '',
-  dataTableProvider: 'custom',
-  dataTableTemperature: 0.4,
-  dataTableCustomEndpoint: '',
-  dataTableCustomApiKey: '',
-  dataTableCustomModel: 'gpt-4o-mini',
-  dataTableCustomModelsCache: [],
-  dataTableCustomMaxTokens: 4096,
-  dataTableCustomTopP: 0.95,
-  dataTableCustomStream: false,
-  dataTableMaxMessages: 20,
-  dataTableMaxCharsPerMessage: 5000,
-  dataTableStatEnabled: false, // Default to false
-  dataTableStatVarName: 'stat_data',
-  dataTableStatParseMode: 'json',
-});
+      // ===== 数据表模块 =====
+      dataTableEnabled: false,
+      dataTableUpdateBody: false,
+      dataTableInjectionStyle: 'hidden', // hidden | plain
+      dataTableTemplateJson: DEFAULT_DATA_TABLE_TEMPLATE,
+      dataTablePromptJson: JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2),
+      dataTablePresets: [],
+      dataTableActivePreset: '',
+      dataTableProvider: 'custom',
+      dataTableTemperature: 0.4,
+      dataTableCustomEndpoint: '',
+      dataTableCustomApiKey: '',
+      dataTableCustomModel: 'gpt-4o-mini',
+      dataTableCustomModelsCache: [],
+      dataTableCustomMaxTokens: 4096,
+      dataTableCustomTopP: 0.95,
+      dataTableCustomStream: false,
+      dataTableMaxMessages: 20,
+      dataTableMaxCharsPerMessage: 5000,
+      dataTableStatEnabled: false, // Default to false
+      dataTableStatVarName: 'stat_data',
+      dataTableStatParseMode: 'json',
+    });
 
-const META_KEYS = Object.freeze({
-  canon: 'storyguide_canon_outline',
-  world: 'storyguide_world_setup',
-  summaryMeta: 'storyguide_summary_meta',
-  dataTableMeta: 'storyguide_data_table_meta',
-  staticModulesCache: 'storyguide_static_modules_cache',
-  boundGreenWI: 'storyguide_bound_green_wi',
-  boundBlueWI: 'storyguide_bound_blue_wi',
-  autoBindCreated: 'storyguide_auto_bind_created',
-});
+    const META_KEYS = Object.freeze({
+      canon: 'storyguide_canon_outline',
+      world: 'storyguide_world_setup',
+      summaryMeta: 'storyguide_summary_meta',
+      dataTableMeta: 'storyguide_data_table_meta',
+      staticModulesCache: 'storyguide_static_modules_cache',
+      boundGreenWI: 'storyguide_bound_green_wi',
+      boundBlueWI: 'storyguide_bound_blue_wi',
+      autoBindCreated: 'storyguide_auto_bind_created',
+    });
 
-let lastReport = null;
-let lastJsonText = '';
-let lastSummary = null; // { title, summary, keywords, ... }
-let lastSummaryText = '';
-let refreshTimer = null;
-let appendTimer = null;
-let summaryTimer = null;
-let isSummarizing = false;
-let sgToastTimer = null;
+    let lastReport = null;
+    let lastJsonText = '';
+    let lastSummary = null; // { title, summary, keywords, ... }
+    let lastSummaryText = '';
+    let refreshTimer = null;
+    let appendTimer = null;
+    let summaryTimer = null;
+    let isSummarizing = false;
+    let sgToastTimer = null;
 
-// 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
-let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
+    // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
+    let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
 
-// ============== 关键：DOM 追加缓存 & 观察者（抗重渲染） ==============
-/**
- * inlineCache: Map<mesKey, { htmlInner: string, collapsed: boolean, createdAt: number }>
- * mesKey 优先用 DOM 的 mesid（如果拿不到则用 chatIndex）
- */
-const inlineCache = new Map();
-const panelCache = new Map(); // <mesKey, { htmlInner, collapsed, createdAt }>
-let chatDomObserver = null;
-let bodyDomObserver = null;
-let reapplyTimer = null;
+    // ============== 关键：DOM 追加缓存 & 观察者（抗重渲染） ==============
+    /**
+     * inlineCache: Map<mesKey, { htmlInner: string, collapsed: boolean, createdAt: number }>
+     * mesKey 优先用 DOM 的 mesid（如果拿不到则用 chatIndex）
+     */
+    const inlineCache = new Map();
+    const panelCache = new Map(); // <mesKey, { htmlInner, collapsed, createdAt }>
+    let chatDomObserver = null;
+    let bodyDomObserver = null;
+    let reapplyTimer = null;
 
-// -------------------- ST request headers compatibility --------------------
-function getCsrfTokenCompat() {
-  const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf_token"], meta[name="csrfToken"]');
-  if (meta && meta.content) return meta.content;
-  const ctx = SillyTavern.getContext?.() ?? {};
-  return ctx.csrfToken || ctx.csrf_token || globalThis.csrf_token || globalThis.csrfToken || '';
+    // -------------------- ST request headers compatibility --------------------
+    function getCsrfTokenCompat() {
+      const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf_token"], meta[name="csrfToken"]');
+      if(meta && meta.content) return meta.content;
+const ctx = SillyTavern.getContext?.() ?? {};
+return ctx.csrfToken || ctx.csrf_token || globalThis.csrf_token || globalThis.csrfToken || '';
 }
 
 function getStRequestHeadersCompat() {
