@@ -11303,14 +11303,44 @@ async function execDataTableUpdate() {
     console.log('[StoryGuide] LLM response received, length:', jsonText.length);
 
     // 5. Parse
-    const parsed = safeJsonParse(jsonText) || safeJsonParseAny(jsonText);
-    if (!parsed) {
-      throw new Error('无法解析 LLM 返回的 JSON');
+    // 6. Process <tableEdit> commands
+    const { commands, found } = parseTableEditCommands(jsonText);
+
+    let finalObj = null;
+
+    if (found && commands.length > 0) {
+      console.log(`[StoryGuide] Found ${commands.length} tableEdit commands`);
+      const applyResult = applyTableEditCommands(currentTableObj || buildDataTableSeedObject(), commands);
+      if (applyResult.ok) {
+        finalObj = applyResult.data;
+        console.log(`[StoryGuide] Successfully applied ${applyResult.applied} commands`);
+      } else {
+        console.warn('[StoryGuide] Failed to apply commands:', applyResult.error);
+        throw new Error(applyResult.error || '指令执行失败');
+      }
+    } else {
+      // Fallback: Try pure JSON parse (backward compatibility)
+      console.log('[StoryGuide] No <tableEdit> block found, trying JSON parse...');
+      const parsed = safeJsonParse(jsonText) || safeJsonParseAny(jsonText);
+      if (parsed) {
+        // If it's a full user object, validate and use
+        if (isDataTableObject(parsed)) {
+          finalObj = parsed;
+        } else {
+          // Maybe it's wrapped
+          const normed = normalizeDataTableResponse(parsed);
+          if (normed) finalObj = normed;
+        }
+      }
     }
 
-    // 6. Save
-    // 6. Save
-    const finalStr = JSON.stringify(parsed);
+    if (!finalObj) {
+      // Double check if we missed it or LLM failed
+      throw new Error('无法解析 LLM 返回的数据 (无有效的 <tableEdit> 或 JSON)');
+    }
+
+    // 7. Save
+    const finalStr = JSON.stringify(finalObj);
     await setDataTableMeta({ dataJson: finalStr, updatedAt: Date.now() });
 
     console.log('[StoryGuide] execDataTableUpdate: success');
