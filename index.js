@@ -646,6 +646,16 @@ function repairMojibake(text) {
 // 深度修复对象中的所有字符串乱码
 function repairObjectMojibake(obj) {
   if (!obj || typeof obj !== 'object') return obj;
+
+  // Attempt to transform semantic tree to sheets if not already in sheet format
+  if (!Object.keys(obj).some(k => k.startsWith('sheet_'))) {
+    const transformed = transformSemanticToSheets(obj);
+    if (transformed) return transformed;
+  }
+
+  // Deep clone to avoid mutating original
+  try { obj = JSON.parse(JSON.stringify(obj)); } catch (e) { }
+
   if (Array.isArray(obj)) {
     return obj.map(item => {
       if (typeof item === 'string') return repairMojibake(item);
@@ -1148,6 +1158,88 @@ function validateDataTableData(obj) {
 function isDataTableObject(obj) {
   if (!obj || typeof obj !== 'object') return false;
   return Object.keys(obj).some(k => k.startsWith('sheet_'));
+}
+
+function transformSemanticToSheets(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+
+  // Generic flatener for nested objects
+  const flattenToRows = (target, prefix = '') => {
+    let rows = [];
+    if (!target || typeof target !== 'object') return [[null, prefix, String(target), '']];
+
+    for (const [k, v] of Object.entries(target)) {
+      const currentKey = prefix ? `${prefix}.${k}` : k;
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        rows = rows.concat(flattenToRows(v, currentKey));
+      } else if (Array.isArray(v)) {
+        // Handle arrays (like bag items)
+        v.forEach((item, idx) => {
+          if (typeof item === 'object') {
+            // Flatten array item items
+            rows = rows.concat(flattenToRows(item, `${currentKey}[${idx}]`));
+          } else {
+            rows.push([null, `${currentKey}[${idx}]`, String(item), '']);
+          }
+        });
+      } else {
+        rows.push([null, k, String(v), (prefix ? `(${prefix})` : '')]);
+      }
+    }
+    return rows;
+  };
+
+  const sheets = {};
+
+  // Mapping rules
+  const mapRules = [
+    { key: 'sheet_char', keywords: ['主角', '角色', 'Character', 'Status'] },
+    { key: 'sheet_bag', keywords: ['背包', '物品', 'Inventory', 'Item'] },
+    { key: 'sheet_skill', keywords: ['技能', 'Skill', 'Ability'] },
+    { key: 'sheet_quest', keywords: ['任务', 'Quest', 'Mission'] },
+    { key: 'sheet_world', keywords: ['世界', '乐园', 'World', 'System'] },
+  ];
+
+  for (const [k, v] of Object.entries(obj)) {
+    if (k.startsWith('sheet_')) {
+      sheets[k] = v; // Keep existing sheets
+      continue;
+    }
+
+    // Attempt to map
+    let mappedKey = null;
+    for (const rule of mapRules) {
+      if (rule.keywords.some(kw => k.includes(kw))) {
+        mappedKey = rule.key;
+        break;
+      }
+    }
+
+    // If already exists (e.g. multiple "Bag" types), append suffix
+    if (mappedKey && sheets[mappedKey]) {
+      mappedKey = `${mappedKey}_${k}`;
+    }
+    if (!mappedKey) mappedKey = `sheet_${k}`; // Fallback
+
+    const content = [[null, '属性', '当前值', '说明']]; // Header
+
+    // Flatten logic specific for typical user structure
+    if (k === '主角' && v['基础信息']) {
+      // Optimization: Lift sub-sections up
+      content.push(...flattenToRows(v));
+    } else {
+      content.push(...flattenToRows(v));
+    }
+
+    sheets[mappedKey] = {
+      uid: mappedKey,
+      name: k,
+      content: content,
+      orderNo: Object.keys(sheets).length + 1
+    };
+  }
+
+  return Object.keys(sheets).length > 0 ? sheets : null;
 }
 
 function normalizeDataTableResponse(parsed) {
