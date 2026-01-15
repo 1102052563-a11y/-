@@ -10526,20 +10526,26 @@ function showFloatingDataTable() {
     return;
   }
 
-  const info = getDataTableDataForUi();
-  if (!info.dataJson) {
+  // Use the API to get the fully processed table object (includes defaults + virtual sheets)
+  const api = window.AutoCardUpdaterAPI || window.parent?.AutoCardUpdaterAPI;
+  let dataObj = null;
+  if (api && api.exportTableAsJson) {
+    dataObj = api.exportTableAsJson();
+  }
+
+  // Fallback if API returns null but we have raw data
+  if (!dataObj) {
+    const info = getDataTableDataForUi();
+    if (info.dataJson) dataObj = safeJsonParseAny(info.dataJson);
+  }
+
+  if (!dataObj || typeof dataObj !== 'object') {
     $body.html('<div class="sg-floating-loading">暂无数据表数据<br><small>请先更新数据表</small></div>');
     return;
   }
 
-  const parsed = safeJsonParseAny(info.dataJson);
-  if (!parsed || typeof parsed !== 'object') {
-    $body.html('<div class="sg-floating-loading">数据表解析失败</div>');
-    return;
-  }
-
   // 修复可能的乱码
-  const repairedData = repairObjectMojibake(parsed);
+  const repairedData = repairObjectMojibake(dataObj);
   const keys = getOrderedSheetKeysFromData(repairedData);
 
   if (!keys.length) {
@@ -10942,6 +10948,24 @@ function init() {
           console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
           return null; // 或者返回默认值？
         }
+      }
+
+      // [New] 运行时修正：自动修复表名/缺失表 (Fix user issue: visual panel missing "sheet_main")
+      if (dataObj && typeof dataObj === 'object') {
+        // 1. Rename '数据表' -> '全剧情概览 (全局)'
+        if (dataObj.sheet_main && dataObj.sheet_main.name === '数据表') {
+          dataObj.sheet_main.name = '全剧情概览 (全局)';
+        }
+        // 2. Ensure all default sheets exist (merge defaults)
+        try {
+          const defaultObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
+          const requiredSheets = ['sheet_main', 'sheet_char', 'sheet_bag', 'sheet_skill', 'sheet_quest'];
+          for (const key of requiredSheets) {
+            if (!dataObj[key]) {
+              dataObj[key] = defaultObj[key];
+            }
+          }
+        } catch (e) { }
       }
 
       // [New] 动态注入 lastReport (剧情模块分析结果) 作为虚拟表
