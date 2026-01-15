@@ -446,6 +446,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   dataTableCustomMaxTokens: 4096,
   dataTableCustomTopP: 0.95,
   dataTableCustomStream: false,
+  dataTableMaxMessages: 20,
+  dataTableMaxCharsPerMessage: 5000,
+  dataTableStatEnabled: false, // Default to false
+  dataTableStatVarName: 'stat_data',
+  dataTableStatParseMode: 'json',
 });
 
 const META_KEYS = Object.freeze({
@@ -1583,7 +1588,7 @@ function buildDataTableChatText(options = {}) {
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
 
   const maxMessages = clampInt(options.maxMessages ?? s.dataTableMaxMessages, 5, 200, 20);
-  const maxChars = clampInt(options.maxChars ?? s.dataTableMaxCharsPerMessage, 200, 8000, 2000);
+  const maxChars = clampInt(options.maxChars ?? s.dataTableMaxCharsPerMessage, 200, 50000, 5000);
 
   const picked = [];
 
@@ -7773,7 +7778,7 @@ function buildModalHtml() {
                 </div>
                 <div class="sg-field">
                   <label>每条消息最大字符</label>
-                  <input id="sg_dataTableMaxCharsPerMessage" type="number" min="200" max="8000" step="100" placeholder="2000">
+                  <input id="sg_dataTableMaxCharsPerMessage" type="number" min="200" max="50000" step="100" placeholder="5000">
                 </div>
               </div>
               <div class="sg-hint">设置数据表更新时读取的消息范围，独立于剧情指导的设置</div>
@@ -9221,7 +9226,7 @@ function pullSettingsToUi() {
 
   // 数据表专用设置
   $('#sg_dataTableMaxMessages').val(s.dataTableMaxMessages ?? 20);
-  $('#sg_dataTableMaxCharsPerMessage').val(s.dataTableMaxCharsPerMessage ?? 2000);
+  $('#sg_dataTableMaxCharsPerMessage').val(s.dataTableMaxCharsPerMessage ?? 5000);
   $('#sg_dataTableStatEnabled').prop('checked', !!s.dataTableStatEnabled);
   $('#sg_dataTableStatVarName').val(String(s.dataTableStatVarName || 'stat_data'));
   $('#sg_dataTableStatParseMode').val(String(s.dataTableStatParseMode || 'json'));
@@ -9682,7 +9687,7 @@ function pullUiToSettings() {
 
   // 数据表专用设置
   s.dataTableMaxMessages = clampInt($('#sg_dataTableMaxMessages').val(), 5, 100, s.dataTableMaxMessages || 20);
-  s.dataTableMaxCharsPerMessage = clampInt($('#sg_dataTableMaxCharsPerMessage').val(), 200, 8000, s.dataTableMaxCharsPerMessage || 2000);
+  s.dataTableMaxCharsPerMessage = clampInt($('#sg_dataTableMaxCharsPerMessage').val(), 200, 50000, s.dataTableMaxCharsPerMessage || 5000);
   s.dataTableStatEnabled = $('#sg_dataTableStatEnabled').is(':checked');
   s.dataTableStatVarName = String($('#sg_dataTableStatVarName').val() || 'stat_data').trim();
   s.dataTableStatParseMode = String($('#sg_dataTableStatParseMode').val() || 'json');
