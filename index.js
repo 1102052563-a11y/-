@@ -10618,6 +10618,96 @@ function injectFixedInputButton() {
   }
 }
 
+// -------------------- 数据表更新函数 --------------------
+
+async function execDataTableUpdate() {
+  const s = ensureSettings();
+  if (!s.enabled) {
+    if (window.toastr) window.toastr.warning('插件未启用');
+    return false;
+  }
+
+  if (window.toastr) window.toastr.info('StoryGuide: 正在请求大模型更新表格...');
+  console.log('[StoryGuide] execDataTableUpdate: starting...');
+
+  try {
+    // 1. Snapshot
+    const { snapshotText } = buildSnapshot();
+    const world = stripHtml(getChatMetaValue(META_KEYS.world) || getChatMetaValue(META_KEYS.canon) || '');
+
+    // 2. Current Table
+    let currentTableStr = getChatMetaValue(META_KEYS.dataTableMeta);
+    let currentTableObj = null;
+    try { currentTableObj = JSON.parse(currentTableStr); } catch { }
+
+    if (!currentTableObj) {
+      currentTableStr = DEFAULT_DATA_TABLE_TEMPLATE;
+    } else {
+      // Migration: merge missing sheets from default template (Dashboard support)
+      try {
+        const defaultObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
+        const requiredSheets = ['sheet_char', 'sheet_bag', 'sheet_skill', 'sheet_quest'];
+        let changed = false;
+        for (const key of requiredSheets) {
+          if (!currentTableObj[key] && defaultObj[key]) {
+            currentTableObj[key] = defaultObj[key];
+            changed = true;
+          }
+        }
+        if (changed) {
+          currentTableStr = JSON.stringify(currentTableObj);
+          console.log('[StoryGuide] Migrated table data with missing sheets');
+        }
+      } catch (e) { console.warn('[StoryGuide] Migration check failed', e); }
+    }
+
+    // 3. Prompt
+    const promptMsgs = JSON.parse(JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES)); // deep clone
+    for (const m of promptMsgs) {
+      if (typeof m.content === 'string') {
+        m.content = renderTemplate(m.content, {
+          world: world || '（暂无背景设定）',
+          chat: snapshotText || '（暂无正文）',
+          table: currentTableStr
+        });
+      }
+    }
+
+    // 4. Call LLM
+    let jsonText = '';
+    console.log('[StoryGuide] Calling LLM for data table...');
+    if (s.provider === 'custom') {
+      jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, promptMsgs, s.temperature, s.customMaxTokens, s.customTopP, false);
+    } else {
+      jsonText = await callViaSillyTavern(promptMsgs, null, s.temperature);
+      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+    }
+    console.log('[StoryGuide] LLM response received, length:', jsonText.length);
+
+    // 5. Parse
+    const parsed = safeJsonParse(jsonText) || safeJsonParseAny(jsonText);
+    if (!parsed) {
+      throw new Error('无法解析 LLM 返回的 JSON');
+    }
+
+    // 6. Save
+    const finalStr = JSON.stringify(parsed);
+    await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
+
+    console.log('[StoryGuide] execDataTableUpdate: success');
+    if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
+    return true;
+
+  } catch (e) {
+    console.error('[StoryGuide] execDataTableUpdate failed:', e);
+    if (window.toastr) window.toastr.error('表格更新失败: ' + e.message);
+    return false;
+  }
+}
+
+// 为手动更新按钮创建别名
+const runDataTableUpdate = execDataTableUpdate;
+
 function init() {
   ensureSettings();
   setupEventListeners();
@@ -10661,91 +10751,6 @@ function init() {
       console.warn('[StoryGuide] 自动绑定世界书失败:', e);
     }
   });
-
-  async function execDataTableUpdate() {
-    const s = ensureSettings();
-    if (!s.enabled) {
-      if (window.toastr) window.toastr.warning('插件未启用');
-      return false;
-    }
-
-    if (window.toastr) window.toastr.info('StoryGuide: 正在请求大模型更新表格...');
-    console.log('[StoryGuide] runDataTableUpdate: starting...');
-
-    try {
-      // 1. Snapshot
-      const { snapshotText } = buildSnapshot();
-      const world = stripHtml(getChatMetaValue(META_KEYS.world) || getChatMetaValue(META_KEYS.canon) || '');
-
-      // 2. Current Table
-      let currentTableStr = getChatMetaValue(META_KEYS.dataTableMeta);
-      let currentTableObj = null;
-      try { currentTableObj = JSON.parse(currentTableStr); } catch { }
-
-      if (!currentTableObj) {
-        currentTableStr = DEFAULT_DATA_TABLE_TEMPLATE;
-      } else {
-        // Migration: merge missing sheets from default template (Dashboard support)
-        try {
-          const defaultObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
-          const requiredSheets = ['sheet_char', 'sheet_bag', 'sheet_skill', 'sheet_quest'];
-          let changed = false;
-          for (const key of requiredSheets) {
-            if (!currentTableObj[key] && defaultObj[key]) {
-              currentTableObj[key] = defaultObj[key];
-              changed = true;
-            }
-          }
-          if (changed) {
-            currentTableStr = JSON.stringify(currentTableObj);
-            console.log('[StoryGuide] Migrated table data with missing sheets');
-          }
-        } catch (e) { console.warn('[StoryGuide] Migration check failed', e); }
-      }
-
-      // 3. Prompt
-      const promptMsgs = JSON.parse(JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES)); // deep clone
-      for (const m of promptMsgs) {
-        if (typeof m.content === 'string') {
-          m.content = renderTemplate(m.content, {
-            world: world || '（暂无背景设定）',
-            chat: snapshotText || '（暂无正文）',
-            table: currentTableStr
-          });
-        }
-      }
-
-      // 4. Call LLM
-      let jsonText = '';
-      console.log('[StoryGuide] Calling LLM for data table...');
-      if (s.provider === 'custom') {
-        jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, promptMsgs, s.temperature, s.customMaxTokens, s.customTopP, false);
-      } else {
-        jsonText = await callViaSillyTavern(promptMsgs, null, s.temperature);
-        if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-      }
-      console.log('[StoryGuide] LLM response received, length:', jsonText.length);
-
-      // 5. Parse
-      const parsed = safeJsonParse(jsonText) || safeJsonParseAny(jsonText);
-      if (!parsed) {
-        throw new Error('无法解析 LLM 返回的 JSON');
-      }
-
-      // 6. Save
-      const finalStr = JSON.stringify(parsed);
-      await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
-
-      console.log('[StoryGuide] runDataTableUpdate: success');
-      if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
-      return true;
-
-    } catch (e) {
-      console.error('[StoryGuide] runDataTableUpdate failed:', e);
-      if (window.toastr) window.toastr.error('表格更新失败: ' + e.message);
-      return false;
-    }
-  }
 
   // ===== 可视化表格脚本 API =====
   const AutoCardUpdaterAPI_Impl = {
