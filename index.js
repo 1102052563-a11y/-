@@ -10944,6 +10944,24 @@ function init() {
         }
       }
 
+      // [New] 运行时修正：自动修复表名/缺失表 (Fix user issue: visual panel missing "sheet_main")
+      if (dataObj && typeof dataObj === 'object') {
+        // 1. Rename '数据表' -> '全剧情概览 (全局)'
+        if (dataObj.sheet_main && dataObj.sheet_main.name === '数据表') {
+          dataObj.sheet_main.name = '全剧情概览 (全局)';
+        }
+        // 2. Ensure all default sheets exist (merge defaults)
+        try {
+          const defaultObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
+          const requiredSheets = ['sheet_main', 'sheet_char', 'sheet_bag', 'sheet_skill', 'sheet_quest'];
+          for (const key of requiredSheets) {
+            if (!dataObj[key]) {
+              dataObj[key] = defaultObj[key];
+            }
+          }
+        } catch (e) { }
+      }
+
       // [New] 动态注入 lastReport (剧情模块分析结果) 作为虚拟表
       // 这样可视化脚本就能读到 world_summary, tips, quick_actions 等
       if (dataObj && typeof dataObj === 'object' && lastReport && typeof lastReport === 'object') {
