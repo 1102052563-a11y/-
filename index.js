@@ -9806,20 +9806,22 @@ function setupEventListeners() {
       try { eventSource.on(evt, fn); } catch (e) { console.error('[StoryGuide] Failed to bind ' + evt, e); }
     };
 
+    let autoUpdateTimer = null;
     const onGenerationFinished = () => {
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
       // 自动总结（独立功能）
       scheduleAutoSummary('msg_received');
 
-      // 数据表自动更新
-      const s = ensureSettings();
-      console.log('[StoryGuide v2] Generation Finished Event. AutoUpdate:', s.autoUpdateDataTable);
-      if (s.autoUpdateDataTable) {
-        console.log('[StoryGuide v2] Triggering execDataTableUpdate...');
-        execDataTableUpdate().then(res => console.log('[StoryGuide v2] Update result:', res))
-          .catch(e => console.error('[StoryGuide v2] Update failed', e));
-      }
+      // 数据表自动更新 (Debounced 2s to avoid double triggers from multiple events)
+      if (autoUpdateTimer) clearTimeout(autoUpdateTimer);
+      autoUpdateTimer = setTimeout(() => {
+        const s = ensureSettings();
+        if (s.autoUpdateDataTable) {
+          console.log('[StoryGuide v2] Auto-update triggered (debounced)');
+          execDataTableUpdate().catch(e => console.error('[StoryGuide v2] Update failed', e));
+        }
+      }, 2000);
     };
 
     // Bind to multiple potential events to ensure capture
