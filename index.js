@@ -10552,14 +10552,13 @@ function showFloatingDataTable() {
   if (parsed && parsed.error) {
     const errorMsg = parsed.error.message || JSON.stringify(parsed.error);
     $body.html(`<div class="sg-floating-loading" style="color:#ff6b6b">
-      <div style="font-size:1.1em; font-weight:bold; margin-bottom:5px;">上次更新失败</div>
-      <div style="background:rgba(255,0,0,0.1); padding:8px; border-radius:4px; margin-bottom:10px;">
-        ${escapeHtml(errorMsg)}
-      </div>
-      <div style="font-size:0.85em; color:#aaa; line-height:1.5;">
-        此为历史错误缓存。<br>
-        请调整 MaxChars 后重新点击更新。<br>
-        <span style="color:#fff;">如果再次更新失败，请留意右上角的红色报错提示。</span>
+      【上次更新失败】<br>
+      <small>${escapeHtml(errorMsg)}</small><br>
+      <div style="font-size:0.85em; margin-top:8px; color:#aaa; text-align:left; background:rgba(0,0,0,0.2); padding:5px; border-radius:4px;">
+        ⚠️ <b>注意：</b><br>
+        这是旧的错误记录。<br>
+        请调整 MaxChars 后重试更新。<br>
+        若更新仍失败，请留意<b>页面右上角的红色报错弹窗</b>。
       </div>
     </div>`);
     return;
@@ -10930,9 +10929,6 @@ async function execDataTableUpdate() {
     const finalStr = JSON.stringify(parsed);
     await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
 
-    // Force refresh internal panel
-    refreshFloatingPanelContent();
-
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
 
@@ -10946,6 +10942,14 @@ async function execDataTableUpdate() {
     } catch (e) {
       console.warn('[StoryGuide] UI refresh callback failed:', e);
     }
+
+    // 强制刷新内置悬浮面板
+    try {
+      if (typeof refreshFloatingPanelContent === 'function') {
+        await refreshFloatingPanelContent();
+        console.log('[StoryGuide] Floating Panel refreshed');
+      }
+    } catch (e) { console.warn('[StoryGuide] Floating Panel refresh failed:', e); }
 
     return true;
 
