@@ -10575,7 +10575,14 @@ function showFloatingDataTable() {
 
   // Fallback: manually find sheet keys if function returned empty or didn't exist
   if (!keys || !keys.length) {
-    keys = Object.keys(repairedData).filter(k => k.toLowerCase().startsWith('sheet_'));
+    keys = Object.keys(repairedData).filter(k => {
+      const v = repairedData[k];
+      // Loose check matching external visualization script logic:
+      // Accept if it looks like a sheet (has name and content array)
+      if (v && typeof v === 'object' && Array.isArray(v.content) && v.name) return true;
+      // Fallback to prefix check
+      return k.toLowerCase().startsWith('sheet_');
+    });
     keys.sort((a, b) => {
       const oa = repairedData[a]?.orderNo ?? 999;
       const ob = repairedData[b]?.orderNo ?? 999;
