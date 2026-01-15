@@ -10841,7 +10841,7 @@ async function execDataTableUpdate() {
     // 6. Save
     // 6. Save
     const finalStr = JSON.stringify(parsed);
-    await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
+    await setDataTableMeta({ dataJson: finalStr, updatedAt: Date.now() });
 
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
@@ -10934,12 +10934,18 @@ function init() {
           return null;
         }
       }
-      // meta 存储的是 JSON 字符串，直接 parse 返回对象
+      // meta 存储的是 JSON 字符串，需要 parse
       try {
-        return JSON.parse(meta);
+        const parsed = JSON.parse(meta);
+        // Compatibility: check if it's the new wrapper format
+        if (parsed && typeof parsed === 'object' && typeof parsed.dataJson === 'string') {
+          try { return JSON.parse(parsed.dataJson); } catch (subE) { console.error('inner parse error', subE); return null; }
+        }
+        // Legacy: return raw parsed object
+        return parsed;
       } catch (e) {
         console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
-        return null; // 或者返回默认值？
+        return null;
       }
     },
     importTableAsJson: async (jsonString) => {
