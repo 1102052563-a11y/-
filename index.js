@@ -10841,7 +10841,7 @@ async function execDataTableUpdate() {
     // 6. Save
     // 6. Save
     const finalStr = JSON.stringify(parsed);
-    await setDataTableMeta({ dataJson: finalStr, updatedAt: Date.now() });
+    await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
 
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
