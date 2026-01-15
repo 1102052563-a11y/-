@@ -5960,6 +5960,7 @@ function buildModalHtml() {
             <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
             <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_datatable">数据表设置</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
@@ -6635,6 +6636,87 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_roll -->
 
+          <div class="sg-page" id="sg_page_datatable">
+            <div class="sg-card">
+              <div class="sg-card-title">基础设置</div>
+              <div class="sg-row">
+                <label class="sg-check"><input type="checkbox" id="sg_dt_main_enabled">启用数据表模块</label>
+                <label class="sg-check"><input type="checkbox" id="sg_dt_main_auto">自动更新（收到回复后）</label>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>更新频率（每N条消息）</label>
+                  <input id="sg_dt_main_freq" type="number" min="1" max="20" placeholder="1">
+                </div>
+                <div class="sg-field">
+                  <label>上下文消息数量</label>
+                  <input id="sg_dt_main_threshold" type="number" min="1" max="50" placeholder="3">
+                </div>
+              </div>
+              <div class="sg-field">
+                <label>跳过前N层（不处理早期消息）</label>
+                <input id="sg_dt_main_skip" type="number" min="0" max="100" placeholder="0">
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">API 设置</div>
+              <div class="sg-field">
+                <label class="sg-check"><input type="checkbox" id="sg_dt_main_use_main_api">使用主 API 设置（推荐）</label>
+              </div>
+
+              <div id="sg_dt_main_custom_api_block">
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>API URL</label>
+                    <input id="sg_dt_main_url" type="text" placeholder="https://api.openai.com/v1">
+                  </div>
+                  <div class="sg-field">
+                    <label>API Key</label>
+                    <input id="sg_dt_main_key" type="password" placeholder="sk-...">
+                  </div>
+                </div>
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>模型名称</label>
+                    <input id="sg_dt_main_model" type="text" placeholder="gpt-4o">
+                  </div>
+                  <div class="sg-field">
+                    <label>Max Tokens</label>
+                    <input id="sg_dt_main_max_tokens" type="number" step="100" min="100" max="128000">
+                  </div>
+                </div>
+                <div class="sg-field">
+                  <label>Temperature</label>
+                  <input id="sg_dt_main_temp" type="number" step="0.1" min="0" max="2">
+                </div>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">高级定制</div>
+              <div class="sg-field">
+                <label>自定义表格模板 (JSON)</label>
+                <textarea id="sg_dt_main_template" rows="5" placeholder="留空使用默认模板..."></textarea>
+                <div class="sg-hint">填入包含 \`sheet_\` 开头的对象的 JSON。留空则自动使用默认9表格模板。</div>
+              </div>
+
+              <div class="sg-field">
+                <label>自定义提示词模板</label>
+                <textarea id="sg_dt_main_prompt" rows="5" placeholder="留空使用默认提示词..."></textarea>
+                <div class="sg-hint">支持 \`{{context}}\`, \`{{table_format}}\` 等占位符。</div>
+              </div>
+            </div>
+
+            <div class="sg-card">
+               <div class="sg-card-title">操作</div>
+               <div class="sg-row sg-inline">
+                 <button class="menu_button sg-btn" id="sg_dt_main_manual_update">⚡ 立即更新数据表</button>
+               </div>
+            </div>
+          </div> <!-- sg_page_datatable -->
+
           <div class="sg-status" id="sg_status"></div>
         </div>
 
@@ -7207,6 +7289,7 @@ function setupSettingsPages() {
   $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
   $('#sg_pgtab_roll').on('click', () => showSettingsPage('roll'));
+  $('#sg_pgtab_datatable').on('click', () => showSettingsPage('datatable'));
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
@@ -7288,6 +7371,57 @@ function pullSettingsToUi() {
   $('#sg_summaryCustomMaxTokens').val(s.summaryCustomMaxTokens || 2048);
   $('#sg_summaryCustomStream').prop('checked', !!s.summaryCustomStream);
   $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
+  $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
+  $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
+
+  // data table
+  $('#sg_dt_main_enabled').prop('checked', !!s.dataTableEnabled);
+  $('#sg_dt_main_auto').prop('checked', !!s.dataTableAutoUpdateEnabled);
+  $('#sg_dt_main_freq').val(s.dataTableAutoUpdateFrequency || 1);
+  $('#sg_dt_main_threshold').val(s.dataTableAutoUpdateThreshold || 3);
+  $('#sg_dt_main_skip').val(s.dataTableSkipFloors || 0);
+
+  const useMainApi = s.dataTableUseMainApi !== false;
+  $('#sg_dt_main_use_main_api').prop('checked', useMainApi);
+  $('#sg_dt_main_custom_api_block').toggle(!useMainApi);
+
+  const dtApi = s.dataTableApiConfig || {};
+  $('#sg_dt_main_url').val(dtApi.url || '');
+  $('#sg_dt_main_key').val(dtApi.apiKey || '');
+  $('#sg_dt_main_model').val(dtApi.model || '');
+  $('#sg_dt_main_max_tokens').val(dtApi.maxTokens || 60000);
+  $('#sg_dt_main_temp').val(dtApi.temperature !== undefined ? dtApi.temperature : 0.9);
+
+  let templateStr = '';
+  if (s.dataTableTemplate) {
+    templateStr = typeof s.dataTableTemplate === 'string'
+      ? s.dataTableTemplate
+      : JSON.stringify(s.dataTableTemplate, null, 2);
+  }
+  $('#sg_dt_main_template').val(templateStr);
+
+  let promptVal = s.dataTableCharCardPrompt;
+  if (Array.isArray(promptVal)) promptVal = promptVal.join('\n');
+  else if (typeof promptVal === 'object' && promptVal !== null) promptVal = JSON.stringify(promptVal, null, 2);
+  $('#sg_dt_main_prompt').val(String(promptVal || ''));
+
+  // Bind events here for simplicity (ensuring no duplicate bindings)
+  $('#sg_dt_main_use_main_api').off('change').on('change', function () {
+    $('#sg_dt_main_custom_api_block').toggle(!$(this).is(':checked'));
+  });
+
+  $('#sg_dt_main_manual_update').off('click').on('click', async function () {
+    const btn = $(this);
+    btn.prop('disabled', true).text('更新中...');
+    try {
+      await runDataTableUpdate();
+      showToast('数据表更新成功', { kind: 'ok' });
+    } catch (e) {
+      showToast('更新失败: ' + e.message, { kind: 'err' });
+    } finally {
+      btn.prop('disabled', false).text('⚡ 立即更新数据表');
+    }
+  });
   $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
   $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
@@ -7755,6 +7889,40 @@ function pullUiToSettings() {
   s.wiRollCustomTemperature = clampFloat($('#sg_wiRollCustomTemperature').val(), 0, 2, s.wiRollCustomTemperature ?? 0.2);
   s.wiRollCustomStream = $('#sg_wiRollCustomStream').is(':checked');
   s.wiRollSystemPrompt = String($('#sg_wiRollSystemPrompt').val() || '').trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
+
+  // data table
+  s.dataTableEnabled = $('#sg_dt_main_enabled').is(':checked');
+  s.dataTableAutoUpdateEnabled = $('#sg_dt_main_auto').is(':checked');
+  s.dataTableAutoUpdateFrequency = clampInt($('#sg_dt_main_freq').val(), 1, 20, s.dataTableAutoUpdateFrequency || 1);
+  s.dataTableAutoUpdateThreshold = clampInt($('#sg_dt_main_threshold').val(), 1, 50, s.dataTableAutoUpdateThreshold || 3);
+  s.dataTableSkipFloors = clampInt($('#sg_dt_main_skip').val(), 0, 100, s.dataTableSkipFloors || 0);
+
+  s.dataTableUseMainApi = $('#sg_dt_main_use_main_api').is(':checked');
+
+  const dtApi = s.dataTableApiConfig || {};
+  dtApi.url = String($('#sg_dt_main_url').val() || '').trim();
+  dtApi.apiKey = String($('#sg_dt_main_key').val() || '');
+  dtApi.model = String($('#sg_dt_main_model').val() || '').trim();
+  dtApi.maxTokens = clampInt($('#sg_dt_main_max_tokens').val(), 100, 128000, dtApi.maxTokens || 60000);
+  dtApi.temperature = clampFloat($('#sg_dt_main_temp').val(), 0, 2, dtApi.temperature !== undefined ? dtApi.temperature : 0.9);
+  s.dataTableApiConfig = dtApi;
+
+  const tmplStr = String($('#sg_dt_main_template').val() || '').trim();
+  if (tmplStr) {
+    try {
+      s.dataTableTemplate = JSON.parse(tmplStr);
+    } catch {
+      console.warn('Data Table template JSON parse error, not saving');
+    }
+  } else {
+    s.dataTableTemplate = null;
+  }
+
+  const promptStr = String($('#sg_dt_main_prompt').val() || '').trim();
+  s.dataTableCharCardPrompt = promptStr || null;
+
+  s.enableWiTriggerLookback = $('#sg_enableWiTriggerLookback').is(':checked');
+  s.wiRollStatLookbackMessages = clampInt($('#sg_wiRollStatLookbackMessages').val(), 1, 100, s.wiRollStatLookbackMessages || 5);
 
   s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
   s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
