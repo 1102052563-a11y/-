@@ -11107,31 +11107,30 @@ function init() {
   // ===== 可视化表格脚本 API =====
   const AutoCardUpdaterAPI_Impl = {
     exportTableAsJson: () => {
-      // 确保能获取到 meta
+      // Prefer parsed meta payload (dataJson/updatedAt), but tolerate legacy raw table JSON.
       let meta = null;
       try {
-        meta = getChatMetaValue(META_KEYS.dataTableMeta);
+        meta = getDataTableMeta();
       } catch (e) {
-        console.warn('[StoryGuide] exportTableAsJson: getChatMetaValue failed', e);
+        console.warn('[StoryGuide] exportTableAsJson: getDataTableMeta failed', e);
       }
 
       let dataObj = null;
-      if (!meta) {
-        // 返回默认模板对象
+      if (!meta || !meta.dataJson) {
         try {
-          // 这里的 DEFAULT_DATA_TABLE_TEMPLATE 是字符串，需要 parse
           dataObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
         } catch (e) {
           console.error('[StoryGuide] AutoCardUpdaterAPI export default error:', e);
           return null;
         }
       } else {
-        // meta 存储的是 JSON 字符串，直接 parse 返回对象
-        try {
-          dataObj = JSON.parse(meta);
-        } catch (e) {
-          console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
-          return null; // 或者返回默认值？
+        dataObj = safeJsonParseAny(meta.dataJson);
+        if (!dataObj || typeof dataObj !== 'object') {
+          dataObj = safeJsonParseAny(meta);
+        }
+        if (!dataObj || typeof dataObj !== 'object') {
+          console.error('[StoryGuide] AutoCardUpdaterAPI export parse error: invalid data');
+          return null;
         }
       }
 
