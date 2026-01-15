@@ -10534,15 +10534,21 @@ function showFloatingDataTable() {
     return;
   }
 
-  const info = getDataTableDataForUi();
+  const info = getDataTableMeta(); // Use direct meta accessor
   if (!info.dataJson) {
     $body.html('<div class="sg-floating-loading">暂无数据表数据<br><small>请先更新数据表</small></div>');
     return;
   }
 
-  const parsed = safeJsonParseAny(info.dataJson);
+  let parsed = safeJsonParseAny(info.dataJson);
+  // Handle potential double-stringification
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch (e) { console.error(e); }
+  }
+
   if (!parsed || typeof parsed !== 'object') {
-    $body.html('<div class="sg-floating-loading">数据表解析失败</div>');
+    console.error('[StoryGuide] Data table parse failed:', info.dataJson?.slice(0, 50));
+    $body.html('<div class="sg-floating-loading">数据表解析失败<br><small>数据格式错误</small></div>');
     return;
   }
 
