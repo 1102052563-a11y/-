@@ -925,6 +925,721 @@ function ensureSettings() {
 
 function saveSettings() { SillyTavern.getContext().saveSettingsDebounced(); }
 
+// ============== Profile Storage Infrastructure (Data Isolation) ==============
+// Based on reference: 参考.txt lines 247-360
+
+const SCRIPT_ID_PREFIX_DT = 'storyguide_dt'; // Data Table prefix
+const DEFAULT_ISOLATION_SLOT = '__default__'; // 空标识对应的槽位名（不要改）
+const STORAGE_KEY_GLOBAL_META_DT = `${SCRIPT_ID_PREFIX_DT}_globalMeta_v1`;
+const STORAGE_KEY_PROFILE_PREFIX_DT = `${SCRIPT_ID_PREFIX_DT}_profile_v1`;
+
+// Profile 化存储工具：标识代码 <-> 存储键
+function normalizeIsolationCode(code) {
+  return (typeof code === 'string') ? code.trim() : '';
+}
+
+function getIsolationSlot(code) {
+  const c = normalizeIsolationCode(code);
+  return c ? encodeURIComponent(c) : DEFAULT_ISOLATION_SLOT;
+}
+
+function getProfileSettingsKey(code) {
+  return `${STORAGE_KEY_PROFILE_PREFIX_DT}__${getIsolationSlot(code)}__settings`;
+}
+
+function getProfileTemplateKey(code) {
+  return `${STORAGE_KEY_PROFILE_PREFIX_DT}__${getIsolationSlot(code)}__template`;
+}
+
+function safeJsonStringify(obj, fallback = '{}') {
+  try { return JSON.stringify(obj); } catch (e) { return fallback; }
+}
+
+// 全局元信息：跨标识共享（用于"标识列表/快速切换"）
+let globalMetaDT = {
+  version: 1,
+  activeIsolationCode: '',
+  isolationCodeList: [],
+  migratedLegacySingleStore: false,
+};
+
+function buildDefaultGlobalMeta() {
+  return {
+    version: 1,
+    activeIsolationCode: '',
+    isolationCodeList: [],
+    migratedLegacySingleStore: false,
+  };
+}
+
+function getConfigStorage() {
+  // Use SillyTavern's extension settings as storage backend
+  const { extensionSettings } = SillyTavern.getContext();
+  if (!extensionSettings.__dtStorage) extensionSettings.__dtStorage = {};
+
+  return {
+    getItem: (key) => extensionSettings.__dtStorage[key] ?? null,
+    setItem: (key, value) => {
+      extensionSettings.__dtStorage[key] = String(value);
+      saveSettings();
+    },
+    removeItem: (key) => {
+      delete extensionSettings.__dtStorage[key];
+      saveSettings();
+    },
+    _isST: true,
+  };
+}
+
+function loadGlobalMeta() {
+  const store = getConfigStorage();
+  const raw = store?.getItem?.(STORAGE_KEY_GLOBAL_META_DT);
+  if (!raw) {
+    globalMetaDT = buildDefaultGlobalMeta();
+    return globalMetaDT;
+  }
+  const parsed = safeJsonParse(raw);
+  if (!parsed || typeof parsed !== 'object') {
+    globalMetaDT = buildDefaultGlobalMeta();
+    return globalMetaDT;
+  }
+  globalMetaDT = { ...buildDefaultGlobalMeta(), ...parsed };
+  globalMetaDT.activeIsolationCode = normalizeIsolationCode(globalMetaDT.activeIsolationCode);
+  if (!Array.isArray(globalMetaDT.isolationCodeList)) globalMetaDT.isolationCodeList = [];
+  return globalMetaDT;
+}
+
+function saveGlobalMeta() {
+  try {
+    const store = getConfigStorage();
+    const payload = safeJsonStringify(globalMetaDT, '{}');
+    store.setItem(STORAGE_KEY_GLOBAL_META_DT, payload);
+    return true;
+  } catch (e) {
+    console.warn('[GlobalMeta] Failed to save:', e);
+    return false;
+  }
+}
+
+function readProfileSettingsFromStorage(code) {
+  const store = getConfigStorage();
+  const raw = store?.getItem?.(getProfileSettingsKey(code));
+  if (!raw) return null;
+  const parsed = safeJsonParse(raw);
+  return (parsed && typeof parsed === 'object') ? parsed : null;
+}
+
+function writeProfileSettingsToStorage(code, settingsObj) {
+  const store = getConfigStorage();
+  store.setItem(getProfileSettingsKey(code), safeJsonStringify(settingsObj, '{}'));
+}
+
+function readProfileTemplateFromStorage(code) {
+  const store = getConfigStorage();
+  const raw = store?.getItem?.(getProfileTemplateKey(code));
+  return (typeof raw === 'string' && raw.trim()) ? raw : null;
+}
+
+function writeProfileTemplateToStorage(code, templateStr) {
+  const store = getConfigStorage();
+  store.setItem(getProfileTemplateKey(code), String(templateStr || ''));
+}
+
+// 保存当前运行态模板到"当前标识 profile"
+function saveCurrentProfileTemplate(templateStr) {
+  const settings = ensureSettings();
+  const code = normalizeIsolationCode(settings?.dataIsolationCode || '');
+  writeProfileTemplateToStorage(code, String(templateStr || ''));
+}
+
+// 将 settings 对象清洗为"仅 profile 内保存的内容"
+function sanitizeSettingsForProfileSave(settingsObj) {
+  const cloned = safeJsonParse(safeJsonStringify(settingsObj, '{}'), {});
+  // 标识列表不再跟随 profile，避免切换后"看不到别的标识"
+  delete cloned.dataIsolationHistory;
+  // dataIsolationEnabled 由 code 派生，避免存档里出现不一致
+  delete cloned.dataIsolationEnabled;
+  return cloned;
+}
+
+// 标识历史管理
+const MAX_DATA_ISOLATION_HISTORY = 20;
+
+function normalizeDataIsolationHistory(list = globalMetaDT.isolationCodeList) {
+  const seen = new Set();
+  const cleaned = [];
+  if (Array.isArray(list)) {
+    list.forEach(code => {
+      if (typeof code !== 'string') return;
+      const trimmed = code.trim();
+      if (!trimmed || seen.has(trimmed)) return;
+      seen.add(trimmed);
+      cleaned.push(trimmed);
+    });
+  }
+  globalMetaDT.isolationCodeList = cleaned.slice(0, MAX_DATA_ISOLATION_HISTORY);
+  return globalMetaDT.isolationCodeList;
+}
+
+function getDataIsolationHistory() {
+  return normalizeDataIsolationHistory();
+}
+
+function addDataIsolationHistory(code, { save = true } = {}) {
+  if (typeof code !== 'string') return;
+  const trimmed = code.trim();
+  if (!trimmed) return;
+  const history = getDataIsolationHistory();
+  globalMetaDT.isolationCodeList = [trimmed, ...history.filter(item => item !== trimmed)].slice(
+    0,
+    MAX_DATA_ISOLATION_HISTORY,
+  );
+  if (save) saveGlobalMeta();
+}
+
+function removeDataIsolationHistory(code, { save = true } = {}) {
+  if (typeof code !== 'string') return;
+  const history = getDataIsolationHistory();
+  globalMetaDT.isolationCodeList = history.filter(item => item !== code);
+  if (save) saveGlobalMeta();
+}
+
+// Profile 切换逻辑
+function ensureProfileExists(code, { seedFromCurrent = true } = {}) {
+  const c = normalizeIsolationCode(code);
+  const hasSettings = !!readProfileSettingsFromStorage(c);
+  const hasTemplate = !!readProfileTemplateFromStorage(c);
+
+  if (!hasSettings) {
+    const settings = ensureSettings();
+    const seed = seedFromCurrent ? sanitizeSettingsForProfileSave(settings) : {};
+    seed.dataIsolationCode = c;
+    try { writeProfileSettingsToStorage(c, seed); } catch (e) { console.warn('[Profile] seed settings failed:', e); }
+  }
+  if (!hasTemplate) {
+    const settings = ensureSettings();
+    const seedTemplate = seedFromCurrent ? (settings.dataTableTemplateJson || DEFAULT_DATA_TABLE_TEMPLATE) : DEFAULT_DATA_TABLE_TEMPLATE;
+    try { writeProfileTemplateToStorage(c, seedTemplate); } catch (e) { console.warn('[Profile] seed template failed:', e); }
+  }
+}
+
+async function switchIsolationProfile(newCodeRaw) {
+  const newCode = normalizeIsolationCode(newCodeRaw);
+  const settings = ensureSettings();
+  const oldCode = normalizeIsolationCode(settings?.dataIsolationCode || '');
+
+  // 保存当前 profile 的设置
+  try { saveSettings(); } catch (e) { }
+
+  // 更新 globalMeta：当前标识 + 跨标识共享的列表
+  loadGlobalMeta();
+  if (oldCode) addDataIsolationHistory(oldCode, { save: false });
+  if (newCode) addDataIsolationHistory(newCode, { save: false });
+  globalMetaDT.activeIsolationCode = newCode;
+  normalizeDataIsolationHistory(globalMetaDT.isolationCodeList);
+  saveGlobalMeta();
+
+  // 若目标 profile 不存在：默认"复制当前整套设置+模板"作为新 profile 的初始值
+  ensureProfileExists(newCode, { seedFromCurrent: true });
+
+  // 重新加载对应 profile 的设置
+  const profileSettings = readProfileSettingsFromStorage(newCode);
+  if (profileSettings) {
+    Object.assign(settings, profileSettings);
+    settings.dataIsolationCode = newCode;
+    settings.dataIsolationEnabled = !!newCode;
+    saveSettings();
+  }
+
+  console.log(`[Profile] Switched to isolation code: "${newCode || '(无标签)'}"`);
+}
+
+// 获取当前隔离键（用于数据存储）
+function getCurrentIsolationKey() {
+  const settings = ensureSettings();
+  if (!settings.dataIsolationEnabled) return '';
+  return normalizeIsolationCode(settings.dataIsolationCode || '');
+}
+
+// ============== End of Profile Storage Infrastructure ==============
+
+// ============== Data Isolation Read/Write and Merging ==============
+// Based on reference: 参考.txt lines 2103-2331
+
+// 独立表格状态追踪
+let independentTableStates = {};
+
+// 辅助函数：判断表格是否是总结表或总体大纲表
+function isSummaryOrOutlineTable(tableName) {
+  if (!tableName || typeof tableName !== 'string') return false;
+  const trimmedName = tableName.trim();
+  return trimmedName === '总结表' || trimmedName === '总体大纲';
+}
+
+// 辅助函数：判断表格是否是标准表
+function isStandardTable(tableName) {
+  return !isSummaryOrOutlineTable(tableName);
+}
+
+// [核心函数] 全表数据合并 (从独立存储中恢复完整状态)
+// [数据隔离核心] 严格按照当前隔离标签读取数据，无标签也是标签的一种
+async function mergeAllIndependentTables() {
+  const ctx = SillyTavern.getContext();
+  const chat = ctx.chat;
+
+  if (!chat || chat.length === 0) {
+    console.log('[DataTable] Cannot merge data: Chat history is empty.');
+    return null;
+  }
+
+  // [数据隔离核心] 获取当前隔离标签键名
+  const currentIsolationKey = getCurrentIsolationKey();
+  console.log(`[DataTable Merge] Loading data for isolation key: [${currentIsolationKey || '无标签'}]`);
+
+  // 1. 动态收集聊天记录中的所有实际数据
+  let mergedData = {};
+  const foundSheets = {};
+
+  for (let i = chat.length - 1; i >= 0; i--) {
+    const message = chat[i];
+    if (message.is_user) continue;
+
+    // [优先级1] 检查新版按标签分组存储 StoryGuide_DT_IsolatedData
+    if (message.StoryGuide_DT_IsolatedData && message.StoryGuide_DT_IsolatedData[currentIsolationKey]) {
+      const tagData = message.StoryGuide_DT_IsolatedData[currentIsolationKey];
+      const independentData = tagData.independentData || {};
+      const modifiedKeys = tagData.modifiedKeys || [];
+      const updateGroupKeys = tagData.updateGroupKeys || [];
+
+      Object.keys(independentData).forEach(storedSheetKey => {
+        if (!foundSheets[storedSheetKey]) {
+          mergedData[storedSheetKey] = clone(independentData[storedSheetKey]);
+          foundSheets[storedSheetKey] = true;
+
+          // 更新表格状态
+          let wasUpdated = false;
+          if (updateGroupKeys.length > 0 && modifiedKeys.length > 0) {
+            wasUpdated = updateGroupKeys.includes(storedSheetKey);
+          } else if (modifiedKeys.length > 0) {
+            wasUpdated = modifiedKeys.includes(storedSheetKey);
+          } else {
+            wasUpdated = true;
+          }
+
+          if (wasUpdated) {
+            if (!independentTableStates[storedSheetKey]) {
+              independentTableStates[storedSheetKey] = {};
+            }
+            const currentAiFloor = chat.slice(0, i + 1).filter(m => !m.is_user).length;
+            independentTableStates[storedSheetKey].lastUpdatedAiFloor = currentAiFloor;
+          }
+        }
+      });
+    }
+
+    // [优先级2] 兼容旧版存储格式 - 严格匹配隔离标签
+    // [数据隔离核心逻辑] 无标签也是标签的一种，严格隔离不同标签的数据
+    const settings = ensureSettings();
+    const msgIdentity = message.StoryGuide_DT_Identity;
+    let isLegacyMatch = false;
+
+    if (settings.dataIsolationEnabled) {
+      // 开启隔离：严格匹配标识代码
+      isLegacyMatch = (msgIdentity === settings.dataIsolationCode);
+    } else {
+      // 关闭隔离（无标签模式）：只匹配无标识数据
+      isLegacyMatch = !msgIdentity;
+    }
+
+    if (isLegacyMatch) {
+      // 检查旧版独立数据格式
+      if (message.StoryGuide_DT_IndependentData) {
+        const independentData = message.StoryGuide_DT_IndependentData;
+        const modifiedKeys = message.StoryGuide_DT_ModifiedKeys || [];
+        const updateGroupKeys = message.StoryGuide_DT_UpdateGroupKeys || [];
+
+        Object.keys(independentData).forEach(storedSheetKey => {
+          if (!foundSheets[storedSheetKey]) {
+            mergedData[storedSheetKey] = clone(independentData[storedSheetKey]);
+            foundSheets[storedSheetKey] = true;
+
+            let wasUpdated = false;
+            if (updateGroupKeys.length > 0 && modifiedKeys.length > 0) {
+              wasUpdated = updateGroupKeys.includes(storedSheetKey);
+            } else if (modifiedKeys.length > 0) {
+              wasUpdated = modifiedKeys.includes(storedSheetKey);
+            } else {
+              wasUpdated = true;
+            }
+
+            if (wasUpdated) {
+              if (!independentTableStates[storedSheetKey]) independentTableStates[storedSheetKey] = {};
+              const currentAiFloor = chat.slice(0, i + 1).filter(m => !m.is_user).length;
+              independentTableStates[storedSheetKey].lastUpdatedAiFloor = currentAiFloor;
+            }
+          }
+        });
+      }
+
+      // 检查旧版标准表/总结表格式 (向后兼容参考文件的格式)
+      if (message.TavernDB_ACU_Data) {
+        const standardData = message.TavernDB_ACU_Data;
+        Object.keys(standardData).forEach(k => {
+          if (k.startsWith('sheet_') && !foundSheets[k] && standardData[k].name && !isSummaryOrOutlineTable(standardData[k].name)) {
+            mergedData[k] = clone(standardData[k]);
+            foundSheets[k] = true;
+            if (!independentTableStates[k]) independentTableStates[k] = {};
+            const currentAiFloor = chat.slice(0, i + 1).filter(m => !m.is_user).length;
+            independentTableStates[k].lastUpdatedAiFloor = currentAiFloor;
+          }
+        });
+      }
+      if (message.TavernDB_ACU_SummaryData) {
+        const summaryData = message.TavernDB_ACU_SummaryData;
+        Object.keys(summaryData).forEach(k => {
+          if (k.startsWith('sheet_') && !foundSheets[k] && summaryData[k].name && isSummaryOrOutlineTable(summaryData[k].name)) {
+            mergedData[k] = clone(summaryData[k]);
+            foundSheets[k] = true;
+            if (!independentTableStates[k]) independentTableStates[k] = {};
+            const currentAiFloor = chat.slice(0, i + 1).filter(m => !m.is_user).length;
+            independentTableStates[k].lastUpdatedAiFloor = currentAiFloor;
+          }
+        });
+      }
+    }
+  }
+
+  const foundCount = Object.keys(foundSheets).length;
+  console.log(`[DataTable Merge] Found ${foundCount} tables for tag [${currentIsolationKey || '无标签'}] from chat history.`);
+
+  // 如果没有任何数据，返回null，让调用方使用模板初始化
+  if (foundCount <= 0) return null;
+
+  // 添加 mate 元信息
+  if (!mergedData.mate) {
+    mergedData.mate = { type: 'chatSheets', version: 1 };
+  }
+
+  return mergedData;
+}
+
+// [核心函数] 保存独立表格到聊天历史（支持数据隔离）
+async function saveIndependentTableToChatHistory(tableData, modifiedKeys = []) {
+  const ctx = SillyTavern.getContext();
+  const chat = ctx.chat;
+
+  if (!chat || chat.length === 0) {
+    console.warn('[DataTable] Cannot save: Chat history is empty.');
+    return false;
+  }
+
+  // 查找最新的 AI 消息
+  let targetMessage = null;
+  for (let i = chat.length - 1; i >= 0; i--) {
+    if (!chat[i].is_user) {
+      targetMessage = chat[i];
+      break;
+    }
+  }
+
+  if (!targetMessage) {
+    console.warn('[DataTable] Cannot save: No AI message found.');
+    return false;
+  }
+
+  const settings = ensureSettings();
+  const currentIsolationKey = getCurrentIsolationKey();
+
+  // 准备 independentData（仅 sheet_ 键）
+  const newIndependentData = {};
+  Object.keys(tableData).forEach(k => {
+    if (k.startsWith('sheet_')) {
+      newIndependentData[k] = clone(tableData[k]);
+    }
+  });
+
+  // [新版格式] 使用 IsolatedData 结构
+  let isolatedContainer = targetMessage.StoryGuide_DT_IsolatedData;
+  if (typeof isolatedContainer === 'string') {
+    try {
+      isolatedContainer = JSON.parse(isolatedContainer);
+    } catch (e) {
+      isolatedContainer = {};
+    }
+  }
+  if (!isolatedContainer || typeof isolatedContainer !== 'object') isolatedContainer = {};
+
+  if (!isolatedContainer[currentIsolationKey]) {
+    isolatedContainer[currentIsolationKey] = {
+      independentData: {},
+      modifiedKeys: [],
+      updateGroupKeys: [],
+    };
+  }
+
+  const tagData = isolatedContainer[currentIsolationKey];
+  tagData.independentData = newIndependentData;
+  tagData.modifiedKeys = modifiedKeys.length > 0 ? modifiedKeys : Object.keys(newIndependentData);
+  tagData.updateGroupKeys = Object.keys(newIndependentData);
+
+  isolatedContainer[currentIsolationKey] = tagData;
+  targetMessage.StoryGuide_DT_IsolatedData = isolatedContainer;
+
+  // [兼容旧格式] 同时写入旧字段
+  if (settings.dataIsolationEnabled) {
+    targetMessage.StoryGuide_DT_Identity = settings.dataIsolationCode;
+  } else {
+    delete targetMessage.StoryGuide_DT_Identity;
+  }
+  targetMessage.StoryGuide_DT_IndependentData = newIndependentData;
+  targetMessage.StoryGuide_DT_ModifiedKeys = tagData.modifiedKeys;
+  targetMessage.StoryGuide_DT_UpdateGroupKeys = tagData.updateGroupKeys;
+
+  // 保存聊天记录
+  try {
+    await ctx.saveChat();
+    console.log(`[DataTable] Saved ${Object.keys(newIndependentData).length} tables to chat history with isolation key: [${currentIsolationKey || '无标签'}]`);
+    return true;
+  } catch (e) {
+    console.error('[DataTable] Failed to save chat:', e);
+    return false;
+  }
+}
+
+// ============== End of Data Isolation Read/Write and Merging ==============
+
+// ============== CoAT Command Processing ==============
+// Based on reference prompt format in 参考.txt lines 534-561
+
+/**
+ * 从 LLM 响应中解析 CoAT 表格编辑指令
+ * 格式示例：
+ * <tableEdit>
+ * <!--
+ * insertRow(3, {"0":"技能名", "1":"被动", "2":"一阶", "3":"效果描述"})
+ * updateRow(0, 0, {"1":"2023-01-01 10:00", "3":"30分钟"})
+ * deleteRow(5, 2)
+ * -->
+ * </tableEdit>
+ */
+function parseTableEditCommands(llmResponse) {
+  const commands = [];
+
+  if (!llmResponse || typeof llmResponse !== 'string') {
+    return commands;
+  }
+
+  // 提取 <tableEdit> 标签内容
+  const tableEditMatch = llmResponse.match(/<tableEdit>([\s\S]*?)<\/tableEdit>/i);
+  if (!tableEditMatch) {
+    console.log('[CoAT] No <tableEdit> tag found in LLM response');
+    return commands;
+  }
+
+  let editContent = tableEditMatch[1];
+
+  // 移除 HTML 注释包装 <!-- ... -->
+  editContent = editContent.replace(/<!--([\s\S]*?)-->/g, '$1');
+
+  // 按行分割并解析每个指令
+  const lines = editContent.split('\n').map(line => line.trim()).filter(Boolean);
+
+  for (const line of lines) {
+    // 支持三种命令格式：insertRow, updateRow, deleteRow
+
+    // insertRow(tableIndex, {colData})
+    const insertMatch = line.match(/insertRow\s*\(\s*(\d+)\s*,\s*(\{[^}]+\})\s*\)/);
+    if (insertMatch) {
+      try {
+        const tableIndex = parseInt(insertMatch[1], 10);
+        const colDataStr = insertMatch[2].replace(/\\/g, ''); // 移除转义字符
+        const colData = JSON.parse(colDataStr);
+        commands.push({ type: 'insertRow', tableIndex, colData });
+        continue;
+      } catch (e) {
+        console.warn('[CoAT] Failed to parse insertRow command:', line, e);
+      }
+    }
+
+    // updateRow(tableIndex, rowIndex, {colData})
+    const updateMatch = line.match(/updateRow\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\{[^}]+\})\s*\)/);
+    if (updateMatch) {
+      try {
+        const tableIndex = parseInt(updateMatch[1], 10);
+        const rowIndex = parseInt(updateMatch[2], 10);
+        const colDataStr = updateMatch[3].replace(/\\/g, '');
+        const colData = JSON.parse(colDataStr);
+        commands.push({ type: 'updateRow', tableIndex, rowIndex, colData });
+        continue;
+      } catch (e) {
+        console.warn('[CoAT] Failed to parse updateRow command:', line, e);
+      }
+    }
+
+    // deleteRow(tableIndex, rowIndex)
+    const deleteMatch = line.match(/deleteRow\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/);
+    if (deleteMatch) {
+      const tableIndex = parseInt(deleteMatch[1], 10);
+      const rowIndex = parseInt(deleteMatch[2], 10);
+      commands.push({ type: 'deleteRow', tableIndex, rowIndex });
+      continue;
+    }
+
+    // 如果都不匹配，跳过此行
+    if (line && !line.startsWith('//') && !line.startsWith('#')) {
+      console.warn('[CoAT] Unrecognized command format:', line);
+    }
+  }
+
+  console.log(`[CoAT] Parsed ${commands.length} commands from LLM response`);
+  return commands;
+}
+
+/**
+ * 执行单条表格编辑命令
+ * @param {Object} command - 命令对象 {type, tableIndex, rowIndex?, colData?}
+ * @param {Object} tableData - 完整的表格数据对象
+ * @returns {boolean} - 是否成功执行
+ */
+function executeTableCommand(command, tableData) {
+  if (!command || !tableData) return false;
+
+  // 根据 tableIndex 定位到具体的表格
+  const sheetKeys = Object.keys(tableData).filter(k => k.startsWith('sheet_'));
+
+  // tableIndex 可能是从 [Index:TableName] 提取的索引
+  // 这里简化处理：直接使用 sheetKeys 的顺序作为索引
+  const targetSheetKey = sheetKeys[command.tableIndex];
+
+  if (!targetSheetKey || !tableData[targetSheetKey]) {
+    console.warn(`[CoAT] Table index ${command.tableIndex} not found in tableData`);
+    return false;
+  }
+
+  const table = tableData[targetSheetKey];
+  if (!Array.isArray(table.content)) {
+    console.warn(`[CoAT] Table ${targetSheetKey} has invalid content structure`);
+    return false;
+  }
+
+  try {
+    switch (command.type) {
+      case 'insertRow': {
+        // 插入新行：colData 是 {"0":"value", "1":"value", ...}
+        const newRow = [null]; // 第一列为 null（行号）
+        const headerRow = table.content[0];
+
+        // 构建新行数据
+        for (let i = 1; i < headerRow.length; i++) {
+          const colIndex = String(i - 1); // colData 使用字符串索引 "0", "1", ...
+          newRow.push(command.colData[colIndex] || '');
+        }
+
+        // 添加到表格末尾
+        table.content.push(newRow);
+        console.log(`[CoAT] Inserted row into table ${targetSheetKey}, data:`, newRow);
+        return true;
+      }
+
+      case 'updateRow': {
+        // 更新现有行: rowIndex 是数据行索引（0 表示第一行数据，即 content[1]）
+        const actualRowIndex = command.rowIndex + 1; // +1 因为 content[0] 是表头
+
+        if (actualRowIndex >= table.content.length) {
+          console.warn(`[CoAT] Row index ${command.rowIndex} out of bounds for table ${targetSheetKey}`);
+          return false;
+        }
+
+        const row = table.content[actualRowIndex];
+
+        // 更新指定列
+        Object.keys(command.colData).forEach(colIndex => {
+          const actualColIndex = parseInt(colIndex, 10) + 1; // +1 因为第一列是 null
+          if (actualColIndex < row.length) {
+            row[actualColIndex] = command.colData[colIndex];
+          }
+        });
+
+        console.log(`[CoAT] Updated row ${command.rowIndex} in table ${targetSheetKey}`);
+        return true;
+      }
+
+      case 'deleteRow': {
+        // 删除行
+        const actualRowIndex = command.rowIndex + 1;
+
+        if (actualRowIndex >= table.content.length) {
+          console.warn(`[CoAT] Row index ${command.rowIndex} out of bounds for table ${targetSheetKey}`);
+          return false;
+        }
+
+        table.content.splice(actualRowIndex, 1);
+        console.log(`[CoAT] Deleted row ${command.rowIndex} from table ${targetSheetKey}`);
+        return true;
+      }
+
+      default:
+        console.warn(`[CoAT] Unknown command type: ${command.type}`);
+        return false;
+    }
+  } catch (e) {
+    console.error(`[CoAT] Error executing command:`, command, e);
+    return false;
+  }
+}
+
+/**
+ * 批量应用表格编辑命令到数据对象
+ * @param {Array} commands - 命令数组
+ * @param {Object} tableData - 表格数据对象
+ * @returns {Object} - 更新后的表格数据对象及统计信息
+ */
+function applyTableEditCommands(commands, tableData) {
+  const stats = {
+    total: commands.length,
+    success: 0,
+    failed: 0,
+    modifiedTables: new Set(),
+  };
+
+  if (!Array.isArray(commands) || commands.length === 0) {
+    console.log('[CoAT] No commands to apply');
+    return { tableData, stats };
+  }
+
+  // 深拷贝数据以避免修改原对象
+  const updatedData = clone(tableData);
+
+  // 按顺序执行命令
+  commands.forEach((command, index) => {
+    const success = executeTableCommand(command, updatedData);
+
+    if (success) {
+      stats.success++;
+      // 记录被修改的表格
+      const sheetKeys = Object.keys(updatedData).filter(k => k.startsWith('sheet_'));
+      const targetSheetKey = sheetKeys[command.tableIndex];
+      if (targetSheetKey) {
+        stats.modifiedTables.add(targetSheetKey);
+      }
+    } else {
+      stats.failed++;
+    }
+  });
+
+  console.log(`[CoAT] Applied ${stats.success}/${stats.total} commands successfully`);
+  console.log(`[CoAT] Modified tables:`, Array.from(stats.modifiedTables));
+
+  return {
+    tableData: updatedData,
+    stats,
+    modifiedTableKeys: Array.from(stats.modifiedTables),
+  };
+}
+
+// ============== End of CoAT Command Processing ==============
+
+
 function stripHtml(input) {
   if (!input) return '';
   return String(input).replace(/<[^>]*>/g, '').replace(/\s+\n/g, '\n').trim();
