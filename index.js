@@ -235,6 +235,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   autoRefreshOn: 'received', // received | sent | both
   debounceMs: 1200,
 
+  // 数据表自动更新
+  autoUpdateDataTable: false,
+
   // 自动追加到正文末尾
   autoAppendBox: true,
   appendMode: 'compact', // compact | standard
@@ -7842,6 +7845,11 @@ function buildModalHtml() {
                 <div class="sg-hint">读取最近 N 条正文（生成设置里的“最近消息条数/最大字符”）</div>
               </div>
               <div class="sg-row sg-inline" style="margin-top:8px;">
+                <label class="sg-check">
+                    <input type="checkbox" id="sg_tableAutoUpdate"> 正文结束时自动更新 (显示提示)
+                </label>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:8px;">
                 <label>Provider</label>
                 <select id="sg_tableProvider">
                   <option value="st">使用当前 SillyTavern API</option>
@@ -9245,6 +9253,7 @@ function pullSettingsToUi() {
   // 数据表
   $('#sg_tableEnabled').prop('checked', !!s.dataTableEnabled);
   $('#sg_tableUpdateBody').prop('checked', !!s.dataTableUpdateBody);
+  $('#sg_tableAutoUpdate').prop('checked', !!s.autoUpdateDataTable);
   $('#sg_tableInjectionStyle').val(String(s.dataTableInjectionStyle || 'hidden'));
   $('#sg_tableTemplateJson').val(String(s.dataTableTemplateJson || DEFAULT_DATA_TABLE_TEMPLATE));
   $('#sg_tablePromptJson').val(String(s.dataTablePromptJson || JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2)));
@@ -9702,6 +9711,7 @@ function pullUiToSettings() {
   // 数据表
   s.dataTableEnabled = $('#sg_tableEnabled').is(':checked');
   s.dataTableUpdateBody = $('#sg_tableUpdateBody').is(':checked');
+  s.autoUpdateDataTable = $('#sg_tableAutoUpdate').is(':checked');
   s.dataTableInjectionStyle = String($('#sg_tableInjectionStyle').val() || 'hidden');
   s.dataTableTemplateJson = String($('#sg_tableTemplateJson').val() || '').trim() || DEFAULT_DATA_TABLE_TEMPLATE;
   s.dataTablePromptJson = String($('#sg_tablePromptJson').val() || '').trim() || JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
@@ -9929,6 +9939,12 @@ function setupEventListeners() {
       scheduleReapplyAll('msg_received');
       // 自动总结（独立功能）
       scheduleAutoSummary('msg_received');
+
+      // 数据表自动更新
+      const s = ensureSettings();
+      if (s.autoUpdateDataTable) {
+        runDataTableUpdate().catch(e => console.warn('[StoryGuide] Auto Update Table failed', e));
+      }
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
