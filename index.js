@@ -9822,6 +9822,8 @@ function openModal() {
   showPane('md');
 }
 function closeModal() {
+  pullUiToSettings();
+  saveSettings();
   $('#sg_modal_backdrop').hide();
   closeTableEditor();
 }
