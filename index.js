@@ -9936,7 +9936,12 @@ function setupEventListeners() {
       }
     });
 
-    eventSource.on(event_types.MESSAGE_RECEIVED, () => {
+    // Use string literals to avoid undefined event_types issues
+    const safeBind = (evt, fn) => {
+      try { eventSource.on(evt, fn); } catch (e) { console.error('[StoryGuide] Failed to bind ' + evt, e); }
+    };
+
+    const onGenerationFinished = () => {
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
       // 自动总结（独立功能）
@@ -9944,10 +9949,17 @@ function setupEventListeners() {
 
       // 数据表自动更新
       const s = ensureSettings();
+      console.log('[StoryGuide] Generation Finished Event. AutoUpdate:', s.autoUpdateDataTable);
       if (s.autoUpdateDataTable) {
-        runDataTableUpdate().catch(e => console.warn('[StoryGuide] Auto Update Table failed', e));
+        console.log('[StoryGuide] Triggering auto-update...');
+        runDataTableUpdate().then(res => console.log('[StoryGuide] Auto update result:', res))
+          .catch(e => console.error('[StoryGuide] Auto Update Table failed', e));
       }
-    });
+    };
+
+    // Bind to multiple potential events to ensure capture
+    safeBind('generation_ended', onGenerationFinished);
+    safeBind('message_received', onGenerationFinished);
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
       // 禁止自动生成：不在发送消息时自动刷新面板
