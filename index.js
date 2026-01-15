@@ -10696,6 +10696,18 @@ async function execDataTableUpdate() {
 
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
+
+    // 触发可视化脚本的刷新回调
+    try {
+      const api = window.AutoCardUpdaterAPI || window.parent?.AutoCardUpdaterAPI;
+      if (api && typeof api._updateCb === 'function') {
+        api._updateCb();
+        console.log('[StoryGuide] UI refresh callback triggered');
+      }
+    } catch (e) {
+      console.warn('[StoryGuide] UI refresh callback failed:', e);
+    }
+
     return true;
 
   } catch (e) {
