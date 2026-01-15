@@ -10704,20 +10704,60 @@ async function execDataTableUpdate() {
 
     // 读取聊天消息
     const picked = [];
+    let userCount = 0;
+    let assistantCount = 0;
+    let skippedEmpty = 0;
+
+    // 调试：打印前3条消息的结构
+    console.log('[StoryGuide] DataTable: First 3 messages structure:');
+    for (let i = 0; i < Math.min(3, chat.length); i++) {
+      const m = chat[i];
+      if (m) {
+        console.log(`  #${i}: is_user=${m.is_user}, is_system=${m.is_system}, name=${m.name}, mes_length=${(m.mes || '').length}, message_length=${(m.message || '').length}, keys=${Object.keys(m).join(',')}`);
+      }
+    }
+
     for (let i = chat.length - 1; i >= 0 && picked.length < maxMessages; i--) {
       const m = chat[i];
       if (!m) continue;
+      // 跳过系统消息
+      if (m.is_system === true) continue;
+
       const isUser = m.is_user === true;
       const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
-      let text = stripHtml(m.mes ?? m.message ?? '');
-      if (!text) continue;
+
+      // 尝试多种方式获取消息内容
+      let text = '';
+      if (m.mes && typeof m.mes === 'string') {
+        text = m.mes;
+      } else if (m.message && typeof m.message === 'string') {
+        text = m.message;
+      } else if (m.content && typeof m.content === 'string') {
+        text = m.content;
+      } else if (m.text && typeof m.text === 'string') {
+        text = m.text;
+      }
+      text = stripHtml(text);
+
+      if (!text) {
+        skippedEmpty++;
+        if (skippedEmpty <= 5) {
+          console.log(`[StoryGuide] DataTable: Skipped empty #${i}, isUser=${isUser}, name=${name}, keys=${Object.keys(m).join(',')}`);
+        }
+        continue;
+      }
+
+      if (isUser) userCount++;
+      else assistantCount++;
+
       if (text.length > maxChars) text = text.slice(0, maxChars) + '…(截断)';
       picked.push(`【${name}】${text}`);
     }
     picked.reverse();
     const snapshotText = picked.join('\n\n');
 
-    console.log(`[StoryGuide] DataTable snapshot: ${picked.length} messages (max: ${maxMessages})`);
+    console.log(`[StoryGuide] DataTable snapshot: ${picked.length} messages (user: ${userCount}, assistant: ${assistantCount}, skipped: ${skippedEmpty}, max: ${maxMessages})`);
+    console.log(`[StoryGuide] DataTable chat array length: ${chat.length}`);
 
     // 读取世界观设定
     const world = stripHtml(getChatMetaValue(META_KEYS.world) || getChatMetaValue(META_KEYS.canon) || '');
