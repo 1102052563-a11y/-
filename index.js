@@ -860,10 +860,16 @@ function getDataTableMeta() {
   if (!raw) return getDefaultDataTableMeta();
   const parsed = safeJsonParseAny(raw);
   if (parsed && typeof parsed === 'object') {
-    return {
-      dataJson: String(parsed.dataJson || parsed.data || '').trim(),
-      updatedAt: Number(parsed.updatedAt || 0) || 0,
-    };
+    if (parsed.dataJson || parsed.data) {
+      return {
+        dataJson: String(parsed.dataJson || parsed.data || '').trim(),
+        updatedAt: Number(parsed.updatedAt || 0) || 0,
+      };
+    }
+    // Fallback: if it looks like a raw table (has sheet_* keys), treat as dataJson
+    if (Object.keys(parsed).some(k => k.startsWith('sheet_'))) {
+      return { dataJson: raw, updatedAt: 0 };
+    }
   }
   return { dataJson: raw, updatedAt: 0 };
 }
@@ -10833,8 +10839,9 @@ async function execDataTableUpdate() {
     }
 
     // 6. Save
+    // 6. Save
     const finalStr = JSON.stringify(parsed);
-    await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
+    await setDataTableMeta({ dataJson: finalStr, updatedAt: Date.now() });
 
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
