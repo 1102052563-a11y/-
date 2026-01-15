@@ -10897,7 +10897,18 @@ async function execDataTableUpdate() {
       throw new Error('无法解析 LLM 返回的 JSON');
     }
 
-    // 6. Save
+    // Validation: Check for API errors or empty data
+    if (parsed.error) {
+      const errMsg = typeof parsed.error === 'string' ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
+      throw new Error('LLM API Error: ' + errMsg);
+    }
+
+    // Validation: Must contain at least one sheet or mate info
+    const hasSheets = Object.keys(parsed).some(k => k.startsWith('sheet_') || k === 'mate');
+    if (!hasSheets) {
+      throw new Error('返回的数据不包含有效表格结构 (missing sheet_*)');
+    }
+
     // 6. Save
     const finalStr = JSON.stringify(parsed);
     await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
