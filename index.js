@@ -10548,6 +10548,19 @@ function showFloatingDataTable() {
     try { parsed = JSON.parse(parsed); } catch (e) { console.error(e); }
   }
 
+  // Handle stored error object (from previous failed updates)
+  if (parsed && parsed.error) {
+    const errorMsg = parsed.error.message || JSON.stringify(parsed.error);
+    $body.html(`<div class="sg-floating-loading" style="color:#ff6b6b">
+      上次更新失败<br>
+      <small>${errorMsg}</small><br>
+      <div style="font-size:0.85em; margin-top:8px; color:#aaa">
+        请降低单次字符上限(MaxChars)<br>并重新点击更新
+      </div>
+    </div>`);
+    return;
+  }
+
   if (!parsed || typeof parsed !== 'object') {
     console.error('[StoryGuide] Data table parse failed:', info.dataJson?.slice(0, 50));
     $body.html('<div class="sg-floating-loading">数据表解析失败<br><small>数据格式错误</small></div>');
