@@ -28,6 +28,7 @@
 const SG_VERSION = '0.10.0';
 
 const MODULE_NAME = 'storyguide';
+let isDataTableUpdating = false;
 
 /**
  * 模块配置格式（JSON 数组）示例：
@@ -9935,6 +9936,7 @@ function setupEventListeners() {
 
     let autoUpdateTimer = null;
     const onGenerationFinished = () => {
+      if (isDataTableUpdating) return;
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
       // 自动总结（独立功能）
@@ -10813,12 +10815,14 @@ function injectFixedInputButton() {
 // -------------------- 数据表更新函数 --------------------
 
 async function execDataTableUpdate() {
+  if (isDataTableUpdating) return false;
   const s = ensureSettings();
   if (!s.enabled) {
     if (window.toastr) window.toastr.warning('插件未启用');
     return false;
   }
 
+  isDataTableUpdating = true;
   if (window.toastr) window.toastr.info('StoryGuide: 正在请求大模型更新表格...');
   console.log('[StoryGuide] execDataTableUpdate: starting...');
 
@@ -10960,11 +10964,13 @@ async function execDataTableUpdate() {
       }
     } catch (e) { console.warn('[StoryGuide] Floating Panel refresh failed:', e); }
 
+    isDataTableUpdating = false;
     return true;
 
   } catch (e) {
     console.error('[StoryGuide] execDataTableUpdate failed:', e);
     if (window.toastr) window.toastr.error('表格更新失败: ' + e.message);
+    isDataTableUpdating = false;
     return false;
   }
 }
