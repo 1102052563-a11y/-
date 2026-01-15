@@ -98,21 +98,13 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
     content: [[null, '任务名称', '状态', '目标/奖励']],
     exportConfig: {},
     orderNo: 4
-  },
-  sheet_npc: {
-    uid: 'sheet_npc',
-    name: '人物档案',
-    sourceData: { note: '记录出现的主要NPC与关系' },
-    content: [[null, '角色名', '关系/阵营', '状态/近况', '备注']],
-    exportConfig: {},
-    orderNo: 5
   }
 }, null, 2);
 
 const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
   {
     role: 'system',
-    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：1. 只输出表格 JSON，保持结构与字段名称不变。 2. **sheet_char** 仅记录主角状态；其他重要角色请记录在 **sheet_npc** 表中。 3. 捕捉关键状态变化与行为。'
+    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：1. 只输出表格 JSON，保持结构与字段名称不变。 2. 关注正文出现的所有**主要角色**（不仅是主角），记录他们的关键状态变化与行为。 3. 若有重要配角数据，请在对应表中注明角色名。'
   },
   {
     role: 'user',
@@ -869,10 +861,8 @@ function getDataTableMeta() {
   const parsed = safeJsonParseAny(raw);
   if (parsed && typeof parsed === 'object') {
     if (parsed.dataJson || parsed.data) {
-      let d = parsed.dataJson || parsed.data;
-      if (typeof d === 'object') d = JSON.stringify(d);
       return {
-        dataJson: String(d || '').trim(),
+        dataJson: String(parsed.dataJson || parsed.data || '').trim(),
         updatedAt: Number(parsed.updatedAt || 0) || 0,
       };
     }
@@ -10536,97 +10526,24 @@ function showFloatingDataTable() {
     return;
   }
 
-  const info = getDataTableMeta(); // Use direct meta accessor
+  const info = getDataTableDataForUi();
   if (!info.dataJson) {
     $body.html('<div class="sg-floating-loading">暂无数据表数据<br><small>请先更新数据表</small></div>');
     return;
   }
 
-  let parsed = safeJsonParseAny(info.dataJson);
-  // Handle potential double-stringification
-  if (typeof parsed === 'string') {
-    try { parsed = JSON.parse(parsed); } catch (e) { console.error(e); }
-  }
-
-  // Handle stored error object (from previous failed updates)
-  // We will check this AFTER trying to find keys.
-  // If we find keys, we ignore the error (it might be a mixed object or false positive).
-  // If we don't find keys, we show the error.
-
-  // Extract timestamp for display
-  const lastUpdated = info.updatedAt ? new Date(info.updatedAt).toLocaleString() : '未知时间';
-
+  const parsed = safeJsonParseAny(info.dataJson);
   if (!parsed || typeof parsed !== 'object') {
-    console.error('[StoryGuide] Data table parse failed:', info.dataJson?.slice(0, 50));
-    $body.html('<div class="sg-floating-loading">数据表解析失败<br><small>数据格式错误</small></div>');
+    $body.html('<div class="sg-floating-loading">数据表解析失败</div>');
     return;
   }
 
   // 修复可能的乱码
-  // 优先使用 repairObjectMojibake，但如果返回空则回退到 raw parsed
-  let repairedData = parsed;
-  try {
-    if (typeof repairObjectMojibake === 'function') {
-      const r = repairObjectMojibake(parsed);
-      if (r && typeof r === 'object' && Object.keys(r).length > 0) {
-        repairedData = r;
-      }
-    }
-  } catch (e) {
-    console.error('[StoryGuide] repairObjectMojibake error:', e);
-  }
-
-  let keys = [];
-  if (typeof getOrderedSheetKeysFromData === 'function') {
-    keys = getOrderedSheetKeysFromData(repairedData);
-  }
-
-  // Fallback: manually find sheet keys if function returned empty or didn't exist
-  if (!keys || !keys.length) {
-    keys = Object.keys(repairedData).filter(k => {
-      const v = repairedData[k];
-      // Loose check matching external visualization script logic:
-      // Accept if it looks like a sheet (has name and content array)
-      if (v && typeof v === 'object' && Array.isArray(v.content) && v.name) return true;
-      // Fallback to prefix check
-      return k.toLowerCase().startsWith('sheet_');
-    });
-    keys.sort((a, b) => {
-      const oa = repairedData[a]?.orderNo ?? 999;
-      const ob = repairedData[b]?.orderNo ?? 999;
-      return oa - ob;
-    });
-  }
+  const repairedData = repairObjectMojibake(parsed);
+  const keys = getOrderedSheetKeysFromData(repairedData);
 
   if (!keys.length) {
-    // If no keys found but we have an error object, show the error
-    if (parsed && parsed.error) {
-      const errorMsg = parsed.error.message || JSON.stringify(parsed.error);
-      $body.html(`<div class="sg-floating-loading" style="color:#ff6b6b">
-        上次更新失败<br>
-        <small>${escapeHtml(errorMsg)}</small><br>
-        <div style="font-size:0.85em; margin-top:8px; color:#aaa">
-          时间: ${lastUpdated}<br>
-          建议降低 MaxChars 并重试
-        </div>
-      </div>`);
-      return;
-    }
-
-    const debugKeys = Object.keys(repairedData).slice(0, 10).join(', ');
-    const debugType = typeof repairedData;
-    const debugSnippet = JSON.stringify(repairedData).slice(0, 100);
-
-    $body.html(`<div class="sg-floating-loading">
-      数据表为空<br>
-      <small>未找到有效表格</small><br>
-      <div style="font-size:0.7em; text-align:left; color:#888; margin-top:5px;">
-        Updated: ${lastUpdated}<br>
-        Type: ${debugType}<br>
-        Keys: ${debugKeys || 'NONE'}<br>
-        Snippet: ${escapeHtml(debugSnippet)}
-      </div>
-    </div>`);
+    $body.html('<div class="sg-floating-loading">数据表为空</div>');
     return;
   }
 
@@ -10921,21 +10838,10 @@ async function execDataTableUpdate() {
       throw new Error('无法解析 LLM 返回的 JSON');
     }
 
-    // Validation: Check for API errors or empty data
-    if (parsed.error) {
-      const errMsg = typeof parsed.error === 'string' ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
-      throw new Error('LLM API Error: ' + errMsg);
-    }
-
-    // Validation: Must contain at least one sheet or mate info
-    const hasSheets = Object.keys(parsed).some(k => k.startsWith('sheet_') || k === 'mate');
-    if (!hasSheets) {
-      throw new Error('返回的数据不包含有效表格结构 (missing sheet_*)');
-    }
-
+    // 6. Save
     // 6. Save
     const finalStr = JSON.stringify(parsed);
-    await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
+    await setDataTableMeta({ dataJson: finalStr, updatedAt: Date.now() });
 
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
