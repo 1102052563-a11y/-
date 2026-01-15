@@ -10767,16 +10767,24 @@ function init() {
       }
     },
     importTableAsJson: async (jsonString) => {
+      console.log('[StoryGuide] AutoCardUpdaterAPI: importTableAsJson called. Length:', jsonString?.length);
       try {
         // 确保是有效 JSON
         JSON.parse(jsonString);
         await setChatMetaValue(META_KEYS.dataTableMeta, jsonString);
         console.log('[StoryGuide] AutoCardUpdaterAPI import success');
+        if (window.toastr) window.toastr.success('StoryGuide: 数据表已更新');
         return true;
       } catch (e) {
         console.error('[StoryGuide] AutoCardUpdaterAPI import error:', e);
+        if (window.toastr) window.toastr.error('StoryGuide: 数据更新失败 ' + e.message);
         return false;
       }
+    },
+    manualUpdate: async () => {
+      console.log('[StoryGuide] AutoCardUpdaterAPI: manualUpdate called');
+      if (window.toastr) window.toastr.info('StoryGuide: 手动更新触发 (已同步)');
+      return true;
     }
   };
 
