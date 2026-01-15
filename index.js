@@ -1408,21 +1408,8 @@ async function saveIndependentTableToChatHistory(tableData, modifiedKeys = []) {
 
 // ============== End of Data Isolation Read/Write and Merging ==============
 
-// ============== CoAT Command Processing ==============
-// Based on reference prompt format in 参考.txt lines 534-561
 
-/**
- * 从 LLM 响应中解析 CoAT 表格编辑指令
- * 格式示例：
- * <tableEdit>
- * <!--
- * insertRow(3, {"0":"技能名", "1":"被动", "2":"一阶", "3":"效果描述"})
- * updateRow(0, 0, {"1":"2023-01-01 10:00", "3":"30分钟"})
- * deleteRow(5, 2)
- * -->
- * </tableEdit>
- */
-function parseTableEditCommands(llmResponse) {
+function parseTableEditCommands_DUPLICATE_DELETE_ME(llmResponse) {
   const commands = [];
 
   if (!llmResponse || typeof llmResponse !== 'string') {
@@ -1501,7 +1488,7 @@ function parseTableEditCommands(llmResponse) {
  * @param {Object} tableData - 完整的表格数据对象
  * @returns {boolean} - 是否成功执行
  */
-function executeTableCommand(command, tableData) {
+function executeTableCommand_DUPLICATE_DELETE_ME(command, tableData) {
   if (!command || !tableData) return false;
 
   // 根据 tableIndex 定位到具体的表格
@@ -1594,7 +1581,7 @@ function executeTableCommand(command, tableData) {
  * @param {Object} tableData - 表格数据对象
  * @returns {Object} - 更新后的表格数据对象及统计信息
  */
-function applyTableEditCommands(commands, tableData) {
+function applyTableEditCommands_DUPLICATE_DELETE_ME(commands, tableData) {
   const stats = {
     total: commands.length,
     success: 0,
