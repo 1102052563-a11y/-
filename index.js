@@ -10547,8 +10547,33 @@ function showFloatingDataTable() {
   }
 
   // 修复可能的乱码
-  const repairedData = repairObjectMojibake(parsed);
-  const keys = getOrderedSheetKeysFromData(repairedData);
+  // 优先使用 repairObjectMojibake，但如果返回空则回退到 raw parsed
+  let repairedData = parsed;
+  try {
+    if (typeof repairObjectMojibake === 'function') {
+      const r = repairObjectMojibake(parsed);
+      if (r && typeof r === 'object' && Object.keys(r).length > 0) {
+        repairedData = r;
+      }
+    }
+  } catch (e) {
+    console.error('[StoryGuide] repairObjectMojibake error:', e);
+  }
+
+  let keys = [];
+  if (typeof getOrderedSheetKeysFromData === 'function') {
+    keys = getOrderedSheetKeysFromData(repairedData);
+  }
+
+  // Fallback: manually find sheet keys if function returned empty or didn't exist
+  if (!keys || !keys.length) {
+    keys = Object.keys(repairedData).filter(k => k.toLowerCase().startsWith('sheet_'));
+    keys.sort((a, b) => {
+      const oa = repairedData[a]?.orderNo ?? 999;
+      const ob = repairedData[b]?.orderNo ?? 999;
+      return oa - ob;
+    });
+  }
 
   if (!keys.length) {
     $body.html('<div class="sg-floating-loading">数据表为空</div>');
