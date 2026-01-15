@@ -112,11 +112,11 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
 const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
   {
     role: 'system',
-    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：1. 只输出表格 JSON，保持结构与字段名称不变。 2. **sheet_char** 仅记录主角状态；其他重要角色请记录在 **sheet_npc** 表中。 3. 捕捉关键状态变化与行为。'
+    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。\n\n【必须严格遵守的输出格式】\n1. 只输出标准的 JSON 对象，不要包含 Markdown 代码块。\n2. 保持原有表格结构：JSON 的根 Key 必须是以 "sheet_" 开头的表ID，Value 必须包含 "content" 二维数组。\n3. 严禁改变数据结构，严禁输出扁平化的 "Key": "Value" 格式。\n4. **sheet_char** 仅记录主角状态；其他重要角色请记录在 **sheet_npc** 表中。'
   },
   {
     role: 'user',
-    content: '【背景设定】\n{{world}}\n\n【正文数据】\n{{chat}}\n\n【当前表格数据】\n{{table}}\n\n请输出更新后的表格 JSON。请确保捕捉**所有关键人物**的最新状态与剧情发展，保持结构一致。'
+    content: '【背景设定】\n{{world}}\n\n【正文数据】\n{{chat}}\n\n【当前表格数据】\n{{table}}\n\n请输出更新后的表格 JSON。请严格保持原有的 "sheet_xxx": { "content": [[header], [row]...] } 结构。'
   },
 ]);
 
