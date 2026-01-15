@@ -571,6 +571,15 @@ function ensureSettings() {
       saveSettingsDebounced();
     }
   }
+
+  // 修复：强制更新旧版数据表提示词，以修复 JSON 格式问题
+  if (typeof extensionSettings[MODULE_NAME].dataTablePromptJson === 'string') {
+    if (extensionSettings[MODULE_NAME].dataTablePromptJson.includes('只输出表格 JSON，保持结构与字段名称不变') &&
+      !extensionSettings[MODULE_NAME].dataTablePromptJson.includes('严禁输出扁平化的')) {
+      extensionSettings[MODULE_NAME].dataTablePromptJson = JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
+      saveSettingsDebounced();
+    }
+  }
   return extensionSettings[MODULE_NAME];
 }
 
