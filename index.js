@@ -10758,6 +10758,8 @@ async function execDataTableUpdate() {
 
     console.log(`[StoryGuide] DataTable snapshot: ${picked.length} messages (user: ${userCount}, assistant: ${assistantCount}, skipped: ${skippedEmpty}, max: ${maxMessages})`);
     console.log(`[StoryGuide] DataTable chat array length: ${chat.length}`);
+    console.log(`[StoryGuide] DataTable snapshot preview (first 1000 chars):`, snapshotText.slice(0, 1000));
+
 
     // 读取世界观设定
     const world = stripHtml(getChatMetaValue(META_KEYS.world) || getChatMetaValue(META_KEYS.canon) || '');
