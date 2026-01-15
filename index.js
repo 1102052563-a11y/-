@@ -10552,10 +10552,14 @@ function showFloatingDataTable() {
   if (parsed && parsed.error) {
     const errorMsg = parsed.error.message || JSON.stringify(parsed.error);
     $body.html(`<div class="sg-floating-loading" style="color:#ff6b6b">
-      上次更新失败<br>
-      <small>${errorMsg}</small><br>
-      <div style="font-size:0.85em; margin-top:8px; color:#aaa">
-        请降低单次字符上限(MaxChars)<br>并重新点击更新
+      <div style="font-size:1.1em; font-weight:bold; margin-bottom:5px;">上次更新失败</div>
+      <div style="background:rgba(255,0,0,0.1); padding:8px; border-radius:4px; margin-bottom:10px;">
+        ${escapeHtml(errorMsg)}
+      </div>
+      <div style="font-size:0.85em; color:#aaa; line-height:1.5;">
+        此为历史错误缓存。<br>
+        请调整 MaxChars 后重新点击更新。<br>
+        <span style="color:#fff;">如果再次更新失败，请留意右上角的红色报错提示。</span>
       </div>
     </div>`);
     return;
@@ -10925,6 +10929,9 @@ async function execDataTableUpdate() {
     // 6. Save
     const finalStr = JSON.stringify(parsed);
     await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
+
+    // Force refresh internal panel
+    refreshFloatingPanelContent();
 
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
