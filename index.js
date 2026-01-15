@@ -61,7 +61,7 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
   mate: { type: 'chatSheets', version: 1 },
   sheet_main: {
     uid: 'sheet_main',
-    name: '数据表', // 基础流水账
+    name: '全剧情概览 (全局)', // 基础流水账
     sourceData: { note: '用于记录通用剧情片段/线索' },
     content: [[null, '主角', '时间', '地点', '事件', '备注']],
     exportConfig: {},
@@ -10924,23 +10924,70 @@ function init() {
         console.warn('[StoryGuide] exportTableAsJson: getChatMetaValue failed', e);
       }
 
+      let dataObj = null;
       if (!meta) {
         // 返回默认模板对象
         try {
           // 这里的 DEFAULT_DATA_TABLE_TEMPLATE 是字符串，需要 parse
-          return JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
+          dataObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
         } catch (e) {
           console.error('[StoryGuide] AutoCardUpdaterAPI export default error:', e);
           return null;
         }
+      } else {
+        // meta 存储的是 JSON 字符串，直接 parse 返回对象
+        try {
+          dataObj = JSON.parse(meta);
+        } catch (e) {
+          console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
+          return null; // 或者返回默认值？
+        }
       }
-      // meta 存储的是 JSON 字符串，直接 parse 返回对象
-      try {
-        return JSON.parse(meta);
-      } catch (e) {
-        console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
-        return null; // 或者返回默认值？
+
+      // [New] 动态注入 lastReport (剧情模块分析结果) 作为虚拟表
+      // 这样可视化脚本就能读到 world_summary, tips, quick_actions 等
+      if (dataObj && typeof dataObj === 'object' && lastReport && typeof lastReport === 'object') {
+        try {
+          const rows = [];
+          // Header: null (id), key, value, note
+          rows.push([null, '模块名称', '内容', '备注']);
+
+          // 获取当前定义的模块列表 (优先读配置, 降级用 default)
+          let moduleDefs = DEFAULT_MODULES;
+          try {
+            const s = ensureSettings();
+            if (s.modulesJson) moduleDefs = JSON.parse(s.modulesJson);
+          } catch (e) { }
+
+          for (const mod of moduleDefs) {
+            const val = lastReport[mod.key];
+            if (val) {
+              let displayVal = val;
+              if (Array.isArray(val)) displayVal = val.join('\n');
+              if (typeof displayVal !== 'string') displayVal = JSON.stringify(displayVal);
+              // 截断太长的
+              if (displayVal.length > 5000) displayVal = displayVal.slice(0, 5000) + '... (truncated)';
+
+              rows.push([null, mod.title || mod.key, displayVal, '系统自动生成']);
+            }
+          }
+
+          if (rows.length > 1) {
+            dataObj['sheet_modules_virtual'] = {
+              uid: 'sheet_modules_virtual',
+              name: '剧情模块数据 (本回)',
+              sourceData: { note: '来自 StoryGuide 最新一次分析报告 (只读)' },
+              content: rows,
+              exportConfig: { readOnly: true },
+              orderNo: -999 // Put at top? or bottom? Let's verify sort
+            };
+          }
+        } catch (e) {
+          console.warn('[StoryGuide] Inject virtual modules failed:', e);
+        }
       }
+
+      return dataObj;
     },
     importTableAsJson: async (jsonString) => {
       console.log('[StoryGuide] AutoCardUpdaterAPI: importTableAsJson called. Length:', jsonString?.length);
