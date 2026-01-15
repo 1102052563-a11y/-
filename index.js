@@ -10549,20 +10549,12 @@ function showFloatingDataTable() {
   }
 
   // Handle stored error object (from previous failed updates)
-  if (parsed && parsed.error) {
-    const errorMsg = parsed.error.message || JSON.stringify(parsed.error);
-    $body.html(`<div class="sg-floating-loading" style="color:#ff6b6b">
-      【上次更新失败】<br>
-      <small>${escapeHtml(errorMsg)}</small><br>
-      <div style="font-size:0.85em; margin-top:8px; color:#aaa; text-align:left; background:rgba(0,0,0,0.2); padding:5px; border-radius:4px;">
-        ⚠️ <b>注意：</b><br>
-        这是旧的错误记录。<br>
-        请调整 MaxChars 后重试更新。<br>
-        若更新仍失败，请留意<b>页面右上角的红色报错弹窗</b>。
-      </div>
-    </div>`);
-    return;
-  }
+  // We will check this AFTER trying to find keys.
+  // If we find keys, we ignore the error (it might be a mixed object or false positive).
+  // If we don't find keys, we show the error.
+
+  // Extract timestamp for display
+  const lastUpdated = info.updatedAt ? new Date(info.updatedAt).toLocaleString() : '未知时间';
 
   if (!parsed || typeof parsed !== 'object') {
     console.error('[StoryGuide] Data table parse failed:', info.dataJson?.slice(0, 50));
@@ -10607,13 +10599,29 @@ function showFloatingDataTable() {
   }
 
   if (!keys.length) {
+    // If no keys found but we have an error object, show the error
+    if (parsed && parsed.error) {
+      const errorMsg = parsed.error.message || JSON.stringify(parsed.error);
+      $body.html(`<div class="sg-floating-loading" style="color:#ff6b6b">
+        上次更新失败<br>
+        <small>${escapeHtml(errorMsg)}</small><br>
+        <div style="font-size:0.85em; margin-top:8px; color:#aaa">
+          时间: ${lastUpdated}<br>
+          建议降低 MaxChars 并重试
+        </div>
+      </div>`);
+      return;
+    }
+
     const debugKeys = Object.keys(repairedData).slice(0, 10).join(', ');
     const debugType = typeof repairedData;
     const debugSnippet = JSON.stringify(repairedData).slice(0, 100);
+
     $body.html(`<div class="sg-floating-loading">
       数据表为空<br>
       <small>未找到有效表格</small><br>
       <div style="font-size:0.7em; text-align:left; color:#888; margin-top:5px;">
+        Updated: ${lastUpdated}<br>
         Type: ${debugType}<br>
         Keys: ${debugKeys || 'NONE'}<br>
         Snippet: ${escapeHtml(debugSnippet)}
@@ -10942,14 +10950,6 @@ async function execDataTableUpdate() {
     } catch (e) {
       console.warn('[StoryGuide] UI refresh callback failed:', e);
     }
-
-    // 强制刷新内置悬浮面板
-    try {
-      if (typeof refreshFloatingPanelContent === 'function') {
-        await refreshFloatingPanelContent();
-        console.log('[StoryGuide] Floating Panel refreshed');
-      }
-    } catch (e) { console.warn('[StoryGuide] Floating Panel refresh failed:', e); }
 
     return true;
 
