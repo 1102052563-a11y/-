@@ -1167,7 +1167,13 @@ function normalizeDataTableResponse(parsed) {
 }
 
 function getOrderedSheetKeysFromData(data) {
-  const keys = Object.keys(data || {}).filter(k => k.startsWith('sheet_'));
+  if (!data || typeof data !== 'object') return [];
+  const keys = Object.keys(data).filter(k => {
+    if (k.startsWith('sheet_')) return true;
+    const val = data[k];
+    // Relaxed check: if it has a content array, we treat it as a sheet
+    return val && typeof val === 'object' && Array.isArray(val.content);
+  });
   const entries = keys.map((key, idx) => {
     const orderNo = Number(data?.[key]?.orderNo);
     return { key, idx, orderNo: Number.isFinite(orderNo) ? orderNo : null };
