@@ -2302,19 +2302,6 @@ function extractTableEditBlock(rawText) {
 }
 
 
-function buildRowFromTableEdit(rowData, headerLen) {
-  // Build row array from rowData object: {"0": "val1", "1": "val2", ...}
-  if (!rowData || typeof rowData !== 'object') return null;
-
-  const row = [null]; // First column is always null (row number)
-  for (let i = 1; i < headerLen; i++) {
-    const colIndex = String(i - 1);
-    row.push(rowData[colIndex] || '');
-  }
-
-  return row;
-}
-
 function parseTableEditCommands(rawText, forceFound = false) {
   const block = extractTableEditBlock(rawText);
   const source = block.text || '';
