@@ -61,7 +61,7 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
   mate: { type: 'chatSheets', version: 1 },
   sheet_main: {
     uid: 'sheet_main',
-    name: '全剧情概览 (全局)', // 基础流水账
+    name: '数据表', // 基础流水账
     sourceData: { note: '用于记录通用剧情片段/线索' },
     content: [[null, '主角', '时间', '地点', '事件', '备注']],
     exportConfig: {},
@@ -98,13 +98,21 @@ const DEFAULT_DATA_TABLE_TEMPLATE = JSON.stringify({
     content: [[null, '任务名称', '状态', '目标/奖励']],
     exportConfig: {},
     orderNo: 4
+  },
+  sheet_npc: {
+    uid: 'sheet_npc',
+    name: '人物档案',
+    sourceData: { note: '记录出现的主要NPC与关系' },
+    content: [[null, '角色名', '关系/阵营', '状态/近况', '备注']],
+    exportConfig: {},
+    orderNo: 5
   }
 }, null, 2);
 
 const DEFAULT_DATA_TABLE_PROMPT_MESSAGES = Object.freeze([
   {
     role: 'system',
-    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：1. 只输出表格 JSON，保持结构与字段名称不变。 2. 关注正文出现的所有**主要角色**（不仅是主角），记录他们的关键状态变化与行为。 3. 若有重要配角数据，请在对应表中注明角色名。'
+    content: '你是一个剧情数据表整理助手。根据聊天正文与当前表格，更新表格数据。要求：1. 只输出表格 JSON，保持结构与字段名称不变。 2. **sheet_char** 仅记录主角状态；其他重要角色请记录在 **sheet_npc** 表中。 3. 捕捉关键状态变化与行为。'
   },
   {
     role: 'user',
@@ -462,7 +470,6 @@ const META_KEYS = Object.freeze({
   boundGreenWI: 'storyguide_bound_green_wi',
   boundBlueWI: 'storyguide_bound_blue_wi',
   autoBindCreated: 'storyguide_auto_bind_created',
-  lastReport: 'storyguide_last_report',
 });
 
 let lastReport = null;
@@ -862,8 +869,10 @@ function getDataTableMeta() {
   const parsed = safeJsonParseAny(raw);
   if (parsed && typeof parsed === 'object') {
     if (parsed.dataJson || parsed.data) {
+      let d = parsed.dataJson || parsed.data;
+      if (typeof d === 'object') d = JSON.stringify(d);
       return {
-        dataJson: String(parsed.dataJson || parsed.data || '').trim(),
+        dataJson: String(d || '').trim(),
         updatedAt: Number(parsed.updatedAt || 0) || 0,
       };
     }
@@ -881,26 +890,6 @@ async function setDataTableMeta(meta) {
     updatedAt: Number(meta?.updatedAt || 0) || 0,
   };
   await setChatMetaValue(META_KEYS.dataTableMeta, JSON.stringify(payload));
-}
-
-function loadLastReportFromMeta() {
-  const raw = String(getChatMetaValue(META_KEYS.lastReport) || '').trim();
-  if (!raw) return null;
-  const parsed = safeJsonParseAny(raw);
-  if (parsed && typeof parsed === 'object') return parsed;
-  return null;
-}
-
-async function saveLastReportToMeta(report) {
-  if (!report) return;
-  // Minimize storage: only keep json, markdown, sourceSummary, createdAt
-  const payload = {
-    json: report.json,
-    markdown: report.markdown,
-    createdAt: report.createdAt,
-    sourceSummary: report.sourceSummary
-  };
-  await setChatMetaValue(META_KEYS.lastReport, JSON.stringify(payload));
 }
 
 function normalizeDataTableTemplate(obj) {
@@ -3645,7 +3634,6 @@ async function runAnalysis() {
 
     const md = renderReportMarkdownFromModules(parsed, modules);
     lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
-    saveLastReportToMeta(lastReport).catch(e => console.error('[StoryGuide] save lastReport failed', e));
     renderMarkdownInto($('#sg_md'), md);
 
     // 同步面板报告到聊天末尾
@@ -10548,52 +10536,89 @@ function showFloatingDataTable() {
     return;
   }
 
-  // Use the API to get the fully processed table object (includes defaults + virtual sheets)
-  const api = window.AutoCardUpdaterAPI || window.parent?.AutoCardUpdaterAPI;
-  let dataObj = null;
-  if (api && api.exportTableAsJson) {
-    dataObj = api.exportTableAsJson();
-    console.log('[StoryGuide] showFloatingDataTable: Got data from API', Object.keys(dataObj || {}));
-  } else {
-    console.warn('[StoryGuide] showFloatingDataTable: API not found');
-  }
-
-  // Fallback if API returns null but we have raw data
-  if (!dataObj) {
-    const info = getDataTableDataForUi();
-    if (info.dataJson) dataObj = safeJsonParseAny(info.dataJson);
-    console.log('[StoryGuide] showFloatingDataTable: Fallback to raw data', !!dataObj);
-  }
-
-  if (!dataObj || typeof dataObj !== 'object') {
-    console.log('[StoryGuide] showFloatingDataTable: dataObj is empty/invalid');
+  const info = getDataTableMeta(); // Use direct meta accessor
+  if (!info.dataJson) {
     $body.html('<div class="sg-floating-loading">暂无数据表数据<br><small>请先更新数据表</small></div>');
     return;
   }
 
-  // 修复可能的乱码 (Try-catch to be safe if function missing or fails)
-  let repairedData = dataObj;
-  try {
-    if (typeof repairObjectMojibake === 'function') {
-      repairedData = repairObjectMojibake(dataObj);
-    }
-  } catch (e) {
-    console.warn('[StoryGuide] repairObjectMojibake failed', e);
+  let parsed = safeJsonParseAny(info.dataJson);
+  // Handle potential double-stringification
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch (e) { console.error(e); }
   }
 
-  const keys = getOrderedSheetKeysFromData(repairedData);
-  console.log('[StoryGuide] showFloatingDataTable: keys found', keys);
+  // Handle stored error object (from previous failed updates)
+  if (parsed && parsed.error) {
+    const errorMsg = parsed.error.message || JSON.stringify(parsed.error);
+    $body.html(`<div class="sg-floating-loading" style="color:#ff6b6b">
+      【上次更新失败】<br>
+      <small>${escapeHtml(errorMsg)}</small><br>
+      <div style="font-size:0.85em; margin-top:8px; color:#aaa; text-align:left; background:rgba(0,0,0,0.2); padding:5px; border-radius:4px;">
+        ⚠️ <b>注意：</b><br>
+        这是旧的错误记录。<br>
+        请调整 MaxChars 后重试更新。<br>
+        若更新仍失败，请留意<b>页面右上角的红色报错弹窗</b>。
+      </div>
+    </div>`);
+    return;
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    console.error('[StoryGuide] Data table parse failed:', info.dataJson?.slice(0, 50));
+    $body.html('<div class="sg-floating-loading">数据表解析失败<br><small>数据格式错误</small></div>');
+    return;
+  }
+
+  // 修复可能的乱码
+  // 优先使用 repairObjectMojibake，但如果返回空则回退到 raw parsed
+  let repairedData = parsed;
+  try {
+    if (typeof repairObjectMojibake === 'function') {
+      const r = repairObjectMojibake(parsed);
+      if (r && typeof r === 'object' && Object.keys(r).length > 0) {
+        repairedData = r;
+      }
+    }
+  } catch (e) {
+    console.error('[StoryGuide] repairObjectMojibake error:', e);
+  }
+
+  let keys = [];
+  if (typeof getOrderedSheetKeysFromData === 'function') {
+    keys = getOrderedSheetKeysFromData(repairedData);
+  }
+
+  // Fallback: manually find sheet keys if function returned empty or didn't exist
+  if (!keys || !keys.length) {
+    keys = Object.keys(repairedData).filter(k => {
+      const v = repairedData[k];
+      // Loose check matching external visualization script logic:
+      // Accept if it looks like a sheet (has name and content array)
+      if (v && typeof v === 'object' && Array.isArray(v.content) && v.name) return true;
+      // Fallback to prefix check
+      return k.toLowerCase().startsWith('sheet_');
+    });
+    keys.sort((a, b) => {
+      const oa = repairedData[a]?.orderNo ?? 999;
+      const ob = repairedData[b]?.orderNo ?? 999;
+      return oa - ob;
+    });
+  }
 
   if (!keys.length) {
-    $body.html(`
-      <div class="sg-floating-loading">
-        <div style="font-weight:bold; margin-bottom:8px;">数据表暂无内容</div>
-        <div style="font-size:0.9em; opacity:0.8;">
-          <p>请点击右上角 <span class="sg-icon">🔄</span> 分析剧情以生成虚拟表</p>
-          <p>或点击 <span class="sg-icon">📝</span> 更新数据表以填充默认表</p>
-        </div>
+    const debugKeys = Object.keys(repairedData).slice(0, 10).join(', ');
+    const debugType = typeof repairedData;
+    const debugSnippet = JSON.stringify(repairedData).slice(0, 100);
+    $body.html(`<div class="sg-floating-loading">
+      数据表为空<br>
+      <small>未找到有效表格</small><br>
+      <div style="font-size:0.7em; text-align:left; color:#888; margin-top:5px;">
+        Type: ${debugType}<br>
+        Keys: ${debugKeys || 'NONE'}<br>
+        Snippet: ${escapeHtml(debugSnippet)}
       </div>
-    `);
+    </div>`);
     return;
   }
 
@@ -10888,10 +10913,21 @@ async function execDataTableUpdate() {
       throw new Error('无法解析 LLM 返回的 JSON');
     }
 
-    // 6. Save
+    // Validation: Check for API errors or empty data
+    if (parsed.error) {
+      const errMsg = typeof parsed.error === 'string' ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
+      throw new Error('LLM API Error: ' + errMsg);
+    }
+
+    // Validation: Must contain at least one sheet or mate info
+    const hasSheets = Object.keys(parsed).some(k => k.startsWith('sheet_') || k === 'mate');
+    if (!hasSheets) {
+      throw new Error('返回的数据不包含有效表格结构 (missing sheet_*)');
+    }
+
     // 6. Save
     const finalStr = JSON.stringify(parsed);
-    await setDataTableMeta({ dataJson: finalStr, updatedAt: Date.now() });
+    await setChatMetaValue(META_KEYS.dataTableMeta, finalStr);
 
     console.log('[StoryGuide] execDataTableUpdate: success');
     if (window.toastr) window.toastr.success('StoryGuide: 表格数据已更新！');
@@ -10906,6 +10942,14 @@ async function execDataTableUpdate() {
     } catch (e) {
       console.warn('[StoryGuide] UI refresh callback failed:', e);
     }
+
+    // 强制刷新内置悬浮面板
+    try {
+      if (typeof refreshFloatingPanelContent === 'function') {
+        await refreshFloatingPanelContent();
+        console.log('[StoryGuide] Floating Panel refreshed');
+      }
+    } catch (e) { console.warn('[StoryGuide] Floating Panel refresh failed:', e); }
 
     return true;
 
@@ -10940,32 +10984,9 @@ function init() {
     installRollPreSendHook();
   });
 
-  // 聊天切换时自动绑定世界书 & 恢复 lastReport
+  // 聊天切换时自动绑定世界书
   eventSource.on(event_types.CHAT_CHANGED, async () => {
     console.log('[StoryGuide] CHAT_CHANGED 事件触发');
-
-    // 尝试恢复 lastReport
-    try {
-      const restored = loadLastReportFromMeta();
-      if (restored) {
-        lastReport = restored;
-        // 也恢复 lastJsonText 以支持“复制JSON”按钮
-        if (lastReport.json) {
-          lastJsonText = JSON.stringify(lastReport.json, null, 2);
-          $('#sg_json').text(lastJsonText);
-        }
-        if (lastReport.sourceSummary) {
-          $('#sg_src').text(JSON.stringify(lastReport.sourceSummary, null, 2));
-        }
-        if (lastReport.markdown) {
-          renderMarkdownInto($('#sg_md'), lastReport.markdown);
-          showPane('md'); // 默认切回报告页? 或者保持现状
-        }
-        console.log('[StoryGuide] lastReport restored from meta ✅');
-      } else {
-        lastReport = null; // 清空上一段聊天的 cache
-      }
-    } catch (e) { console.error(e); }
 
     const ctx = SillyTavern.getContext();
     const hasChat = ctx.chat && Array.isArray(ctx.chat);
@@ -10997,88 +11018,23 @@ function init() {
         console.warn('[StoryGuide] exportTableAsJson: getChatMetaValue failed', e);
       }
 
-      let dataObj = null;
       if (!meta) {
         // 返回默认模板对象
         try {
           // 这里的 DEFAULT_DATA_TABLE_TEMPLATE 是字符串，需要 parse
-          dataObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
+          return JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
         } catch (e) {
           console.error('[StoryGuide] AutoCardUpdaterAPI export default error:', e);
           return null;
         }
-      } else {
-        // meta 存储的是 JSON 字符串，直接 parse 返回对象
-        try {
-          dataObj = JSON.parse(meta);
-        } catch (e) {
-          console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
-          return null; // 或者返回默认值？
-        }
       }
-
-      // [New] 运行时修正：自动修复表名/缺失表 (Fix user issue: visual panel missing "sheet_main")
-      if (dataObj && typeof dataObj === 'object') {
-        // 1. Rename '数据表' -> '全剧情概览 (全局)'
-        if (dataObj.sheet_main && dataObj.sheet_main.name === '数据表') {
-          dataObj.sheet_main.name = '全剧情概览 (全局)';
-        }
-        // 2. Ensure all default sheets exist (merge defaults)
-        try {
-          const defaultObj = JSON.parse(DEFAULT_DATA_TABLE_TEMPLATE);
-          const requiredSheets = ['sheet_main', 'sheet_char', 'sheet_bag', 'sheet_skill', 'sheet_quest'];
-          for (const key of requiredSheets) {
-            if (!dataObj[key]) {
-              dataObj[key] = defaultObj[key];
-            }
-          }
-        } catch (e) { }
+      // meta 存储的是 JSON 字符串，直接 parse 返回对象
+      try {
+        return JSON.parse(meta);
+      } catch (e) {
+        console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
+        return null; // 或者返回默认值？
       }
-
-      // [New] 动态注入 lastReport (剧情模块分析结果) 作为虚拟表
-      // 这样可视化脚本就能读到 world_summary, tips, quick_actions 等
-      if (dataObj && typeof dataObj === 'object' && lastReport && typeof lastReport === 'object') {
-        try {
-          const rows = [];
-          // Header: null (id), key, value, note
-          rows.push([null, '模块名称', '内容', '备注']);
-
-          // 获取当前定义的模块列表 (优先读配置, 降级用 default)
-          let moduleDefs = DEFAULT_MODULES;
-          try {
-            const s = ensureSettings();
-            if (s.modulesJson) moduleDefs = JSON.parse(s.modulesJson);
-          } catch (e) { }
-
-          for (const mod of moduleDefs) {
-            const val = lastReport[mod.key];
-            if (val) {
-              let displayVal = val;
-              if (Array.isArray(val)) displayVal = val.join('\n');
-              if (typeof displayVal !== 'string') displayVal = JSON.stringify(displayVal);
-              // 截断太长的
-              if (displayVal.length > 5000) displayVal = displayVal.slice(0, 5000) + '... (truncated)';
-
-              rows.push([null, mod.title || mod.key, displayVal, '系统自动生成']);
-            }
-          }
-
-          if (rows.length > 1) {
-            dataObj['sheet_modules_virtual'] = {
-              uid: 'sheet_modules_virtual',
-              name: '剧情模块数据 (本回)',
-              sourceData: { note: '来自 StoryGuide 最新一次分析报告 (只读)' },
-              content: rows,
-              exportConfig: { readOnly: true },
-              orderNo: -999 // Put at top? or bottom? Let's verify sort
-            };
-          }
-        } catch (e) {
-          console.warn('[StoryGuide] Inject virtual modules failed:', e);
-        }
-      }
-
-      return dataObj;
     },
     importTableAsJson: async (jsonString) => {
       console.log('[StoryGuide] AutoCardUpdaterAPI: importTableAsJson called. Length:', jsonString?.length);
