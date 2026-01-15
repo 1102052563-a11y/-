@@ -1187,41 +1187,102 @@ function repairDataTableKeys(data) {
     };
   }
 
-  // 2. Check if we already have valid sheet keys
-  const existingKeys = Object.keys(data).filter(k => k.startsWith('sheet_'));
-  if (existingKeys.length > 0) return data;
-
-  // 3. Try to convert natural language keys to sheet_ keys
+  // 2. Initialize new data with existing valid sheets
   const newData = {};
-  let autoCount = 1;
   const entries = Object.entries(data);
+  const usedKeys = new Set();
 
+  // First pass: Copy existing valid sheet_* keys
   for (const [key, val] of entries) {
-    if (!val || typeof val !== 'object') continue;
-
-    // Check if it looks like a sheet
-    if (Array.isArray(val.content)) {
-      // Determine new key
-      let newKey = '';
-      if (key === 'Main' || key === 'main' || key.includes('主表')) newKey = 'sheet_main';
-      else newKey = `sheet_custom_${autoCount++}`;
-
-      // Preserve original name if needed
-      if (!val.name) val.name = key;
-
-      // Ensure UID
-      if (!val.uid) val.uid = newKey;
-
-      newData[newKey] = val;
-    } else {
-      // Keep other metadata properties as is
+    if (key.startsWith('sheet_')) {
       newData[key] = val;
+      usedKeys.add(key);
     }
   }
 
-  // If we found nothing, return original
-  return Object.keys(newData).length > 0 ? newData : data;
+  // Helper to generate unique ID
+  let autoCount = 1;
+  const getNextId = () => {
+    while (usedKeys.has(`sheet_custom_${autoCount}`)) {
+      autoCount++;
+    }
+    const id = `sheet_custom_${autoCount}`;
+    usedKeys.add(id);
+    return id;
+  };
+
+  // 3. Second pass: Process other keys (semantic keys)
+  for (const [key, val] of entries) {
+    if (key.startsWith('sheet_')) continue; // Already handled
+    if (!val || typeof val !== 'object') {
+      newData[key] = val; // Keep metadata/unknowns
+      continue;
+    }
+
+    // Detect if we should convert this
+    // A. It is a TABLE (has content array) -> Rename to sheet_
+    if (Array.isArray(val.content)) {
+      // Logic to preserve special keys like 'Main' if needed, or just auto-assign
+      let newKey = '';
+      if ((key === 'Main' || key === 'main' || key.includes('主表')) && !newData['sheet_main']) {
+        newKey = 'sheet_main';
+        usedKeys.add(newKey);
+      } else {
+        newKey = getNextId();
+      }
+
+      // Clone to avoid mutating original if referenced elsewhere
+      const newSheet = { ...val };
+      if (!newSheet.uid) newSheet.uid = newKey;
+      if (!newSheet.name) newSheet.name = key;
+      newData[newKey] = newSheet;
+    }
+    // B. It is a DATA OBJECT (no content array) -> Convert to Key-Value Table
+    else if (!Array.isArray(val)) {
+      // Treat as Key-Value object
+      const subKeys = Object.keys(val);
+      if (subKeys.length > 0) {
+        const newKey = getNextId();
+        const rows = [[null, 'Key', 'Value']];
+
+        for (const k of subKeys) {
+          let v = val[k];
+          if (typeof v === 'object' && v !== null) {
+            try { v = JSON.stringify(v); } catch { v = '[Object]'; }
+          }
+          rows.push([null, k, String(v ?? '')]);
+        }
+
+        newData[newKey] = {
+          uid: newKey,
+          name: key, // Use the object key as the Table Name (e.g. "主角")
+          content: rows,
+          sourceData: { note: 'Auto-converted from object' },
+          orderNo: 10 + autoCount
+        };
+      } else {
+        newData[key] = val; // Empty object, keep as is
+      }
+    } else {
+      newData[key] = val; // It's an array but not content? Keep as is.
+    }
+  }
+
+  return newData;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function normalizeDataTableResponse(parsed) {
   if (!parsed || typeof parsed !== 'object') return null;
