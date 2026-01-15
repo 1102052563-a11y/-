@@ -9814,11 +9814,11 @@ function setupEventListeners() {
 
       // 数据表自动更新
       const s = ensureSettings();
-      console.log('[StoryGuide] Generation Finished Event. AutoUpdate:', s.autoUpdateDataTable);
+      console.log('[StoryGuide v2] Generation Finished Event. AutoUpdate:', s.autoUpdateDataTable);
       if (s.autoUpdateDataTable) {
-        console.log('[StoryGuide] Triggering auto-update...');
-        runDataTableUpdate().then(res => console.log('[StoryGuide] Auto update result:', res))
-          .catch(e => console.error('[StoryGuide] Auto Update Table failed', e));
+        console.log('[StoryGuide v2] Triggering execDataTableUpdate...');
+        execDataTableUpdate().then(res => console.log('[StoryGuide v2] Update result:', res))
+          .catch(e => console.error('[StoryGuide v2] Update failed', e));
       }
     };
 
@@ -10660,7 +10660,7 @@ function init() {
     }
   });
 
-  async function runDataTableUpdate() {
+  async function execDataTableUpdate() {
     const s = ensureSettings();
     if (!s.enabled) {
       if (window.toastr) window.toastr.warning('插件未启用');
@@ -10797,7 +10797,7 @@ function init() {
     },
     manualUpdate: async () => {
       console.log('[StoryGuide] AutoCardUpdaterAPI: manualUpdate called');
-      const success = await runDataTableUpdate();
+      const success = await execDataTableUpdate();
       if (success && AutoCardUpdaterAPI_Impl._updateCb) {
         try { AutoCardUpdaterAPI_Impl._updateCb(); } catch (e) { console.error('[StoryGuide] callback failed', e); }
       }
