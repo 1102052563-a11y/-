@@ -10936,18 +10936,10 @@ function init() {
       }
       // meta 存储的是 JSON 字符串，直接 parse 返回对象
       try {
-        const parsed = JSON.parse(meta);
-        // Compatibility fix: unwrap dataJson if it exists (new format)
-        if (parsed && typeof parsed === 'object') {
-          if (parsed.dataJson || parsed.data) {
-            const inner = parsed.dataJson || parsed.data;
-            return typeof inner === 'string' ? JSON.parse(inner) : inner;
-          }
-        }
-        return parsed;
+        return JSON.parse(meta);
       } catch (e) {
         console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
-        return null;
+        return null; // 或者返回默认值？
       }
     },
     importTableAsJson: async (jsonString) => {
