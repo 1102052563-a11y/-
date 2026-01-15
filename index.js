@@ -10934,14 +10934,16 @@ function init() {
           return null;
         }
       }
-      // meta 存储的是 JSON 字符串，需要 parse
+      // meta 存储的是 JSON 字符串，直接 parse 返回对象
       try {
         const parsed = JSON.parse(meta);
-        // Compatibility: check if it's the new wrapper format
-        if (parsed && typeof parsed === 'object' && typeof parsed.dataJson === 'string') {
-          try { return JSON.parse(parsed.dataJson); } catch (subE) { console.error('inner parse error', subE); return null; }
+        // Compatibility fix: unwrap dataJson if it exists (new format)
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.dataJson || parsed.data) {
+            const inner = parsed.dataJson || parsed.data;
+            return typeof inner === 'string' ? JSON.parse(inner) : inner;
+          }
         }
-        // Legacy: return raw parsed object
         return parsed;
       } catch (e) {
         console.error('[StoryGuide] AutoCardUpdaterAPI export parse error:', e);
