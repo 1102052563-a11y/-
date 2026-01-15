@@ -238,6 +238,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 数据表自动更新
   autoUpdateDataTable: false,
 
+  // 数据表专用消息读取设置
+  dataTableMaxMessages: 20,           // 读取最近 N 条消息
+  dataTableMaxCharsPerMessage: 2000,  // 每条消息最大字符数
+  dataTableStatEnabled: false,        // 是否读取 stat_data 变量
+  dataTableStatVarName: 'stat_data',  // 变量名
+  dataTableStatParseMode: 'json',     // 解析模式：json | kv
+
   // 自动追加到正文末尾
   autoAppendBox: true,
   appendMode: 'compact', // compact | standard
@@ -7725,6 +7732,42 @@ function buildModalHtml() {
               </div>
             </div>
 
+            <div class="sg-card">
+              <div class="sg-card-title">消息读取设置</div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>读取最近消息条数</label>
+                  <input id="sg_dataTableMaxMessages" type="number" min="5" max="100" step="1" placeholder="20">
+                </div>
+                <div class="sg-field">
+                  <label>每条消息最大字符</label>
+                  <input id="sg_dataTableMaxCharsPerMessage" type="number" min="200" max="8000" step="100" placeholder="2000">
+                </div>
+              </div>
+              <div class="sg-hint">设置数据表更新时读取的消息范围，独立于剧情指导的设置</div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">角色属性数据 (stat_data)</div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_dataTableStatEnabled">在更新时读取 stat_data 变量</label>
+              </div>
+              <div class="sg-grid2" id="sg_dataTableStatBlock">
+                <div class="sg-field">
+                  <label>变量名</label>
+                  <input id="sg_dataTableStatVarName" type="text" placeholder="stat_data">
+                </div>
+                <div class="sg-field">
+                  <label>解析模式</label>
+                  <select id="sg_dataTableStatParseMode">
+                    <option value="json">JSON</option>
+                    <option value="kv">键值行（pc.atk=10）</option>
+                  </select>
+                </div>
+              </div>
+              <div class="sg-hint">启用后会读取角色属性数据并发送给 LLM，用于更精确地更新数据表（如角色状态、技能等级）</div>
+            </div>
+
             <div class="sg-card sg-subcard" id="sg_table_custom_block" style="display:none;">
               <div class="sg-card-title">独立API</div>
               <div class="sg-field">
@@ -8123,6 +8166,13 @@ function ensureModal() {
   $('#sg_tableProvider').on('change', () => {
     const p = String($('#sg_tableProvider').val() || 'custom');
     $('#sg_table_custom_block').toggle(p === 'custom');
+    pullUiToSettings(); saveSettings();
+  });
+
+  // data table stat_data toggle
+  $('#sg_dataTableStatEnabled').on('change', () => {
+    const enabled = $('#sg_dataTableStatEnabled').is(':checked');
+    $('#sg_dataTableStatBlock').toggle(enabled);
     pullUiToSettings(); saveSettings();
   });
 
@@ -9137,6 +9187,14 @@ function pullSettingsToUi() {
   $('#sg_tableCustomStream').prop('checked', !!s.dataTableCustomStream);
   $('#sg_table_custom_block').toggle(String(s.dataTableProvider || 'custom') === 'custom');
 
+  // 数据表专用设置
+  $('#sg_dataTableMaxMessages').val(s.dataTableMaxMessages ?? 20);
+  $('#sg_dataTableMaxCharsPerMessage').val(s.dataTableMaxCharsPerMessage ?? 2000);
+  $('#sg_dataTableStatEnabled').prop('checked', !!s.dataTableStatEnabled);
+  $('#sg_dataTableStatVarName').val(String(s.dataTableStatVarName || 'stat_data'));
+  $('#sg_dataTableStatParseMode').val(String(s.dataTableStatParseMode || 'json'));
+  $('#sg_dataTableStatBlock').toggle(!!s.dataTableStatEnabled);
+
   $('#sg_presetIncludeApiKey').prop('checked', !!s.presetIncludeApiKey);
 
   $('#sg_worldbookEnabled').prop('checked', !!s.worldbookEnabled);
@@ -9589,6 +9647,13 @@ function pullUiToSettings() {
   s.dataTableCustomMaxTokens = clampInt($('#sg_tableCustomMaxTokens').val(), 128, 200000, s.dataTableCustomMaxTokens || 4096);
   s.dataTableCustomTopP = clampFloat($('#sg_tableCustomTopP').val(), 0, 1, s.dataTableCustomTopP ?? 0.95);
   s.dataTableCustomStream = $('#sg_tableCustomStream').is(':checked');
+
+  // 数据表专用设置
+  s.dataTableMaxMessages = clampInt($('#sg_dataTableMaxMessages').val(), 5, 100, s.dataTableMaxMessages || 20);
+  s.dataTableMaxCharsPerMessage = clampInt($('#sg_dataTableMaxCharsPerMessage').val(), 200, 8000, s.dataTableMaxCharsPerMessage || 2000);
+  s.dataTableStatEnabled = $('#sg_dataTableStatEnabled').is(':checked');
+  s.dataTableStatVarName = String($('#sg_dataTableStatVarName').val() || 'stat_data').trim();
+  s.dataTableStatParseMode = String($('#sg_dataTableStatParseMode').val() || 'json');
 
   s.presetIncludeApiKey = $('#sg_presetIncludeApiKey').is(':checked');
 
@@ -10631,11 +10696,53 @@ async function execDataTableUpdate() {
   console.log('[StoryGuide] execDataTableUpdate: starting...');
 
   try {
-    // 1. Snapshot
-    const { snapshotText } = buildSnapshot();
+    // 1. 使用数据表专用配置构建 Snapshot
+    const ctx = SillyTavern.getContext();
+    const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+    const maxMessages = clampInt(s.dataTableMaxMessages, 5, 100, 20);
+    const maxChars = clampInt(s.dataTableMaxCharsPerMessage, 200, 8000, 2000);
+
+    // 读取聊天消息
+    const picked = [];
+    for (let i = chat.length - 1; i >= 0 && picked.length < maxMessages; i--) {
+      const m = chat[i];
+      if (!m) continue;
+      const isUser = m.is_user === true;
+      const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
+      let text = stripHtml(m.mes ?? m.message ?? '');
+      if (!text) continue;
+      if (text.length > maxChars) text = text.slice(0, maxChars) + '…(截断)';
+      picked.push(`【${name}】${text}`);
+    }
+    picked.reverse();
+    const snapshotText = picked.join('\n\n');
+
+    console.log(`[StoryGuide] DataTable snapshot: ${picked.length} messages (max: ${maxMessages})`);
+
+    // 读取世界观设定
     const world = stripHtml(getChatMetaValue(META_KEYS.world) || getChatMetaValue(META_KEYS.canon) || '');
 
-    // 2. Current Table
+    // 2. 读取 stat_data 变量（如果启用）
+    let statDataText = '';
+    if (s.dataTableStatEnabled) {
+      try {
+        // 临时覆盖变量名和解析模式
+        const tempSettings = {
+          ...s,
+          wiRollStatVarName: s.dataTableStatVarName || 'stat_data',
+          wiRollStatParseMode: s.dataTableStatParseMode || 'json'
+        };
+        const { statData, rawText } = await resolveStatDataComprehensive(chat, tempSettings);
+        if (statData) {
+          statDataText = typeof statData === 'string' ? statData : JSON.stringify(statData, null, 2);
+          console.log('[StoryGuide] DataTable stat_data loaded:', statDataText.length, 'chars');
+        }
+      } catch (e) {
+        console.warn('[StoryGuide] DataTable stat_data load failed:', e);
+      }
+    }
+
+    // 3. Current Table
     let currentTableStr = getChatMetaValue(META_KEYS.dataTableMeta);
     let currentTableObj = null;
     try { currentTableObj = JSON.parse(currentTableStr); } catch { }
@@ -10661,25 +10768,43 @@ async function execDataTableUpdate() {
       } catch (e) { console.warn('[StoryGuide] Migration check failed', e); }
     }
 
-    // 3. Prompt
+    // 4. 构建 Prompt（包含 stat_data）
     const promptMsgs = JSON.parse(JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES)); // deep clone
+
+    // 构建完整的正文内容
+    let fullChatContent = snapshotText || '（暂无正文）';
+    if (statDataText) {
+      fullChatContent = `【角色属性数据 (stat_data)】\n${statDataText}\n\n【剧情正文】\n${snapshotText || '（暂无正文）'}`;
+    }
+
     for (const m of promptMsgs) {
       if (typeof m.content === 'string') {
         m.content = renderTemplate(m.content, {
           world: world || '（暂无背景设定）',
-          chat: snapshotText || '（暂无正文）',
+          chat: fullChatContent,
           table: currentTableStr
         });
       }
     }
 
-    // 4. Call LLM
+
+    // 5. Call LLM (使用数据表专用的 provider 设置)
     let jsonText = '';
     console.log('[StoryGuide] Calling LLM for data table...');
-    if (s.provider === 'custom') {
-      jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, promptMsgs, s.temperature, s.customMaxTokens, s.customTopP, false);
+    const tableProvider = String(s.dataTableProvider || 'st');
+    if (tableProvider === 'custom') {
+      jsonText = await callViaCustom(
+        s.dataTableCustomEndpoint,
+        s.dataTableCustomApiKey,
+        s.dataTableCustomModel,
+        promptMsgs,
+        s.dataTableTemperature ?? 0.4,
+        s.dataTableCustomMaxTokens ?? 4096,
+        s.dataTableCustomTopP ?? 0.95,
+        s.dataTableCustomStream ?? false
+      );
     } else {
-      jsonText = await callViaSillyTavern(promptMsgs, null, s.temperature);
+      jsonText = await callViaSillyTavern(promptMsgs, null, s.dataTableTemperature ?? 0.4);
       if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
     }
     console.log('[StoryGuide] LLM response received, length:', jsonText.length);
