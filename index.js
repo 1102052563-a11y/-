@@ -1577,29 +1577,53 @@ function buildDataTableWorldText() {
   ].join('\n\n').trim();
 }
 
-function buildDataTableChatText() {
+function buildDataTableChatText(options = {}) {
   const s = ensureSettings();
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-  const maxMessages = clampInt(s.maxMessages, 5, 200, DEFAULT_SETTINGS.maxMessages);
-  const maxChars = clampInt(s.maxCharsPerMessage, 200, 8000, DEFAULT_SETTINGS.maxCharsPerMessage);
+
+  const maxMessages = clampInt(options.maxMessages ?? s.dataTableMaxMessages, 5, 200, 20);
+  const maxChars = clampInt(options.maxChars ?? s.dataTableMaxCharsPerMessage, 200, 8000, 2000);
 
   const picked = [];
+
   for (let i = chat.length - 1; i >= 0 && picked.length < maxMessages; i--) {
     const m = chat[i];
-    if (!isCountableMessage(m)) continue;
-    const isUser = m.is_user === true;
-    if (isUser && !s.includeUser) continue;
-    if (!isUser && !s.includeAssistant) continue;
+    if (!m) continue;
+    // Data Table logic: skip system messages, but keeps both user and assistant
+    if (m.is_system) continue;
 
+    const isUser = m.is_user === true;
     const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
-    let text = stripHtml(m.mes ?? m.message ?? '');
+
+    let text = '';
+
+    // Swipe support for AI messages
+    if (!isUser && Array.isArray(m.swipes) && m.swipes.length > 0) {
+      const swipeIndex = typeof m.swipe_id === 'number' ? m.swipe_id : 0;
+      const swipeContent = m.swipes[swipeIndex];
+      if (swipeContent && typeof swipeContent === 'string') {
+        text = swipeContent;
+      }
+    }
+
+    if (!text) {
+      // Fallback
+      if (typeof m.mes === 'string') text = m.mes;
+      else if (typeof m.message === 'string') text = m.message;
+      else if (typeof m.content === 'string') text = m.content;
+      else if (typeof m.text === 'string') text = m.text;
+    }
+
+    text = stripHtml(text || '');
     if (!text) continue;
+
     if (text.length > maxChars) text = text.slice(0, maxChars) + '…(截断)';
     picked.push(`【${name}】${text}`);
   }
+
   picked.reverse();
-  return picked.length ? picked.join('\n\n') : '（空）';
+  return picked.length ? picked.join('\n\n') : '（暂无正文）';
 }
 
 function buildDataTablePromptMessages(worldText, chatText, tableJson, tableText) {
@@ -1607,18 +1631,26 @@ function buildDataTablePromptMessages(worldText, chatText, tableJson, tableText)
   const raw = String(s.dataTablePromptJson || '').trim();
   const v = validateDataTablePrompt(raw);
   const prompts = v.ok ? v.prompts : DEFAULT_DATA_TABLE_PROMPT_MESSAGES;
+
   const vars = {
     world: worldText,
     chat: chatText,
     table: tableJson,
     tableText: tableText || tableJson,
   };
-  return prompts.map(p => ({ ...p, content: renderTemplate(p.content, vars) }));
+
+  // Clone to avoid mutating cached objects
+  return JSON.parse(JSON.stringify(prompts)).map(p => {
+    if (typeof p.content === 'string') {
+      p.content = renderTemplate(p.content, vars);
+    }
+    return p;
+  });
 }
 
 function buildDataTableSeedJson() {
   const seed = buildDataTableSeedObject();
-  if (!seed) return '';
+  if (!seed) return '{}';
   return JSON.stringify(seed, null, 2);
 }
 
@@ -10697,86 +10729,12 @@ async function execDataTableUpdate() {
 
   try {
     // 1. 使用数据表专用配置构建 Snapshot
-    const ctx = SillyTavern.getContext();
-    const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-    const maxMessages = clampInt(s.dataTableMaxMessages, 5, 100, 20);
-    const maxChars = clampInt(s.dataTableMaxCharsPerMessage, 200, 8000, 2000);
+    const snapshotText = buildDataTableChatText({
+      maxMessages: s.dataTableMaxMessages,
+      maxChars: s.dataTableMaxCharsPerMessage
+    });
 
-    // 读取聊天消息
-    const picked = [];
-    let userCount = 0;
-    let assistantCount = 0;
-    let skippedEmpty = 0;
-
-    // 调试：打印前3条消息的结构
-    console.log('[StoryGuide] DataTable: First 3 messages structure:');
-    for (let i = 0; i < Math.min(3, chat.length); i++) {
-      const m = chat[i];
-      if (m) {
-        console.log(`  #${i}: is_user=${m.is_user}, is_system=${m.is_system}, name=${m.name}, mes_length=${(m.mes || '').length}, message_length=${(m.message || '').length}, keys=${Object.keys(m).join(',')}`);
-      }
-    }
-
-    for (let i = chat.length - 1; i >= 0 && picked.length < maxMessages; i--) {
-      const m = chat[i];
-      if (!m) continue;
-      // 跳过系统消息
-      if (m.is_system === true) continue;
-
-      const isUser = m.is_user === true;
-      const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
-
-      // 尝试多种方式获取消息内容
-      let text = '';
-
-      // 对于 AI 消息，优先从 swipes 数组获取正文（mes 可能被 stat_data 等变量覆盖）
-      if (!isUser && Array.isArray(m.swipes) && m.swipes.length > 0) {
-        // 使用当前选中的 swipe，如果没有 swipe_id 则使用第一个
-        const swipeIndex = typeof m.swipe_id === 'number' ? m.swipe_id : 0;
-        const swipeContent = m.swipes[swipeIndex];
-        if (swipeContent && typeof swipeContent === 'string') {
-          text = swipeContent;
-          console.log(`[StoryGuide] DataTable: AI message #${i} using swipes[${swipeIndex}], len=${text.length}`);
-        }
-      }
-
-      // 如果 swipes 没有内容，回退到其他字段
-      if (!text) {
-        if (m.mes && typeof m.mes === 'string') {
-          text = m.mes;
-        } else if (m.message && typeof m.message === 'string') {
-          text = m.message;
-        } else if (m.content && typeof m.content === 'string') {
-          text = m.content;
-        } else if (m.text && typeof m.text === 'string') {
-          text = m.text;
-        }
-      }
-      text = stripHtml(text);
-
-      if (!text) {
-        skippedEmpty++;
-        if (skippedEmpty <= 5) {
-          console.log(`[StoryGuide] DataTable: Skipped empty #${i}, isUser=${isUser}, name=${name}, keys=${Object.keys(m).join(',')}`);
-        }
-        continue;
-      }
-
-      if (isUser) userCount++;
-      else assistantCount++;
-
-      if (text.length > maxChars) text = text.slice(0, maxChars) + '…(截断)';
-      picked.push(`【${name}】${text}`);
-      // 调试：显示每条被选中的消息
-      console.log(`[StoryGuide] DataTable picked[${picked.length - 1}]: ${isUser ? 'USER' : 'AI'} "${name}" len=${text.length}`);
-    }
-    picked.reverse();
-    const snapshotText = picked.join('\n\n');
-
-    console.log(`[StoryGuide] DataTable snapshot: ${picked.length} messages (user: ${userCount}, assistant: ${assistantCount}, skipped: ${skippedEmpty}, max: ${maxMessages})`);
-    console.log(`[StoryGuide] DataTable chat array length: ${chat.length}`);
-    console.log(`[StoryGuide] DataTable snapshot preview (first 1000 chars):`, snapshotText.slice(0, 1000));
-
+    console.log('[StoryGuide] DataTable snapshot length:', snapshotText.length);
 
     // 读取世界观设定
     const world = stripHtml(getChatMetaValue(META_KEYS.world) || getChatMetaValue(META_KEYS.canon) || '');
@@ -10785,13 +10743,15 @@ async function execDataTableUpdate() {
     let statDataText = '';
     if (s.dataTableStatEnabled) {
       try {
+        const ctx = SillyTavern.getContext();
+        const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
         // 临时覆盖变量名和解析模式
         const tempSettings = {
           ...s,
           wiRollStatVarName: s.dataTableStatVarName || 'stat_data',
           wiRollStatParseMode: s.dataTableStatParseMode || 'json'
         };
-        const { statData, rawText } = await resolveStatDataComprehensive(chat, tempSettings);
+        const { statData } = await resolveStatDataComprehensive(chat, tempSettings);
         if (statData) {
           statDataText = typeof statData === 'string' ? statData : JSON.stringify(statData, null, 2);
           console.log('[StoryGuide] DataTable stat_data loaded:', statDataText.length, 'chars');
@@ -10828,24 +10788,17 @@ async function execDataTableUpdate() {
     }
 
     // 4. 构建 Prompt（包含 stat_data）
-    const promptMsgs = JSON.parse(JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES)); // deep clone
-
-    // 构建完整的正文内容
     let fullChatContent = snapshotText || '（暂无正文）';
     if (statDataText) {
       fullChatContent = `【角色属性数据 (stat_data)】\n${statDataText}\n\n【剧情正文】\n${snapshotText || '（暂无正文）'}`;
     }
 
-    for (const m of promptMsgs) {
-      if (typeof m.content === 'string') {
-        m.content = renderTemplate(m.content, {
-          world: world || '（暂无背景设定）',
-          chat: fullChatContent,
-          table: currentTableStr
-        });
-      }
-    }
-
+    const promptMsgs = buildDataTablePromptMessages(
+      world || '（暂无背景设定）',
+      fullChatContent,
+      currentTableStr,
+      currentTableStr
+    );
 
     // 5. Call LLM (使用数据表专用的 provider 设置)
     let jsonText = '';
