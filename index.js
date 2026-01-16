@@ -2415,42 +2415,28 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       return { skipped: true, name: entryName, targetType, reason: 'unchanged' };
     }
 
-    // 内容不同 -> 尝试更新现有条目
+    // 内容不同 -> 尝试使用缓存的 UID 更新现有条目
     console.log(`[StoryGuide] Content changed for ${entryType} (${targetType}): ${entryName}, attempting update...`);
-    try {
-      // 使用前缀和名称搜索条目
-      const searchPattern = `${prefix}｜${entryName}`;
-      const getScript = `/getentries file=${quoteSlashValue(fileExprForQuery)} ${quoteSlashValue(searchPattern)}`;
-      const entriesResult = await execSlash(getScript);
 
-      // 解析返回的条目 UID
-      let entryUid = null;
-      if (entriesResult) {
-        const parsed = safeJsonParse(entriesResult);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          entryUid = parsed[0]?.uid || parsed[0];
-        } else if (typeof entriesResult === 'string' && entriesResult.trim()) {
-          const first = entriesResult.trim().split(',')[0].trim();
-          if (first.match(/^\d+$/)) entryUid = first;
-        }
-      }
-
-      if (entryUid && String(entryUid).match(/^\d+$/)) {
-        // 找到条目，更新内容
-        const updateScript = `/setentryfield file=${quoteSlashValue(fileExprForQuery)} uid=${entryUid} field=content ${quoteSlashValue(content)}`;
+    // 如果有缓存的 wiEntryUid，直接用它更新
+    if (cached.wiEntryUid) {
+      try {
+        const updateScript = `/setentryfield file=${quoteSlashValue(fileExprForQuery)} uid=${cached.wiEntryUid} field=content ${quoteSlashValue(content)}`;
         await execSlash(updateScript);
         cached.content = content;
         cached.lastUpdated = Date.now();
-        cached.wiEntryUid = entryUid;
-        console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${entryUid}`);
-        return { updated: true, name: entryName, targetType, wiEntryUid: entryUid };
-      } else {
-        console.log(`[StoryGuide] Entry not found via /getentries for update: ${searchPattern}`);
-        // 未找到，可能被手动删除，回退到创建新条目
+        console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${cached.wiEntryUid}`);
+        return { updated: true, name: entryName, targetType, wiEntryUid: cached.wiEntryUid };
+      } catch (e) {
+        console.warn(`[StoryGuide] Update ${entryType} (${targetType}) failed, will try recreate:`, e);
+        // 更新失败（可能条目被删除），回退到创建新条目
       }
-    } catch (e) {
-      console.warn(`[StoryGuide] Update ${entryType} (${targetType}) failed:`, e);
-      // 更新失败，回退到创建新条目
+    } else {
+      // 没有缓存的 UID，只更新本地缓存内容（世界书条目无法更新）
+      console.log(`[StoryGuide] No cached UID for ${entryType} (${targetType}): ${entryName}, skipping world book update (local cache updated)`);
+      cached.content = content;
+      cached.lastUpdated = Date.now();
+      return { skipped: true, name: entryName, targetType, reason: 'no_uid_for_update' };
     }
   }
 
@@ -2475,18 +2461,31 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=constant ${constant}`);
-  parts.push(`/flushvar ${uidVar}`);
+  // 最后输出 UID 以便在 JS 中捕获
+  parts.push(`/getvar ${uidVar}`);
   if (target === 'chatbook') parts.push(`/flushvar ${fileVar}`);
 
   try {
-    await execSlash(parts.join(' | '));
+    const result = await execSlash(parts.join(' | '));
+    // 尝试从结果中解析 UID
+    let capturedUid = null;
+    if (result) {
+      const uidStr = String(result).trim();
+      if (uidStr.match(/^\d+$/)) {
+        capturedUid = uidStr;
+      }
+    }
+
+    // 清理临时变量
+    try { await execSlash(`/flushvar ${uidVar}`); } catch { /* ignore */ }
+
     // 更新缓存（使用带 targetType 的 key）
     entriesCache[cacheKey] = {
       name: entryName,
       aliases: entryData.aliases || [],
       content,
       lastUpdated: Date.now(),
-      wiEntryUid: null, // STscript 无法可靠返回 UID
+      wiEntryUid: capturedUid, // 存储捕获的 UID，用于后续更新
       indexId,
       targetType,
     };
@@ -2494,8 +2493,8 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     if (targetType === 'green') {
       meta[nextIndexKey] = indexNum + 1;
     }
-    console.log(`[StoryGuide] Created ${entryType} (${targetType}): ${entryName} -> ${indexId}`);
-    return { created: true, name: entryName, indexId, targetType };
+    console.log(`[StoryGuide] Created ${entryType} (${targetType}): ${entryName} -> ${indexId}${capturedUid ? ` (UID: ${capturedUid})` : ''}`);
+    return { created: true, name: entryName, indexId, targetType, wiEntryUid: capturedUid };
   } catch (e) {
     console.warn(`[StoryGuide] Create ${entryType} (${targetType}) entry failed:`, e);
     return null;
