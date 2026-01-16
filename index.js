@@ -816,7 +816,7 @@ async function ensureBoundWorldInfo(opts = {}) {
 
   // 如果已经应用过，只需重新应用设置
   if (alreadyApplied) {
-    applyBoundWorldInfoToSettings();
+    await applyBoundWorldInfoToSettings();
     return false;
   }
 
@@ -829,7 +829,7 @@ async function ensureBoundWorldInfo(opts = {}) {
   });
 
   // 应用设置
-  applyBoundWorldInfoToSettings();
+  await applyBoundWorldInfoToSettings();
   return true;
 }
 
@@ -942,17 +942,46 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条目')
   return false;
 }
 
+// 解析当前聊天绑定的 chatbook 文件名（用于持久绑定）
+async function resolveChatbookFileName() {
+  const varName = '__sg_chatbook_name';
+  try {
+    const out = await execSlash(`/getchatbook | /setvar key=${varName} | /getvar ${varName} | /flushvar ${varName}`);
+    const raw = slashOutputToText(out).trim();
+    if (!raw) return '';
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const name = lines[lines.length - 1] || '';
+    return name.replace(/^"+|"+$/g, '');
+  } catch (e) {
+    console.warn('[StoryGuide] resolveChatbookFileName failed:', e?.message || e);
+    return '';
+  }
+}
+
 // 将绑定的世界书应用到设置
-function applyBoundWorldInfoToSettings() {
+async function applyBoundWorldInfoToSettings() {
   const s = ensureSettings();
   if (!s.autoBindWorldInfo) return;
 
   console.log('[StoryGuide] 应用自动绑定设置（使用 chatbook 模式）');
 
-  // 绿灯世界书：使用 chatbook 目标（/getchatbook 会自动创建聊天绑定的世界书）
+  let greenWI = String(getChatMetaValue(META_KEYS.boundGreenWI) || '').trim();
+  if (!greenWI) {
+    greenWI = await resolveChatbookFileName();
+    if (greenWI) await setChatMetaValue(META_KEYS.boundGreenWI, greenWI);
+  }
+
+  // 绿灯世界书：优先使用已解析的绑定文件名，避免切换/刷新后产生新文件
   s.summaryToWorldInfo = true;
-  s.summaryWorldInfoTarget = 'chatbook';
-  console.log('[StoryGuide] 绿灯设置: chatbook（将使用聊天绑定的世界书）');
+  if (greenWI) {
+    s.summaryWorldInfoTarget = 'file';
+    s.summaryWorldInfoFile = greenWI;
+    console.log('[StoryGuide] 绿灯设置: file（绑定文件）', greenWI);
+  } else {
+    s.summaryWorldInfoTarget = 'chatbook';
+    s.summaryWorldInfoFile = '';
+    console.log('[StoryGuide] 绿灯设置: chatbook（将使用聊天绑定的世界书）');
+  }
 
   // 蓝灯世界书：暂时禁用（因为无法自动创建独立文件）
   // 用户如需蓝灯功能，需要手动创建世界书文件并在设置中指定
@@ -996,8 +1025,9 @@ async function onChatSwitched() {
   console.log('[StoryGuide] 当前聊天绑定的世界书:', { greenWI, blueWI });
 
   if (greenWI || blueWI) {
-    applyBoundWorldInfoToSettings();
-    showToast(`已切换到本聊天专属世界书\n绿灯：${greenWI || '(无)'}\n蓝灯：${blueWI || '(无)'}`, {
+    await applyBoundWorldInfoToSettings();
+    const greenNow = String(getChatMetaValue(META_KEYS.boundGreenWI) || greenWI || '').trim();
+    showToast(`已切换到本聊天专属世界书\n绿灯：${greenNow || '(无)'}\n蓝灯：${blueWI || '(无)'}`, {
       kind: 'info', spinner: false, sticky: false, duration: 2500
     });
   } else {
