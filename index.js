@@ -938,8 +938,26 @@ function validateDataTableTemplate(rawText) {
 }
 
 function validateDataTablePrompt(rawText) {
-  const parsed = safeJsonParseAny(rawText);
+  let parsed = safeJsonParseAny(rawText);
+  if (!parsed) {
+    // Try to parse as array by finding first [ and last ]
+    const t = String(rawText).trim();
+    const first = t.indexOf('[');
+    const last = t.lastIndexOf(']');
+    if (first !== -1 && last !== -1 && last > first) {
+      try { parsed = JSON.parse(t.slice(first, last + 1)); } catch { }
+    }
+  }
+
+  if (!parsed) return { ok: false, error: 'JSON 格式错误 (Syntax Error)', prompts: null };
+
+  // Allow single object, wrap in array
+  if (!Array.isArray(parsed) && typeof parsed === 'object') {
+    parsed = [parsed];
+  }
+
   if (!Array.isArray(parsed)) return { ok: false, error: '提示词必须是 JSON 数组', prompts: null };
+
   const normalized = parsed.map((item) => {
     if (!item || typeof item !== 'object') return null;
     const role = String(item.role || '').trim().toLowerCase();
@@ -949,7 +967,8 @@ function validateDataTablePrompt(rawText) {
     const name = item.name ? String(item.name) : undefined;
     return name ? { role, content, name } : { role, content };
   }).filter(Boolean);
-  if (!normalized.length) return { ok: false, error: '提示词内容为空', prompts: null };
+
+  if (!normalized.length) return { ok: false, error: '提示词内容为空 (或缺少 role/content 字段)', prompts: null };
   return { ok: true, error: '', prompts: normalized };
 }
 
