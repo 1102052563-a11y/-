@@ -572,14 +572,14 @@ function ensureSettings() {
     }
   }
 
-  // 修复：强制更新旧版数据表提示词 -> 已移除，避免覆盖用户自定义设置
-  // if (typeof extensionSettings[MODULE_NAME].dataTablePromptJson === 'string') {
-  //   if (extensionSettings[MODULE_NAME].dataTablePromptJson.includes('只输出表格 JSON，保持结构与字段名称不变') &&
-  //     !extensionSettings[MODULE_NAME].dataTablePromptJson.includes('严禁输出扁平化的')) {
-  //     extensionSettings[MODULE_NAME].dataTablePromptJson = JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
-  //     saveSettingsDebounced();
-  //   }
-  // }
+  // 修复：强制更新旧版数据表提示词，以修复 JSON 格式问题
+  if (typeof extensionSettings[MODULE_NAME].dataTablePromptJson === 'string') {
+    if (extensionSettings[MODULE_NAME].dataTablePromptJson.includes('只输出表格 JSON，保持结构与字段名称不变') &&
+      !extensionSettings[MODULE_NAME].dataTablePromptJson.includes('严禁输出扁平化的')) {
+      extensionSettings[MODULE_NAME].dataTablePromptJson = JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
+      saveSettingsDebounced();
+    }
+  }
   return extensionSettings[MODULE_NAME];
 }
 
@@ -938,26 +938,8 @@ function validateDataTableTemplate(rawText) {
 }
 
 function validateDataTablePrompt(rawText) {
-  let parsed = safeJsonParseAny(rawText);
-  if (!parsed) {
-    // Try to parse as array by finding first [ and last ]
-    const t = String(rawText).trim();
-    const first = t.indexOf('[');
-    const last = t.lastIndexOf(']');
-    if (first !== -1 && last !== -1 && last > first) {
-      try { parsed = JSON.parse(t.slice(first, last + 1)); } catch { }
-    }
-  }
-
-  if (!parsed) return { ok: false, error: 'JSON 格式错误 (Syntax Error)', prompts: null };
-
-  // Allow single object, wrap in array
-  if (!Array.isArray(parsed) && typeof parsed === 'object') {
-    parsed = [parsed];
-  }
-
+  const parsed = safeJsonParseAny(rawText);
   if (!Array.isArray(parsed)) return { ok: false, error: '提示词必须是 JSON 数组', prompts: null };
-
   const normalized = parsed.map((item) => {
     if (!item || typeof item !== 'object') return null;
     const role = String(item.role || '').trim().toLowerCase();
@@ -967,8 +949,7 @@ function validateDataTablePrompt(rawText) {
     const name = item.name ? String(item.name) : undefined;
     return name ? { role, content, name } : { role, content };
   }).filter(Boolean);
-
-  if (!normalized.length) return { ok: false, error: '提示词内容为空 (或缺少 role/content 字段)', prompts: null };
+  if (!normalized.length) return { ok: false, error: '提示词内容为空', prompts: null };
   return { ok: true, error: '', prompts: normalized };
 }
 
