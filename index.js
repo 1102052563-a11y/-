@@ -2367,12 +2367,43 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   prefix,
   targetType = 'green', // 'green' | 'blue'
 }) {
-  const uid = String(entryData.uid || entryData.name || '').trim().replace(/[|｜,，]/g, '_');
-  if (!uid) return null;
+  // 使用规范化的名称作为唯一标识符（忽略 LLM 提供的 uid，因为不可靠）
+  const entryName = String(entryData.name || '').trim();
+  if (!entryName) return null;
+
+  // 规范化名称：移除特殊字符，用于缓存 key
+  const normalizedName = entryName.replace(/[|｜,，\s]/g, '_').toLowerCase();
+  const cacheKey = `${normalizedName}_${targetType}`;
+
+  // 首先按 cacheKey 直接查找
+  let cached = entriesCache[cacheKey];
+
+  // 如果直接查找失败，遍历缓存按名称模糊匹配（处理同一人物不同写法）
+  if (!cached) {
+    for (const [key, value] of Object.entries(entriesCache)) {
+      if (!key.endsWith(`_${targetType}`)) continue;
+      const cachedNameNorm = String(value.name || '').replace(/[|｜,，\s]/g, '_').toLowerCase();
+      if (cachedNameNorm === normalizedName || cachedNameNorm.includes(normalizedName) || normalizedName.includes(cachedNameNorm)) {
+        cached = value;
+        console.log(`[StoryGuide] Found cached ${entryType} by fuzzy match: "${entryName}" -> "${value.name}"`);
+        break;
+      }
+    }
+  }
 
   const content = buildContent(entryData).replace(/\|/g, '｜');
-  const cacheKey = `${uid}_${targetType}`;
-  const cached = entriesCache[cacheKey];
+
+  // 去重检查：如果本地缓存已有此条目
+  if (cached) {
+    // 已有缓存 -> 跳过创建（无论 LLM 标记为 isNew 还是 isUpdated）
+    // 除非内容真的有变化才更新
+    if (cached.content === content) {
+      console.log(`[StoryGuide] Skip unchanged ${entryType} (${targetType}): ${entryName}`);
+      return { skipped: true, name: entryName, targetType, reason: 'unchanged' };
+    }
+    console.log(`[StoryGuide] Skip existing ${entryType} (${targetType}): ${entryName} (content differs but entry exists)`);
+    return { skipped: true, name: entryName, targetType, reason: 'already_exists' };
+  }
 
   // 根据 targetType 选择世界书目标
   let target, file, constant;
@@ -2387,57 +2418,11 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     constant = 0; // 绿灯=触发词触发
   }
 
-  const fileExpr = (target === 'chatbook') ? '{{getchatbook}}' : file;
-
-  // 去重检查：如果本地缓存已有此条目
-  if (cached) {
-    // LLM 标记为 isNew 但我们已有缓存 -> 说明已存在，跳过
-    if (entryData.isNew && !entryData.isUpdated) {
-      console.log(`[StoryGuide] Skip duplicate ${entryType} (${targetType}): ${uid}`);
-      return { skipped: true, uid, targetType, reason: 'already_cached' };
-    }
-    // isUpdated -> 尝试通过 /getentries 查找并更新
-    try {
-      // 使用条目名称/key 作为搜索条件
-      const searchKey = cached.name || entryData.name || uid;
-      const getScript = `/getentries file=${quoteSlashValue(fileExpr)} ${quoteSlashValue(searchKey)}`;
-      const entriesResult = await execSlash(getScript);
-
-      // 解析返回的条目 UID
-      let entryUid = null;
-      if (entriesResult) {
-        const parsed = safeJsonParse(entriesResult);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // 找到匹配的条目
-          entryUid = parsed[0]?.uid || parsed[0];
-        } else if (typeof entriesResult === 'string' && entriesResult.trim()) {
-          // 可能直接返回 UID 字符串
-          entryUid = entriesResult.trim().split(',')[0].trim();
-        }
-      }
-
-      if (entryUid && String(entryUid).match(/^\d+$/)) {
-        // 找到条目，更新内容
-        const updateScript = `/setentryfield file=${quoteSlashValue(fileExpr)} uid=${entryUid} field=content ${quoteSlashValue(content)}`;
-        await execSlash(updateScript);
-        cached.content = content;
-        cached.lastUpdated = Date.now();
-        cached.wiEntryUid = entryUid;
-        console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${uid} -> UID ${entryUid}`);
-        return { updated: true, uid, targetType, wiEntryUid: entryUid };
-      }
-      // 未找到对应条目，可能被手动删除，回退到创建
-      console.log(`[StoryGuide] Entry not found via /getentries, will create new: ${uid}`);
-    } catch (e) {
-      console.warn(`[StoryGuide] Query ${entryType} (${targetType}) failed, will try create:`, e);
-    }
-  }
-
   // 创建新条目
   const indexNum = meta[nextIndexKey] || 1;
   const indexId = `${entryType.substring(0, 3).toUpperCase()}-${String(indexNum).padStart(3, '0')}`;
-  const keyValue = buildStructuredEntryKey(prefix, entryData.name || uid, indexId);
-  const comment = `${prefix}｜${entryData.name || uid}｜${indexId}`;
+  const keyValue = buildStructuredEntryKey(prefix, entryName, indexId);
+  const comment = `${prefix}｜${entryName}｜${indexId}`;
 
   const uidVar = '__sg_struct_uid';
   const fileVar = '__sg_struct_wbfile';
@@ -2461,7 +2446,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     await execSlash(parts.join(' | '));
     // 更新缓存（使用带 targetType 的 key）
     entriesCache[cacheKey] = {
-      name: entryData.name || uid,
+      name: entryName,
       aliases: entryData.aliases || [],
       content,
       lastUpdated: Date.now(),
@@ -2473,7 +2458,8 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     if (targetType === 'green') {
       meta[nextIndexKey] = indexNum + 1;
     }
-    return { created: true, uid, indexId, targetType };
+    console.log(`[StoryGuide] Created ${entryType} (${targetType}): ${entryName} -> ${indexId}`);
+    return { created: true, name: entryName, indexId, targetType };
   } catch (e) {
     console.warn(`[StoryGuide] Create ${entryType} (${targetType}) entry failed:`, e);
     return null;
