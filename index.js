@@ -572,14 +572,22 @@ function ensureSettings() {
     }
   }
 
-  // 修复：强制更新旧版数据表提示词，以修复 JSON 格式问题
-  if (typeof extensionSettings[MODULE_NAME].dataTablePromptJson === 'string') {
-    if (extensionSettings[MODULE_NAME].dataTablePromptJson.includes('只输出表格 JSON，保持结构与字段名称不变') &&
-      !extensionSettings[MODULE_NAME].dataTablePromptJson.includes('严禁输出扁平化的')) {
-      extensionSettings[MODULE_NAME].dataTablePromptJson = JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
-      saveSettingsDebounced();
+  // 修复：强制更新旧版数据表提示词，以修复 JSON 格式问题 (仅执行一次)
+  if (!extensionSettings[MODULE_NAME].migration_prompt_v2) {
+    if (typeof extensionSettings[MODULE_NAME].dataTablePromptJson === 'string') {
+      if (extensionSettings[MODULE_NAME].dataTablePromptJson.includes('只输出表格 JSON，保持结构与字段名称不变') &&
+        !extensionSettings[MODULE_NAME].dataTablePromptJson.includes('严禁输出扁平化的')) {
+        extensionSettings[MODULE_NAME].dataTablePromptJson = JSON.stringify(DEFAULT_DATA_TABLE_PROMPT_MESSAGES, null, 2);
+        console.log('[StoryGuide] Migrated data table prompt to V2 strict format.');
+      }
     }
+    extensionSettings[MODULE_NAME].migration_prompt_v2 = true;
+    saveSettingsDebounced();
+  } else {
+    // 即使 migrate 过了，也检查一下是否因为回退版本导致丢失了关键字段
+    // 但不再强行覆盖整个 prompt，只在确实缺少关键内容时警告或微调（这里选择暂不干预，尊重用户输入）
   }
+
   return extensionSettings[MODULE_NAME];
 }
 
