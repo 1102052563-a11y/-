@@ -2467,10 +2467,14 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
   try {
     const result = await execSlash(parts.join(' | '));
+    // DEBUG: 查看 execSlash 返回值
+    console.log(`[StoryGuide] DEBUG execSlash result type: ${typeof result}, value:`, result);
+
     // 尝试从结果中解析 UID
     let capturedUid = null;
     if (result) {
       const uidStr = String(result).trim();
+      console.log(`[StoryGuide] DEBUG uidStr: "${uidStr}", match: ${uidStr.match(/^\d+$/)}`);
       if (uidStr.match(/^\d+$/)) {
         capturedUid = uidStr;
       }
@@ -2489,6 +2493,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       indexId,
       targetType,
     };
+    console.log(`[StoryGuide] DEBUG cache entry wiEntryUid: ${capturedUid}`);
     // 只在第一次写入时递增索引（绿灯优先）
     if (targetType === 'green') {
       meta[nextIndexKey] = indexNum + 1;
