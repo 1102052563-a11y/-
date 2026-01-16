@@ -77,6 +77,9 @@ const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要
 // ===== 结构化世界书条目提示词默认值 =====
 const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管理"助手，负责从对话片段中提取结构化信息用于长期记忆。任务：1) 识别本次对话中出现的重要 NPC（不含主角）。2) 识别主角当前持有/装备的关键物品。3) 识别主角新增或变化的能力。对于每个条目，生成档案式的客观第三人称描述。`;
 const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
+const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只提取重要 NPC（不含主角），避免杜撰；信息不足写“未知/待确认”。`;
+const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录主角当前持有/使用的关键装备或物品，说明类型/来源/状态/效果等。`;
+const DEFAULT_STRUCTURED_ABILITY_PROMPT = `只记录主角新增或变化的能力/技能，注明触发条件/代价/负面效果等。`;
 const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"","status":"","personality":"","background":"","relationToProtagonist":"","keyEvents":[],"isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"","rarity":"","effects":"","source":"","currentState":"","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"","effects":"","trigger":"","cost":"","boundEvents":[],"isNegative":false,"isNew":true}]}`;
 
 // ===== ROLL 判定默认配置 =====
@@ -370,6 +373,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   abilityEntryPrefix: '能力',
   structuredEntriesSystemPrompt: '',
   structuredEntriesUserTemplate: '',
+  structuredCharacterPrompt: '',
+  structuredEquipmentPrompt: '',
+  structuredAbilityPrompt: '',
 
   // ===== 快捷选项功能 =====
   quickOptionsEnabled: true,
@@ -775,6 +781,18 @@ async function updateStaticModulesCache(parsedJson, modules) {
 // 清除静态模块缓存（手动刷新时使用）
 async function clearStaticModulesCache() {
   await setStaticModulesCache({});
+}
+
+// 清除结构化条目缓存（人物/装备/能力）
+async function clearStructuredEntriesCache() {
+  const meta = getSummaryMeta();
+  meta.characterEntries = {};
+  meta.equipmentEntries = {};
+  meta.abilityEntries = {};
+  meta.nextCharacterIndex = 1;
+  meta.nextEquipmentIndex = 1;
+  meta.nextAbilityIndex = 1;
+  await setSummaryMeta(meta);
 }
 
 // -------------------- 自动绑定世界书（每个聊天专属世界书） --------------------
@@ -2276,7 +2294,16 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
   const s = ensureSettings();
   let sys = String(s.structuredEntriesSystemPrompt || '').trim();
   if (!sys) sys = DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
-  sys = sys + '\n\n' + STRUCTURED_ENTRIES_JSON_REQUIREMENT;
+  const charPrompt = String(s.structuredCharacterPrompt || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
+  const equipPrompt = String(s.structuredEquipmentPrompt || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
+  const abilityPrompt = String(s.structuredAbilityPrompt || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
+  sys = [
+    sys,
+    `【人物条目要求】\n${charPrompt}`,
+    `【装备条目要求】\n${equipPrompt}`,
+    `【能力条目要求】\n${abilityPrompt}`,
+    STRUCTURED_ENTRIES_JSON_REQUIREMENT,
+  ].join('\n\n');
 
   // 构建已知列表供 LLM 判断是否新增/更新
   const knownChars = Object.values(meta.characterEntries || {}).map(c => `${c.name}(${c.uid})`).join('、') || '无';
@@ -6160,6 +6187,57 @@ function buildModalHtml() {
               </div>
             </div>
 
+            <div class="sg-card sg-subcard">
+              <div class="sg-card-title">结构化条目（人物/装备/能力）</div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">启用结构化条目</label>
+                <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">人物</label>
+                <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">装备</label>
+                <label class="sg-check"><input type="checkbox" id="sg_abilityEntriesEnabled">能力</label>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>人物条目前缀</label>
+                  <input id="sg_characterEntryPrefix" type="text" placeholder="人物">
+                </div>
+                <div class="sg-field">
+                  <label>装备条目前缀</label>
+                  <input id="sg_equipmentEntryPrefix" type="text" placeholder="装备">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>能力条目前缀</label>
+                  <input id="sg_abilityEntryPrefix" type="text" placeholder="能力">
+                </div>
+              </div>
+              <div class="sg-field">
+                <label>结构化提取提示词（System，可选）</label>
+                <textarea id="sg_structuredEntriesSystemPrompt" rows="5" placeholder="例如：强调客观档案式描述、避免杜撰…"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>结构化提取模板（User，可选）</label>
+                <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>人物条目提示词（可选）</label>
+                <textarea id="sg_structuredCharacterPrompt" rows="3" placeholder="例如：优先记录阵营/关系/关键事件…"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>装备条目提示词（可选）</label>
+                <textarea id="sg_structuredEquipmentPrompt" rows="3" placeholder="例如：强调来源/稀有度/当前状态…"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>能力条目提示词（可选）</label>
+                <textarea id="sg_structuredAbilityPrompt" rows="3" placeholder="例如：强调触发条件/代价/负面效果…"></textarea>
+              </div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
+                <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓存</button>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}。</div>
+              </div>
+            </div>
+
             <div class="sg-card sg-subcard" id="sg_summary_custom_block" style="display:none">
               <div class="sg-grid2">
                 <div class="sg-field">
@@ -6743,6 +6821,27 @@ function ensureModal() {
     setStatus('已恢复默认总结提示词 ✅', 'ok');
   });
 
+  // structured entries prompt reset + cache clear
+  $('#sg_structuredResetPrompt').on('click', () => {
+    $('#sg_structuredEntriesSystemPrompt').val(DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT);
+    $('#sg_structuredEntriesUserTemplate').val(DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE);
+    $('#sg_structuredCharacterPrompt').val(DEFAULT_STRUCTURED_CHARACTER_PROMPT);
+    $('#sg_structuredEquipmentPrompt').val(DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
+    $('#sg_structuredAbilityPrompt').val(DEFAULT_STRUCTURED_ABILITY_PROMPT);
+    pullUiToSettings();
+    saveSettings();
+    setStatus('已恢复默认结构化提示词 ✅', 'ok');
+  });
+
+  $('#sg_clearStructuredCache').on('click', async () => {
+    try {
+      await clearStructuredEntriesCache();
+      setStatus('已清除结构化条目缓存 ✅', 'ok');
+    } catch (e) {
+      setStatus(`清除结构化条目缓存失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
   // manual range split toggle & hint refresh
   $('#sg_summaryManualSplit').on('change', () => {
     pullUiToSettings();
@@ -6790,7 +6889,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -7218,6 +7317,18 @@ function pullSettingsToUi() {
   $('#sg_summaryTemperature').val(s.summaryTemperature);
   $('#sg_summarySystemPrompt').val(String(s.summarySystemPrompt || DEFAULT_SUMMARY_SYSTEM_PROMPT));
   $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || DEFAULT_SUMMARY_USER_TEMPLATE));
+  $('#sg_structuredEntriesEnabled').prop('checked', !!s.structuredEntriesEnabled);
+  $('#sg_characterEntriesEnabled').prop('checked', !!s.characterEntriesEnabled);
+  $('#sg_equipmentEntriesEnabled').prop('checked', !!s.equipmentEntriesEnabled);
+  $('#sg_abilityEntriesEnabled').prop('checked', !!s.abilityEntriesEnabled);
+  $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '人物'));
+  $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '装备'));
+  $('#sg_abilityEntryPrefix').val(String(s.abilityEntryPrefix || '能力'));
+  $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
+  $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
+  $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
+  $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
+  $('#sg_structuredAbilityPrompt').val(String(s.structuredAbilityPrompt || DEFAULT_STRUCTURED_ABILITY_PROMPT));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -7643,6 +7754,18 @@ function pullUiToSettings() {
   s.summaryTemperature = clampFloat($('#sg_summaryTemperature').val(), 0, 2, s.summaryTemperature || 0.4);
   s.summarySystemPrompt = String($('#sg_summarySystemPrompt').val() || '').trim() || DEFAULT_SUMMARY_SYSTEM_PROMPT;
   s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || DEFAULT_SUMMARY_USER_TEMPLATE;
+  s.structuredEntriesEnabled = $('#sg_structuredEntriesEnabled').is(':checked');
+  s.characterEntriesEnabled = $('#sg_characterEntriesEnabled').is(':checked');
+  s.equipmentEntriesEnabled = $('#sg_equipmentEntriesEnabled').is(':checked');
+  s.abilityEntriesEnabled = $('#sg_abilityEntriesEnabled').is(':checked');
+  s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '人物').trim() || '人物';
+  s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '装备').trim() || '装备';
+  s.abilityEntryPrefix = String($('#sg_abilityEntryPrefix').val() || '能力').trim() || '能力';
+  s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
+  s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
+  s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
+  s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
+  s.structuredAbilityPrompt = String($('#sg_structuredAbilityPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
