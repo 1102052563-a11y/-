@@ -2461,9 +2461,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=constant ${constant}`);
-  // 最后输出 UID 以便在 JS 中捕获
-  parts.push(`/getvar ${uidVar}`);
+  // 清理 fileVar，然后最后输出 UID
   if (target === 'chatbook') parts.push(`/flushvar ${fileVar}`);
+  parts.push(`/getvar ${uidVar}`);
 
   try {
     const result = await execSlash(parts.join(' | '));
