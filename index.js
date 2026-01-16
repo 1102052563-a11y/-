@@ -2359,21 +2359,33 @@ function buildAbilityContent(ability) {
 }
 
 // 写入或更新结构化条目（方案C：混合策略）
+// targetType: 'green' = 绿灯世界书（触发词触发）, 'blue' = 蓝灯世界书（常开索引）
 async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings, {
   buildContent,
   entriesCache,
   nextIndexKey,
   prefix,
+  targetType = 'green', // 'green' | 'blue'
 }) {
   const uid = String(entryData.uid || entryData.name || '').trim().replace(/[|｜,，]/g, '_');
   if (!uid) return null;
 
   const content = buildContent(entryData).replace(/\|/g, '｜');
-  const cached = entriesCache[uid];
+  const cacheKey = `${uid}_${targetType}`;
+  const cached = entriesCache[cacheKey];
 
-  // 获取世界书目标设置（与剧情总结共用）
-  const target = String(settings.summaryWorldInfoTarget || 'chatbook');
-  const file = String(settings.summaryWorldInfoFile || '');
+  // 根据 targetType 选择世界书目标
+  let target, file, constant;
+  if (targetType === 'blue') {
+    target = 'file';
+    file = String(settings.summaryBlueWorldInfoFile || '');
+    constant = 1; // 蓝灯=常开
+    if (!file) return null; // 蓝灯必须指定文件名
+  } else {
+    target = String(settings.summaryWorldInfoTarget || 'chatbook');
+    file = String(settings.summaryWorldInfoFile || '');
+    constant = 0; // 绿灯=触发词触发
+  }
 
   if (cached && cached.wiEntryUid) {
     // 方案C-1：本地缓存命中，直接用 STscript 更新
@@ -2384,9 +2396,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       // 更新缓存
       cached.content = content;
       cached.lastUpdated = Date.now();
-      return { updated: true, uid };
+      return { updated: true, uid, targetType };
     } catch (e) {
-      console.warn(`[StoryGuide] Update ${entryType} entry failed, will try create:`, e);
+      console.warn(`[StoryGuide] Update ${entryType} (${targetType}) entry failed, will try create:`, e);
       // 可能条目已被手动删除，回退到创建
     }
   }
@@ -2410,56 +2422,116 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   parts.push(`/setvar key=${uidVar}`);
   parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
   parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
+  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=constant ${constant}`);
   parts.push(`/flushvar ${uidVar}`);
   if (target === 'chatbook') parts.push(`/flushvar ${fileVar}`);
 
   try {
     await execSlash(parts.join(' | '));
-    // 更新缓存
-    entriesCache[uid] = {
+    // 更新缓存（使用带 targetType 的 key）
+    entriesCache[cacheKey] = {
       name: entryData.name || uid,
       aliases: entryData.aliases || [],
       content,
       lastUpdated: Date.now(),
       wiEntryUid: null, // STscript 无法可靠返回 UID
       indexId,
+      targetType,
     };
-    meta[nextIndexKey] = indexNum + 1;
-    return { created: true, uid, indexId };
+    // 只在第一次写入时递增索引（绿灯优先）
+    if (targetType === 'green') {
+      meta[nextIndexKey] = indexNum + 1;
+    }
+    return { created: true, uid, indexId, targetType };
   } catch (e) {
-    console.warn(`[StoryGuide] Create ${entryType} entry failed:`, e);
+    console.warn(`[StoryGuide] Create ${entryType} (${targetType}) entry failed:`, e);
     return null;
   }
 }
 
+
 async function writeOrUpdateCharacterEntry(char, meta, settings) {
   if (!char?.name) return null;
-  return writeOrUpdateStructuredEntry('character', char, meta, settings, {
-    buildContent: buildCharacterContent,
-    entriesCache: meta.characterEntries,
-    nextIndexKey: 'nextCharacterIndex',
-    prefix: settings.characterEntryPrefix || '人物',
-  });
+  const results = [];
+  // 写入绿灯世界书
+  if (settings.summaryToWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('character', char, meta, settings, {
+      buildContent: buildCharacterContent,
+      entriesCache: meta.characterEntries,
+      nextIndexKey: 'nextCharacterIndex',
+      prefix: settings.characterEntryPrefix || '人物',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  // 写入蓝灯世界书
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('character', char, meta, settings, {
+      buildContent: buildCharacterContent,
+      entriesCache: meta.characterEntries,
+      nextIndexKey: 'nextCharacterIndex',
+      prefix: settings.characterEntryPrefix || '人物',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
 }
 
 async function writeOrUpdateEquipmentEntry(equip, meta, settings) {
   if (!equip?.name) return null;
-  return writeOrUpdateStructuredEntry('equipment', equip, meta, settings, {
-    buildContent: buildEquipmentContent,
-    entriesCache: meta.equipmentEntries,
-    nextIndexKey: 'nextEquipmentIndex',
-    prefix: settings.equipmentEntryPrefix || '装备',
-  });
+  const results = [];
+  // 写入绿灯世界书
+  if (settings.summaryToWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('equipment', equip, meta, settings, {
+      buildContent: buildEquipmentContent,
+      entriesCache: meta.equipmentEntries,
+      nextIndexKey: 'nextEquipmentIndex',
+      prefix: settings.equipmentEntryPrefix || '装备',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  // 写入蓝灯世界书
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('equipment', equip, meta, settings, {
+      buildContent: buildEquipmentContent,
+      entriesCache: meta.equipmentEntries,
+      nextIndexKey: 'nextEquipmentIndex',
+      prefix: settings.equipmentEntryPrefix || '装备',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
 }
 
 async function writeOrUpdateAbilityEntry(ability, meta, settings) {
   if (!ability?.name) return null;
-  return writeOrUpdateStructuredEntry('ability', ability, meta, settings, {
-    buildContent: buildAbilityContent,
-    entriesCache: meta.abilityEntries,
-    nextIndexKey: 'nextAbilityIndex',
-    prefix: settings.abilityEntryPrefix || '能力',
-  });
+  const results = [];
+  // 写入绿灯世界书
+  if (settings.summaryToWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('ability', ability, meta, settings, {
+      buildContent: buildAbilityContent,
+      entriesCache: meta.abilityEntries,
+      nextIndexKey: 'nextAbilityIndex',
+      prefix: settings.abilityEntryPrefix || '能力',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  // 写入蓝灯世界书
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('ability', ability, meta, settings, {
+      buildContent: buildAbilityContent,
+      entriesCache: meta.abilityEntries,
+      nextIndexKey: 'nextAbilityIndex',
+      prefix: settings.abilityEntryPrefix || '能力',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
 }
 
 let cachedSlashExecutor = null;
