@@ -3041,29 +3041,27 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         try {
           const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s);
+          console.log('[StoryGuide] Structured entries result:', structuredResult);
           if (structuredResult) {
-            // 写入/更新人物条目
+            // 写入/更新人物条目（去重由 writeOrUpdate 内部处理）
             if (s.characterEntriesEnabled && structuredResult.characters?.length) {
+              console.log(`[StoryGuide] Processing ${structuredResult.characters.length} character(s)`);
               for (const char of structuredResult.characters) {
-                if (char.isNew || char.isUpdated) {
-                  await writeOrUpdateCharacterEntry(char, meta, s);
-                }
+                await writeOrUpdateCharacterEntry(char, meta, s);
               }
             }
             // 写入/更新装备条目
             if (s.equipmentEntriesEnabled && structuredResult.equipments?.length) {
+              console.log(`[StoryGuide] Processing ${structuredResult.equipments.length} equipment(s)`);
               for (const equip of structuredResult.equipments) {
-                if (equip.isNew || equip.isUpdated) {
-                  await writeOrUpdateEquipmentEntry(equip, meta, s);
-                }
+                await writeOrUpdateEquipmentEntry(equip, meta, s);
               }
             }
             // 写入/更新能力条目
             if (s.abilityEntriesEnabled && structuredResult.abilities?.length) {
+              console.log(`[StoryGuide] Processing ${structuredResult.abilities.length} ability(s)`);
               for (const ability of structuredResult.abilities) {
-                if (ability.isNew || ability.isUpdated) {
-                  await writeOrUpdateAbilityEntry(ability, meta, s);
-                }
+                await writeOrUpdateAbilityEntry(ability, meta, s);
               }
             }
             await setSummaryMeta(meta);
