@@ -2439,14 +2439,43 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
       const findResult = await execSlash(findParts.join(' | '));
 
-      // 解析 UID
+      // DEBUG: 查看 findentry 返回值
+      console.log(`[StoryGuide] DEBUG /findentry result:`, findResult, `type:`, typeof findResult);
+
+      // 解析 UID - 处理多种可能的返回格式
       let foundUid = null;
-      if (findResult) {
-        const uidStr = String(findResult).trim();
-        if (uidStr.match(/^\d+$/)) {
-          foundUid = uidStr;
+      if (findResult !== null && findResult !== undefined) {
+        // 如果是数字，直接使用
+        if (typeof findResult === 'number') {
+          foundUid = String(findResult);
+        } else if (typeof findResult === 'string') {
+          const trimmed = findResult.trim();
+          // 直接是数字字符串
+          if (trimmed.match(/^\d+$/)) {
+            foundUid = trimmed;
+          } else {
+            // 尝试解析 JSON
+            try {
+              const parsed = JSON.parse(trimmed);
+              if (typeof parsed === 'number') {
+                foundUid = String(parsed);
+              } else if (parsed?.pipe !== undefined) {
+                foundUid = String(parsed.pipe);
+              } else if (parsed?.result !== undefined) {
+                foundUid = String(parsed.result);
+              }
+            } catch { /* not JSON */ }
+          }
+        } else if (typeof findResult === 'object') {
+          // 对象形式 {pipe: xxx} 或 {result: xxx}
+          if (findResult?.pipe !== undefined) {
+            foundUid = String(findResult.pipe);
+          } else if (findResult?.result !== undefined) {
+            foundUid = String(findResult.result);
+          }
         }
       }
+      console.log(`[StoryGuide] DEBUG parsed foundUid:`, foundUid);
 
       // 清理临时变量
       try { await execSlash(`/flushvar ${findUidVar}`); } catch { /* ignore */ }
