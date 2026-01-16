@@ -73,6 +73,12 @@ const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】\n{{userMessage}}\n
 
 const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"pickedIds": number[]}。\n- pickedIds 必须是候选列表里的 id（整数）。\n- 返回的 pickedIds 数量 <= maxPick。`;
 
+
+// ===== 结构化世界书条目提示词默认值 =====
+const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管理"助手，负责从对话片段中提取结构化信息用于长期记忆。任务：1) 识别本次对话中出现的重要 NPC（不含主角）。2) 识别主角当前持有/装备的关键物品。3) 识别主角新增或变化的能力。对于每个条目，生成档案式的客观第三人称描述。`;
+const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"","status":"","personality":"","background":"","relationToProtagonist":"","keyEvents":[],"isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"","rarity":"","effects":"","source":"","currentState":"","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"","effects":"","trigger":"","cost":"","boundEvents":[],"isNegative":false,"isNew":true}]}`;
+
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
   { key: 'combat', label: '战斗', keywords: ['战斗', '攻击', '出手', '挥剑', '射击', '格挡', '闪避', '搏斗', '砍', '杀', '打', 'fight', 'attack', 'strike'] },
@@ -353,6 +359,17 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 额外可自定义提示词“骨架”
   customSystemPreamble: '',     // 附加在默认 system 之后
   customConstraints: '',        // 附加在默认 constraints 之后
+
+  // ===== 结构化世界书条目（人物/装备/能力） =====
+  structuredEntriesEnabled: true,
+  characterEntriesEnabled: true,
+  equipmentEntriesEnabled: true,
+  abilityEntriesEnabled: false, // 默认关闭
+  characterEntryPrefix: '人物',
+  equipmentEntryPrefix: '装备',
+  abilityEntryPrefix: '能力',
+  structuredEntriesSystemPrompt: '',
+  structuredEntriesUserTemplate: '',
 
   // ===== 快捷选项功能 =====
   quickOptionsEnabled: true,
@@ -670,6 +687,13 @@ function getDefaultSummaryMeta() {
     history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
     wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
     rollLogs: [], // [{ts, action, summary, final, success, userText}]
+    // 结构化条目缓存（用于去重与更新 - 方案C混合策略）
+    characterEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
+    equipmentEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
+    abilityEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
+    nextCharacterIndex: 1, // NPC-001, NPC-002...
+    nextEquipmentIndex: 1, // EQP-001, EQP-002...
+    nextAbilityIndex: 1, // ABL-001, ABL-002...
   };
 }
 
@@ -2246,6 +2270,198 @@ function appendToBlueIndexCache(rec) {
   updateBlueIndexInfoLabel();
 }
 
+// ===== 结构化世界书条目核心函数 =====
+
+function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta) {
+  const s = ensureSettings();
+  let sys = String(s.structuredEntriesSystemPrompt || '').trim();
+  if (!sys) sys = DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
+  sys = sys + '\n\n' + STRUCTURED_ENTRIES_JSON_REQUIREMENT;
+
+  // 构建已知列表供 LLM 判断是否新增/更新
+  const knownChars = Object.values(meta.characterEntries || {}).map(c => `${c.name}(${c.uid})`).join('、') || '无';
+  const knownEquips = Object.values(meta.equipmentEntries || {}).map(e => `${e.name}(${e.uid})`).join('、') || '无';
+
+  let tpl = String(s.structuredEntriesUserTemplate || '').trim();
+  if (!tpl) tpl = DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
+  let user = renderTemplate(tpl, {
+    fromFloor: String(fromFloor),
+    toFloor: String(toFloor),
+    chunk: String(chunkText || ''),
+    knownCharacters: knownChars,
+    knownEquipments: knownEquips,
+  });
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: user },
+  ];
+}
+
+async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, settings) {
+  const messages = buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta);
+  let jsonText = '';
+  if (String(settings.summaryProvider || 'st') === 'custom') {
+    jsonText = await callViaCustom(settings.summaryCustomEndpoint, settings.summaryCustomApiKey, settings.summaryCustomModel, messages, settings.summaryTemperature, settings.summaryCustomMaxTokens, 0.95, settings.summaryCustomStream);
+  } else {
+    jsonText = await callViaSillyTavern(messages, null, settings.summaryTemperature);
+    if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+  }
+  const parsed = safeJsonParse(jsonText);
+  if (!parsed) return null;
+  return {
+    characters: Array.isArray(parsed.characters) ? parsed.characters : [],
+    equipments: Array.isArray(parsed.equipments) ? parsed.equipments : [],
+    abilities: Array.isArray(parsed.abilities) ? parsed.abilities : [],
+  };
+}
+
+// 构建条目的 key（用于世界书触发词和去重）
+function buildStructuredEntryKey(prefix, name, indexId) {
+  return `${prefix}｜${name}｜${indexId}`;
+}
+
+// 构建条目内容（档案式描述）
+function buildCharacterContent(char) {
+  const parts = [];
+  if (char.name) parts.push(`【人物】${char.name}`);
+  if (char.aliases?.length) parts.push(`别名：${char.aliases.join('、')}`);
+  if (char.faction) parts.push(`阵营/身份：${char.faction}`);
+  if (char.status) parts.push(`状态：${char.status}`);
+  if (char.personality) parts.push(`性格：${char.personality}`);
+  if (char.background) parts.push(`背景：${char.background}`);
+  if (char.relationToProtagonist) parts.push(`与主角关系：${char.relationToProtagonist}`);
+  if (char.keyEvents?.length) parts.push(`关键事件：${char.keyEvents.join('；')}`);
+  return parts.join('\n');
+}
+
+function buildEquipmentContent(equip) {
+  const parts = [];
+  if (equip.name) parts.push(`【装备】${equip.name}`);
+  if (equip.aliases?.length) parts.push(`别名：${equip.aliases.join('、')}`);
+  if (equip.type) parts.push(`类型：${equip.type}`);
+  if (equip.rarity) parts.push(`品质：${equip.rarity}`);
+  if (equip.effects) parts.push(`效果：${equip.effects}`);
+  if (equip.source) parts.push(`来源：${equip.source}`);
+  if (equip.currentState) parts.push(`当前状态：${equip.currentState}`);
+  if (equip.boundEvents?.length) parts.push(`相关事件：${equip.boundEvents.join('；')}`);
+  return parts.join('\n');
+}
+
+function buildAbilityContent(ability) {
+  const parts = [];
+  if (ability.name) parts.push(`【能力】${ability.name}${ability.isNegative ? '（负面）' : ''}`);
+  if (ability.type) parts.push(`类型：${ability.type}`);
+  if (ability.effects) parts.push(`效果：${ability.effects}`);
+  if (ability.trigger) parts.push(`触发条件：${ability.trigger}`);
+  if (ability.cost) parts.push(`代价/冷却：${ability.cost}`);
+  if (ability.boundEvents?.length) parts.push(`相关事件：${ability.boundEvents.join('；')}`);
+  return parts.join('\n');
+}
+
+// 写入或更新结构化条目（方案C：混合策略）
+async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings, {
+  buildContent,
+  entriesCache,
+  nextIndexKey,
+  prefix,
+}) {
+  const uid = String(entryData.uid || entryData.name || '').trim().replace(/[|｜,，]/g, '_');
+  if (!uid) return null;
+
+  const content = buildContent(entryData).replace(/\|/g, '｜');
+  const cached = entriesCache[uid];
+
+  // 获取世界书目标设置（与剧情总结共用）
+  const target = String(settings.summaryWorldInfoTarget || 'chatbook');
+  const file = String(settings.summaryWorldInfoFile || '');
+
+  if (cached && cached.wiEntryUid) {
+    // 方案C-1：本地缓存命中，直接用 STscript 更新
+    try {
+      const fileExpr = (target === 'chatbook') ? '{{getchatbook}}' : file;
+      const script = `/setentryfield file=${quoteSlashValue(fileExpr)} uid=${cached.wiEntryUid} field=content ${quoteSlashValue(content)}`;
+      await execSlash(script);
+      // 更新缓存
+      cached.content = content;
+      cached.lastUpdated = Date.now();
+      return { updated: true, uid };
+    } catch (e) {
+      console.warn(`[StoryGuide] Update ${entryType} entry failed, will try create:`, e);
+      // 可能条目已被手动删除，回退到创建
+    }
+  }
+
+  // 方案C-2：创建新条目
+  const indexNum = meta[nextIndexKey] || 1;
+  const indexId = `${entryType.substring(0, 3).toUpperCase()}-${String(indexNum).padStart(3, '0')}`;
+  const keyValue = buildStructuredEntryKey(prefix, entryData.name || uid, indexId);
+  const comment = `${prefix}｜${entryData.name || uid}｜${indexId}`;
+
+  const uidVar = '__sg_struct_uid';
+  const fileVar = '__sg_struct_wbfile';
+  const fileExpr = (target === 'chatbook') ? `{{getvar::${fileVar}}}` : file;
+
+  const parts = [];
+  if (target === 'chatbook') {
+    parts.push('/getchatbook');
+    parts.push(`/setvar key=${fileVar}`);
+  }
+  parts.push(`/createentry file=${quoteSlashValue(fileExpr)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`);
+  parts.push(`/setvar key=${uidVar}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
+  parts.push(`/flushvar ${uidVar}`);
+  if (target === 'chatbook') parts.push(`/flushvar ${fileVar}`);
+
+  try {
+    await execSlash(parts.join(' | '));
+    // 更新缓存
+    entriesCache[uid] = {
+      name: entryData.name || uid,
+      aliases: entryData.aliases || [],
+      content,
+      lastUpdated: Date.now(),
+      wiEntryUid: null, // STscript 无法可靠返回 UID
+      indexId,
+    };
+    meta[nextIndexKey] = indexNum + 1;
+    return { created: true, uid, indexId };
+  } catch (e) {
+    console.warn(`[StoryGuide] Create ${entryType} entry failed:`, e);
+    return null;
+  }
+}
+
+async function writeOrUpdateCharacterEntry(char, meta, settings) {
+  if (!char?.name) return null;
+  return writeOrUpdateStructuredEntry('character', char, meta, settings, {
+    buildContent: buildCharacterContent,
+    entriesCache: meta.characterEntries,
+    nextIndexKey: 'nextCharacterIndex',
+    prefix: settings.characterEntryPrefix || '人物',
+  });
+}
+
+async function writeOrUpdateEquipmentEntry(equip, meta, settings) {
+  if (!equip?.name) return null;
+  return writeOrUpdateStructuredEntry('equipment', equip, meta, settings, {
+    buildContent: buildEquipmentContent,
+    entriesCache: meta.equipmentEntries,
+    nextIndexKey: 'nextEquipmentIndex',
+    prefix: settings.equipmentEntryPrefix || '装备',
+  });
+}
+
+async function writeOrUpdateAbilityEntry(ability, meta, settings) {
+  if (!ability?.name) return null;
+  return writeOrUpdateStructuredEntry('ability', ability, meta, settings, {
+    buildContent: buildAbilityContent,
+    entriesCache: meta.abilityEntries,
+    nextIndexKey: 'nextAbilityIndex',
+    prefix: settings.abilityEntryPrefix || '能力',
+  });
+}
+
 let cachedSlashExecutor = null;
 
 async function getSlashExecutor() {
@@ -2731,6 +2947,43 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
       // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
       try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
+
+      // 生成结构化世界书条目（人物/装备/能力 - 与剧情总结同一事务）
+      if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
+        try {
+          const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s);
+          if (structuredResult) {
+            // 写入/更新人物条目
+            if (s.characterEntriesEnabled && structuredResult.characters?.length) {
+              for (const char of structuredResult.characters) {
+                if (char.isNew || char.isUpdated) {
+                  await writeOrUpdateCharacterEntry(char, meta, s);
+                }
+              }
+            }
+            // 写入/更新装备条目
+            if (s.equipmentEntriesEnabled && structuredResult.equipments?.length) {
+              for (const equip of structuredResult.equipments) {
+                if (equip.isNew || equip.isUpdated) {
+                  await writeOrUpdateEquipmentEntry(equip, meta, s);
+                }
+              }
+            }
+            // 写入/更新能力条目
+            if (s.abilityEntriesEnabled && structuredResult.abilities?.length) {
+              for (const ability of structuredResult.abilities) {
+                if (ability.isNew || ability.isUpdated) {
+                  await writeOrUpdateAbilityEntry(ability, meta, s);
+                }
+              }
+            }
+            await setSummaryMeta(meta);
+          }
+        } catch (e) {
+          console.warn('[StoryGuide] Structured entries generation failed:', e);
+          // 结构化条目生成失败不阻断主流程
+        }
+      }
 
       // world info write
       if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
