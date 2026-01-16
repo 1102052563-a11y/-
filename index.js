@@ -2387,23 +2387,53 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     constant = 0; // 绿灯=触发词触发
   }
 
-  if (cached && cached.wiEntryUid) {
-    // 方案C-1：本地缓存命中，直接用 STscript 更新
+  const fileExpr = (target === 'chatbook') ? '{{getchatbook}}' : file;
+
+  // 去重检查：如果本地缓存已有此条目
+  if (cached) {
+    // LLM 标记为 isNew 但我们已有缓存 -> 说明已存在，跳过
+    if (entryData.isNew && !entryData.isUpdated) {
+      console.log(`[StoryGuide] Skip duplicate ${entryType} (${targetType}): ${uid}`);
+      return { skipped: true, uid, targetType, reason: 'already_cached' };
+    }
+    // isUpdated -> 尝试通过 /getentries 查找并更新
     try {
-      const fileExpr = (target === 'chatbook') ? '{{getchatbook}}' : file;
-      const script = `/setentryfield file=${quoteSlashValue(fileExpr)} uid=${cached.wiEntryUid} field=content ${quoteSlashValue(content)}`;
-      await execSlash(script);
-      // 更新缓存
-      cached.content = content;
-      cached.lastUpdated = Date.now();
-      return { updated: true, uid, targetType };
+      // 使用条目名称/key 作为搜索条件
+      const searchKey = cached.name || entryData.name || uid;
+      const getScript = `/getentries file=${quoteSlashValue(fileExpr)} ${quoteSlashValue(searchKey)}`;
+      const entriesResult = await execSlash(getScript);
+
+      // 解析返回的条目 UID
+      let entryUid = null;
+      if (entriesResult) {
+        const parsed = safeJsonParse(entriesResult);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // 找到匹配的条目
+          entryUid = parsed[0]?.uid || parsed[0];
+        } else if (typeof entriesResult === 'string' && entriesResult.trim()) {
+          // 可能直接返回 UID 字符串
+          entryUid = entriesResult.trim().split(',')[0].trim();
+        }
+      }
+
+      if (entryUid && String(entryUid).match(/^\d+$/)) {
+        // 找到条目，更新内容
+        const updateScript = `/setentryfield file=${quoteSlashValue(fileExpr)} uid=${entryUid} field=content ${quoteSlashValue(content)}`;
+        await execSlash(updateScript);
+        cached.content = content;
+        cached.lastUpdated = Date.now();
+        cached.wiEntryUid = entryUid;
+        console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${uid} -> UID ${entryUid}`);
+        return { updated: true, uid, targetType, wiEntryUid: entryUid };
+      }
+      // 未找到对应条目，可能被手动删除，回退到创建
+      console.log(`[StoryGuide] Entry not found via /getentries, will create new: ${uid}`);
     } catch (e) {
-      console.warn(`[StoryGuide] Update ${entryType} (${targetType}) entry failed, will try create:`, e);
-      // 可能条目已被手动删除，回退到创建
+      console.warn(`[StoryGuide] Query ${entryType} (${targetType}) failed, will try create:`, e);
     }
   }
 
-  // 方案C-2：创建新条目
+  // 创建新条目
   const indexNum = meta[nextIndexKey] || 1;
   const indexId = `${entryType.substring(0, 3).toUpperCase()}-${String(indexNum).padStart(3, '0')}`;
   const keyValue = buildStructuredEntryKey(prefix, entryData.name || uid, indexId);
@@ -2411,18 +2441,19 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
   const uidVar = '__sg_struct_uid';
   const fileVar = '__sg_struct_wbfile';
-  const fileExpr = (target === 'chatbook') ? `{{getvar::${fileVar}}}` : file;
+  // 对于 chatbook 需要在 STscript 中动态获取文件名
+  const createFileExpr = (target === 'chatbook') ? `{{getvar::${fileVar}}}` : file;
 
   const parts = [];
   if (target === 'chatbook') {
     parts.push('/getchatbook');
     parts.push(`/setvar key=${fileVar}`);
   }
-  parts.push(`/createentry file=${quoteSlashValue(fileExpr)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`);
+  parts.push(`/createentry file=${quoteSlashValue(createFileExpr)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`);
   parts.push(`/setvar key=${uidVar}`);
-  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
-  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
-  parts.push(`/setentryfield file=${quoteSlashValue(fileExpr)} uid={{getvar::${uidVar}}} field=constant ${constant}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
+  parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
+  parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=constant ${constant}`);
   parts.push(`/flushvar ${uidVar}`);
   if (target === 'chatbook') parts.push(`/flushvar ${fileVar}`);
 
