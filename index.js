@@ -2415,28 +2415,67 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       return { skipped: true, name: entryName, targetType, reason: 'unchanged' };
     }
 
-    // 内容不同 -> 尝试使用缓存的 UID 更新现有条目
-    console.log(`[StoryGuide] Content changed for ${entryType} (${targetType}): ${entryName}, attempting update...`);
+    // 内容不同 -> 尝试使用 /findentry 查找并更新
+    console.log(`[StoryGuide] Content changed for ${entryType} (${targetType}): ${entryName}, attempting update via /findentry...`);
+    try {
+      // 使用 /findentry 通过 comment 字段查找条目 UID
+      // comment 格式为: "人物｜角色名｜CHA-001"
+      const searchPattern = `${prefix}｜${entryName}`;
 
-    // 如果有缓存的 wiEntryUid，直接用它更新
-    if (cached.wiEntryUid) {
-      try {
-        const updateScript = `/setentryfield file=${quoteSlashValue(fileExprForQuery)} uid=${cached.wiEntryUid} field=content ${quoteSlashValue(content)}`;
+      // 构建查找脚本
+      let findParts = [];
+      const findUidVar = '__sg_find_uid';
+      const findFileVar = '__sg_find_file';
+
+      if (target === 'chatbook') {
+        findParts.push('/getchatbook');
+        findParts.push(`/setvar key=${findFileVar}`);
+        findParts.push(`/findentry file={{getvar::${findFileVar}}} field=comment ${quoteSlashValue(searchPattern)}`);
+      } else {
+        findParts.push(`/findentry file=${quoteSlashValue(file)} field=comment ${quoteSlashValue(searchPattern)}`);
+      }
+      findParts.push(`/setvar key=${findUidVar}`);
+      findParts.push(`/getvar ${findUidVar}`);
+
+      const findResult = await execSlash(findParts.join(' | '));
+
+      // 解析 UID
+      let foundUid = null;
+      if (findResult) {
+        const uidStr = String(findResult).trim();
+        if (uidStr.match(/^\d+$/)) {
+          foundUid = uidStr;
+        }
+      }
+
+      // 清理临时变量
+      try { await execSlash(`/flushvar ${findUidVar}`); } catch { /* ignore */ }
+      if (target === 'chatbook') {
+        try { await execSlash(`/flushvar ${findFileVar}`); } catch { /* ignore */ }
+      }
+
+      if (foundUid) {
+        // 找到条目，更新内容
+        const fileExpr = (target === 'chatbook') ? '{{getchatbook}}' : file;
+        const updateScript = `/setentryfield file=${quoteSlashValue(fileExpr)} uid=${foundUid} field=content ${quoteSlashValue(content)}`;
         await execSlash(updateScript);
         cached.content = content;
         cached.lastUpdated = Date.now();
-        console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${cached.wiEntryUid}`);
-        return { updated: true, name: entryName, targetType, wiEntryUid: cached.wiEntryUid };
-      } catch (e) {
-        console.warn(`[StoryGuide] Update ${entryType} (${targetType}) failed, will try recreate:`, e);
-        // 更新失败（可能条目被删除），回退到创建新条目
+        console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${foundUid}`);
+        return { updated: true, name: entryName, targetType, uid: foundUid };
+      } else {
+        console.log(`[StoryGuide] Entry not found via /findentry: ${searchPattern}, skipping update`);
+        // 未找到条目（可能被手动删除），只更新缓存
+        cached.content = content;
+        cached.lastUpdated = Date.now();
+        return { skipped: true, name: entryName, targetType, reason: 'entry_not_found' };
       }
-    } else {
-      // 没有缓存的 UID，只更新本地缓存内容（世界书条目无法更新）
-      console.log(`[StoryGuide] No cached UID for ${entryType} (${targetType}): ${entryName}, skipping world book update (local cache updated)`);
+    } catch (e) {
+      console.warn(`[StoryGuide] Update ${entryType} (${targetType}) via /findentry failed:`, e);
+      // 更新失败，只更新缓存
       cached.content = content;
       cached.lastUpdated = Date.now();
-      return { skipped: true, name: entryName, targetType, reason: 'no_uid_for_update' };
+      return { skipped: true, name: entryName, targetType, reason: 'update_failed' };
     }
   }
 
@@ -2448,7 +2487,6 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
   const uidVar = '__sg_struct_uid';
   const fileVar = '__sg_struct_wbfile';
-  // 对于 chatbook 需要在 STscript 中动态获取文件名
   const createFileExpr = (target === 'chatbook') ? `{{getvar::${fileVar}}}` : file;
 
   const parts = [];
@@ -2461,45 +2499,25 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=disable 0`);
   parts.push(`/setentryfield file=${quoteSlashValue(createFileExpr)} uid={{getvar::${uidVar}}} field=constant ${constant}`);
-  // 清理 fileVar，然后最后输出 UID
+  parts.push(`/flushvar ${uidVar}`);
   if (target === 'chatbook') parts.push(`/flushvar ${fileVar}`);
-  parts.push(`/getvar ${uidVar}`);
 
   try {
-    const result = await execSlash(parts.join(' | '));
-    // DEBUG: 查看 execSlash 返回值
-    console.log(`[StoryGuide] DEBUG execSlash result type: ${typeof result}, value:`, result);
-
-    // 尝试从结果中解析 UID
-    let capturedUid = null;
-    if (result) {
-      const uidStr = String(result).trim();
-      console.log(`[StoryGuide] DEBUG uidStr: "${uidStr}", match: ${uidStr.match(/^\d+$/)}`);
-      if (uidStr.match(/^\d+$/)) {
-        capturedUid = uidStr;
-      }
-    }
-
-    // 清理临时变量
-    try { await execSlash(`/flushvar ${uidVar}`); } catch { /* ignore */ }
-
-    // 更新缓存（使用带 targetType 的 key）
+    await execSlash(parts.join(' | '));
+    // 更新缓存
     entriesCache[cacheKey] = {
       name: entryName,
       aliases: entryData.aliases || [],
       content,
       lastUpdated: Date.now(),
-      wiEntryUid: capturedUid, // 存储捕获的 UID，用于后续更新
       indexId,
       targetType,
     };
-    console.log(`[StoryGuide] DEBUG cache entry wiEntryUid: ${capturedUid}`);
-    // 只在第一次写入时递增索引（绿灯优先）
     if (targetType === 'green') {
       meta[nextIndexKey] = indexNum + 1;
     }
-    console.log(`[StoryGuide] Created ${entryType} (${targetType}): ${entryName} -> ${indexId}${capturedUid ? ` (UID: ${capturedUid})` : ''}`);
-    return { created: true, name: entryName, indexId, targetType, wiEntryUid: capturedUid };
+    console.log(`[StoryGuide] Created ${entryType} (${targetType}): ${entryName} -> ${indexId}`);
+    return { created: true, name: entryName, indexId, targetType };
   } catch (e) {
     console.warn(`[StoryGuide] Create ${entryType} (${targetType}) entry failed:`, e);
     return null;
