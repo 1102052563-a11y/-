@@ -1019,12 +1019,17 @@ async function onChatSwitched() {
     return;
   }
 
+  // 等待一小段时间确保 chatMetadata 已加载
+  await new Promise(r => setTimeout(r, 150));
+
   const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
   const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
+  const autoBindCreated = getChatMetaValue(META_KEYS.autoBindCreated);
 
-  console.log('[StoryGuide] 当前聊天绑定的世界书:', { greenWI, blueWI });
+  console.log('[StoryGuide] 当前聊天绑定信息:', { greenWI, blueWI, autoBindCreated });
 
-  if (greenWI || blueWI) {
+  // 如果已经创建过绑定（即使 greenWI 为空也尝试恢复）
+  if (autoBindCreated || greenWI || blueWI) {
     await applyBoundWorldInfoToSettings();
     const greenNow = String(getChatMetaValue(META_KEYS.boundGreenWI) || greenWI || '').trim();
     showToast(`已切换到本聊天专属世界书\n绿灯：${greenNow || '(无)'}\n蓝灯：${blueWI || '(无)'}`, {
