@@ -2393,18 +2393,6 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
   const content = buildContent(entryData).replace(/\|/g, '｜');
 
-  // 去重检查：如果本地缓存已有此条目
-  if (cached) {
-    // 已有缓存 -> 跳过创建（无论 LLM 标记为 isNew 还是 isUpdated）
-    // 除非内容真的有变化才更新
-    if (cached.content === content) {
-      console.log(`[StoryGuide] Skip unchanged ${entryType} (${targetType}): ${entryName}`);
-      return { skipped: true, name: entryName, targetType, reason: 'unchanged' };
-    }
-    console.log(`[StoryGuide] Skip existing ${entryType} (${targetType}): ${entryName} (content differs but entry exists)`);
-    return { skipped: true, name: entryName, targetType, reason: 'already_exists' };
-  }
-
   // 根据 targetType 选择世界书目标
   let target, file, constant;
   if (targetType === 'blue') {
@@ -2416,6 +2404,54 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     target = String(settings.summaryWorldInfoTarget || 'chatbook');
     file = String(settings.summaryWorldInfoFile || '');
     constant = 0; // 绿灯=触发词触发
+  }
+  const fileExprForQuery = (target === 'chatbook') ? '{{getchatbook}}' : file;
+
+  // 去重和更新检查：如果本地缓存已有此条目
+  if (cached) {
+    // 内容相同 -> 跳过
+    if (cached.content === content) {
+      console.log(`[StoryGuide] Skip unchanged ${entryType} (${targetType}): ${entryName}`);
+      return { skipped: true, name: entryName, targetType, reason: 'unchanged' };
+    }
+
+    // 内容不同 -> 尝试更新现有条目
+    console.log(`[StoryGuide] Content changed for ${entryType} (${targetType}): ${entryName}, attempting update...`);
+    try {
+      // 使用前缀和名称搜索条目
+      const searchPattern = `${prefix}｜${entryName}`;
+      const getScript = `/getentries file=${quoteSlashValue(fileExprForQuery)} ${quoteSlashValue(searchPattern)}`;
+      const entriesResult = await execSlash(getScript);
+
+      // 解析返回的条目 UID
+      let entryUid = null;
+      if (entriesResult) {
+        const parsed = safeJsonParse(entriesResult);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          entryUid = parsed[0]?.uid || parsed[0];
+        } else if (typeof entriesResult === 'string' && entriesResult.trim()) {
+          const first = entriesResult.trim().split(',')[0].trim();
+          if (first.match(/^\d+$/)) entryUid = first;
+        }
+      }
+
+      if (entryUid && String(entryUid).match(/^\d+$/)) {
+        // 找到条目，更新内容
+        const updateScript = `/setentryfield file=${quoteSlashValue(fileExprForQuery)} uid=${entryUid} field=content ${quoteSlashValue(content)}`;
+        await execSlash(updateScript);
+        cached.content = content;
+        cached.lastUpdated = Date.now();
+        cached.wiEntryUid = entryUid;
+        console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${entryUid}`);
+        return { updated: true, name: entryName, targetType, wiEntryUid: entryUid };
+      } else {
+        console.log(`[StoryGuide] Entry not found via /getentries for update: ${searchPattern}`);
+        // 未找到，可能被手动删除，回退到创建新条目
+      }
+    } catch (e) {
+      console.warn(`[StoryGuide] Update ${entryType} (${targetType}) failed:`, e);
+      // 更新失败，回退到创建新条目
+    }
   }
 
   // 创建新条目
