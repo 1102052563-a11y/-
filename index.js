@@ -28,7 +28,6 @@
 const SG_VERSION = '0.10.0';
 
 const MODULE_NAME = 'storyguide';
-let isDataTableUpdating = false;
 
 /**
  * 模块配置格式（JSON 数组）示例：
@@ -9936,7 +9935,12 @@ function setupEventListeners() {
 
     let autoUpdateTimer = null;
     const onGenerationFinished = () => {
-      if (isDataTableUpdating) return;
+      // NEW: 如果正在运行数据表更新（内部调用），则不要触发剧情指导/自动总结
+      if (window._sg_dataTableUpdating) {
+        console.log('[StoryGuide v2] onGenerationFinished ignored (Data Table updating)');
+        return;
+      }
+
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
       // 自动总结（独立功能）
@@ -10815,16 +10819,17 @@ function injectFixedInputButton() {
 // -------------------- 数据表更新函数 --------------------
 
 async function execDataTableUpdate() {
-  if (isDataTableUpdating) return false;
   const s = ensureSettings();
   if (!s.enabled) {
     if (window.toastr) window.toastr.warning('插件未启用');
     return false;
   }
 
-  isDataTableUpdating = true;
   if (window.toastr) window.toastr.info('StoryGuide: 正在请求大模型更新表格...');
   console.log('[StoryGuide] execDataTableUpdate: starting...');
+
+  // 标记正在进行内部更新，避免触发全局 generation_ended 事件监听
+  window._sg_dataTableUpdating = true;
 
   try {
     // 1. 使用数据表专用配置构建 Snapshot
@@ -10964,14 +10969,14 @@ async function execDataTableUpdate() {
       }
     } catch (e) { console.warn('[StoryGuide] Floating Panel refresh failed:', e); }
 
-    isDataTableUpdating = false;
     return true;
 
   } catch (e) {
     console.error('[StoryGuide] execDataTableUpdate failed:', e);
     if (window.toastr) window.toastr.error('表格更新失败: ' + e.message);
-    isDataTableUpdating = false;
     return false;
+  } finally {
+    window._sg_dataTableUpdating = false;
   }
 }
 
