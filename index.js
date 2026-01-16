@@ -2485,9 +2485,20 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
       if (foundUid) {
         // 找到条目，更新内容
-        const fileExpr = (target === 'chatbook') ? '{{getchatbook}}' : file;
-        const updateScript = `/setentryfield file=${quoteSlashValue(fileExpr)} uid=${foundUid} field=content ${quoteSlashValue(content)}`;
-        await execSlash(updateScript);
+        let updateParts = [];
+        const updateFileVar = '__sg_update_file';
+
+        if (target === 'chatbook') {
+          // chatbook 模式需要先获取文件名
+          updateParts.push('/getchatbook');
+          updateParts.push(`/setvar key=${updateFileVar}`);
+          updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=content ${quoteSlashValue(content)}`);
+          updateParts.push(`/flushvar ${updateFileVar}`);
+        } else {
+          updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=content ${quoteSlashValue(content)}`);
+        }
+
+        await execSlash(updateParts.join(' | '));
         cached.content = content;
         cached.lastUpdated = Date.now();
         console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${foundUid}`);
