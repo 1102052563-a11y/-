@@ -754,6 +754,13 @@ function parseJsonArrayAttr(maybeJsonArray) {
   }
 }
 
+function normalizeMapName(name) {
+  return String(name || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 let sgMapPopoverEl = null;
 let sgMapPopoverHost = null;
 let sgMapEventHandlerBound = false;
@@ -1325,25 +1332,35 @@ function mergeMapData(existingMap, newData) {
   if (!newData) return existingMap;
 
   const map = { ...existingMap, locations: { ...existingMap.locations } };
+  const existingNameMap = new Map();
+  for (const key of Object.keys(map.locations)) {
+    const norm = normalizeMapName(key);
+    if (norm) existingNameMap.set(norm, key);
+  }
 
   // 更新主角位置
   if (newData.currentLocation) {
-    map.protagonistLocation = newData.currentLocation;
+    const normalized = normalizeMapName(newData.currentLocation);
+    const existingKey = existingNameMap.get(normalized);
+    map.protagonistLocation = existingKey || newData.currentLocation;
     // 确保当前位置存在
-    if (!map.locations[newData.currentLocation]) {
-      map.locations[newData.currentLocation] = {
+    if (!map.locations[map.protagonistLocation]) {
+      map.locations[map.protagonistLocation] = {
         row: 0, col: 0, connections: [], events: [], visited: true, description: ''
       };
     }
-    map.locations[newData.currentLocation].visited = true;
+    map.locations[map.protagonistLocation].visited = true;
   }
 
   // 添加新地点
   for (const loc of newData.newLocations) {
     const name = String(loc.name || '').trim();
     if (!name) continue;
+    const normalized = normalizeMapName(name);
+    const existingKey = existingNameMap.get(normalized);
+    const targetKey = existingKey || name;
 
-    if (!map.locations[name]) {
+    if (!map.locations[targetKey]) {
       let row = Number.isFinite(Number(loc.row)) ? Number(loc.row) : null;
       let col = Number.isFinite(Number(loc.col)) ? Number(loc.col) : null;
       if (row == null || col == null) {
@@ -1361,31 +1378,32 @@ function mergeMapData(existingMap, newData) {
           col = pos.col;
         }
       }
-      map.locations[name] = {
+      map.locations[targetKey] = {
         row, col,
         connections: Array.isArray(loc.connectedTo) ? loc.connectedTo : [],
         events: [],
-        visited: name === map.protagonistLocation,
+        visited: targetKey === map.protagonistLocation,
         description: String(loc.description || ''),
         group: String(loc.group || '').trim(),
         layer: String(loc.layer || '').trim(),
       };
       ensureGridSize(map, row, col);
+      if (!existingKey && normalized) existingNameMap.set(normalized, targetKey);
     } else {
       // 更新现有地点的连接
       if (Array.isArray(loc.connectedTo)) {
         for (const conn of loc.connectedTo) {
-          if (!map.locations[name].connections.includes(conn)) {
-            map.locations[name].connections.push(conn);
+          if (!map.locations[targetKey].connections.includes(conn)) {
+            map.locations[targetKey].connections.push(conn);
           }
         }
       }
-      if (loc.group) map.locations[name].group = String(loc.group || '').trim();
-      if (loc.layer) map.locations[name].layer = String(loc.layer || '').trim();
+      if (loc.group) map.locations[targetKey].group = String(loc.group || '').trim();
+      if (loc.layer) map.locations[targetKey].layer = String(loc.layer || '').trim();
       if (Number.isFinite(Number(loc.row)) && Number.isFinite(Number(loc.col))) {
-        map.locations[name].row = Number(loc.row);
-        map.locations[name].col = Number(loc.col);
-        ensureGridSize(map, map.locations[name].row, map.locations[name].col);
+        map.locations[targetKey].row = Number(loc.row);
+        map.locations[targetKey].col = Number(loc.col);
+        ensureGridSize(map, map.locations[targetKey].row, map.locations[targetKey].col);
       }
     }
   }
@@ -1393,12 +1411,14 @@ function mergeMapData(existingMap, newData) {
   // 添加事件
   for (const evt of newData.events) {
     const locName = String(evt.location || '').trim();
+    const normalized = normalizeMapName(locName);
+    const targetKey = existingNameMap.get(normalized) || locName;
     const eventObj = normalizeMapEvent(evt);
-    if (locName && eventObj && map.locations[locName]) {
-      const list = Array.isArray(map.locations[locName].events) ? map.locations[locName].events : [];
+    if (locName && eventObj && map.locations[targetKey]) {
+      const list = Array.isArray(map.locations[targetKey].events) ? map.locations[targetKey].events : [];
       const exists = list.some(e => String(e?.text || e?.event || e || '').trim() === eventObj.text);
       if (!exists) list.push(eventObj);
-      map.locations[locName].events = list;
+      map.locations[targetKey].events = list;
     }
   }
 
