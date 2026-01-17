@@ -1151,9 +1151,11 @@ async function updateMapFromSnapshot(snapshotText) {
         parsed = parseMapLLMResponse(retryText);
       } catch { /* ignore */ }
     }
-    if (!parsed) return;
+      if (!parsed) return;
 
-    const merged = mergeMapData(getMapData(), parsed);
+      parsed = ensureMapMinimums(parsed);
+
+      const merged = mergeMapData(getMapData(), parsed);
     await setMapData(merged);
     updateMapPreview();
   } catch (e) {
@@ -1209,6 +1211,53 @@ function parseMapLLMResponse(responseText) {
     newLocations: Array.isArray(parsed.newLocations) ? parsed.newLocations : [],
     events: Array.isArray(parsed.events) ? parsed.events : [],
   };
+}
+
+function ensureMapMinimums(parsed) {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  const out = {
+    currentLocation: String(parsed.currentLocation || '').trim(),
+    newLocations: Array.isArray(parsed.newLocations) ? parsed.newLocations.slice() : [],
+    events: Array.isArray(parsed.events) ? parsed.events.slice() : [],
+  };
+
+  const existingNames = new Set(
+    out.newLocations.map(l => String(l?.name || '').trim()).filter(Boolean)
+  );
+
+  let exploreCount = 0;
+  for (const loc of out.newLocations) {
+    const desc = String(loc?.description || '').trim();
+    if (desc.includes('待探索')) exploreCount += 1;
+  }
+
+  const desiredMin = 3;
+  const desiredExploreMin = 2;
+  const neededTotal = Math.max(0, desiredMin - out.newLocations.length);
+  const neededExplore = Math.max(0, desiredExploreMin - exploreCount);
+  const addCount = Math.max(neededTotal, neededExplore);
+
+  if (addCount > 0) {
+    const baseName = out.currentLocation ? `${out.currentLocation}·待探索` : '待探索地点';
+    for (let i = 0; i < addCount; i++) {
+      let name = `${baseName}${i + 1}`;
+      let n = 1;
+      while (existingNames.has(name)) {
+        n += 1;
+        name = `${baseName}${i + 1}-${n}`;
+      }
+      existingNames.add(name);
+      out.newLocations.push({
+        name,
+        description: '待探索',
+        connectedTo: out.currentLocation ? [out.currentLocation] : [],
+        group: '',
+        layer: '',
+      });
+    }
+  }
+
+  return out;
 }
 
 function normalizeMapEvent(evt) {
