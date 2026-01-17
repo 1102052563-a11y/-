@@ -77,10 +77,10 @@ const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要
 // ===== 结构化世界书条目提示词默认值 =====
 const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管理"助手，负责从对话片段中提取结构化信息用于长期记忆。任务：1) 识别本次对话中出现的重要 NPC（不含主角）。2) 识别主角当前持有/装备的关键物品。3) 识别主角新增或变化的能力。对于每个条目，生成档案式的客观第三人称描述。`;
 const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
-const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只提取重要 NPC（不含主角），避免杜撰；信息不足写“未知/待确认”。`;
-const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录主角当前持有/使用的关键装备或物品，说明类型/来源/状态/效果等。`;
-const DEFAULT_STRUCTURED_ABILITY_PROMPT = `只记录主角新增或变化的能力/技能，注明触发条件/代价/负面效果等。`;
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"","status":"","personality":"","background":"","relationToProtagonist":"","keyEvents":[],"isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"","rarity":"","effects":"","source":"","currentState":"","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"","effects":"","trigger":"","cost":"","boundEvents":[],"isNegative":false,"isNew":true}]}`;
+const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只提取重要 NPC（不含主角），避免杜撰；信息不足写"未知/待确认"。若 statData 中有该人物的数据（如属性/技能/装备/状态等），请完整填入对应字段。`;
+const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录主角当前持有/使用的关键装备或物品，说明类型/来源/状态/效果等。若 statData 中有该物品的详细数据（如属性加成/特殊效果/耐久等），请完整填入对应字段。`;
+const DEFAULT_STRUCTURED_ABILITY_PROMPT = `只记录主角新增或变化的能力/技能，注明触发条件/代价/负面效果等。若 statData 中有该能力的数据，请完整引用。`;
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"","status":"","personality":"","background":"","relationToProtagonist":"","keyEvents":[],"statInfo":"","isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"","rarity":"","effects":"","source":"","currentState":"","statInfo":"","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"","effects":"","trigger":"","cost":"","statInfo":"","boundEvents":[],"isNegative":false,"isNew":true}]}`;
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
@@ -411,6 +411,7 @@ let refreshTimer = null;
 let appendTimer = null;
 let summaryTimer = null;
 let isSummarizing = false;
+let summaryCancelled = false;
 let sgToastTimer = null;
 
 // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
@@ -2338,7 +2339,7 @@ function appendToBlueIndexCache(rec) {
 
 // ===== 结构化世界书条目核心函数 =====
 
-function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta) {
+function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta, statData = null) {
   const s = ensureSettings();
   let sys = String(s.structuredEntriesSystemPrompt || '').trim();
   if (!sys) sys = DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
@@ -2357,6 +2358,9 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
   const knownChars = Object.values(meta.characterEntries || {}).map(c => `${c.name}(${c.uid})`).join('、') || '无';
   const knownEquips = Object.values(meta.equipmentEntries || {}).map(e => `${e.name}(${e.uid})`).join('、') || '无';
 
+  // 格式化 statData
+  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
+
   let tpl = String(s.structuredEntriesUserTemplate || '').trim();
   if (!tpl) tpl = DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   let user = renderTemplate(tpl, {
@@ -2365,15 +2369,20 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
     chunk: String(chunkText || ''),
     knownCharacters: knownChars,
     knownEquipments: knownEquips,
+    statData: statDataJson,
   });
+  // 如果有 statData 且模板里没有包含，追加到末尾
+  if (statData && !/\{\{\s*statData\s*\}\}/i.test(tpl)) {
+    user = String(user || '').trim() + `\n\n【角色状态数据 statData】\n${statDataJson}`;
+  }
   return [
     { role: 'system', content: sys },
     { role: 'user', content: user },
   ];
 }
 
-async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, settings) {
-  const messages = buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta);
+async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, settings, statData = null) {
+  const messages = buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta, statData);
   let jsonText = '';
   if (String(settings.summaryProvider || 'st') === 'custom') {
     jsonText = await callViaCustom(settings.summaryCustomEndpoint, settings.summaryCustomApiKey, settings.summaryCustomModel, messages, settings.summaryTemperature, settings.summaryCustomMaxTokens, 0.95, settings.summaryCustomStream);
@@ -2406,6 +2415,7 @@ function buildCharacterContent(char) {
   if (char.background) parts.push(`背景：${char.background}`);
   if (char.relationToProtagonist) parts.push(`与主角关系：${char.relationToProtagonist}`);
   if (char.keyEvents?.length) parts.push(`关键事件：${char.keyEvents.join('；')}`);
+  if (char.statInfo) parts.push(`属性数据：${char.statInfo}`);
   return parts.join('\n');
 }
 
@@ -2418,6 +2428,7 @@ function buildEquipmentContent(equip) {
   if (equip.effects) parts.push(`效果：${equip.effects}`);
   if (equip.source) parts.push(`来源：${equip.source}`);
   if (equip.currentState) parts.push(`当前状态：${equip.currentState}`);
+  if (equip.statInfo) parts.push(`属性数据：${equip.statInfo}`);
   if (equip.boundEvents?.length) parts.push(`相关事件：${equip.boundEvents.join('；')}`);
   return parts.join('\n');
 }
@@ -2429,6 +2440,7 @@ function buildAbilityContent(ability) {
   if (ability.effects) parts.push(`效果：${ability.effects}`);
   if (ability.trigger) parts.push(`触发条件：${ability.trigger}`);
   if (ability.cost) parts.push(`代价/冷却：${ability.cost}`);
+  if (ability.statInfo) parts.push(`属性数据：${ability.statInfo}`);
   if (ability.boundEvents?.length) parts.push(`相关事件：${ability.boundEvents.join('；')}`);
   return parts.join('\n');
 }
@@ -3051,6 +3063,13 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   return { file: (t === 'file') ? f : 'chatbook', uid: null };
 }
 
+function stopSummary() {
+  if (isSummarizing) {
+    summaryCancelled = true;
+    console.log('[StoryGuide] Summary stop requested');
+  }
+}
+
 async function runSummary({ reason = 'manual', manualFromFloor = null, manualToFloor = null, manualSplit = null } = {}) {
   const s = ensureSettings();
   const ctx = SillyTavern.getContext();
@@ -3059,6 +3078,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
   if (isSummarizing) return;
   isSummarizing = true;
+  summaryCancelled = false;
   setStatus('总结中…', 'warn');
   showToast('正在总结…', { kind: 'warn', spinner: true, sticky: true });
 
@@ -3145,6 +3165,13 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     }
 
     for (let i = 0; i < segments.length; i++) {
+      // 检查是否被取消
+      if (summaryCancelled) {
+        setStatus('总结已取消', 'warn');
+        showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+        break;
+      }
+
       const seg = segments[i];
       const startIdx = seg.startIdx;
       const endIdx = seg.endIdx;
@@ -3244,7 +3271,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       // 生成结构化世界书条目（人物/装备/能力 - 与剧情总结同一事务）
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         try {
-          const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s);
+          const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
           console.log('[StoryGuide] Structured entries result:', structuredResult);
           if (structuredResult) {
             // 写入/更新人物条目（去重由 writeOrUpdate 内部处理）
@@ -6606,6 +6633,7 @@ function buildModalHtml() {
 
             <div class="sg-row sg-inline">
               <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
+              <button class="menu_button sg-btn" id="sg_stopSummary" style="background: var(--SmartThemeBodyColor); color: var(--SmartThemeQuoteColor);">停止总结</button>
               <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
               <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
             </div>
@@ -6948,6 +6976,11 @@ function ensureModal() {
     } catch (e) {
       setStatus(`总结失败：${e?.message ?? e}`, 'err');
     }
+  });
+
+  $('#sg_stopSummary').on('click', () => {
+    stopSummary();
+    setStatus('正在停止总结…', 'warn');
   });
 
   $('#sg_summarizeRange').on('click', async () => {
