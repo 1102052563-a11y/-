@@ -1276,6 +1276,7 @@ function formatMapEventText(evt) {
   return `${text}${tagText}`.trim();
 }
 
+
 // 合并新地图数据到现有地图
 function mergeMapData(existingMap, newData) {
   if (!newData) return existingMap;
@@ -9510,6 +9511,16 @@ function createFloatingPanel() {
       await refreshFloatingPanelContent();
     });
 
+    $(document).on('click', '.sg-inner-map-reset-btn', async (e) => {
+      if (!$(e.target).closest('#sg_floating_panel').length) return;
+      try {
+        await setMapData(getDefaultMapData());
+        showFloatingMap();
+      } catch (err) {
+        console.warn('[StoryGuide] map reset failed:', err);
+      }
+    });
+
     $('#sg_floating_roll_logs').on('click', () => {
       showFloatingRollLogs();
     });
@@ -9858,7 +9869,12 @@ function updateFloatingPanelBody(html) {
     }
     const mapData = getMapData();
     const html = renderGridMap(mapData);
-    $body.html(`<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+    const tools = `
+      <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
+        <button class="sg-inner-map-reset-btn" title="重置地图" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🗑</button>
+      </div>
+    `;
+    $body.html(`${tools}<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
   }
 
   function showFloatingReport() {
