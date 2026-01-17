@@ -747,6 +747,48 @@ function parseJsonArrayAttr(maybeJsonArray) {
   }
 }
 
+let sgMapPopoverEl = null;
+
+function showMapPopover($cell) {
+  const name = String($cell.attr('data-name') || '').trim();
+  const desc = String($cell.attr('data-desc') || '').trim();
+  const events = parseJsonArrayAttr($cell.attr('data-events'));
+
+  const parts = [];
+  if (name) parts.push(`<div class="sg-map-popover-title">${escapeHtml(name)}</div>`);
+  if (desc) parts.push(`<div class="sg-map-popover-desc">${escapeHtml(desc)}</div>`);
+  if (events.length) {
+    const items = events.map(e => `<li>${escapeHtml(String(e || ''))}</li>`).join('');
+    parts.push(`<div class="sg-map-popover-events"><div class="sg-map-popover-label">事件</div><ul>${items}</ul></div>`);
+  } else {
+    parts.push('<div class="sg-map-popover-empty">暂无事件</div>');
+  }
+
+  if (!sgMapPopoverEl) {
+    sgMapPopoverEl = document.createElement('div');
+    sgMapPopoverEl.className = 'sg-map-popover';
+    document.body.appendChild(sgMapPopoverEl);
+  }
+
+  sgMapPopoverEl.innerHTML = parts.join('');
+
+  const rect = $cell[0].getBoundingClientRect();
+  const pop = sgMapPopoverEl;
+  pop.style.display = 'block';
+  pop.style.visibility = 'hidden';
+
+  const popRect = pop.getBoundingClientRect();
+  let left = rect.left + rect.width / 2 - popRect.width / 2;
+  let top = rect.top - popRect.height - 8;
+  if (top < 8) top = rect.bottom + 8;
+  if (left < 8) left = 8;
+  if (left + popRect.width > window.innerWidth - 8) left = window.innerWidth - popRect.width - 8;
+
+  pop.style.left = `${Math.round(left)}px`;
+  pop.style.top = `${Math.round(top)}px`;
+  pop.style.visibility = 'visible';
+}
+
 // ===== 快捷选项功能 =====
 
 function getQuickOptions() {
@@ -1315,7 +1357,6 @@ function renderGridMap(mapData) {
 
   html += '</div>';
   html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
-  html += '<div class="sg-map-info">点击地点查看事件</div>';
   html += '</div>';
 
   return html;
@@ -8114,25 +8155,13 @@ function ensureModal() {
 
     $(document).on('click', '.sg-map-location', (e) => {
       const $cell = $(e.currentTarget);
-      const $wrap = $cell.closest('.sg-map-wrapper');
-      if (!$wrap.length) return;
-      const $info = $wrap.find('.sg-map-info');
-      if (!$info.length) return;
+      showMapPopover($cell);
+    });
 
-      const name = String($cell.attr('data-name') || '').trim();
-      const desc = String($cell.attr('data-desc') || '').trim();
-      const events = parseJsonArrayAttr($cell.attr('data-events'));
-
-      const parts = [];
-      if (name) parts.push(`<div><b>${escapeHtml(name)}</b></div>`);
-      if (desc) parts.push(`<div>${escapeHtml(desc)}</div>`);
-      if (events.length) {
-        const items = events.map(e => `<li>${escapeHtml(String(e || ''))}</li>`).join('');
-        parts.push(`<div style="margin-top:4px;"><b>事件</b><ul style="margin:4px 0 0 18px; padding:0;">${items}</ul></div>`);
-      } else {
-        parts.push('<div style="opacity:0.7;">暂无事件</div>');
-      }
-      $info.html(parts.join(''));
+    $(document).on('click', (e) => {
+      const $t = $(e.target);
+      if ($t.closest('.sg-map-popover, .sg-map-location').length) return;
+      if (sgMapPopoverEl) sgMapPopoverEl.style.display = 'none';
     });
 
     $('#sg_resetMap').on('click', async () => {
