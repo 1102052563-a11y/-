@@ -133,12 +133,34 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 【重要】
 - 若提供了 statData，请从中提取该角色/物品的**关键数值**（如属性、等级、状态），精简为1-2行
 - 不要完整复制 statData，只提取最重要的信息
-- 重点描述：与主角的关系发展、角色背景、性格特点、关键事件`;
+- 重点描述：与主角的关系发展、角色背景、性格特点、关键事件
+
+【性格铆钉】
+- 为每个重要NPC提取「核心性格」：不会因剧情发展而轻易改变的根本特质
+- 提取「角色动机」：该角色自己的目标/追求，不是围绕主角转
+- 评估「关系阶段」：陌生/初识/熟悉/信任/亲密，关系发展应循序渐进`;
 const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
-const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。重点描述：阵营身份、与主角关系及发展、性格特点、背景故事、关键事件。若角色死亡/永久离开，不要记录在 characters 里，而是将其名字加入 deletedCharacters。若有 statData，在 statInfo 中精简总结其核心属性（1-2行），不要完整复制。信息不足写"待确认"。`;
+const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。
+
+【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件
+
+【性格铆钉字段（重要）】
+- corePersonality：核心性格锚点，不会轻易改变的根本特质（如"傲慢"、"多疑"、"重义"），即使与主角关系改善也会保持
+- motivation：角色自己的独立目标/动机，不应为了主角而放弃
+- relationshipStage：与主角的关系阶段（陌生/初识/熟悉/信任/亲密），关系不应跳跃式发展
+
+若角色死亡/永久离开，将其名字加入 deletedCharacters。若有 statData，在 statInfo 中精简总结。信息不足写"待确认"。`;
 const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备。若装备被卖掉/分解/丢弃/损坏，将其名字加入 deletedEquipments。若有 statData，精简总结其属性。`;
 const DEFAULT_STRUCTURED_ABILITY_PROMPT = `记录主角的能力/技能。说明类型、效果、触发条件、代价。若能力被遗忘/剥夺/失效，将其名字加入 deletedAbilities。若有 statData，精简总结其数值。`;
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。结构：{"characters":[...],"equipments":[...],"abilities":[...],"deletedCharacters":["死亡角色名1","永久离开角色名2"],"deletedEquipments":["卖掉的装备名1","损坏的装备名2"],"deletedAbilities":["失效的能力名1"]}。各条目结构：characters:[{name,uid,aliases[],faction,status,personality,background,relationToProtagonist,keyEvents[],statInfo,isNew,isUpdated}] equipments:[{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}] abilities:[{name,uid,type,effects,trigger,cost,statInfo,boundEvents[],isNegative,isNew}]`;
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。
+
+结构：{"characters":[...],"equipments":[...],"abilities":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedAbilities":[...]}
+
+characters 条目结构：{name,uid,aliases[],faction,status,personality,corePersonality:"核心性格锚点（不轻易改变）",motivation:"角色独立动机/目标",relationshipStage:"陌生|初识|熟悉|信任|亲密",background,relationToProtagonist,keyEvents[],statInfo,isNew,isUpdated}
+
+equipments 条目结构：{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}
+
+abilities 条目结构：{name,uid,type,effects,trigger,cost,statInfo,boundEvents[],isNegative,isNew}`;
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
@@ -2571,6 +2593,12 @@ function buildCharacterContent(char) {
   if (char.faction) parts.push(`阵营/身份：${char.faction}`);
   if (char.status) parts.push(`状态：${char.status}`);
   if (char.personality) parts.push(`性格：${char.personality}`);
+
+  // 性格铆钉（用特殊格式突出显示）
+  if (char.corePersonality) parts.push(`【核心性格锚点】${char.corePersonality}（不会轻易改变）`);
+  if (char.motivation) parts.push(`【角色动机】${char.motivation}（独立于主角的目标）`);
+  if (char.relationshipStage) parts.push(`【关系阶段】${char.relationshipStage}`);
+
   if (char.background) parts.push(`背景：${char.background}`);
   if (char.relationToProtagonist) parts.push(`与主角关系：${char.relationToProtagonist}`);
   if (char.keyEvents?.length) parts.push(`关键事件：${char.keyEvents.join('；')}`);
