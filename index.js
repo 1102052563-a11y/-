@@ -747,7 +747,7 @@ function parseJsonArrayAttr(maybeJsonArray) {
   }
 }
 
-let sgMapPopoverEl = null;
+let sgMapPopoverCell = null;
 
 function showMapPopover($cell) {
   const name = String($cell.attr('data-name') || '').trim();
@@ -764,29 +764,20 @@ function showMapPopover($cell) {
     parts.push('<div class="sg-map-popover-empty">暂无事件</div>');
   }
 
-  if (!sgMapPopoverEl) {
-    sgMapPopoverEl = document.createElement('div');
-    sgMapPopoverEl.className = 'sg-map-popover';
-    document.body.appendChild(sgMapPopoverEl);
+  const existing = $cell.find('.sg-map-popover');
+  if (existing.length) {
+    existing.remove();
+    sgMapPopoverCell = null;
+    return;
   }
 
-  sgMapPopoverEl.innerHTML = parts.join('');
+  $('.sg-map-popover').remove();
 
-  const rect = $cell[0].getBoundingClientRect();
-  const pop = sgMapPopoverEl;
-  pop.style.display = 'block';
-  pop.style.visibility = 'hidden';
-
-  const popRect = pop.getBoundingClientRect();
-  let left = rect.left + rect.width / 2 - popRect.width / 2;
-  let top = rect.top - popRect.height - 8;
-  if (top < 8) top = rect.bottom + 8;
-  if (left < 8) left = 8;
-  if (left + popRect.width > window.innerWidth - 8) left = window.innerWidth - popRect.width - 8;
-
-  pop.style.left = `${Math.round(left)}px`;
-  pop.style.top = `${Math.round(top)}px`;
-  pop.style.visibility = 'visible';
+  const pop = document.createElement('div');
+  pop.className = 'sg-map-popover';
+  pop.innerHTML = parts.join('');
+  $cell.append(pop);
+  sgMapPopoverCell = pop;
 }
 
 // ===== 快捷选项功能 =====
@@ -8161,7 +8152,8 @@ function ensureModal() {
     $(document).on('click', (e) => {
       const $t = $(e.target);
       if ($t.closest('.sg-map-popover, .sg-map-location').length) return;
-      if (sgMapPopoverEl) sgMapPopoverEl.style.display = 'none';
+      $('.sg-map-popover').remove();
+      sgMapPopoverCell = null;
     });
 
     $('#sg_resetMap').on('click', async () => {
