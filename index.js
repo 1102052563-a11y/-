@@ -748,6 +748,7 @@ function parseJsonArrayAttr(maybeJsonArray) {
 }
 
 let sgMapPopoverEl = null;
+let sgMapPopoverHost = null;
 
 function showMapPopover($cell) {
   const name = String($cell.attr('data-name') || '').trim();
@@ -764,10 +765,20 @@ function showMapPopover($cell) {
     parts.push('<div class="sg-map-popover-empty">暂无事件</div>');
   }
 
-  if (!sgMapPopoverEl) {
+  const $panelHost = $cell.closest('#sg_floating_panel, .sg-modal');
+  const usePanel = $panelHost.length > 0;
+  const hostEl = usePanel ? $panelHost[0] : document.body;
+
+  if (!sgMapPopoverEl || sgMapPopoverHost !== hostEl) {
+    if (sgMapPopoverEl && sgMapPopoverEl.parentElement) {
+      sgMapPopoverEl.parentElement.removeChild(sgMapPopoverEl);
+    }
     sgMapPopoverEl = document.createElement('div');
-    sgMapPopoverEl.className = 'sg-map-popover';
-    document.body.appendChild(sgMapPopoverEl);
+    sgMapPopoverEl.className = usePanel ? 'sg-map-popover sg-map-popover-inpanel' : 'sg-map-popover';
+    hostEl.appendChild(sgMapPopoverEl);
+    sgMapPopoverHost = hostEl;
+  } else {
+    sgMapPopoverEl.className = usePanel ? 'sg-map-popover sg-map-popover-inpanel' : 'sg-map-popover';
   }
 
   sgMapPopoverEl.innerHTML = parts.join('');
@@ -778,14 +789,29 @@ function showMapPopover($cell) {
   pop.style.visibility = 'hidden';
 
   const popRect = pop.getBoundingClientRect();
-  let left = rect.left + rect.width / 2 - popRect.width / 2;
-  let top = rect.top - popRect.height - 8;
-  if (top < 8) top = rect.bottom + 8;
-  if (left < 8) left = 8;
-  if (left + popRect.width > window.innerWidth - 8) left = window.innerWidth - popRect.width - 8;
+  if (usePanel) {
+    const hostRect = hostEl.getBoundingClientRect();
+    let left = rect.left - hostRect.left + rect.width / 2 - popRect.width / 2;
+    let top = rect.top - hostRect.top - popRect.height - 8;
+    if (top < 8) top = rect.bottom - hostRect.top + 8;
+    const maxLeft = hostEl.clientWidth - popRect.width - 8;
+    const maxTop = hostEl.clientHeight - popRect.height - 8;
+    if (left < 8) left = 8;
+    if (left > maxLeft) left = maxLeft;
+    if (top < 8) top = 8;
+    if (top > maxTop) top = maxTop;
+    pop.style.left = `${Math.round(left)}px`;
+    pop.style.top = `${Math.round(top)}px`;
+  } else {
+    let left = rect.left + rect.width / 2 - popRect.width / 2;
+    let top = rect.top - popRect.height - 8;
+    if (top < 8) top = rect.bottom + 8;
+    if (left < 8) left = 8;
+    if (left + popRect.width > window.innerWidth - 8) left = window.innerWidth - popRect.width - 8;
+    pop.style.left = `${Math.round(left)}px`;
+    pop.style.top = `${Math.round(top)}px`;
+  }
 
-  pop.style.left = `${Math.round(left)}px`;
-  pop.style.top = `${Math.round(top)}px`;
   pop.style.visibility = 'visible';
 }
 

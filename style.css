@@ -1464,6 +1464,7 @@ body.sg-zoom-lock {
   font-size: 14px;
   line-height: 1.6;
   color: rgba(200, 210, 220, 0.92);
+  position: relative;
 }
 
 .sg-floating-loading {
@@ -2078,7 +2079,8 @@ body.sg-zoom-lock {
 .sg-map-event-marker { position: absolute; bottom: 2px; right: 4px; font-size: 10px; color: #fbbf24; }
 .sg-map-legend { margin-top: 8px; font-size: 11px; opacity: 0.7; text-align: center; }
 .sg-map-empty { text-align: center; padding: 20px; opacity: 0.6; font-size: 13px; }
-.sg-map-popover { position: fixed; z-index: 999999; max-width: 260px; padding: 8px 10px; border-radius: 10px; background: rgba(20, 20, 20, 0.92); color: #f0f0f0; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: 12px; line-height: 1.4; display: none; pointer-events: auto; }
+.sg-map-popover { position: fixed; z-index: 2147483647; max-width: 260px; padding: 8px 10px; border-radius: 10px; background: rgba(20, 20, 20, 0.92); color: #f0f0f0; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: 12px; line-height: 1.4; display: none; pointer-events: auto; }
+.sg-map-popover-inpanel { position: absolute; z-index: 2147483647; }
 .sg-map-popover-title { font-weight: 700; margin-bottom: 2px; }
 .sg-map-popover-desc { opacity: 0.85; margin-bottom: 4px; }
 .sg-map-popover-label { font-weight: 600; margin-bottom: 2px; opacity: 0.9; }
