@@ -1427,34 +1427,53 @@ function renderGridMap(mapData) {
     return `<div class="sg-map-empty">暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成。</div>`;
   }
 
-  let minRow = 0;
-  let minCol = 0;
-  let maxRow = mapData.gridSize.rows - 1;
-  let maxCol = mapData.gridSize.cols - 1;
+  const locList = Object.values(mapData.locations);
+  const rawRows = locList.map(l => Number(l.row)).filter(Number.isFinite);
+  const rawCols = locList.map(l => Number(l.col)).filter(Number.isFinite);
+  const rowVals = Array.from(new Set(rawRows)).sort((a, b) => a - b);
+  const colVals = Array.from(new Set(rawCols)).sort((a, b) => a - b);
+  const maxDim = 20;
+  const rowCount = Math.max(mapData.gridSize.rows, rowVals.length || mapData.gridSize.rows);
+  const colCount = Math.max(mapData.gridSize.cols, colVals.length || mapData.gridSize.cols);
+  const rows = Math.min(maxDim, rowCount);
+  const cols = Math.min(maxDim, colCount);
 
-  for (const loc of Object.values(mapData.locations)) {
-    const r = Number(loc.row);
-    const c = Number(loc.col);
-    if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
-    if (r < minRow) minRow = r;
-    if (c < minCol) minCol = c;
-    if (r > maxRow) maxRow = r;
-    if (c > maxCol) maxCol = c;
-  }
+  const mapIndex = (vals, v, limit) => {
+    const idx = vals.indexOf(v);
+    if (idx < 0) return null;
+    if (vals.length <= limit) return idx;
+    return Math.round(idx * (limit - 1) / Math.max(1, vals.length - 1));
+  };
 
-  const rows = Math.max(mapData.gridSize.rows, maxRow - minRow + 1);
-  const cols = Math.max(mapData.gridSize.cols, maxCol - minCol + 1);
-  const rowShift = minRow < 0 ? -minRow : 0;
-  const colShift = minCol < 0 ? -minCol : 0;
+  const findNextEmptyCell = (grid, startRow, startCol) => {
+    const rLen = grid.length;
+    const cLen = grid[0]?.length || 0;
+    for (let r = startRow; r < rLen; r++) {
+      for (let c = (r === startRow ? startCol : 0); c < cLen; c++) {
+        if (!grid[r][c]) return { row: r, col: c };
+      }
+    }
+    for (let r = 0; r < rLen; r++) {
+      for (let c = 0; c < cLen; c++) {
+        if (!grid[r][c]) return { row: r, col: c };
+      }
+    }
+    return null;
+  };
 
   const grid = Array(rows).fill(null).map(() => Array(cols).fill(null));
 
   // 填充网格
   for (const [name, loc] of Object.entries(mapData.locations)) {
-    const rr = Number(loc.row) + rowShift;
-    const cc = Number(loc.col) + colShift;
+    const rr = mapIndex(rowVals, Number(loc.row), rows);
+    const cc = mapIndex(colVals, Number(loc.col), cols);
     if (Number.isFinite(rr) && Number.isFinite(cc) && rr >= 0 && rr < rows && cc >= 0 && cc < cols) {
-      grid[rr][cc] = { name, ...loc };
+      if (!grid[rr][cc]) {
+        grid[rr][cc] = { name, ...loc };
+      } else {
+        const next = findNextEmptyCell(grid, rr, cc);
+        if (next) grid[next.row][next.col] = { name, ...loc };
+      }
     }
   }
 
