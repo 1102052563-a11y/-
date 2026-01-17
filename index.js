@@ -81,21 +81,27 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 1. 识别本次对话中出现的重要 NPC（不含主角）
 2. 识别主角当前持有/装备的关键物品
 3. 识别主角新增或变化的能力
-4. 生成档案式的客观第三人称描述
+4. 识别需要删除的条目（死亡的角色、卖掉/分解的装备等）
+5. 生成档案式的客观第三人称描述
 
 【筛选标准】
 - NPC：只记录有名有姓的角色，忽略杂兵、无名NPC、普通敌人
 - 装备：只记录绿色品质以上的装备，或紫色品质以上的重要物品
+
+【删除条目规则】
+- 若角色在对话中明确死亡/永久离开，将其加入 deletedCharacters 数组
+- 若装备被卖掉/分解/丢弃/彻底损坏，将其加入 deletedEquipments 数组
+- 若能力被遗忘/剥夺/彻底失效，将其加入 deletedAbilities 数组
 
 【重要】
 - 若提供了 statData，请从中提取该角色/物品的**关键数值**（如属性、等级、状态），精简为1-2行
 - 不要完整复制 statData，只提取最重要的信息
 - 重点描述：与主角的关系发展、角色背景、性格特点、关键事件`;
 const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
-const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。重点描述：阵营身份、与主角关系及发展、性格特点、背景故事、关键事件。若有 statData，在 statInfo 中精简总结其核心属性（1-2行），不要完整复制。信息不足写"待确认"。`;
-const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备（强化次数、镶嵌宝石、附魔等）。若有 statData，精简总结其属性。`;
-const DEFAULT_STRUCTURED_ABILITY_PROMPT = `记录主角的能力/技能。说明类型、效果、触发条件、代价。若有 statData，精简总结其数值（如"Lv.3，冷却10秒"）。`;
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"阵营/身份","status":"当前状态","personality":"性格特点","background":"背景故事","relationToProtagonist":"与主角的关系及发展","keyEvents":["关键事件1","事件2"],"statInfo":"核心属性精简总结","isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"类型","rarity":"品质(绿/蓝/紫/橙)","effects":"效果描述","source":"获得来源(时间+地点+方式)","currentState":"当前状态(强化/镶嵌/附魔等培养历程)","statInfo":"属性精简总结","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"类型","effects":"效果","trigger":"触发条件","cost":"代价","statInfo":"数值精简总结","boundEvents":[],"isNegative":false,"isNew":true}]}`;
+const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。重点描述：阵营身份、与主角关系及发展、性格特点、背景故事、关键事件。若角色死亡/永久离开，不要记录在 characters 里，而是将其名字加入 deletedCharacters。若有 statData，在 statInfo 中精简总结其核心属性（1-2行），不要完整复制。信息不足写"待确认"。`;
+const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备。若装备被卖掉/分解/丢弃/损坏，将其名字加入 deletedEquipments。若有 statData，精简总结其属性。`;
+const DEFAULT_STRUCTURED_ABILITY_PROMPT = `记录主角的能力/技能。说明类型、效果、触发条件、代价。若能力被遗忘/剥夺/失效，将其名字加入 deletedAbilities。若有 statData，精简总结其数值。`;
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。结构：{"characters":[...],"equipments":[...],"abilities":[...],"deletedCharacters":["死亡角色名1","永久离开角色名2"],"deletedEquipments":["卖掉的装备名1","损坏的装备名2"],"deletedAbilities":["失效的能力名1"]}。各条目结构：characters:[{name,uid,aliases[],faction,status,personality,background,relationToProtagonist,keyEvents[],statInfo,isNew,isUpdated}] equipments:[{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}] abilities:[{name,uid,type,effects,trigger,cost,statInfo,boundEvents[],isNegative,isNew}]`;
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
@@ -2411,6 +2417,9 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
     characters: Array.isArray(parsed.characters) ? parsed.characters : [],
     equipments: Array.isArray(parsed.equipments) ? parsed.equipments : [],
     abilities: Array.isArray(parsed.abilities) ? parsed.abilities : [],
+    deletedCharacters: Array.isArray(parsed.deletedCharacters) ? parsed.deletedCharacters : [],
+    deletedEquipments: Array.isArray(parsed.deletedEquipments) ? parsed.deletedEquipments : [],
+    deletedAbilities: Array.isArray(parsed.deletedAbilities) ? parsed.deletedAbilities : [],
   };
 }
 
@@ -2766,6 +2775,157 @@ async function writeOrUpdateAbilityEntry(ability, meta, settings) {
       buildContent: buildAbilityContent,
       entriesCache: meta.abilityEntries,
       nextIndexKey: 'nextAbilityIndex',
+      prefix: settings.abilityEntryPrefix || '能力',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+// 删除结构化条目（从世界书中删除死亡角色、卖掉装备等）
+async function deleteStructuredEntry(entryType, entryName, meta, settings, {
+  entriesCache,
+  prefix,
+  targetType = 'green',
+}) {
+  if (!entryName) return null;
+  const normalizedName = String(entryName || '').trim().toLowerCase();
+
+  // 查找缓存中的条目
+  const cacheKey = `${normalizedName}_${targetType}`;
+  const cached = entriesCache[cacheKey];
+  if (!cached) {
+    console.log(`[StoryGuide] Delete ${entryType} (${targetType}): ${entryName} not found in cache`);
+    return null;
+  }
+
+  // 构建 comment 用于查找世界书条目
+  const comment = `${prefix}｜${cached.name}｜${cached.indexId}`;
+
+  // 确定目标世界书
+  let target = 'chatbook';
+  let file = '';
+  if (targetType === 'blue') {
+    target = 'file';
+    file = settings.summaryBlueWorldInfoFile || '';
+    if (!file) {
+      console.warn(`[StoryGuide] No blue world info file configured for deletion`);
+      return null;
+    }
+  } else {
+    const t = String(settings.summaryWorldInfoTarget || 'chatbook');
+    if (t === 'file') {
+      target = 'file';
+      file = settings.summaryWorldInfoFile || '';
+    }
+  }
+
+  // 使用 /findentry 查找条目 UID
+  try {
+    const findExpr = target === 'chatbook'
+      ? `/findentry file={{getchatbook}} field=comment ${quoteSlashValue(comment)}`
+      : `/findentry file=${quoteSlashValue(file)} field=comment ${quoteSlashValue(comment)}`;
+
+    const findResult = await execSlash(findExpr);
+    const findText = slashOutputToText(findResult);
+
+    // 解析 UID
+    let uid = null;
+    if (findText && findText !== 'null' && findText !== 'undefined') {
+      const parsed = safeJsonParse(findText);
+      if (parsed && parsed.uid) {
+        uid = parsed.uid;
+      } else if (/^\d+$/.test(findText.trim())) {
+        uid = findText.trim();
+      }
+    }
+
+    if (!uid) {
+      console.log(`[StoryGuide] Delete ${entryType} (${targetType}): ${entryName} not found in world book`);
+      // 仍然从缓存中删除
+      delete entriesCache[cacheKey];
+      return { deleted: true, name: entryName, source: 'cache_only' };
+    }
+
+    // 使用 /delentry 删除条目
+    const deleteExpr = target === 'chatbook'
+      ? `/delentry file={{getchatbook}} uid=${uid}`
+      : `/delentry file=${quoteSlashValue(file)} uid=${uid}`;
+
+    await execSlash(deleteExpr);
+
+    // 从缓存中删除
+    delete entriesCache[cacheKey];
+
+    console.log(`[StoryGuide] Deleted ${entryType} (${targetType}): ${entryName} (UID: ${uid})`);
+    return { deleted: true, name: entryName, uid, targetType };
+  } catch (e) {
+    console.warn(`[StoryGuide] Delete ${entryType} (${targetType}) failed:`, e);
+    // 仍然从缓存中删除（避免下次再次尝试）
+    delete entriesCache[cacheKey];
+    return null;
+  }
+}
+
+// 删除角色条目
+async function deleteCharacterEntry(charName, meta, settings) {
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await deleteStructuredEntry('character', charName, meta, settings, {
+      entriesCache: meta.characterEntries,
+      prefix: settings.characterEntryPrefix || '人物',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await deleteStructuredEntry('character', charName, meta, settings, {
+      entriesCache: meta.characterEntries,
+      prefix: settings.characterEntryPrefix || '人物',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+// 删除装备条目
+async function deleteEquipmentEntry(equipName, meta, settings) {
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await deleteStructuredEntry('equipment', equipName, meta, settings, {
+      entriesCache: meta.equipmentEntries,
+      prefix: settings.equipmentEntryPrefix || '装备',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await deleteStructuredEntry('equipment', equipName, meta, settings, {
+      entriesCache: meta.equipmentEntries,
+      prefix: settings.equipmentEntryPrefix || '装备',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+// 删除能力条目
+async function deleteAbilityEntry(abilityName, meta, settings) {
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await deleteStructuredEntry('ability', abilityName, meta, settings, {
+      entriesCache: meta.abilityEntries,
+      prefix: settings.abilityEntryPrefix || '能力',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await deleteStructuredEntry('ability', abilityName, meta, settings, {
+      entriesCache: meta.abilityEntries,
       prefix: settings.abilityEntryPrefix || '能力',
       targetType: 'blue',
     });
@@ -3319,6 +3479,27 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
                 await writeOrUpdateAbilityEntry(ability, meta, s);
               }
             }
+
+            // 处理删除的条目
+            if (structuredResult.deletedCharacters?.length) {
+              console.log(`[StoryGuide] Deleting ${structuredResult.deletedCharacters.length} character(s)`);
+              for (const charName of structuredResult.deletedCharacters) {
+                await deleteCharacterEntry(charName, meta, s);
+              }
+            }
+            if (structuredResult.deletedEquipments?.length) {
+              console.log(`[StoryGuide] Deleting ${structuredResult.deletedEquipments.length} equipment(s)`);
+              for (const equipName of structuredResult.deletedEquipments) {
+                await deleteEquipmentEntry(equipName, meta, s);
+              }
+            }
+            if (structuredResult.deletedAbilities?.length) {
+              console.log(`[StoryGuide] Deleting ${structuredResult.deletedAbilities.length} ability(s)`);
+              for (const abilityName of structuredResult.deletedAbilities) {
+                await deleteAbilityEntry(abilityName, meta, s);
+              }
+            }
+
             await setSummaryMeta(meta);
           }
         } catch (e) {
