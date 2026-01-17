@@ -1326,6 +1326,7 @@ function mergeMapData(existingMap, newData) {
         group: String(loc.group || '').trim(),
         layer: String(loc.layer || '').trim(),
       };
+      ensureGridSize(map, row, col);
     } else {
       // 更新现有地点的连接
       if (Array.isArray(loc.connectedTo)) {
@@ -1337,6 +1338,11 @@ function mergeMapData(existingMap, newData) {
       }
       if (loc.group) map.locations[name].group = String(loc.group || '').trim();
       if (loc.layer) map.locations[name].layer = String(loc.layer || '').trim();
+      if (Number.isFinite(Number(loc.row)) && Number.isFinite(Number(loc.col))) {
+        map.locations[name].row = Number(loc.row);
+        map.locations[name].col = Number(loc.col);
+        ensureGridSize(map, map.locations[name].row, map.locations[name].col);
+      }
     }
   }
 
@@ -1385,6 +1391,15 @@ function findAdjacentGridPosition(map, baseRow, baseCol) {
     if (!occupied.has(`${pos.row},${pos.col}`)) return pos;
   }
   return findNextGridPosition(map);
+}
+
+function ensureGridSize(map, row, col) {
+  if (!map || !map.gridSize) return;
+  const r = Number(row);
+  const c = Number(col);
+  if (!Number.isFinite(r) || !Number.isFinite(c)) return;
+  if (r >= map.gridSize.rows) map.gridSize.rows = r + 1;
+  if (c >= map.gridSize.cols) map.gridSize.cols = c + 1;
 }
 
 // 寻找网格中的下一个空位
