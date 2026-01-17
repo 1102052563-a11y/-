@@ -2415,7 +2415,10 @@ function buildCharacterContent(char) {
   if (char.background) parts.push(`背景：${char.background}`);
   if (char.relationToProtagonist) parts.push(`与主角关系：${char.relationToProtagonist}`);
   if (char.keyEvents?.length) parts.push(`关键事件：${char.keyEvents.join('；')}`);
-  if (char.statInfo) parts.push(`属性数据：${char.statInfo}`);
+  if (char.statInfo) {
+    const infoStr = typeof char.statInfo === 'object' ? JSON.stringify(char.statInfo, null, 2) : String(char.statInfo);
+    parts.push(`属性数据：${infoStr}`);
+  }
   return parts.join('\n');
 }
 
@@ -2428,7 +2431,10 @@ function buildEquipmentContent(equip) {
   if (equip.effects) parts.push(`效果：${equip.effects}`);
   if (equip.source) parts.push(`来源：${equip.source}`);
   if (equip.currentState) parts.push(`当前状态：${equip.currentState}`);
-  if (equip.statInfo) parts.push(`属性数据：${equip.statInfo}`);
+  if (equip.statInfo) {
+    const infoStr = typeof equip.statInfo === 'object' ? JSON.stringify(equip.statInfo, null, 2) : String(equip.statInfo);
+    parts.push(`属性数据：${infoStr}`);
+  }
   if (equip.boundEvents?.length) parts.push(`相关事件：${equip.boundEvents.join('；')}`);
   return parts.join('\n');
 }
@@ -2440,7 +2446,10 @@ function buildAbilityContent(ability) {
   if (ability.effects) parts.push(`效果：${ability.effects}`);
   if (ability.trigger) parts.push(`触发条件：${ability.trigger}`);
   if (ability.cost) parts.push(`代价/冷却：${ability.cost}`);
-  if (ability.statInfo) parts.push(`属性数据：${ability.statInfo}`);
+  if (ability.statInfo) {
+    const infoStr = typeof ability.statInfo === 'object' ? JSON.stringify(ability.statInfo, null, 2) : String(ability.statInfo);
+    parts.push(`属性数据：${infoStr}`);
+  }
   if (ability.boundEvents?.length) parts.push(`相关事件：${ability.boundEvents.join('；')}`);
   return parts.join('\n');
 }
