@@ -9196,11 +9196,6 @@ function createFloatingPanel() {
       await refreshFloatingPanelContent();
     });
 
-    $(document).on('click', '.sg-inner-map-refresh-btn', (e) => {
-      if (!$(e.target).closest('#sg_floating_panel').length) return;
-      showFloatingMap();
-    });
-
     $('#sg_floating_roll_logs').on('click', () => {
       showFloatingRollLogs();
     });
@@ -9547,12 +9542,7 @@ function updateFloatingPanelBody(html) {
     }
     const mapData = getMapData();
     const html = renderGridMap(mapData);
-    const refreshBtnHtml = `
-      <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
-        <button class="sg-inner-map-refresh-btn" title="刷新地图" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🔄</button>
-      </div>
-    `;
-    $body.html(`${refreshBtnHtml}<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+    $body.html(`<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
   }
 
   function showFloatingReport() {
