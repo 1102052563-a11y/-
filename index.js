@@ -233,6 +233,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryMaxCharsPerMessage: 4000,
   summaryMaxTotalChars: 24000,
 
+  // 是否读取 stat_data 变量作为总结上下文（类似 roll 点模块）
+  summaryReadStatData: false,
+  summaryStatVarName: 'stat_data',
+
   // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
   summaryTemperature: 0.4,
@@ -2247,7 +2251,7 @@ function getSummarySchema() {
   };
 }
 
-function buildSummaryPromptMessages(chunkText, fromFloor, toFloor) {
+function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = null) {
   const s = ensureSettings();
 
   // system prompt
@@ -2259,14 +2263,23 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor) {
   // user template (supports placeholders)
   let tpl = String(s.summaryUserTemplate || '').trim();
   if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
+
+  // 格式化 statData（如果有）
+  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
+
   let user = renderTemplate(tpl, {
     fromFloor: String(fromFloor),
     toFloor: String(toFloor),
     chunk: String(chunkText || ''),
+    statData: statDataJson,
   });
   // 如果用户模板里没有包含 chunk，占位补回去，防止误配导致无内容
   if (!/{{\s*chunk\s*}}/i.test(tpl) && !String(user).includes(String(chunkText || '').slice(0, 12))) {
     user = String(user || '').trim() + `\n\n【对话片段】\n${chunkText}`;
+  }
+  // 如果有 statData 且用户模板里没有包含，追加到末尾
+  if (statData && !/{{\s*statData\s*}}/i.test(tpl)) {
+    user = String(user || '').trim() + `\n\n【角色状态数据】\n${statDataJson}`;
   }
   return [
     { role: 'system', content: sys },
@@ -3114,6 +3127,23 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     const writeErrs = [];
     const runErrs = [];
 
+    // 读取 stat_data（如果启用）
+    let summaryStatData = null;
+    if (s.summaryReadStatData) {
+      try {
+        const { statData } = await resolveStatDataComprehensive(chat, {
+          ...s,
+          wiRollStatVarName: s.summaryStatVarName || 'stat_data'
+        });
+        if (statData) {
+          summaryStatData = statData;
+          console.log('[StoryGuide] Summary loaded stat_data:', summaryStatData);
+        }
+      } catch (e) {
+        console.warn('[StoryGuide] Failed to load stat_data for summary:', e);
+      }
+    }
+
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const startIdx = seg.startIdx;
@@ -3130,7 +3160,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         continue;
       }
 
-      const messages = buildSummaryPromptMessages(chunkText, fromFloor, toFloor);
+      const messages = buildSummaryPromptMessages(chunkText, fromFloor, toFloor, summaryStatData);
       const schema = getSummarySchema();
 
       let jsonText = '';
@@ -6232,7 +6262,14 @@ function buildModalHtml() {
               </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示词</button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}}。插件会强制要求输出 JSON：{title, summary, keywords[]}。</div>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{statData}}。插件会强制要求输出 JSON：{title, summary, keywords[]}。</div>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:8px">
+                <label class="sg-check"><input type="checkbox" id="sg_summaryReadStatData">读取角色状态变量</label>
+                <div class="sg-field" style="flex:1;margin-left:8px">
+                  <input id="sg_summaryStatVarName" type="text" placeholder="stat_data" style="width:120px">
+                </div>
+                <div class="sg-hint" style="margin-left:8px">AI 可看到变量中的角色属性数据（类似 ROLL 点模块）</div>
               </div>
             </div>
 
@@ -6938,7 +6975,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -7366,6 +7403,8 @@ function pullSettingsToUi() {
   $('#sg_summaryTemperature').val(s.summaryTemperature);
   $('#sg_summarySystemPrompt').val(String(s.summarySystemPrompt || DEFAULT_SUMMARY_SYSTEM_PROMPT));
   $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || DEFAULT_SUMMARY_USER_TEMPLATE));
+  $('#sg_summaryReadStatData').prop('checked', !!s.summaryReadStatData);
+  $('#sg_summaryStatVarName').val(String(s.summaryStatVarName || 'stat_data'));
   $('#sg_structuredEntriesEnabled').prop('checked', !!s.structuredEntriesEnabled);
   $('#sg_characterEntriesEnabled').prop('checked', !!s.characterEntriesEnabled);
   $('#sg_equipmentEntriesEnabled').prop('checked', !!s.equipmentEntriesEnabled);
@@ -7803,6 +7842,8 @@ function pullUiToSettings() {
   s.summaryTemperature = clampFloat($('#sg_summaryTemperature').val(), 0, 2, s.summaryTemperature || 0.4);
   s.summarySystemPrompt = String($('#sg_summarySystemPrompt').val() || '').trim() || DEFAULT_SUMMARY_SYSTEM_PROMPT;
   s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || DEFAULT_SUMMARY_USER_TEMPLATE;
+  s.summaryReadStatData = $('#sg_summaryReadStatData').is(':checked');
+  s.summaryStatVarName = String($('#sg_summaryStatVarName').val() || 'stat_data').trim() || 'stat_data';
   s.structuredEntriesEnabled = $('#sg_structuredEntriesEnabled').is(':checked');
   s.characterEntriesEnabled = $('#sg_characterEntriesEnabled').is(':checked');
   s.equipmentEntriesEnabled = $('#sg_equipmentEntriesEnabled').is(':checked');
