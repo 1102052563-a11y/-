@@ -75,12 +75,24 @@ const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要
 
 
 // ===== 结构化世界书条目提示词默认值 =====
-const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管理"助手，负责从对话片段中提取结构化信息用于长期记忆。任务：1) 识别本次对话中出现的重要 NPC（不含主角）。2) 识别主角当前持有/装备的关键物品。3) 识别主角新增或变化的能力。对于每个条目，生成档案式的客观第三人称描述。`;
+const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管理"助手，负责从对话片段和角色状态数据(statData)中提取结构化信息用于长期记忆。
+
+【核心原则】
+1. **优先使用 statData**：若 statData 中有该人物/装备/能力的数据，必须完整提取填入，不得写"未知"。
+2. 识别本次对话中出现的重要 NPC（不含主角）。
+3. 识别主角当前持有/装备的关键物品。
+4. 识别主角新增或变化的能力。
+5. 对于每个条目，生成档案式的客观第三人称描述。
+
+【statData 使用说明】
+- statData 是一个JSON对象，包含角色的属性、技能、装备、状态等数据
+- 请仔细查找 statData 中与当前人物/装备/能力相关的所有字段
+- 将找到的数据完整填入 statInfo 字段（可以是JSON对象或描述文本）`;
 const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
-const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只提取重要 NPC（不含主角），避免杜撰；信息不足写"未知/待确认"。若 statData 中有该人物的数据（如属性/技能/装备/状态等），请完整填入对应字段。`;
-const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录主角当前持有/使用的关键装备或物品，说明类型/来源/状态/效果等。若 statData 中有该物品的详细数据（如属性加成/特殊效果/耐久等），请完整填入对应字段。`;
-const DEFAULT_STRUCTURED_ABILITY_PROMPT = `只记录主角新增或变化的能力/技能，注明触发条件/代价/负面效果等。若 statData 中有该能力的数据，请完整引用。`;
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"","status":"","personality":"","background":"","relationToProtagonist":"","keyEvents":[],"statInfo":"","isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"","rarity":"","effects":"","source":"","currentState":"","statInfo":"","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"","effects":"","trigger":"","cost":"","statInfo":"","boundEvents":[],"isNegative":false,"isNew":true}]}`;
+const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `提取重要 NPC（不含主角）。【重要】若 statData 中有该人物的任何数据（属性值/技能/装备/关系/状态等），必须完整复制到 statInfo 字段，禁止写"未知"。只有 statData 中确实没有的信息才可写"未知/待确认"。`;
+const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `记录主角持有的关键装备/物品。【重要】若 statData 中有该物品的数据（属性加成/特殊效果/耐久/数量等），必须完整复制到 statInfo 字段，禁止写"未知"。`;
+const DEFAULT_STRUCTURED_ABILITY_PROMPT = `记录主角的能力/技能。【重要】若 statData 中有该能力的数据（等级/冷却/消耗/效果数值等），必须完整复制到 statInfo 字段，禁止写"未知"。`;
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。statInfo 字段应包含从 statData 中提取的完整数据（对象或字符串均可）。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"","status":"","personality":"","background":"","relationToProtagonist":"","keyEvents":[],"statInfo":"从statData提取的完整数据","isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"","rarity":"","effects":"","source":"","currentState":"","statInfo":"从statData提取的完整数据","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"","effects":"","trigger":"","cost":"","statInfo":"从statData提取的完整数据","boundEvents":[],"isNegative":false,"isNew":true}]}`;
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
