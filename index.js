@@ -1427,13 +1427,34 @@ function renderGridMap(mapData) {
     return `<div class="sg-map-empty">暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成。</div>`;
   }
 
-  const { rows, cols } = mapData.gridSize;
+  let minRow = 0;
+  let minCol = 0;
+  let maxRow = mapData.gridSize.rows - 1;
+  let maxCol = mapData.gridSize.cols - 1;
+
+  for (const loc of Object.values(mapData.locations)) {
+    const r = Number(loc.row);
+    const c = Number(loc.col);
+    if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+    if (r < minRow) minRow = r;
+    if (c < minCol) minCol = c;
+    if (r > maxRow) maxRow = r;
+    if (c > maxCol) maxCol = c;
+  }
+
+  const rows = Math.max(mapData.gridSize.rows, maxRow - minRow + 1);
+  const cols = Math.max(mapData.gridSize.cols, maxCol - minCol + 1);
+  const rowShift = minRow < 0 ? -minRow : 0;
+  const colShift = minCol < 0 ? -minCol : 0;
+
   const grid = Array(rows).fill(null).map(() => Array(cols).fill(null));
 
   // 填充网格
   for (const [name, loc] of Object.entries(mapData.locations)) {
-    if (loc.row >= 0 && loc.row < rows && loc.col >= 0 && loc.col < cols) {
-      grid[loc.row][loc.col] = { name, ...loc };
+    const rr = Number(loc.row) + rowShift;
+    const cc = Number(loc.col) + colShift;
+    if (Number.isFinite(rr) && Number.isFinite(cc) && rr >= 0 && rr < rows && cc >= 0 && cc < cols) {
+      grid[rr][cc] = { name, ...loc };
     }
   }
 
