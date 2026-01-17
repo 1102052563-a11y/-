@@ -2823,12 +2823,23 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
 
   // 使用 /findentry 查找条目 UID
   try {
-    const findExpr = target === 'chatbook'
-      ? `/findentry file={{getchatbook}} field=comment ${quoteSlashValue(comment)}`
-      : `/findentry file=${quoteSlashValue(file)} field=comment ${quoteSlashValue(comment)}`;
+    let findExpr;
+    const findFileVar = 'sgTmpFindFile';
+    if (target === 'chatbook') {
+      // 使用 setvar/getvar 管道获取 chatbook 文件名
+      await execSlash(`/getchatbook | /setvar key=${findFileVar}`);
+      findExpr = `/findentry file={{getvar::${findFileVar}}} field=comment ${quoteSlashValue(comment)}`;
+    } else {
+      findExpr = `/findentry file=${quoteSlashValue(file)} field=comment ${quoteSlashValue(comment)}`;
+    }
 
     const findResult = await execSlash(findExpr);
     const findText = slashOutputToText(findResult);
+
+    // 清理临时变量
+    if (target === 'chatbook') {
+      await execSlash(`/flushvar ${findFileVar}`);
+    }
 
     // 解析 UID
     let uid = null;
@@ -2851,7 +2862,17 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     // SillyTavern 没有 /delentry 命令，改为禁用条目并标记为已删除
     // 1. 设置 disable=1（禁用条目）
     // 2. 清空内容或标记为已删除
-    const fileExpr = target === 'chatbook' ? '{{getchatbook}}' : quoteSlashValue(file);
+
+    // 构建文件表达式（chatbook 需要特殊处理）
+    let fileExpr;
+    const fileVar = 'sgTmpDeleteFile';
+    if (target === 'chatbook') {
+      // 使用 setvar/getvar 管道获取 chatbook 文件名
+      await execSlash(`/getchatbook | /setvar key=${fileVar}`);
+      fileExpr = `{{getvar::${fileVar}}}`;
+    } else {
+      fileExpr = quoteSlashValue(file);
+    }
 
     const disableExpr = `/setentryfield file=${fileExpr} uid=${uid} field=disable 1`;
     await execSlash(disableExpr);
@@ -2864,6 +2885,11 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     // 清空触发词（避免被触发）
     const keyExpr = `/setentryfield file=${fileExpr} uid=${uid} field=key ""`;
     await execSlash(keyExpr);
+
+    // 清理临时变量
+    if (target === 'chatbook') {
+      await execSlash(`/flushvar ${fileVar}`);
+    }
 
     // 从缓存中删除
     delete entriesCache[cacheKey];
