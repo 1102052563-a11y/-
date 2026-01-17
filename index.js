@@ -1223,7 +1223,12 @@ function renderGridMap(mapData) {
   }
 
   // 渲染 HTML（使用 CSS Grid）
-  let html = `<div class="sg-map-grid" style="--sg-map-cols:${cols};">`;
+  const gridInlineStyle = `display:grid;grid-template-columns:repeat(${cols},80px);grid-auto-rows:50px;gap:4px;justify-content:center;`;
+  const baseCellStyle = 'width:80px;height:50px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;text-align:center;position:relative;';
+  const emptyCellStyle = baseCellStyle + 'background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.08);';
+  const locationBaseStyle = baseCellStyle + 'background:rgba(100,150,200,0.2);border:1px solid rgba(100,150,200,0.35);';
+
+  let html = `<div class="sg-map-grid" style="--sg-map-cols:${cols};${gridInlineStyle}">`;
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -1239,13 +1244,17 @@ function renderGridMap(mapData) {
         const eventList = hasEvents ? cell.events.map(e => `• ${e}`).join('\n') : '';
         const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''}`;
 
-        html += `<div class="${classes.join(' ')}" title="${escapeHtml(tooltip)}">`;
+        let inlineStyle = locationBaseStyle;
+        if (isProtagonist) inlineStyle += 'background:rgba(100,200,100,0.25);border-color:rgba(100,200,100,0.5);box-shadow:0 0 8px rgba(100,200,100,0.3);';
+        if (hasEvents) inlineStyle += 'border-color:rgba(255,180,80,0.5);';
+        if (!cell.visited) inlineStyle += 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);opacity:0.6;';
+        html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}">`;
         html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
         html += '</div>';
       } else {
-        html += '<div class="sg-map-cell sg-map-empty-cell"></div>';
+        html += `<div class="sg-map-cell sg-map-empty-cell" style="${emptyCellStyle}"></div>`;
       }
     }
   }
