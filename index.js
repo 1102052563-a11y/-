@@ -83,15 +83,19 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 3. 识别主角新增或变化的能力
 4. 生成档案式的客观第三人称描述
 
+【筛选标准】
+- NPC：只记录有名有姓的角色，忽略杂兵、无名NPC、普通敌人
+- 装备：只记录绿色品质以上的装备，或紫色品质以上的重要物品
+
 【重要】
 - 若提供了 statData，请从中提取该角色/物品的**关键数值**（如属性、等级、状态），精简为1-2行
 - 不要完整复制 statData，只提取最重要的信息
 - 重点描述：与主角的关系发展、角色背景、性格特点、关键事件`;
 const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
-const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `提取重要 NPC（不含主角）。重点描述：阵营身份、与主角关系及发展、性格特点、背景故事、关键事件。若有 statData，在 statInfo 中精简总结其核心属性（1-2行，如"力量15/敏捷12"），不要完整复制。信息不足写"待确认"。`;
-const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `记录主角持有的关键装备/物品。说明类型、来源、效果、当前状态。若有 statData，在 statInfo 中精简总结其属性（如"攻击+10，耐久80%"），不要完整复制。`;
+const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。重点描述：阵营身份、与主角关系及发展、性格特点、背景故事、关键事件。若有 statData，在 statInfo 中精简总结其核心属性（1-2行），不要完整复制。信息不足写"待确认"。`;
+const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备（强化次数、镶嵌宝石、附魔等）。若有 statData，精简总结其属性。`;
 const DEFAULT_STRUCTURED_ABILITY_PROMPT = `记录主角的能力/技能。说明类型、效果、触发条件、代价。若有 statData，精简总结其数值（如"Lv.3，冷却10秒"）。`;
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"阵营/身份","status":"当前状态","personality":"性格特点","background":"背景故事","relationToProtagonist":"与主角的关系及发展","keyEvents":["关键事件1","事件2"],"statInfo":"核心属性精简总结","isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"类型","rarity":"品质","effects":"效果描述","source":"来源","currentState":"当前状态","statInfo":"属性精简总结","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"类型","effects":"效果","trigger":"触发条件","cost":"代价","statInfo":"数值精简总结","boundEvents":[],"isNegative":false,"isNew":true}]}`;
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。结构：{"characters":[{"name":"","uid":"","aliases":[],"faction":"阵营/身份","status":"当前状态","personality":"性格特点","background":"背景故事","relationToProtagonist":"与主角的关系及发展","keyEvents":["关键事件1","事件2"],"statInfo":"核心属性精简总结","isNew":true,"isUpdated":false}],"equipments":[{"name":"","uid":"","type":"类型","rarity":"品质(绿/蓝/紫/橙)","effects":"效果描述","source":"获得来源(时间+地点+方式)","currentState":"当前状态(强化/镶嵌/附魔等培养历程)","statInfo":"属性精简总结","boundEvents":[],"isNew":true}],"abilities":[{"name":"","uid":"","type":"类型","effects":"效果","trigger":"触发条件","cost":"代价","statInfo":"数值精简总结","boundEvents":[],"isNegative":false,"isNew":true}]}`;
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
