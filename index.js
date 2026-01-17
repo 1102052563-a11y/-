@@ -481,6 +481,25 @@ const DEFAULT_SETTINGS = Object.freeze({
     { label: '对话', prompt: '让角色之间展开更多对话' },
     { label: '行动', prompt: '描述接下来的具体行动' },
   ], null, 2),
+
+  // ===== 地图功能 =====
+  mapEnabled: false,
+  mapSystemPrompt: `从对话中提取地点信息：
+1. 识别当前主角所在的地点名称
+2. 识别提及的新地点
+3. 判断地点之间的连接关系（哪些地点相邻/可通行）
+4. 记录该地点发生的重要事件
+
+输出 JSON 格式：
+{
+  "currentLocation": "主角当前所在地点",
+  "newLocations": [
+    { "name": "地点名", "description": "简述", "connectedTo": ["相邻地点1"] }
+  ],
+  "events": [
+    { "location": "地点名", "event": "事件描述" }
+  ]
+}`,
 });
 
 const META_KEYS = Object.freeze({
@@ -491,6 +510,7 @@ const META_KEYS = Object.freeze({
   boundGreenWI: 'storyguide_bound_green_wi',
   boundBlueWI: 'storyguide_bound_blue_wi',
   autoBindCreated: 'storyguide_auto_bind_created',
+  mapData: 'storyguide_map_data',
 });
 
 let lastReport = null;
@@ -918,6 +938,50 @@ async function setStaticModulesCache(cache) {
   await setChatMetaValue(META_KEYS.staticModulesCache, JSON.stringify(cache ?? {}));
 }
 
+// ===== 地图数据（网格地图功能）=====
+function getDefaultMapData() {
+  return {
+    locations: {},
+    protagonistLocation: '',
+    gridSize: { rows: 5, cols: 7 },
+    lastUpdated: null,
+  };
+}
+
+function getMapData() {
+  const raw = String(getChatMetaValue(META_KEYS.mapData) || '').trim();
+  if (!raw) return getDefaultMapData();
+  try {
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return getDefaultMapData();
+    return {
+      ...getDefaultMapData(),
+      ...data,
+      locations: (data.locations && typeof data.locations === 'object') ? data.locations : {},
+    };
+  } catch {
+    return getDefaultMapData();
+  }
+}
+
+async function setMapData(mapData) {
+  await setChatMetaValue(META_KEYS.mapData, JSON.stringify(mapData ?? getDefaultMapData()));
+}
+
+// 更新地图预览
+function updateMapPreview() {
+  try {
+    const mapData = getMapData();
+    const html = renderGridMap(mapData);
+    const $preview = $('#sg_mapPreview');
+    if ($preview.length) {
+      $preview.html(html);
+    }
+  } catch (e) {
+    console.warn('[StoryGuide] updateMapPreview error:', e);
+  }
+}
+
 // 合并静态模块缓存到分析结果中
 function mergeStaticModulesIntoResult(parsedJson, modules) {
   const cache = getStaticModulesCache();
@@ -953,6 +1017,159 @@ async function updateStaticModulesCache(parsedJson, modules) {
   if (changed) {
     await setStaticModulesCache(cache);
   }
+}
+
+// ===== 地图功能：提取和渲染 =====
+
+// 从 LLM 响应中提取地图数据
+function parseMapLLMResponse(responseText) {
+  const parsed = safeJsonParse(responseText);
+  if (!parsed) return null;
+  return {
+    currentLocation: String(parsed.currentLocation || '').trim(),
+    newLocations: Array.isArray(parsed.newLocations) ? parsed.newLocations : [],
+    events: Array.isArray(parsed.events) ? parsed.events : [],
+  };
+}
+
+// 合并新地图数据到现有地图
+function mergeMapData(existingMap, newData) {
+  if (!newData) return existingMap;
+
+  const map = { ...existingMap, locations: { ...existingMap.locations } };
+
+  // 更新主角位置
+  if (newData.currentLocation) {
+    map.protagonistLocation = newData.currentLocation;
+    // 确保当前位置存在
+    if (!map.locations[newData.currentLocation]) {
+      map.locations[newData.currentLocation] = {
+        row: 0, col: 0, connections: [], events: [], visited: true, description: ''
+      };
+    }
+    map.locations[newData.currentLocation].visited = true;
+  }
+
+  // 添加新地点
+  for (const loc of newData.newLocations) {
+    const name = String(loc.name || '').trim();
+    if (!name) continue;
+
+    if (!map.locations[name]) {
+      // 计算新位置的坐标（简单算法：找空位）
+      const { row, col } = findNextGridPosition(map);
+      map.locations[name] = {
+        row, col,
+        connections: Array.isArray(loc.connectedTo) ? loc.connectedTo : [],
+        events: [],
+        visited: name === map.protagonistLocation,
+        description: String(loc.description || ''),
+      };
+    } else {
+      // 更新现有地点的连接
+      if (Array.isArray(loc.connectedTo)) {
+        for (const conn of loc.connectedTo) {
+          if (!map.locations[name].connections.includes(conn)) {
+            map.locations[name].connections.push(conn);
+          }
+        }
+      }
+    }
+  }
+
+  // 添加事件
+  for (const evt of newData.events) {
+    const locName = String(evt.location || '').trim();
+    const event = String(evt.event || '').trim();
+    if (locName && event && map.locations[locName]) {
+      if (!map.locations[locName].events.includes(event)) {
+        map.locations[locName].events.push(event);
+      }
+    }
+  }
+
+  // 更新双向连接
+  for (const [name, loc] of Object.entries(map.locations)) {
+    for (const conn of loc.connections) {
+      if (map.locations[conn] && !map.locations[conn].connections.includes(name)) {
+        map.locations[conn].connections.push(name);
+      }
+    }
+  }
+
+  map.lastUpdated = new Date().toISOString();
+  return map;
+}
+
+// 寻找网格中的下一个空位
+function findNextGridPosition(map) {
+  const occupied = new Set();
+  for (const loc of Object.values(map.locations)) {
+    occupied.add(`${loc.row},${loc.col}`);
+  }
+
+  for (let r = 0; r < map.gridSize.rows; r++) {
+    for (let c = 0; c < map.gridSize.cols; c++) {
+      if (!occupied.has(`${r},${c}`)) {
+        return { row: r, col: c };
+      }
+    }
+  }
+  // 扩展网格
+  map.gridSize.rows++;
+  return { row: map.gridSize.rows - 1, col: 0 };
+}
+
+// 渲染网格地图为 HTML
+function renderGridMap(mapData) {
+  if (!mapData || Object.keys(mapData.locations).length === 0) {
+    return `<div class="sg-map-empty">暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成。</div>`;
+  }
+
+  const { rows, cols } = mapData.gridSize;
+  const grid = Array(rows).fill(null).map(() => Array(cols).fill(null));
+
+  // 填充网格
+  for (const [name, loc] of Object.entries(mapData.locations)) {
+    if (loc.row >= 0 && loc.row < rows && loc.col >= 0 && loc.col < cols) {
+      grid[loc.row][loc.col] = { name, ...loc };
+    }
+  }
+
+  // 渲染 HTML
+  let html = '<div class="sg-map-grid">';
+
+  for (let r = 0; r < rows; r++) {
+    html += '<div class="sg-map-row">';
+    for (let c = 0; c < cols; c++) {
+      const cell = grid[r][c];
+      if (cell) {
+        const isProtagonist = cell.name === mapData.protagonistLocation;
+        const hasEvents = cell.events && cell.events.length > 0;
+        const classes = ['sg-map-cell', 'sg-map-location'];
+        if (isProtagonist) classes.push('sg-map-protagonist');
+        if (hasEvents) classes.push('sg-map-has-events');
+        if (!cell.visited) classes.push('sg-map-unvisited');
+
+        const eventList = hasEvents ? cell.events.map(e => `• ${e}`).join('\n') : '';
+        const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''}`;
+
+        html += `<div class="${classes.join(' ')}" title="${escapeHtml(tooltip)}">`;
+        html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
+        if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
+        if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
+        html += '</div>';
+      } else {
+        html += '<div class="sg-map-cell sg-map-empty-cell"></div>';
+      }
+    }
+    html += '</div>';
+  }
+
+  html += '</div>';
+  html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
+
+  return html;
 }
 
 // 清除静态模块缓存（手动刷新时使用）
@@ -6680,6 +6897,27 @@ function buildModalHtml() {
             <div class="sg-hint" id="sg_worldbookInfo">（未导入世界书）</div>
           </div>
 
+          <div class="sg-card">
+            <div class="sg-card-title">🗺️ 网格地图</div>
+            <div class="sg-hint">从剧情中自动提取地点信息，生成可视化世界地图。显示主角位置和各地事件。</div>
+            
+            <div class="sg-row sg-inline" style="margin-top: 10px;">
+              <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
+            </div>
+            
+            <div class="sg-field" style="margin-top: 10px;">
+              <label>地图当前状态</label>
+              <div id="sg_mapPreview" class="sg-map-container">
+                <div class="sg-map-empty">暂无地图数据。启用后进行剧情分析将自动生成地图。</div>
+              </div>
+            </div>
+            
+            <div class="sg-actions-row">
+              <button class="menu_button sg-btn" id="sg_resetMap">🗑 重置地图</button>
+              <button class="menu_button sg-btn" id="sg_refreshMapPreview">🔄 刷新预览</button>
+            </div>
+          </div>
+
           </div> <!-- sg_page_guide -->
 
           <div class="sg-page" id="sg_page_summary">
@@ -7694,6 +7932,27 @@ function ensureModal() {
     saveSettings();
     updateWorldbookInfoLabel();
   });
+
+  // 地图功能事件处理
+  $('#sg_mapEnabled').on('change', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
+
+  $('#sg_resetMap').on('click', async () => {
+    try {
+      await setMapData(getDefaultMapData());
+      updateMapPreview();
+      setStatus('地图已重置 ✅', 'ok');
+    } catch (e) {
+      setStatus(`重置地图失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_refreshMapPreview').on('click', () => {
+    updateMapPreview();
+    setStatus('地图预览已刷新', 'ok');
+  });
   $('#sg_worldbookMaxChars, #sg_worldbookWindowMessages').on('input', () => {
     pullUiToSettings();
     saveSettings();
@@ -7949,6 +8208,10 @@ function pullSettingsToUi() {
   $('#sg_autoBindWorldInfo').prop('checked', !!s.autoBindWorldInfo);
   $('#sg_autoBindWorldInfoPrefix').val(String(s.autoBindWorldInfoPrefix || 'SG'));
   updateAutoBindUI();
+
+  // 地图功能
+  $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
+  setTimeout(() => updateMapPreview(), 100);
 
   $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
   $('#sg_wiTriggerLookbackMessages').val(s.wiTriggerLookbackMessages || 20);
@@ -8389,6 +8652,9 @@ function pullUiToSettings() {
   // 自动绑定世界书
   s.autoBindWorldInfo = $('#sg_autoBindWorldInfo').is(':checked');
   s.autoBindWorldInfoPrefix = String($('#sg_autoBindWorldInfoPrefix').val() || 'SG').trim() || 'SG';
+
+  // 地图功能
+  s.mapEnabled = $('#sg_mapEnabled').is(':checked');
 
   s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
   s.wiTriggerLookbackMessages = clampInt($('#sg_wiTriggerLookbackMessages').val(), 5, 120, s.wiTriggerLookbackMessages || 20);
