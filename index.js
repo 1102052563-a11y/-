@@ -125,6 +125,12 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 - NPC：只记录有名有姓的角色，忽略杂兵、无名NPC、普通敌人
 - 装备：只记录绿色品质以上的装备，或紫色品质以上的重要物品
 
+【去重规则（重要）】
+- 仔细检查【已知人物列表】和【已知装备列表】，避免重复创建条目
+- 同一角色可能有多种写法（如繁体/简体、英文/中文翻译），必须识别为同一人
+- 如果发现角色已存在于列表中，使用 isUpdated=true 更新而不是创建新条目
+- 将不同名称写法添加到 aliases 数组中
+
 【删除条目规则】
 - 若角色在对话中明确死亡/永久离开，将其加入 deletedCharacters 数组
 - 若装备被卖掉/分解/丢弃/彻底损坏，将其加入 deletedEquipments 数组
@@ -2532,9 +2538,15 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
     STRUCTURED_ENTRIES_JSON_REQUIREMENT,
   ].join('\n\n');
 
-  // 构建已知列表供 LLM 判断是否新增/更新
-  const knownChars = Object.values(meta.characterEntries || {}).map(c => `${c.name}(${c.uid})`).join('、') || '无';
-  const knownEquips = Object.values(meta.equipmentEntries || {}).map(e => `${e.name}(${e.uid})`).join('、') || '无';
+  // 构建已知列表供 LLM 判断是否新增/更新（包含别名以帮助识别不同写法）
+  const knownChars = Object.values(meta.characterEntries || {}).map(c => {
+    const aliases = Array.isArray(c.aliases) && c.aliases.length > 0 ? `[别名:${c.aliases.join('/')}]` : '';
+    return `${c.name}${aliases}`;
+  }).join('、') || '无';
+  const knownEquips = Object.values(meta.equipmentEntries || {}).map(e => {
+    const aliases = Array.isArray(e.aliases) && e.aliases.length > 0 ? `[别名:${e.aliases.join('/')}]` : '';
+    return `${e.name}${aliases}`;
+  }).join('、') || '无';
 
   // 格式化 statData
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
@@ -2666,9 +2678,22 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     for (const [key, value] of Object.entries(entriesCache)) {
       if (!key.endsWith(`_${targetType}`)) continue;
       const cachedNameNorm = String(value.name || '').replace(/[|｜,，\s]/g, '_').toLowerCase();
-      if (cachedNameNorm === normalizedName || cachedNameNorm.includes(normalizedName) || normalizedName.includes(cachedNameNorm)) {
+      const cachedAliases = Array.isArray(value.aliases) ? value.aliases.map(a => String(a).toLowerCase().trim()) : [];
+      const newAliases = Array.isArray(entryData.aliases) ? entryData.aliases.map(a => String(a).toLowerCase().trim()) : [];
+      const nameMatch = cachedNameNorm === normalizedName || cachedNameNorm.includes(normalizedName) || normalizedName.includes(cachedNameNorm);
+      const newNameInCachedAliases = cachedAliases.some(a => a === normalizedName || a.includes(normalizedName) || normalizedName.includes(a));
+      const cachedNameInNewAliases = newAliases.some(a => a === cachedNameNorm || a.includes(cachedNameNorm) || cachedNameNorm.includes(a));
+      const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na || ca.includes(na) || na.includes(ca)));
+      if (nameMatch || newNameInCachedAliases || cachedNameInNewAliases || aliasesOverlap) {
         cached = value;
-        console.log(`[StoryGuide] Found cached ${entryType} by fuzzy match: "${entryName}" -> "${value.name}"`);
+        console.log(`[StoryGuide] Found cached ${entryType} by smart match: "${entryName}" -> "${value.name}"`);
+        if (entryName.toLowerCase() !== String(value.name).toLowerCase()) {
+          cached.aliases = cached.aliases || [];
+          if (!cached.aliases.some(a => String(a).toLowerCase() === entryName.toLowerCase())) {
+            cached.aliases.push(entryName);
+            console.log(`[StoryGuide] Added "${entryName}" as alias for "${value.name}"`);
+          }
+        }
         break;
       }
     }
