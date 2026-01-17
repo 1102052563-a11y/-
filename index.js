@@ -66,12 +66,49 @@ const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor
 const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
 
-// ===== 索引提示词默认值（可在面板中自定义；用于“LLM 综合判断”模式） =====
-const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个“剧情索引匹配”助手。\n\n任务：\n- 输入包含：最近剧情正文（节选）、用户当前输入、以及若干候选索引条目（每条含标题/摘要/触发词）。\n- 你的目标是：综合判断哪些候选条目与“当前剧情”最相关（不是只匹配用户这一句话），并返回这些候选的 id。\n\n要求：\n- 优先选择与当前剧情主线/关键人物/关键地点/关键物品/未解决悬念相关的条目。\n- 避免选择明显无关或过于泛的条目。\n- 返回条目数量应 <= maxPick。`;
+// ===== 索引提示词默认值（可在面板中自定义；用于"LLM 综合判断"模式） =====
+const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个"剧情索引匹配"助手。
 
-const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】\n{{userMessage}}\n\n【最近剧情（节选）】\n{{recentText}}\n\n【候选索引条目（JSON）】\n{{candidates}}\n\n请从候选中选出与当前剧情最相关的条目（不超过 {{maxPick}} 条），并仅输出 JSON。`;
+【任务】
+- 输入包含：最近剧情正文（节选）、用户当前输入、以及若干候选索引条目（含标题/摘要/触发词/类型）。
+- 你的目标是：综合判断哪些候选条目与"当前剧情"最相关，并返回这些候选的 id。
 
-const INDEX_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"pickedIds": number[]}。\n- pickedIds 必须是候选列表里的 id（整数）。\n- 返回的 pickedIds 数量 <= maxPick。`;
+【选择优先级】
+1. **人物相关**：当前剧情涉及某个NPC时，优先索引该NPC的档案条目
+2. **装备相关**：当前剧情涉及某件装备时，优先索引该装备的条目
+3. **历史剧情**：优先选择时间较久远但与当前剧情相关的条目（避免索引最近已在上下文中的剧情）
+4. **因果关联**：当前事件的前因、伏笔、未解悬念
+
+【避免】
+- 不要选择刚刚发生的剧情（最近5层以内的内容通常已在上下文中）
+- 避免选择明显无关或过于泛泛的条目
+
+【返回要求】
+- 返回条目数量应 <= maxPick
+- 分类控制：人物条目 <= maxCharacters，装备条目 <= maxEquipments，剧情条目 <= maxPlot`;
+
+const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】
+{{userMessage}}
+
+【最近剧情（节选）】
+{{recentText}}
+
+【候选索引条目（JSON）】
+{{candidates}}
+
+【选择限制】
+- 总数不超过 {{maxPick}} 条
+- 人物条目不超过 {{maxCharacters}} 条
+- 装备条目不超过 {{maxEquipments}} 条
+- 剧情条目不超过 {{maxPlot}} 条
+
+请从候选中选出与当前剧情最相关的条目，优先选择：与当前提到的人物/装备相关的条目、时间较久远的相关剧情。仅输出 JSON。`;
+
+const INDEX_JSON_REQUIREMENT = `输出要求：
+- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。
+- JSON 结构必须为：{"pickedIds": number[]}。
+- pickedIds 必须是候选列表里的 id（整数）。
+- 返回的 pickedIds 数量 <= maxPick。`;
 
 
 // ===== 结构化世界书条目提示词默认值 =====
@@ -339,6 +376,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiTriggerStartAfterAssistantMessages: 0,
   // 最多选择多少条 summary 条目来触发
   wiTriggerMaxEntries: 4,
+  // 分类最大索引数
+  wiTriggerMaxCharacters: 2, // 最多索引多少个人物条目
+  wiTriggerMaxEquipments: 2, // 最多索引多少个装备条目
+  wiTriggerMaxPlot: 3,       // 最多索引多少个剧情条目（优先较久远的）
   // 相关度阈值（0~1，越大越严格）
   wiTriggerMinScore: 0.08,
   // 最多注入多少个触发词（去重后）
@@ -6711,6 +6752,23 @@ function buildModalHtml() {
                   <input id="sg_wiTriggerMaxEntries" type="number" min="1" max="20" placeholder="4">
                 </div>
 
+              <div class="sg-grid2" style="margin-top: 8px;">
+                <div class="sg-field">
+                  <label>最多索引人物数</label>
+                  <input id="sg_wiTriggerMaxCharacters" type="number" min="0" max="10" placeholder="2">
+                </div>
+                <div class="sg-field">
+                  <label>最多索引装备数</label>
+                  <input id="sg_wiTriggerMaxEquipments" type="number" min="0" max="10" placeholder="2">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>最多索引剧情数（优先久远）</label>
+                  <input id="sg_wiTriggerMaxPlot" type="number" min="0" max="10" placeholder="3">
+                </div>
+              </div>
+
 <div class="sg-grid2">
   <div class="sg-field">
     <label>匹配方式</label>
@@ -7265,7 +7323,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -7736,6 +7794,9 @@ function pullSettingsToUi() {
   $('#sg_wiTriggerUserMessageWeight').val(s.wiTriggerUserMessageWeight ?? 1.6);
   $('#sg_wiTriggerStartAfterAssistantMessages').val(s.wiTriggerStartAfterAssistantMessages || 0);
   $('#sg_wiTriggerMaxEntries').val(s.wiTriggerMaxEntries || 4);
+  $('#sg_wiTriggerMaxCharacters').val(s.wiTriggerMaxCharacters ?? 2);
+  $('#sg_wiTriggerMaxEquipments').val(s.wiTriggerMaxEquipments ?? 2);
+  $('#sg_wiTriggerMaxPlot').val(s.wiTriggerMaxPlot ?? 3);
   $('#sg_wiTriggerMinScore').val(s.wiTriggerMinScore ?? 0.08);
   $('#sg_wiTriggerMaxKeywords').val(s.wiTriggerMaxKeywords || 24);
   $('#sg_wiTriggerInjectStyle').val(String(s.wiTriggerInjectStyle || 'hidden'));
@@ -8173,6 +8234,9 @@ function pullUiToSettings() {
   s.wiTriggerUserMessageWeight = clampFloat($('#sg_wiTriggerUserMessageWeight').val(), 0, 10, s.wiTriggerUserMessageWeight ?? 1.6);
   s.wiTriggerStartAfterAssistantMessages = clampInt($('#sg_wiTriggerStartAfterAssistantMessages').val(), 0, 200000, s.wiTriggerStartAfterAssistantMessages || 0);
   s.wiTriggerMaxEntries = clampInt($('#sg_wiTriggerMaxEntries').val(), 1, 20, s.wiTriggerMaxEntries || 4);
+  s.wiTriggerMaxCharacters = clampInt($('#sg_wiTriggerMaxCharacters').val(), 0, 10, s.wiTriggerMaxCharacters ?? 2);
+  s.wiTriggerMaxEquipments = clampInt($('#sg_wiTriggerMaxEquipments').val(), 0, 10, s.wiTriggerMaxEquipments ?? 2);
+  s.wiTriggerMaxPlot = clampInt($('#sg_wiTriggerMaxPlot').val(), 0, 10, s.wiTriggerMaxPlot ?? 3);
   s.wiTriggerMinScore = clampFloat($('#sg_wiTriggerMinScore').val(), 0, 1, (s.wiTriggerMinScore ?? 0.08));
   s.wiTriggerMaxKeywords = clampInt($('#sg_wiTriggerMaxKeywords').val(), 1, 200, s.wiTriggerMaxKeywords || 24);
   s.wiTriggerInjectStyle = String($('#sg_wiTriggerInjectStyle').val() || s.wiTriggerInjectStyle || 'hidden');
