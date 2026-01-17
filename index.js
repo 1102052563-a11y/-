@@ -558,6 +558,88 @@ function ensureSettings() {
 
 function saveSettings() { SillyTavern.getContext().saveSettingsDebounced(); }
 
+// 导出全局预设
+function exportPreset() {
+  const s = ensureSettings();
+  const preset = {
+    _type: 'StoryGuide_Preset',
+    _version: '1.0',
+    _exportedAt: new Date().toISOString(),
+    settings: { ...s }
+  };
+  // 移除敏感信息（API Key）
+  delete preset.settings.customApiKey;
+  delete preset.settings.summaryCustomApiKey;
+  delete preset.settings.wiIndexCustomApiKey;
+  delete preset.settings.wiRollCustomApiKey;
+  // 移除缓存数据
+  delete preset.settings.customModelsCache;
+  delete preset.settings.summaryCustomModelsCache;
+  delete preset.settings.wiIndexCustomModelsCache;
+  delete preset.settings.wiRollCustomModelsCache;
+
+  const json = JSON.stringify(preset, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `StoryGuide_Preset_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast('预设已导出 ✅', { kind: 'ok' });
+}
+
+// 导入全局预设
+async function importPreset(file) {
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const preset = JSON.parse(text);
+
+    // 验证格式
+    if (preset._type !== 'StoryGuide_Preset') {
+      showToast('无效的预设文件格式', { kind: 'err' });
+      return;
+    }
+
+    if (!preset.settings || typeof preset.settings !== 'object') {
+      showToast('预设文件内容无效', { kind: 'err' });
+      return;
+    }
+
+    // 获取当前设置并保留敏感信息
+    const currentSettings = ensureSettings();
+    const preservedKeys = [
+      'customApiKey', 'summaryCustomApiKey', 'wiIndexCustomApiKey', 'wiRollCustomApiKey',
+      'customModelsCache', 'summaryCustomModelsCache', 'wiIndexCustomModelsCache', 'wiRollCustomModelsCache'
+    ];
+
+    // 合并设置（保留敏感信息）
+    const newSettings = { ...preset.settings };
+    for (const key of preservedKeys) {
+      if (currentSettings[key]) {
+        newSettings[key] = currentSettings[key];
+      }
+    }
+
+    // 应用新设置
+    Object.assign(extensionSettings[MODULE_NAME], newSettings);
+    saveSettings();
+
+    // 刷新 UI
+    pullSettingsToUi();
+
+    showToast(`预设已导入 ✅\n版本: ${preset._version || '未知'}\n导出时间: ${preset._exportedAt || '未知'}`, { kind: 'ok', duration: 3000 });
+  } catch (e) {
+    console.error('[StoryGuide] Import preset failed:', e);
+    showToast(`导入失败: ${e.message}`, { kind: 'err' });
+  }
+}
+
 function stripHtml(input) {
   if (!input) return '';
   return String(input).replace(/<[^>]*>/g, '').replace(/\s+\n/g, '\n').trim();
@@ -6448,6 +6530,11 @@ function buildModalHtml() {
               <button class="menu_button sg-btn-primary" id="sg_saveSettings">保存设置</button>
               <button class="menu_button sg-btn-primary" id="sg_analyze">分析当前剧情</button>
             </div>
+            <div class="sg-actions-row" style="margin-top: 8px;">
+              <button class="menu_button sg-btn" id="sg_exportPreset">📤 导出全局预设</button>
+              <button class="menu_button sg-btn" id="sg_importPreset">📥 导入全局预设</button>
+              <input type="file" id="sg_importPresetFile" accept=".json" style="display: none;">
+            </div>
           </div>
 
           <div class="sg-card">
@@ -7334,6 +7421,28 @@ function ensureModal() {
   $('#sg_refreshModels').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await refreshModels();
+  });
+
+  // 导出/导入全局预设
+  $('#sg_exportPreset').on('click', () => {
+    try {
+      exportPreset();
+    } catch (e) {
+      showToast(`导出失败: ${e.message}`, { kind: 'err' });
+    }
+  });
+
+  $('#sg_importPreset').on('click', () => {
+    $('#sg_importPresetFile').trigger('click');
+  });
+
+  $('#sg_importPresetFile').on('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await importPreset(file);
+      // 清空 input 以便再次选择同一文件
+      e.target.value = '';
+    }
   });
 
   $('#sg_refreshSummaryModels').on('click', async () => {
