@@ -149,11 +149,6 @@ const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC�
 - motivation：角色自己的独立目标/动机，不应为了主角而放弃
 - relationshipStage：与主角的关系阶段（陌生/初识/熟悉/信任/亲密），关系不应跳跃式发展
 
-【去重规则（重要）】
-- 查看「已知人物列表」，如果当前人物是已存在人物的别名/翻译变体/繁简体变形，使用已知人物的名字而非创建新条目
-- 例如：Alice/爱丽丝/艾莉丝/艾麗絲 应视为同一人物
-- 将所有名称变体放入 aliases 数组
-
 若角色死亡/永久离开，将其名字加入 deletedCharacters。若有 statData，在 statInfo 中精简总结。信息不足写"待确认"。`;
 const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备。若装备被卖掉/分解/丢弃/损坏，将其名字加入 deletedEquipments。若有 statData，精简总结其属性。`;
 const DEFAULT_STRUCTURED_ABILITY_PROMPT = `记录主角的能力/技能。说明类型、效果、触发条件、代价。若能力被遗忘/剥夺/失效，将其名字加入 deletedAbilities。若有 statData，精简总结其数值。`;
@@ -2646,48 +2641,6 @@ function buildAbilityContent(ability) {
   return parts.join('\n');
 }
 
-// 常用繁简体对照表（仅名字中常见字）
-const TRAD_TO_SIMP = {
-  '麗': '丽', '愛': '爱', '義': '义', '葉': '叶', '國': '国', '華': '华', '東': '东', '書': '书',
-  '長': '长', '門': '门', '開': '开', '馬': '马', '風': '风', '飛': '飞', '鳳': '凤', '龍': '龙',
-  '雲': '云', '電': '电', '無': '无', '時': '时', '萬': '万', '廣': '广', '專': '专', '業': '业',
-  '學': '学', '發': '发', '對': '对', '經': '经', '實': '实', '現': '现', '機': '机', '關': '关',
-  '點': '点', '與': '与', '過': '过', '還': '还', '進': '进', '種': '种', '將': '将', '軍': '军',
-  '見': '见', '親': '亲', '頭': '头', '體': '体', '從': '从', '動': '动', '勝': '胜', '變': '变',
-  '聖': '圣', '達': '达', '傳': '传', '師': '师', '導': '导', '據': '据', '歐': '欧', '溫': '温',
-  '維': '维', '斯': '斯', '絲': '丝', '爾': '尔', '爾': '尔', '蘭': '兰', '靈': '灵', '魔': '魔',
-};
-
-// 规范化名称用于匹配（繁转简、移除标点、统一大小写）
-function normalizeNameForMatch(name) {
-  if (!name) return '';
-  let s = String(name).trim();
-  // 繁体转简体
-  s = s.split('').map(c => TRAD_TO_SIMP[c] || c).join('');
-  // 移除常见标点和空白
-  s = s.replace(/[|｜,，.。·・\-\s_'"「」『』【】\(\)（）\[\]]/g, '');
-  // 统一小写
-  return s.toLowerCase();
-}
-
-// 计算两个名称的相似度（简单 Jaccard 系数）
-function calculateNameSimilarity(name1, name2) {
-  if (!name1 || !name2) return 0;
-  if (name1 === name2) return 1;
-
-  // 对于短名字，使用字符级比较
-  const chars1 = new Set(name1.split(''));
-  const chars2 = new Set(name2.split(''));
-
-  let intersection = 0;
-  for (const c of chars1) {
-    if (chars2.has(c)) intersection++;
-  }
-
-  const union = chars1.size + chars2.size - intersection;
-  return union > 0 ? intersection / union : 0;
-}
-
 // 写入或更新结构化条目（方案C：混合策略）
 // targetType: 'green' = 绿灯世界书（触发词触发）, 'blue' = 蓝灯世界书（常开索引）
 async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings, {
@@ -2702,36 +2655,18 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   if (!entryName) return null;
 
   // 规范化名称：移除特殊字符，用于缓存 key
-  const normalizedName = normalizeNameForMatch(entryName);
+  const normalizedName = entryName.replace(/[|｜,，\s]/g, '_').toLowerCase();
   const cacheKey = `${normalizedName}_${targetType}`;
-
-  // 收集当前条目的所有名称变体（用于匹配）
-  const currentAliases = Array.isArray(entryData.aliases) ? entryData.aliases : [];
-  const currentNameVariants = [entryName, ...currentAliases].map(n => normalizeNameForMatch(n));
 
   // 首先按 cacheKey 直接查找
   let cached = entriesCache[cacheKey];
 
-  // 如果直接查找失败，遍历缓存按名称和别名模糊匹配
+  // 如果直接查找失败，遍历缓存按名称模糊匹配（处理同一人物不同写法）
   if (!cached) {
     for (const [key, value] of Object.entries(entriesCache)) {
       if (!key.endsWith(`_${targetType}`)) continue;
-
-      // 收集缓存条目的所有名称变体
-      const cachedAliases = Array.isArray(value.aliases) ? value.aliases : [];
-      const cachedNameVariants = [value.name, ...cachedAliases].map(n => normalizeNameForMatch(n));
-
-      // 检查是否有任何名称变体匹配
-      const isMatch = currentNameVariants.some(currentVar =>
-        cachedNameVariants.some(cachedVar =>
-          currentVar === cachedVar ||
-          currentVar.includes(cachedVar) ||
-          cachedVar.includes(currentVar) ||
-          calculateNameSimilarity(currentVar, cachedVar) > 0.7
-        )
-      );
-
-      if (isMatch) {
+      const cachedNameNorm = String(value.name || '').replace(/[|｜,，\s]/g, '_').toLowerCase();
+      if (cachedNameNorm === normalizedName || cachedNameNorm.includes(normalizedName) || normalizedName.includes(cachedNameNorm)) {
         cached = value;
         console.log(`[StoryGuide] Found cached ${entryType} by fuzzy match: "${entryName}" -> "${value.name}"`);
         break;
