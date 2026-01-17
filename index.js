@@ -1206,7 +1206,7 @@ function findNextGridPosition(map) {
   return { row: map.gridSize.rows - 1, col: 0 };
 }
 
-// 渲染网格地图为 HTML
+// 渲染网格地图为 HTML（纯 HTML/CSS 网格）
 function renderGridMap(mapData) {
   if (!mapData || Object.keys(mapData.locations).length === 0) {
     return `<div class="sg-map-empty">暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成。</div>`;
@@ -1222,11 +1222,10 @@ function renderGridMap(mapData) {
     }
   }
 
-  // 渲染 HTML
-  let html = '<div class="sg-map-grid">';
+  // 渲染 HTML（使用 CSS Grid）
+  let html = `<div class="sg-map-grid" style="--sg-map-cols:${cols};">`;
 
   for (let r = 0; r < rows; r++) {
-    html += '<div class="sg-map-row">';
     for (let c = 0; c < cols; c++) {
       const cell = grid[r][c];
       if (cell) {
@@ -1249,7 +1248,6 @@ function renderGridMap(mapData) {
         html += '<div class="sg-map-cell sg-map-empty-cell"></div>';
       }
     }
-    html += '</div>';
   }
 
   html += '</div>';
@@ -6989,13 +6987,21 @@ function buildModalHtml() {
             <div class="sg-card-title">🗺️ 网格地图</div>
             <div class="sg-hint">从剧情中自动提取地点信息，生成可视化世界地图。显示主角位置和各地事件。</div>
             
-            <div class="sg-row sg-inline" style="margin-top: 10px;">
-              <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
-            </div>
-            
-            <div class="sg-field" style="margin-top: 10px;">
-              <label>地图当前状态</label>
-              <div id="sg_mapPreview" class="sg-map-container">
+              <div class="sg-row sg-inline" style="margin-top: 10px;">
+                <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
+              </div>
+
+              <div class="sg-field" style="margin-top: 10px;">
+                <label>地图提示词</label>
+                <textarea id="sg_mapSystemPrompt" rows="6" placeholder="可自定义地图提取规则（仍需输出 JSON）"></textarea>
+                <div class="sg-actions-row">
+                  <button class="menu_button sg-btn" id="sg_mapResetPrompt">恢复默认提示词</button>
+                </div>
+              </div>
+              
+              <div class="sg-field" style="margin-top: 10px;">
+                <label>地图当前状态</label>
+                <div id="sg_mapPreview" class="sg-map-container">
                 <div class="sg-map-empty">暂无地图数据。启用后进行剧情分析将自动生成地图。</div>
               </div>
             </div>
@@ -8021,15 +8027,27 @@ function ensureModal() {
     updateWorldbookInfoLabel();
   });
 
-  // 地图功能事件处理
-  $('#sg_mapEnabled').on('change', () => {
-    pullUiToSettings();
-    saveSettings();
-  });
+    // 地图功能事件处理
+    $('#sg_mapEnabled').on('change', () => {
+      pullUiToSettings();
+      saveSettings();
+    });
 
-  $('#sg_resetMap').on('click', async () => {
-    try {
-      await setMapData(getDefaultMapData());
+    $('#sg_mapSystemPrompt').on('change input', () => {
+      pullUiToSettings();
+      saveSettings();
+    });
+
+    $('#sg_mapResetPrompt').on('click', () => {
+      $('#sg_mapSystemPrompt').val(String(DEFAULT_SETTINGS.mapSystemPrompt || ''));
+      pullUiToSettings();
+      saveSettings();
+      setStatus('已恢复默认地图提示词 ✅', 'ok');
+    });
+
+    $('#sg_resetMap').on('click', async () => {
+      try {
+        await setMapData(getDefaultMapData());
       updateMapPreview();
       setStatus('地图已重置 ✅', 'ok');
     } catch (e) {
@@ -8299,6 +8317,7 @@ function pullSettingsToUi() {
 
   // 地图功能
   $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
+  $('#sg_mapSystemPrompt').val(String(s.mapSystemPrompt || DEFAULT_SETTINGS.mapSystemPrompt || ''));
   setTimeout(() => updateMapPreview(), 100);
 
   $('#sg_wiTriggerEnabled').prop('checked', !!s.wiTriggerEnabled);
@@ -8743,6 +8762,7 @@ function pullUiToSettings() {
 
   // 地图功能
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
+  s.mapSystemPrompt = String($('#sg_mapSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.mapSystemPrompt;
 
   s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
   s.wiTriggerLookbackMessages = clampInt($('#sg_wiTriggerLookbackMessages').val(), 5, 120, s.wiTriggerLookbackMessages || 20);
