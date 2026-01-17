@@ -6030,17 +6030,19 @@ async function runInlineAppendForLastMessage(opts = {}) {
     return;
   }
 
-  try {
-    const { snapshotText } = buildSnapshot();
+    try {
+      const { snapshotText } = buildSnapshot();
 
-    const modules = getModules('append');
-    // append 里 schema 按 inline 模块生成；如果用户把 inline 全关了，就不生成
-    if (!modules.length) return;
+      const modules = getModules('append');
+      // append 里 schema 按 inline 模块生成；如果用户把 inline 全关了，就不生成
+      if (!modules.length) return;
 
-    // 对 “compact/standard” 给一点暗示（不强制），避免用户模块 prompt 很长时没起作用
-    const modeHint = (s.appendMode === 'standard')
-      ? `\n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
-      : `\n【附加要求】inline 输出尽量短：每个字段尽量 1~2 句/2 条以内。\n`;
+      await updateMapFromSnapshot(snapshotText);
+
+      // 对 “compact/standard” 给一点暗示（不强制），避免用户模块 prompt 很长时没起作用
+      const modeHint = (s.appendMode === 'standard')
+        ? `\n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
+        : `\n【附加要求】inline 输出尽量短：每个字段尽量 1~2 句/2 条以内。\n`;
 
     const schema = buildSchemaFromModules(modules);
     const messages = buildPromptMessages(snapshotText + modeHint, s.spoilerLevel, modules, 'append');
@@ -9418,52 +9420,54 @@ function hideFloatingPanel() {
   }
 }
 
-async function refreshFloatingPanelContent() {
-  const $body = $('#sg_floating_body');
-  if (!$body.length) return;
+  async function refreshFloatingPanelContent() {
+    const $body = $('#sg_floating_body');
+    if (!$body.length) return;
 
-  $body.html('<div class="sg-floating-loading">正在分析剧情...</div>');
+    $body.html('<div class="sg-floating-loading">正在分析剧情...</div>');
 
-  try {
-    const s = ensureSettings();
-    const { snapshotText } = buildSnapshot();
-    const modules = getModules('panel');
+    try {
+      const s = ensureSettings();
+      const { snapshotText } = buildSnapshot();
+      const modules = getModules('panel');
 
-    if (!modules.length) {
-      $body.html('<div class="sg-floating-loading">没有配置模块</div>');
-      return;
-    }
+      if (!modules.length) {
+        $body.html('<div class="sg-floating-loading">没有配置模块</div>');
+        return;
+      }
 
-    const schema = buildSchemaFromModules(modules);
-    const messages = buildPromptMessages(snapshotText, s.spoilerLevel, modules, 'panel');
+      const schema = buildSchemaFromModules(modules);
+      const messages = buildPromptMessages(snapshotText, s.spoilerLevel, modules, 'panel');
 
-    let jsonText = '';
-    if (s.provider === 'custom') {
-      jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
-    } else {
-      jsonText = await callViaSillyTavern(messages, schema, s.temperature);
-      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-    }
+      let jsonText = '';
+      if (s.provider === 'custom') {
+        jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
+      } else {
+        jsonText = await callViaSillyTavern(messages, schema, s.temperature);
+        if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+      }
 
-    const parsed = safeJsonParse(jsonText);
-    if (!parsed) {
-      $body.html('<div class="sg-floating-loading">解析失败</div>');
-      return;
-    }
+      const parsed = safeJsonParse(jsonText);
+      if (!parsed) {
+        $body.html('<div class="sg-floating-loading">解析失败</div>');
+        return;
+      }
 
-    // 合并静态模块
-    const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
-    updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
+      // 合并静态模块
+      const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
+      updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
 
-    // 渲染内容
-    // Filter out quick_actions from main Markdown body to avoid duplication
-    const bodyModules = modules.filter(m => m.key !== 'quick_actions');
-    const md = renderReportMarkdownFromModules(mergedParsed, bodyModules);
-    const html = renderMarkdownToHtml(md);
+      // 渲染内容
+      // Filter out quick_actions from main Markdown body to avoid duplication
+      const bodyModules = modules.filter(m => m.key !== 'quick_actions');
+      const md = renderReportMarkdownFromModules(mergedParsed, bodyModules);
+      const html = renderMarkdownToHtml(md);
 
-    // 添加快捷选项
-    const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
-    const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
+      await updateMapFromSnapshot(snapshotText);
+
+      // 添加快捷选项
+      const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
+      const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
 
     const refreshBtnHtml = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
