@@ -982,6 +982,92 @@ function updateMapPreview() {
   }
 }
 
+const MAP_JSON_REQUIREMENT = `输出要求：
+- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。`;
+
+function getMapSchema() {
+  return {
+    type: 'object',
+    properties: {
+      currentLocation: { type: 'string' },
+      newLocations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            description: { type: 'string' },
+            connectedTo: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['name'],
+          additionalProperties: true,
+        },
+      },
+      events: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            location: { type: 'string' },
+            event: { type: 'string' },
+          },
+          required: ['location', 'event'],
+          additionalProperties: true,
+        },
+      },
+    },
+    required: ['currentLocation', 'newLocations', 'events'],
+    additionalProperties: true,
+  };
+}
+
+function buildMapPromptMessages(snapshotText) {
+  const s = ensureSettings();
+  let sys = String(s.mapSystemPrompt || '').trim();
+  if (!sys) sys = String(DEFAULT_SETTINGS.mapSystemPrompt || '').trim();
+  sys = sys + '\n\n' + MAP_JSON_REQUIREMENT;
+  const user = String(snapshotText || '').trim();
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: user },
+  ];
+}
+
+async function updateMapFromSnapshot(snapshotText) {
+  const s = ensureSettings();
+  if (!s.mapEnabled) return;
+  const user = String(snapshotText || '').trim();
+  if (!user) return;
+
+  try {
+    const messages = buildMapPromptMessages(user);
+    let jsonText = '';
+    if (s.provider === 'custom') {
+      jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
+    } else {
+      jsonText = await callViaSillyTavern(messages, getMapSchema(), s.temperature);
+      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+    }
+
+    let parsed = parseMapLLMResponse(jsonText);
+    if (!parsed) {
+      try {
+        const retryText = (s.provider === 'custom')
+          ? await fallbackAskJsonCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream)
+          : await fallbackAskJson(messages, s.temperature);
+        parsed = parseMapLLMResponse(retryText);
+      } catch { /* ignore */ }
+    }
+    if (!parsed) return;
+
+    const merged = mergeMapData(getMapData(), parsed);
+    await setMapData(merged);
+    updateMapPreview();
+  } catch (e) {
+    console.warn('[StoryGuide] map update failed:', e);
+  }
+}
+
 // 合并静态模块缓存到分析结果中
 function mergeStaticModulesIntoResult(parsedJson, modules) {
   const cache = getStaticModulesCache();
@@ -2499,12 +2585,14 @@ async function runAnalysis() {
       throw new Error('模型输出无法解析为 JSON（已切到 JSON 标签，看看原文）');
     }
 
-    const md = renderReportMarkdownFromModules(parsed, modules);
-    lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
-    renderMarkdownInto($('#sg_md'), md);
+      const md = renderReportMarkdownFromModules(parsed, modules);
+      lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
+      renderMarkdownInto($('#sg_md'), md);
 
-    // 同步面板报告到聊天末尾
-    try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
+      await updateMapFromSnapshot(snapshotText);
+
+      // 同步面板报告到聊天末尾
+      try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
 
     updateButtonsEnabled();
     showPane('md');
