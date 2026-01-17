@@ -495,16 +495,18 @@ const DEFAULT_SETTINGS = Object.freeze({
   8. 若无法给出 row/col，至少给出 connectedTo 或方位词
   9. 没有明确依据时用“待确认”描述，不要乱猜
   10. 必须输出 currentLocation/newLocations/events 三个字段，数组可为空但字段必须存在
-  11. 仅依据对话/设定/原著信息进行推断，不要引入无根据的信息
+  11. 为地点补充分组/图层信息：group（室外/室内/楼层区域等），layer（如“一层/二层/地下”）
+  12. 事件允许附带 tags（如：战斗/任务/对话/解谜/探索），每个事件 1~3 个标签
+  13. 仅依据对话/设定/原著信息进行推断，不要引入无根据的信息
   
   输出 JSON 格式：
   {
     "currentLocation": "主角当前所在地点",
     "newLocations": [
-      { "name": "地点名", "description": "简述", "connectedTo": ["相邻地点1"], "row": 0, "col": 0 }
+      { "name": "地点名", "description": "简述", "connectedTo": ["相邻地点1"], "row": 0, "col": 0, "group": "室外", "layer": "一层" }
     ],
     "events": [
-      { "location": "地点名", "event": "事件描述" }
+      { "location": "地点名", "event": "事件描述", "tags": ["任务"] }
     ]
   }`,
 });
@@ -1080,11 +1082,15 @@ function getMapSchema() {
         type: 'array',
         items: {
           type: 'object',
-          properties: {
-            name: { type: 'string' },
-            description: { type: 'string' },
-            connectedTo: { type: 'array', items: { type: 'string' } },
-          },
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+              connectedTo: { type: 'array', items: { type: 'string' } },
+              group: { type: 'string' },
+              layer: { type: 'string' },
+              row: { type: 'number' },
+              col: { type: 'number' },
+            },
           required: ['name'],
           additionalProperties: true,
         },
@@ -1093,10 +1099,11 @@ function getMapSchema() {
         type: 'array',
         items: {
           type: 'object',
-          properties: {
-            location: { type: 'string' },
-            event: { type: 'string' },
-          },
+            properties: {
+              location: { type: 'string' },
+              event: { type: 'string' },
+              tags: { type: 'array', items: { type: 'string' } },
+            },
           required: ['location', 'event'],
           additionalProperties: true,
         },
@@ -1204,6 +1211,22 @@ function parseMapLLMResponse(responseText) {
   };
 }
 
+function normalizeMapEvent(evt) {
+  if (typeof evt === 'string') return { text: evt, tags: [] };
+  if (!evt || typeof evt !== 'object') return null;
+  const text = String(evt.event || evt.text || '').trim();
+  if (!text) return null;
+  const tags = Array.isArray(evt.tags) ? evt.tags.map(t => String(t || '').trim()).filter(Boolean) : [];
+  return { text, tags };
+}
+
+function formatMapEventText(evt) {
+  const text = typeof evt === 'string' ? evt : String(evt?.text || evt?.event || '').trim();
+  const tags = Array.isArray(evt?.tags) ? evt.tags : [];
+  const tagText = tags.length ? ` [${tags.join('/')}]` : '';
+  return `${text}${tagText}`.trim();
+}
+
 // 合并新地图数据到现有地图
 function mergeMapData(existingMap, newData) {
   if (!newData) return existingMap;
@@ -1251,6 +1274,8 @@ function mergeMapData(existingMap, newData) {
         events: [],
         visited: name === map.protagonistLocation,
         description: String(loc.description || ''),
+        group: String(loc.group || '').trim(),
+        layer: String(loc.layer || '').trim(),
       };
     } else {
       // 更新现有地点的连接
@@ -1261,17 +1286,20 @@ function mergeMapData(existingMap, newData) {
           }
         }
       }
+      if (loc.group) map.locations[name].group = String(loc.group || '').trim();
+      if (loc.layer) map.locations[name].layer = String(loc.layer || '').trim();
     }
   }
 
   // 添加事件
   for (const evt of newData.events) {
     const locName = String(evt.location || '').trim();
-    const event = String(evt.event || '').trim();
-    if (locName && event && map.locations[locName]) {
-      if (!map.locations[locName].events.includes(event)) {
-        map.locations[locName].events.push(event);
-      }
+    const eventObj = normalizeMapEvent(evt);
+    if (locName && eventObj && map.locations[locName]) {
+      const list = Array.isArray(map.locations[locName].events) ? map.locations[locName].events : [];
+      const exists = list.some(e => String(e?.text || e?.event || e || '').trim() === eventObj.text);
+      if (!exists) list.push(eventObj);
+      map.locations[locName].events = list;
     }
   }
 
@@ -1365,17 +1393,25 @@ function renderGridMap(mapData) {
         if (hasEvents) classes.push('sg-map-has-events');
         if (!cell.visited) classes.push('sg-map-unvisited');
 
-        const eventList = hasEvents ? cell.events.map(e => `• ${e}`).join('\n') : '';
-        const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''}`;
+          const eventList = hasEvents ? cell.events.map(e => `• ${formatMapEventText(e)}`).join('\n') : '';
+          const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''}`;
 
         let inlineStyle = locationBaseStyle;
         if (isProtagonist) inlineStyle += 'background:rgba(100,200,100,0.25);border-color:rgba(100,200,100,0.5);box-shadow:0 0 8px rgba(100,200,100,0.3);';
         if (hasEvents) inlineStyle += 'border-color:rgba(255,180,80,0.5);';
         if (!cell.visited) inlineStyle += 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);opacity:0.6;';
-        const eventsJson = escapeHtml(JSON.stringify(Array.isArray(cell.events) ? cell.events : []));
-        const descAttr = escapeHtml(String(cell.description || ''));
-        const nameAttr = escapeHtml(String(cell.name || ''));
-        html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}">`;
+          const eventsJson = escapeHtml(JSON.stringify(Array.isArray(cell.events) ? cell.events : []));
+          const descAttr = escapeHtml(String(cell.description || ''));
+          const nameAttr = escapeHtml(String(cell.name || ''));
+          const groupAttr = escapeHtml(String(cell.group || ''));
+          const layerAttr = escapeHtml(String(cell.layer || ''));
+          html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}" data-group="${groupAttr}" data-layer="${layerAttr}">`;
+          if (cell.layer || cell.group) {
+            html += `<div class="sg-map-badges">`;
+            if (cell.layer) html += `<span class="sg-map-badge sg-map-badge-layer">${escapeHtml(String(cell.layer))}</span>`;
+            if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group">${escapeHtml(String(cell.group))}</span>`;
+            html += `</div>`;
+          }
         html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
@@ -1386,9 +1422,10 @@ function renderGridMap(mapData) {
     }
   }
 
-  html += '</div>';
-  html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
-  html += '</div>';
+    html += '</div>';
+    html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
+    html += '<div class="sg-map-event-panel">点击地点查看事件列表</div>';
+    html += '</div>';
 
   return html;
 }
@@ -8186,7 +8223,39 @@ function ensureModal() {
 
     $(document).on('click', '.sg-map-location', (e) => {
       const $cell = $(e.currentTarget);
-      showMapPopover($cell);
+      const $wrap = $cell.closest('.sg-map-wrapper');
+      const $panel = $wrap.find('.sg-map-event-panel');
+      if (!$panel.length) return;
+
+      const name = String($cell.attr('data-name') || '').trim();
+      const desc = String($cell.attr('data-desc') || '').trim();
+      const group = String($cell.attr('data-group') || '').trim();
+      const layer = String($cell.attr('data-layer') || '').trim();
+      const events = parseJsonArrayAttr($cell.attr('data-events'));
+
+      const headerBits = [];
+      if (name) headerBits.push(`<span class="sg-map-event-title">${escapeHtml(name)}</span>`);
+      if (layer) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(layer)}</span>`);
+      if (group) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(group)}</span>`);
+      const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
+      const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
+
+      let listHtml = '';
+      if (events.length) {
+        const items = events.map((e) => {
+          const text = escapeHtml(String(e?.text || e?.event || e || '').trim());
+          const tags = Array.isArray(e?.tags) ? e.tags : [];
+          const tagsHtml = tags.length
+            ? `<span class="sg-map-event-tags">${tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('')}</span>`
+            : '';
+          return `<li><span class="sg-map-event-text">${text || '（无内容）'}</span>${tagsHtml}</li>`;
+        }).join('');
+        listHtml = `<ul class="sg-map-event-list">${items}</ul>`;
+      } else {
+        listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
+      }
+
+      $panel.html(`${header}${descHtml}${listHtml}`);
     });
 
     $(document).on('click', (e) => {
