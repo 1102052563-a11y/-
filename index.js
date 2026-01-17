@@ -2582,8 +2582,21 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   }
 
   // 创建新条目
-  const indexNum = meta[nextIndexKey] || 1;
-  const indexId = `${entryType.substring(0, 3).toUpperCase()}-${String(indexNum).padStart(3, '0')}`;
+  // 对于蓝灯条目，先检查是否有对应的绿灯条目，复用其 indexId
+  let indexId;
+  const greenCacheKey = `${normalizedName}_green`;
+  const existingGreenEntry = entriesCache[greenCacheKey];
+
+  if (targetType === 'blue' && existingGreenEntry?.indexId) {
+    // 蓝灯复用绿灯的 indexId
+    indexId = existingGreenEntry.indexId;
+    console.log(`[StoryGuide] Reusing green indexId for blue: ${entryName} -> ${indexId}`);
+  } else {
+    // 绿灯或没有对应绿灯条目时，生成新 indexId
+    const indexNum = meta[nextIndexKey] || 1;
+    indexId = `${entryType.substring(0, 3).toUpperCase()}-${String(indexNum).padStart(3, '0')}`;
+  }
+
   const keyValue = buildStructuredEntryKey(prefix, entryName, indexId);
   const comment = `${prefix}｜${entryName}｜${indexId}`;
 
@@ -2615,8 +2628,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       indexId,
       targetType,
     };
-    if (targetType === 'green') {
-      meta[nextIndexKey] = indexNum + 1;
+    if (targetType === 'green' && !existingGreenEntry) {
+      // 只在绿灯首次创建时递增索引
+      meta[nextIndexKey] = (meta[nextIndexKey] || 1) + 1;
     }
     console.log(`[StoryGuide] Created ${entryType} (${targetType}): ${entryName} -> ${indexId}`);
     return { created: true, name: entryName, indexId, targetType };
