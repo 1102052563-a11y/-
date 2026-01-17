@@ -2848,17 +2848,27 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
       return { deleted: true, name: entryName, source: 'cache_only' };
     }
 
-    // 使用 /delentry 删除条目
-    const deleteExpr = target === 'chatbook'
-      ? `/delentry file={{getchatbook}} uid=${uid}`
-      : `/delentry file=${quoteSlashValue(file)} uid=${uid}`;
+    // SillyTavern 没有 /delentry 命令，改为禁用条目并标记为已删除
+    // 1. 设置 disable=1（禁用条目）
+    // 2. 清空内容或标记为已删除
+    const fileExpr = target === 'chatbook' ? '{{getchatbook}}' : quoteSlashValue(file);
 
-    await execSlash(deleteExpr);
+    const disableExpr = `/setentryfield file=${fileExpr} uid=${uid} field=disable 1`;
+    await execSlash(disableExpr);
+
+    // 修改 comment 为已删除标记
+    const deletedComment = `[已删除] ${comment}`;
+    const commentExpr = `/setentryfield file=${fileExpr} uid=${uid} field=comment ${quoteSlashValue(deletedComment)}`;
+    await execSlash(commentExpr);
+
+    // 清空触发词（避免被触发）
+    const keyExpr = `/setentryfield file=${fileExpr} uid=${uid} field=key ""`;
+    await execSlash(keyExpr);
 
     // 从缓存中删除
     delete entriesCache[cacheKey];
 
-    console.log(`[StoryGuide] Deleted ${entryType} (${targetType}): ${entryName} (UID: ${uid})`);
+    console.log(`[StoryGuide] Disabled ${entryType} (${targetType}): ${entryName} (UID: ${uid})`);
     return { deleted: true, name: entryName, uid, targetType };
   } catch (e) {
     console.warn(`[StoryGuide] Delete ${entryType} (${targetType}) failed:`, e);
