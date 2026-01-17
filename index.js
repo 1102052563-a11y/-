@@ -9143,12 +9143,13 @@ function createFloatingPanel() {
   panel.innerHTML = `
     <div class="sg-floating-header" style="cursor: move; touch-action: none;">
       <span class="sg-floating-title">📘 剧情指导</span>
-      <div class="sg-floating-actions">
-        <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
-        <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
-        <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
-        <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
-      </div>
+        <div class="sg-floating-actions">
+          <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
+          <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺️</button>
+          <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
+          <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
+          <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
+        </div>
     </div>
     <div class="sg-floating-body" id="sg_floating_body">
       <div style="padding:20px; text-align:center; color:#aaa;">
@@ -9180,20 +9181,29 @@ function createFloatingPanel() {
     hideFloatingPanel();
   });
 
-  $('#sg_floating_show_report').on('click', () => {
-    showFloatingReport();
-  });
+    $('#sg_floating_show_report').on('click', () => {
+      showFloatingReport();
+    });
 
-  // Delegate inner refresh click
-  $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
-    // Only handle if inside our panel
-    if (!$(e.target).closest('#sg_floating_panel').length) return;
-    await refreshFloatingPanelContent();
-  });
+    $('#sg_floating_show_map').on('click', () => {
+      showFloatingMap();
+    });
 
-  $('#sg_floating_roll_logs').on('click', () => {
-    showFloatingRollLogs();
-  });
+    // Delegate inner refresh click
+    $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
+      // Only handle if inside our panel
+      if (!$(e.target).closest('#sg_floating_panel').length) return;
+      await refreshFloatingPanelContent();
+    });
+
+    $(document).on('click', '.sg-inner-map-refresh-btn', (e) => {
+      if (!$(e.target).closest('#sg_floating_panel').length) return;
+      showFloatingMap();
+    });
+
+    $('#sg_floating_roll_logs').on('click', () => {
+      showFloatingRollLogs();
+    });
 
   $('#sg_floating_settings').on('click', () => {
     openModal();
@@ -9483,9 +9493,9 @@ function updateFloatingPanelBody(html) {
   }
 }
 
-function showFloatingRollLogs() {
-  const $body = $('#sg_floating_body');
-  if (!$body.length) return;
+  function showFloatingRollLogs() {
+    const $body = $('#sg_floating_body');
+    if (!$body.length) return;
 
   const meta = getSummaryMeta();
   const logs = Array.isArray(meta?.rollLogs) ? meta.rollLogs : [];
@@ -9524,12 +9534,30 @@ function showFloatingRollLogs() {
     `;
   }).join('');
 
-  $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
-}
+    $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+  }
 
-function showFloatingReport() {
-  const $body = $('#sg_floating_body');
-  if (!$body.length) return;
+  function showFloatingMap() {
+    const $body = $('#sg_floating_body');
+    if (!$body.length) return;
+    const s = ensureSettings();
+    if (!s.mapEnabled) {
+      $body.html('<div class="sg-floating-loading">地图功能未启用</div>');
+      return;
+    }
+    const mapData = getMapData();
+    const html = renderGridMap(mapData);
+    const refreshBtnHtml = `
+      <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
+        <button class="sg-inner-map-refresh-btn" title="刷新地图" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🔄</button>
+      </div>
+    `;
+    $body.html(`${refreshBtnHtml}<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+  }
+
+  function showFloatingReport() {
+    const $body = $('#sg_floating_body');
+    if (!$body.length) return;
 
   // Use last cached content if available, otherwise show empty state
   if (lastFloatingContent) {
