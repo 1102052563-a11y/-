@@ -484,22 +484,24 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // ===== 地图功能 =====
   mapEnabled: false,
-  mapSystemPrompt: `从对话中提取地点信息：
-1. 识别当前主角所在的地点名称
-2. 识别提及的新地点
-3. 判断地点之间的连接关系（哪些地点相邻/可通行）
-4. 记录该地点发生的重要事件
-
-输出 JSON 格式：
-{
-  "currentLocation": "主角当前所在地点",
-  "newLocations": [
-    { "name": "地点名", "description": "简述", "connectedTo": ["相邻地点1"] }
-  ],
-  "events": [
-    { "location": "地点名", "event": "事件描述" }
-  ]
-}`,
+  mapSystemPrompt: `从对话中提取地点信息，并尽量还原空间关系：
+  1. 识别当前主角所在的地点名称
+  2. 识别提及的新地点
+  3. 判断地点之间的连接关系（哪些地点相邻/可通行，方向感如：北/南/东/西/楼上/楼下）
+  4. 记录该地点发生的重要事件
+  5. 若文本明确提到相对位置/楼层/方位，请给出 row/col（网格坐标）或相邻关系
+  6. 仅依据对话/设定/原著信息进行推断，不要引入外部搜索信息
+  
+  输出 JSON 格式：
+  {
+    "currentLocation": "主角当前所在地点",
+    "newLocations": [
+      { "name": "地点名", "description": "简述", "connectedTo": ["相邻地点1"], "row": 0, "col": 0 }
+    ],
+    "events": [
+      { "location": "地点名", "event": "事件描述" }
+    ]
+  }`,
 });
 
 const META_KEYS = Object.freeze({
@@ -732,6 +734,17 @@ function safeJsonParse(maybeJson) {
   const last = t.lastIndexOf('}');
   if (first !== -1 && last !== -1 && last > first) t = t.slice(first, last + 1);
   try { return JSON.parse(t); } catch { return null; }
+}
+
+function parseJsonArrayAttr(maybeJsonArray) {
+  if (!maybeJsonArray) return [];
+  const t = String(maybeJsonArray || '').trim();
+  try {
+    const parsed = JSON.parse(t);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 // ===== 快捷选项功能 =====
@@ -1142,8 +1155,23 @@ function mergeMapData(existingMap, newData) {
     if (!name) continue;
 
     if (!map.locations[name]) {
-      // 计算新位置的坐标（简单算法：找空位）
-      const { row, col } = findNextGridPosition(map);
+      let row = Number.isFinite(Number(loc.row)) ? Number(loc.row) : null;
+      let col = Number.isFinite(Number(loc.col)) ? Number(loc.col) : null;
+      if (row == null || col == null) {
+        const anchorName = Array.isArray(loc.connectedTo)
+          ? loc.connectedTo.map(x => String(x || '').trim()).find(n => map.locations[n])
+          : null;
+        if (anchorName) {
+          const anchor = map.locations[anchorName];
+          const pos = findAdjacentGridPosition(map, anchor.row, anchor.col);
+          row = pos.row;
+          col = pos.col;
+        } else {
+          const pos = findNextGridPosition(map);
+          row = pos.row;
+          col = pos.col;
+        }
+      }
       map.locations[name] = {
         row, col,
         connections: Array.isArray(loc.connectedTo) ? loc.connectedTo : [],
@@ -1187,6 +1215,28 @@ function mergeMapData(existingMap, newData) {
   return map;
 }
 
+function findAdjacentGridPosition(map, baseRow, baseCol) {
+  const occupied = new Set();
+  for (const loc of Object.values(map.locations)) {
+    occupied.add(`${loc.row},${loc.col}`);
+  }
+  const candidates = [
+    { row: baseRow - 1, col: baseCol },
+    { row: baseRow + 1, col: baseCol },
+    { row: baseRow, col: baseCol - 1 },
+    { row: baseRow, col: baseCol + 1 },
+    { row: baseRow - 1, col: baseCol - 1 },
+    { row: baseRow - 1, col: baseCol + 1 },
+    { row: baseRow + 1, col: baseCol - 1 },
+    { row: baseRow + 1, col: baseCol + 1 },
+  ];
+  for (const pos of candidates) {
+    if (pos.row < 0 || pos.col < 0) continue;
+    if (!occupied.has(`${pos.row},${pos.col}`)) return pos;
+  }
+  return findNextGridPosition(map);
+}
+
 // 寻找网格中的下一个空位
 function findNextGridPosition(map) {
   const occupied = new Set();
@@ -1228,7 +1278,8 @@ function renderGridMap(mapData) {
   const emptyCellStyle = baseCellStyle + 'background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.08);';
   const locationBaseStyle = baseCellStyle + 'background:rgba(100,150,200,0.2);border:1px solid rgba(100,150,200,0.35);';
 
-  let html = `<div class="sg-map-grid" style="--sg-map-cols:${cols};${gridInlineStyle}">`;
+  let html = `<div class="sg-map-wrapper">`;
+  html += `<div class="sg-map-grid" style="--sg-map-cols:${cols};${gridInlineStyle}">`;
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -1248,7 +1299,10 @@ function renderGridMap(mapData) {
         if (isProtagonist) inlineStyle += 'background:rgba(100,200,100,0.25);border-color:rgba(100,200,100,0.5);box-shadow:0 0 8px rgba(100,200,100,0.3);';
         if (hasEvents) inlineStyle += 'border-color:rgba(255,180,80,0.5);';
         if (!cell.visited) inlineStyle += 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);opacity:0.6;';
-        html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}">`;
+        const eventsJson = escapeHtml(JSON.stringify(Array.isArray(cell.events) ? cell.events : []));
+        const descAttr = escapeHtml(String(cell.description || ''));
+        const nameAttr = escapeHtml(String(cell.name || ''));
+        html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}">`;
         html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
@@ -1261,6 +1315,8 @@ function renderGridMap(mapData) {
 
   html += '</div>';
   html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
+  html += '<div class="sg-map-info">点击地点查看事件</div>';
+  html += '</div>';
 
   return html;
 }
@@ -8054,6 +8110,29 @@ function ensureModal() {
       pullUiToSettings();
       saveSettings();
       setStatus('已恢复默认地图提示词 ✅', 'ok');
+    });
+
+    $(document).on('click', '.sg-map-location', (e) => {
+      const $cell = $(e.currentTarget);
+      const $wrap = $cell.closest('.sg-map-wrapper');
+      if (!$wrap.length) return;
+      const $info = $wrap.find('.sg-map-info');
+      if (!$info.length) return;
+
+      const name = String($cell.attr('data-name') || '').trim();
+      const desc = String($cell.attr('data-desc') || '').trim();
+      const events = parseJsonArrayAttr($cell.attr('data-events'));
+
+      const parts = [];
+      if (name) parts.push(`<div><b>${escapeHtml(name)}</b></div>`);
+      if (desc) parts.push(`<div>${escapeHtml(desc)}</div>`);
+      if (events.length) {
+        const items = events.map(e => `<li>${escapeHtml(String(e || ''))}</li>`).join('');
+        parts.push(`<div style="margin-top:4px;"><b>事件</b><ul style="margin:4px 0 0 18px; padding:0;">${items}</ul></div>`);
+      } else {
+        parts.push('<div style="opacity:0.7;">暂无事件</div>');
+      }
+      $info.html(parts.join(''));
     });
 
     $('#sg_resetMap').on('click', async () => {
