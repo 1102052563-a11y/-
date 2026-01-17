@@ -1045,8 +1045,19 @@ async function onChatSwitched() {
     return;
   }
 
-  // 等待一小段时间确保 chatMetadata 已加载
-  await new Promise(r => setTimeout(r, 150));
+  // 等待 chatMetadata 加载完成（增加重试机制）
+  let retries = 0;
+  const maxRetries = 5;
+  while (retries < maxRetries) {
+    await new Promise(r => setTimeout(r, 200));
+    const { chatMetadata } = SillyTavern.getContext();
+    if (chatMetadata && Object.keys(chatMetadata).length > 0) {
+      console.log('[StoryGuide] chatMetadata 已加载，keys:', Object.keys(chatMetadata).length);
+      break;
+    }
+    retries++;
+    console.log(`[StoryGuide] 等待 chatMetadata 加载... (${retries}/${maxRetries})`);
+  }
 
   const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
   const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
@@ -1056,6 +1067,7 @@ async function onChatSwitched() {
 
   // 如果已经创建过绑定（即使 greenWI 为空也尝试恢复）
   if (autoBindCreated || greenWI || blueWI) {
+    console.log('[StoryGuide] 恢复已有绑定');
     await applyBoundWorldInfoToSettings();
     const greenNow = String(getChatMetaValue(META_KEYS.boundGreenWI) || greenWI || '').trim();
     showToast(`已切换到本聊天专属世界书\n绿灯：${greenNow || '(无)'}\n蓝灯：${blueWI || '(无)'}`, {
@@ -6636,13 +6648,17 @@ function buildModalHtml() {
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
             </div>
 
-            <div class="sg-card sg-subcard" style="background: var(--SmartThemeBlurTintColor); margin-top: 8px;">
+            <div class="sg-card sg-subcard" style="background: var(--SmartThemeBlurTintColor); margin-top: 8px; display: none;">
               <div class="sg-row sg-inline" style="align-items: center;">
                 <label class="sg-check"><input type="checkbox" id="sg_autoBindWorldInfo">📒 自动绑定世界书（每个聊天生成专属世界书）</label>
                 <input id="sg_autoBindWorldInfoPrefix" type="text" placeholder="前缀" style="width: 80px;" title="世界书文件名前缀，默认 SG">
               </div>
               <div class="sg-hint" style="margin-top: 4px;">开启后，每个聊天会自动创建专属的绿灯/蓝灯世界书，切换聊天时自动加载。</div>
               <div id="sg_autoBindInfo" class="sg-hint" style="margin-top: 6px; display: none; font-size: 12px;"></div>
+            </div>
+
+            <div class="sg-hint" style="margin-top: 8px; color: var(--SmartThemeQuoteColor);">
+              💡 请手动创建世界书文件，然后在上方填写文件名。绿灯选择「写入指定世界书文件名」模式。
             </div>
 
             <div class="sg-grid2">
