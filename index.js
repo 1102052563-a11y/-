@@ -756,6 +756,49 @@ function parseJsonArrayAttr(maybeJsonArray) {
 
 let sgMapPopoverEl = null;
 let sgMapPopoverHost = null;
+let sgMapEventHandlerBound = false;
+
+function bindMapEventPanelHandler() {
+  if (sgMapEventHandlerBound) return;
+  sgMapEventHandlerBound = true;
+
+  $(document).on('click', '.sg-map-location', (e) => {
+    const $cell = $(e.currentTarget);
+    const $wrap = $cell.closest('.sg-map-wrapper');
+    const $panel = $wrap.find('.sg-map-event-panel');
+    if (!$panel.length) return;
+
+    const name = String($cell.attr('data-name') || '').trim();
+    const desc = String($cell.attr('data-desc') || '').trim();
+    const group = String($cell.attr('data-group') || '').trim();
+    const layer = String($cell.attr('data-layer') || '').trim();
+    const events = parseJsonArrayAttr($cell.attr('data-events'));
+
+    const headerBits = [];
+    if (name) headerBits.push(`<span class="sg-map-event-title">${escapeHtml(name)}</span>`);
+    if (layer) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(layer)}</span>`);
+    if (group) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(group)}</span>`);
+    const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
+    const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
+
+    let listHtml = '';
+    if (events.length) {
+      const items = events.map((ev) => {
+        const text = escapeHtml(String(ev?.text || ev?.event || ev || '').trim());
+        const tags = Array.isArray(ev?.tags) ? ev.tags : [];
+        const tagsHtml = tags.length
+          ? `<span class="sg-map-event-tags">${tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('')}</span>`
+          : '';
+        return `<li><span class="sg-map-event-text">${text || '（无内容）'}</span>${tagsHtml}</li>`;
+      }).join('');
+      listHtml = `<ul class="sg-map-event-list">${items}</ul>`;
+    } else {
+      listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
+    }
+
+    $panel.html(`${header}${descHtml}${listHtml}`);
+  });
+}
 
 function showMapPopover($cell) {
   const name = String($cell.attr('data-name') || '').trim();
@@ -8326,42 +8369,7 @@ function ensureModal() {
       setStatus('已恢复默认地图提示词 ✅', 'ok');
     });
 
-    $(document).on('click', '.sg-map-location', (e) => {
-      const $cell = $(e.currentTarget);
-      const $wrap = $cell.closest('.sg-map-wrapper');
-      const $panel = $wrap.find('.sg-map-event-panel');
-      if (!$panel.length) return;
-
-      const name = String($cell.attr('data-name') || '').trim();
-      const desc = String($cell.attr('data-desc') || '').trim();
-      const group = String($cell.attr('data-group') || '').trim();
-      const layer = String($cell.attr('data-layer') || '').trim();
-      const events = parseJsonArrayAttr($cell.attr('data-events'));
-
-      const headerBits = [];
-      if (name) headerBits.push(`<span class="sg-map-event-title">${escapeHtml(name)}</span>`);
-      if (layer) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(layer)}</span>`);
-      if (group) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(group)}</span>`);
-      const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
-      const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
-
-      let listHtml = '';
-      if (events.length) {
-        const items = events.map((e) => {
-          const text = escapeHtml(String(e?.text || e?.event || e || '').trim());
-          const tags = Array.isArray(e?.tags) ? e.tags : [];
-          const tagsHtml = tags.length
-            ? `<span class="sg-map-event-tags">${tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('')}</span>`
-            : '';
-          return `<li><span class="sg-map-event-text">${text || '（无内容）'}</span>${tagsHtml}</li>`;
-        }).join('');
-        listHtml = `<ul class="sg-map-event-list">${items}</ul>`;
-      } else {
-        listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
-      }
-
-      $panel.html(`${header}${descHtml}${listHtml}`);
-    });
+    bindMapEventPanelHandler();
 
     $(document).on('click', (e) => {
       const $t = $(e.target);
@@ -9983,6 +9991,7 @@ function injectFixedInputButton() {
 
 function init() {
   ensureSettings();
+  bindMapEventPanelHandler();
   setupEventListeners();
 
   const ctx = SillyTavern.getContext();
