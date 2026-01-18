@@ -765,15 +765,16 @@ let sgMapPopoverEl = null;
 let sgMapPopoverHost = null;
 let sgMapEventHandlerBound = false;
 
-function bindMapEventPanelHandler() {
-  if (sgMapEventHandlerBound) return;
-  sgMapEventHandlerBound = true;
+  function bindMapEventPanelHandler() {
+    if (sgMapEventHandlerBound) return;
+    sgMapEventHandlerBound = true;
 
-  $(document).on('click', '.sg-map-location', (e) => {
-    const $cell = $(e.currentTarget);
-    const $wrap = $cell.closest('.sg-map-wrapper');
-    const $panel = $wrap.find('.sg-map-event-panel');
-    if (!$panel.length) return;
+    $(document).on('click', '.sg-map-location', (e) => {
+      if ($(e.target).closest('.sg-map-delete').length) return;
+      const $cell = $(e.currentTarget);
+      const $wrap = $cell.closest('.sg-map-wrapper');
+      const $panel = $wrap.find('.sg-map-event-panel');
+      if (!$panel.length) return;
 
     const name = String($cell.attr('data-name') || '').trim();
     const desc = String($cell.attr('data-desc') || '').trim();
@@ -803,9 +804,34 @@ function bindMapEventPanelHandler() {
       listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
     }
 
-    $panel.html(`${header}${descHtml}${listHtml}`);
-  });
-}
+      $panel.html(`${header}${descHtml}${listHtml}`);
+    });
+
+    $(document).on('click', '.sg-map-delete', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const $cell = $(e.currentTarget).closest('.sg-map-location');
+      const name = String($cell.attr('data-name') || '').trim();
+      if (!name) return;
+      try {
+        const map = getMapData();
+        if (map.locations && map.locations[name]) {
+          delete map.locations[name];
+        }
+        for (const loc of Object.values(map.locations || {})) {
+          if (!Array.isArray(loc.connections)) continue;
+          loc.connections = loc.connections.filter(c => String(c || '').trim() !== name);
+        }
+        if (map.protagonistLocation === name) {
+          map.protagonistLocation = '';
+        }
+        await setMapData(map);
+        updateMapPreview();
+      } catch (err) {
+        console.warn('[StoryGuide] delete map location failed:', err);
+      }
+    });
+  }
 
 function showMapPopover($cell) {
   const name = String($cell.attr('data-name') || '').trim();
@@ -1580,7 +1606,8 @@ function renderGridMap(mapData) {
             if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group">${escapeHtml(String(cell.group))}</span>`;
             html += `</div>`;
           }
-        html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
+          html += `<button class="sg-map-delete" title="删除地点">×</button>`;
+          html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
         html += '</div>';
