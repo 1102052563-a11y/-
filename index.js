@@ -869,14 +869,14 @@ function bindMapEventPanelHandler() {
   if (sgMapEventHandlerBound) return;
   sgMapEventHandlerBound = true;
 
-    $(document).on('click', '.sg-map-location', (e) => {
-      const $cell = $(e.currentTarget);
-      const $wrap = $cell.closest('.sg-map-wrapper');
-      let $panel = $wrap.find('.sg-map-event-panel');
-      if (!$panel.length) {
-        $wrap.append('<div class="sg-map-event-panel"></div>');
-        $panel = $wrap.find('.sg-map-event-panel');
-      }
+  $(document).on('click', '.sg-map-location', (e) => {
+    const $cell = $(e.currentTarget);
+    const $wrap = $cell.closest('.sg-map-wrapper');
+    let $panel = $wrap.find('.sg-map-event-panel');
+    if (!$panel.length) {
+      $wrap.append('<div class="sg-map-event-panel"></div>');
+      $panel = $wrap.find('.sg-map-event-panel');
+    }
 
     const name = String($cell.attr('data-name') || '').trim();
     const desc = String($cell.attr('data-desc') || '').trim();
@@ -888,11 +888,11 @@ function bindMapEventPanelHandler() {
     if (name) headerBits.push(`<span class="sg-map-event-title">${escapeHtml(name)}</span>`);
     if (layer) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(layer)}</span>`);
     if (group) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(group)}</span>`);
-      const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
-      const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
+    const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
+    const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
 
-      let listHtml = '';
-      if (events.length) {
+    let listHtml = '';
+    if (events.length) {
       const items = events.map((ev) => {
         const text = escapeHtml(String(ev?.text || ev?.event || ev || '').trim());
         const tags = Array.isArray(ev?.tags) ? ev.tags : [];
@@ -906,44 +906,44 @@ function bindMapEventPanelHandler() {
       listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
     }
 
-      const deleteBtn = name
-        ? `<button class="sg-map-event-delete" data-name="${escapeHtml(name)}">删除地点</button>`
-        : '';
-      $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
-      $panel.addClass('sg-map-event-panel--floating');
-    });
+    const deleteBtn = name
+      ? `<button class="sg-map-event-delete" data-name="${escapeHtml(name)}">删除地点</button>`
+      : '';
+    $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
+    $panel.addClass('sg-map-event-panel--floating');
+  });
 
-    $(document).on('click', '.sg-map-wrapper', (e) => {
-      if ($(e.target).closest('.sg-map-location, .sg-map-event-panel').length) return;
-      const $wrap = $(e.currentTarget);
-      $wrap.find('.sg-map-event-panel').remove();
-    });
+  $(document).on('click', '.sg-map-wrapper', (e) => {
+    if ($(e.target).closest('.sg-map-location, .sg-map-event-panel').length) return;
+    const $wrap = $(e.currentTarget);
+    $wrap.find('.sg-map-event-panel').remove();
+  });
 
-    $(document).on('click', '.sg-map-event-delete', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const name = String($(e.currentTarget).attr('data-name') || '').trim();
-      if (!name) return;
-      try {
-        const map = getMapData();
-        const key = map.locations?.[name] ? name : (normalizeMapName(name) ? Array.from(Object.keys(map.locations || {})).find(k => normalizeMapName(k) === normalizeMapName(name)) : null);
-        if (key && map.locations && map.locations[key]) {
-          delete map.locations[key];
-        }
-        for (const loc of Object.values(map.locations || {})) {
-          if (!Array.isArray(loc.connections)) continue;
-          loc.connections = loc.connections.filter(c => normalizeMapName(c) !== normalizeMapName(name));
-        }
-        if (map.protagonistLocation && normalizeMapName(map.protagonistLocation) === normalizeMapName(name)) {
-          map.protagonistLocation = '';
-        }
-        await setMapData(map);
-        updateMapPreview();
-      } catch (err) {
-        console.warn('[StoryGuide] delete map location failed:', err);
+  $(document).on('click', '.sg-map-event-delete', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const name = String($(e.currentTarget).attr('data-name') || '').trim();
+    if (!name) return;
+    try {
+      const map = getMapData();
+      const key = map.locations?.[name] ? name : (normalizeMapName(name) ? Array.from(Object.keys(map.locations || {})).find(k => normalizeMapName(k) === normalizeMapName(name)) : null);
+      if (key && map.locations && map.locations[key]) {
+        delete map.locations[key];
       }
-    });
-  }
+      for (const loc of Object.values(map.locations || {})) {
+        if (!Array.isArray(loc.connections)) continue;
+        loc.connections = loc.connections.filter(c => normalizeMapName(c) !== normalizeMapName(name));
+      }
+      if (map.protagonistLocation && normalizeMapName(map.protagonistLocation) === normalizeMapName(name)) {
+        map.protagonistLocation = '';
+      }
+      await setMapData(map);
+      updateMapPreview();
+    } catch (err) {
+      console.warn('[StoryGuide] delete map location failed:', err);
+    }
+  });
+}
 
 function showMapPopover($cell) {
   const name = String($cell.attr('data-name') || '').trim();
@@ -1270,15 +1270,15 @@ function getMapSchema() {
         type: 'array',
         items: {
           type: 'object',
-            properties: {
-              name: { type: 'string' },
-              description: { type: 'string' },
-              connectedTo: { type: 'array', items: { type: 'string' } },
-              group: { type: 'string' },
-              layer: { type: 'string' },
-              row: { type: 'number' },
-              col: { type: 'number' },
-            },
+          properties: {
+            name: { type: 'string' },
+            description: { type: 'string' },
+            connectedTo: { type: 'array', items: { type: 'string' } },
+            group: { type: 'string' },
+            layer: { type: 'string' },
+            row: { type: 'number' },
+            col: { type: 'number' },
+          },
           required: ['name'],
           additionalProperties: true,
         },
@@ -1287,11 +1287,11 @@ function getMapSchema() {
         type: 'array',
         items: {
           type: 'object',
-            properties: {
-              location: { type: 'string' },
-              event: { type: 'string' },
-              tags: { type: 'array', items: { type: 'string' } },
-            },
+          properties: {
+            location: { type: 'string' },
+            event: { type: 'string' },
+            tags: { type: 'array', items: { type: 'string' } },
+          },
           required: ['location', 'event'],
           additionalProperties: true,
         },
@@ -1340,14 +1340,14 @@ async function updateMapFromSnapshot(snapshotText) {
         parsed = parseMapLLMResponse(retryText);
       } catch { /* ignore */ }
     }
-      if (!parsed) return;
+    if (!parsed) return;
 
-      if (parsed?.newLocations) {
-        parsed.newLocations = normalizeNewLocations(parsed.newLocations);
-      }
-      parsed = ensureMapMinimums(parsed);
+    if (parsed?.newLocations) {
+      parsed.newLocations = normalizeNewLocations(parsed.newLocations);
+    }
+    parsed = ensureMapMinimums(parsed);
 
-      const merged = mergeMapData(getMapData(), parsed);
+    const merged = mergeMapData(getMapData(), parsed);
     await setMapData(merged);
     updateMapPreview();
   } catch (e) {
@@ -1747,26 +1747,26 @@ function renderGridMap(mapData) {
         if (hasEvents) classes.push('sg-map-has-events');
         if (!cell.visited) classes.push('sg-map-unvisited');
 
-          const eventList = hasEvents ? cell.events.map(e => `• ${formatMapEventText(e)}`).join('\n') : '';
-          const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''}`;
+        const eventList = hasEvents ? cell.events.map(e => `• ${formatMapEventText(e)}`).join('\n') : '';
+        const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''}`;
 
         let inlineStyle = locationBaseStyle;
         if (isProtagonist) inlineStyle += 'background:rgba(100,200,100,0.25);border-color:rgba(100,200,100,0.5);box-shadow:0 0 8px rgba(100,200,100,0.3);';
         if (hasEvents) inlineStyle += 'border-color:rgba(255,180,80,0.5);';
         if (!cell.visited) inlineStyle += 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);opacity:0.6;';
-          const eventsJson = escapeHtml(JSON.stringify(Array.isArray(cell.events) ? cell.events : []));
-          const descAttr = escapeHtml(String(cell.description || ''));
-          const nameAttr = escapeHtml(String(cell.name || ''));
-          const groupAttr = escapeHtml(String(cell.group || ''));
-          const layerAttr = escapeHtml(String(cell.layer || ''));
-          html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}" data-group="${groupAttr}" data-layer="${layerAttr}">`;
-          if (cell.layer || cell.group) {
-            html += `<div class="sg-map-badges">`;
-            if (cell.layer) html += `<span class="sg-map-badge sg-map-badge-layer" title="${escapeHtml(String(cell.layer))}">${escapeHtml(String(cell.layer || '').slice(0, 2))}</span>`;
-            if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group" title="${escapeHtml(String(cell.group))}">${escapeHtml(String(cell.group || '').slice(0, 2))}</span>`;
-            html += `</div>`;
-          }
-          html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
+        const eventsJson = escapeHtml(JSON.stringify(Array.isArray(cell.events) ? cell.events : []));
+        const descAttr = escapeHtml(String(cell.description || ''));
+        const nameAttr = escapeHtml(String(cell.name || ''));
+        const groupAttr = escapeHtml(String(cell.group || ''));
+        const layerAttr = escapeHtml(String(cell.layer || ''));
+        html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}" data-group="${groupAttr}" data-layer="${layerAttr}">`;
+        if (cell.layer || cell.group) {
+          html += `<div class="sg-map-badges">`;
+          if (cell.layer) html += `<span class="sg-map-badge sg-map-badge-layer" title="${escapeHtml(String(cell.layer))}">${escapeHtml(String(cell.layer || '').slice(0, 2))}</span>`;
+          if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group" title="${escapeHtml(String(cell.group))}">${escapeHtml(String(cell.group || '').slice(0, 2))}</span>`;
+          html += `</div>`;
+        }
+        html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
         html += '</div>';
@@ -1776,10 +1776,10 @@ function renderGridMap(mapData) {
     }
   }
 
-    html += '</div>';
-    html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
-    html += '<div class="sg-map-event-panel">点击地点查看事件列表</div>';
-    html += '</div>';
+  html += '</div>';
+  html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
+  html += '<div class="sg-map-event-panel">点击地点查看事件列表</div>';
+  html += '</div>';
 
   return html;
 }
@@ -3111,14 +3111,14 @@ async function runAnalysis() {
       throw new Error('模型输出无法解析为 JSON（已切到 JSON 标签，看看原文）');
     }
 
-      const md = renderReportMarkdownFromModules(parsed, modules);
-      lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
-      renderMarkdownInto($('#sg_md'), md);
+    const md = renderReportMarkdownFromModules(parsed, modules);
+    lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
+    renderMarkdownInto($('#sg_md'), md);
 
-      await updateMapFromSnapshot(snapshotText);
+    await updateMapFromSnapshot(snapshotText);
 
-      // 同步面板报告到聊天末尾
-      try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
+    // 同步面板报告到聊天末尾
+    try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
 
     updateButtonsEnabled();
     showPane('md');
@@ -6549,19 +6549,19 @@ async function runInlineAppendForLastMessage(opts = {}) {
     return;
   }
 
-    try {
-      const { snapshotText } = buildSnapshot();
+  try {
+    const { snapshotText } = buildSnapshot();
 
-      const modules = getModules('append');
-      // append 里 schema 按 inline 模块生成；如果用户把 inline 全关了，就不生成
-      if (!modules.length) return;
+    const modules = getModules('append');
+    // append 里 schema 按 inline 模块生成；如果用户把 inline 全关了，就不生成
+    if (!modules.length) return;
 
-      await updateMapFromSnapshot(snapshotText);
+    await updateMapFromSnapshot(snapshotText);
 
-      // 对 “compact/standard” 给一点暗示（不强制），避免用户模块 prompt 很长时没起作用
-      const modeHint = (s.appendMode === 'standard')
-        ? `\n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
-        : `\n【附加要求】inline 输出尽量短：每个字段尽量 1~2 句/2 条以内。\n`;
+    // 对 “compact/standard” 给一点暗示（不强制），避免用户模块 prompt 很长时没起作用
+    const modeHint = (s.appendMode === 'standard')
+      ? `\n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
+      : `\n【附加要求】inline 输出尽量短：每个字段尽量 1~2 句/2 条以内。\n`;
 
     const schema = buildSchemaFromModules(modules);
     const messages = buildPromptMessages(snapshotText + modeHint, s.spoilerLevel, modules, 'append');
@@ -7679,15 +7679,11 @@ function buildModalHtml() {
 
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用）</label>
-              <select id="sg_summaryWorldInfoTarget">
-                <option value="chatbook">写入当前聊天绑定世界书</option>
-                <option value="file">写入指定世界书文件名</option>
-              </select>
-              <input id="sg_summaryWorldInfoFile" type="text" placeholder="Target=file 时填写世界书文件名" style="flex:1; min-width: 220px;">
+              <input id="sg_summaryWorldInfoFile" type="text" placeholder="世界书文件名" style="flex:1; min-width: 220px;">
             </div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo">同时写入蓝灯世界书（常开索引）</label>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo" checked>同时写入蓝灯世界书（常开索引）</label>
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
             </div>
 
@@ -8557,35 +8553,35 @@ function ensureModal() {
     updateWorldbookInfoLabel();
   });
 
-    // 地图功能事件处理
-    $('#sg_mapEnabled').on('change', () => {
-      pullUiToSettings();
-      saveSettings();
-    });
+  // 地图功能事件处理
+  $('#sg_mapEnabled').on('change', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
 
-    $('#sg_mapSystemPrompt').on('change input', () => {
-      pullUiToSettings();
-      saveSettings();
-    });
+  $('#sg_mapSystemPrompt').on('change input', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
 
-    $('#sg_mapResetPrompt').on('click', () => {
-      $('#sg_mapSystemPrompt').val(String(DEFAULT_SETTINGS.mapSystemPrompt || ''));
-      pullUiToSettings();
-      saveSettings();
-      setStatus('已恢复默认地图提示词 ✅', 'ok');
-    });
+  $('#sg_mapResetPrompt').on('click', () => {
+    $('#sg_mapSystemPrompt').val(String(DEFAULT_SETTINGS.mapSystemPrompt || ''));
+    pullUiToSettings();
+    saveSettings();
+    setStatus('已恢复默认地图提示词 ✅', 'ok');
+  });
 
-    bindMapEventPanelHandler();
+  bindMapEventPanelHandler();
 
-    $(document).on('click', (e) => {
-      const $t = $(e.target);
-      if ($t.closest('.sg-map-popover, .sg-map-location').length) return;
-      if (sgMapPopoverEl) sgMapPopoverEl.style.display = 'none';
-    });
+  $(document).on('click', (e) => {
+    const $t = $(e.target);
+    if ($t.closest('.sg-map-popover, .sg-map-location').length) return;
+    if (sgMapPopoverEl) sgMapPopoverEl.style.display = 'none';
+  });
 
-    $('#sg_resetMap').on('click', async () => {
-      try {
-        await setMapData(getDefaultMapData());
+  $('#sg_resetMap').on('click', async () => {
+    try {
+      await setMapData(getDefaultMapData());
       updateMapPreview();
       setStatus('地图已重置 ✅', 'ok');
     } catch (e) {
@@ -9710,42 +9706,42 @@ function createFloatingPanel() {
     hideFloatingPanel();
   });
 
-    $('#sg_floating_show_report').on('click', () => {
-      showFloatingReport();
-    });
+  $('#sg_floating_show_report').on('click', () => {
+    showFloatingReport();
+  });
 
-    $('#sg_floating_show_map').on('click', () => {
+  $('#sg_floating_show_map').on('click', () => {
+    showFloatingMap();
+  });
+
+  // Delegate inner refresh click
+  $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
+    // Only handle if inside our panel
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    await refreshFloatingPanelContent();
+  });
+
+  $(document).on('click', '.sg-inner-map-reset-btn', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    try {
+      await setMapData(getDefaultMapData());
       showFloatingMap();
-    });
+    } catch (err) {
+      console.warn('[StoryGuide] map reset failed:', err);
+    }
+  });
 
-    // Delegate inner refresh click
-    $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
-      // Only handle if inside our panel
-      if (!$(e.target).closest('#sg_floating_panel').length) return;
-      await refreshFloatingPanelContent();
-    });
+  $(document).on('click', '.sg-inner-map-toggle-btn', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const s = ensureSettings();
+    s.mapAutoUpdate = !isMapAutoUpdateEnabled(s);
+    saveSettings();
+    showFloatingMap();
+  });
 
-    $(document).on('click', '.sg-inner-map-reset-btn', async (e) => {
-      if (!$(e.target).closest('#sg_floating_panel').length) return;
-      try {
-        await setMapData(getDefaultMapData());
-        showFloatingMap();
-      } catch (err) {
-        console.warn('[StoryGuide] map reset failed:', err);
-      }
-    });
-
-    $(document).on('click', '.sg-inner-map-toggle-btn', (e) => {
-      if (!$(e.target).closest('#sg_floating_panel').length) return;
-      const s = ensureSettings();
-      s.mapAutoUpdate = !isMapAutoUpdateEnabled(s);
-      saveSettings();
-      showFloatingMap();
-    });
-
-    $('#sg_floating_roll_logs').on('click', () => {
-      showFloatingRollLogs();
-    });
+  $('#sg_floating_roll_logs').on('click', () => {
+    showFloatingRollLogs();
+  });
 
   $('#sg_floating_settings').on('click', () => {
     openModal();
@@ -9965,54 +9961,54 @@ function hideFloatingPanel() {
   }
 }
 
-  async function refreshFloatingPanelContent() {
-    const $body = $('#sg_floating_body');
-    if (!$body.length) return;
+async function refreshFloatingPanelContent() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
 
-    $body.html('<div class="sg-floating-loading">正在分析剧情...</div>');
+  $body.html('<div class="sg-floating-loading">正在分析剧情...</div>');
 
-    try {
-      const s = ensureSettings();
-      const { snapshotText } = buildSnapshot();
-      const modules = getModules('panel');
+  try {
+    const s = ensureSettings();
+    const { snapshotText } = buildSnapshot();
+    const modules = getModules('panel');
 
-      if (!modules.length) {
-        $body.html('<div class="sg-floating-loading">没有配置模块</div>');
-        return;
-      }
+    if (!modules.length) {
+      $body.html('<div class="sg-floating-loading">没有配置模块</div>');
+      return;
+    }
 
-      const schema = buildSchemaFromModules(modules);
-      const messages = buildPromptMessages(snapshotText, s.spoilerLevel, modules, 'panel');
+    const schema = buildSchemaFromModules(modules);
+    const messages = buildPromptMessages(snapshotText, s.spoilerLevel, modules, 'panel');
 
-      let jsonText = '';
-      if (s.provider === 'custom') {
-        jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
-      } else {
-        jsonText = await callViaSillyTavern(messages, schema, s.temperature);
-        if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-      }
+    let jsonText = '';
+    if (s.provider === 'custom') {
+      jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
+    } else {
+      jsonText = await callViaSillyTavern(messages, schema, s.temperature);
+      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+    }
 
-      const parsed = safeJsonParse(jsonText);
-      if (!parsed) {
-        $body.html('<div class="sg-floating-loading">解析失败</div>');
-        return;
-      }
+    const parsed = safeJsonParse(jsonText);
+    if (!parsed) {
+      $body.html('<div class="sg-floating-loading">解析失败</div>');
+      return;
+    }
 
-      // 合并静态模块
-      const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
-      updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
+    // 合并静态模块
+    const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
+    updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
 
-      // 渲染内容
-      // Filter out quick_actions from main Markdown body to avoid duplication
-      const bodyModules = modules.filter(m => m.key !== 'quick_actions');
-      const md = renderReportMarkdownFromModules(mergedParsed, bodyModules);
-      const html = renderMarkdownToHtml(md);
+    // 渲染内容
+    // Filter out quick_actions from main Markdown body to avoid duplication
+    const bodyModules = modules.filter(m => m.key !== 'quick_actions');
+    const md = renderReportMarkdownFromModules(mergedParsed, bodyModules);
+    const html = renderMarkdownToHtml(md);
 
-      await updateMapFromSnapshot(snapshotText);
+    await updateMapFromSnapshot(snapshotText);
 
-      // 添加快捷选项
-      const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
-      const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
+    // 添加快捷选项
+    const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
+    const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
 
     const refreshBtnHtml = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
@@ -10037,9 +10033,9 @@ function updateFloatingPanelBody(html) {
   }
 }
 
-  function showFloatingRollLogs() {
-    const $body = $('#sg_floating_body');
-    if (!$body.length) return;
+function showFloatingRollLogs() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
 
   const meta = getSummaryMeta();
   const logs = Array.isArray(meta?.rollLogs) ? meta.rollLogs : [];
@@ -10078,32 +10074,32 @@ function updateFloatingPanelBody(html) {
     `;
   }).join('');
 
-    $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
-  }
+  $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+}
 
-  function showFloatingMap() {
-    const $body = $('#sg_floating_body');
-    if (!$body.length) return;
-    const s = ensureSettings();
-    if (!s.mapEnabled) {
-      $body.html('<div class="sg-floating-loading">地图功能未启用</div>');
-      return;
-    }
-    const mapData = getMapData();
-    const html = renderGridMap(mapData);
-    const autoLabel = isMapAutoUpdateEnabled(s) ? '自动更新：开' : '自动更新：关';
-    const tools = `
+function showFloatingMap() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+  const s = ensureSettings();
+  if (!s.mapEnabled) {
+    $body.html('<div class="sg-floating-loading">地图功能未启用</div>');
+    return;
+  }
+  const mapData = getMapData();
+  const html = renderGridMap(mapData);
+  const autoLabel = isMapAutoUpdateEnabled(s) ? '自动更新：开' : '自动更新：关';
+  const tools = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
         <button class="sg-inner-map-toggle-btn" title="切换自动更新" style="background:none; border:none; cursor:pointer; font-size:0.95em; opacity:0.85; margin-right:6px;">${autoLabel}</button>
         <button class="sg-inner-map-reset-btn" title="重置地图" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🗑</button>
       </div>
     `;
-    $body.html(`${tools}<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
-  }
+  $body.html(`${tools}<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+}
 
-  function showFloatingReport() {
-    const $body = $('#sg_floating_body');
-    if (!$body.length) return;
+function showFloatingReport() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
 
   // Use last cached content if available, otherwise show empty state
   if (lastFloatingContent) {
