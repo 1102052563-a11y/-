@@ -855,9 +855,18 @@ let sgMapPopoverEl = null;
 let sgMapPopoverHost = null;
 let sgMapEventHandlerBound = false;
 
-  function bindMapEventPanelHandler() {
-    if (sgMapEventHandlerBound) return;
-    sgMapEventHandlerBound = true;
+function isMapAutoUpdateEnabled(s) {
+  const v = s?.mapAutoUpdate;
+  if (v === undefined || v === null) return true;
+  if (v === false) return false;
+  if (typeof v === 'string') return !['false', '0', 'off', 'no'].includes(v.toLowerCase());
+  if (typeof v === 'number') return v !== 0;
+  return Boolean(v);
+}
+
+function bindMapEventPanelHandler() {
+  if (sgMapEventHandlerBound) return;
+  sgMapEventHandlerBound = true;
 
     $(document).on('click', '.sg-map-location', (e) => {
       const $cell = $(e.currentTarget);
@@ -1297,7 +1306,7 @@ function buildMapPromptMessages(snapshotText) {
 async function updateMapFromSnapshot(snapshotText) {
   const s = ensureSettings();
   if (!s.mapEnabled) return;
-  if (!s.mapAutoUpdate) return;
+  if (!isMapAutoUpdateEnabled(s)) return;
   const user = String(snapshotText || '').trim();
   if (!user) return;
 
@@ -9718,7 +9727,7 @@ function createFloatingPanel() {
     $(document).on('click', '.sg-inner-map-toggle-btn', (e) => {
       if (!$(e.target).closest('#sg_floating_panel').length) return;
       const s = ensureSettings();
-      s.mapAutoUpdate = s.mapAutoUpdate === false ? true : false;
+      s.mapAutoUpdate = !isMapAutoUpdateEnabled(s);
       saveSettings();
       showFloatingMap();
     });
@@ -10071,7 +10080,7 @@ function updateFloatingPanelBody(html) {
     }
     const mapData = getMapData();
     const html = renderGridMap(mapData);
-    const autoLabel = s.mapAutoUpdate === false ? '自动更新：关' : '自动更新：开';
+    const autoLabel = isMapAutoUpdateEnabled(s) ? '自动更新：开' : '自动更新：关';
     const tools = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
         <button class="sg-inner-map-toggle-btn" title="切换自动更新" style="background:none; border:none; cursor:pointer; font-size:0.95em; opacity:0.85; margin-right:6px;">${autoLabel}</button>
