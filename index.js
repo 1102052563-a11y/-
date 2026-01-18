@@ -510,18 +510,6 @@ const DEFAULT_SETTINGS = Object.freeze({
       { "location": "地点名", "event": "事件描述", "tags": ["任务"] }
     ]
   }`,
-
-  // ===== 地图独立 API 配置 =====
-  mapProvider: 'st',              // st | custom（独立于剧情提示）
-  mapCustomEndpoint: '',
-  mapCustomApiKey: '',
-  mapCustomModel: 'gpt-4o-mini',
-  mapCustomMaxTokens: 1024,
-  mapCustomTopP: 0.95,
-  mapCustomTemperature: 0.2,      // 更低温度 = 更稳定输出
-  mapCustomStream: false,
-  mapAutoUpdate: true,            // 是否在剧情提示更新时自动更新地图
-  mapLookbackMessages: 20,        // 增量更新时回溯的消息数
 });
 
 const META_KEYS = Object.freeze({
@@ -866,15 +854,15 @@ let sgMapPopoverEl = null;
 let sgMapPopoverHost = null;
 let sgMapEventHandlerBound = false;
 
-function bindMapEventPanelHandler() {
-  if (sgMapEventHandlerBound) return;
-  sgMapEventHandlerBound = true;
+  function bindMapEventPanelHandler() {
+    if (sgMapEventHandlerBound) return;
+    sgMapEventHandlerBound = true;
 
-  $(document).on('click', '.sg-map-location', (e) => {
-    const $cell = $(e.currentTarget);
-    const $wrap = $cell.closest('.sg-map-wrapper');
-    const $panel = $wrap.find('.sg-map-event-panel');
-    if (!$panel.length) return;
+    $(document).on('click', '.sg-map-location', (e) => {
+      const $cell = $(e.currentTarget);
+      const $wrap = $cell.closest('.sg-map-wrapper');
+      const $panel = $wrap.find('.sg-map-event-panel');
+      if (!$panel.length) return;
 
     const name = String($cell.attr('data-name') || '').trim();
     const desc = String($cell.attr('data-desc') || '').trim();
@@ -886,11 +874,11 @@ function bindMapEventPanelHandler() {
     if (name) headerBits.push(`<span class="sg-map-event-title">${escapeHtml(name)}</span>`);
     if (layer) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(layer)}</span>`);
     if (group) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(group)}</span>`);
-    const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
-    const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
+      const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
+      const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
 
-    let listHtml = '';
-    if (events.length) {
+      let listHtml = '';
+      if (events.length) {
       const items = events.map((ev) => {
         const text = escapeHtml(String(ev?.text || ev?.event || ev || '').trim());
         const tags = Array.isArray(ev?.tags) ? ev.tags : [];
@@ -904,37 +892,37 @@ function bindMapEventPanelHandler() {
       listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
     }
 
-    const deleteBtn = name
-      ? `<button class="sg-map-event-delete" data-name="${escapeHtml(name)}">删除地点</button>`
-      : '';
-    $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
-  });
+      const deleteBtn = name
+        ? `<button class="sg-map-event-delete" data-name="${escapeHtml(name)}">删除地点</button>`
+        : '';
+      $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
+    });
 
-  $(document).on('click', '.sg-map-event-delete', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const name = String($(e.currentTarget).attr('data-name') || '').trim();
-    if (!name) return;
-    try {
-      const map = getMapData();
-      const key = map.locations?.[name] ? name : (normalizeMapName(name) ? Array.from(Object.keys(map.locations || {})).find(k => normalizeMapName(k) === normalizeMapName(name)) : null);
-      if (key && map.locations && map.locations[key]) {
-        delete map.locations[key];
+    $(document).on('click', '.sg-map-event-delete', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const name = String($(e.currentTarget).attr('data-name') || '').trim();
+      if (!name) return;
+      try {
+        const map = getMapData();
+        const key = map.locations?.[name] ? name : (normalizeMapName(name) ? Array.from(Object.keys(map.locations || {})).find(k => normalizeMapName(k) === normalizeMapName(name)) : null);
+        if (key && map.locations && map.locations[key]) {
+          delete map.locations[key];
+        }
+        for (const loc of Object.values(map.locations || {})) {
+          if (!Array.isArray(loc.connections)) continue;
+          loc.connections = loc.connections.filter(c => normalizeMapName(c) !== normalizeMapName(name));
+        }
+        if (map.protagonistLocation && normalizeMapName(map.protagonistLocation) === normalizeMapName(name)) {
+          map.protagonistLocation = '';
+        }
+        await setMapData(map);
+        updateMapPreview();
+      } catch (err) {
+        console.warn('[StoryGuide] delete map location failed:', err);
       }
-      for (const loc of Object.values(map.locations || {})) {
-        if (!Array.isArray(loc.connections)) continue;
-        loc.connections = loc.connections.filter(c => normalizeMapName(c) !== normalizeMapName(name));
-      }
-      if (map.protagonistLocation && normalizeMapName(map.protagonistLocation) === normalizeMapName(name)) {
-        map.protagonistLocation = '';
-      }
-      await setMapData(map);
-      updateMapPreview();
-    } catch (err) {
-      console.warn('[StoryGuide] delete map location failed:', err);
-    }
-  });
-}
+    });
+  }
 
 function showMapPopover($cell) {
   const name = String($cell.attr('data-name') || '').trim();
@@ -1261,15 +1249,15 @@ function getMapSchema() {
         type: 'array',
         items: {
           type: 'object',
-          properties: {
-            name: { type: 'string' },
-            description: { type: 'string' },
-            connectedTo: { type: 'array', items: { type: 'string' } },
-            group: { type: 'string' },
-            layer: { type: 'string' },
-            row: { type: 'number' },
-            col: { type: 'number' },
-          },
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+              connectedTo: { type: 'array', items: { type: 'string' } },
+              group: { type: 'string' },
+              layer: { type: 'string' },
+              row: { type: 'number' },
+              col: { type: 'number' },
+            },
           required: ['name'],
           additionalProperties: true,
         },
@@ -1278,11 +1266,11 @@ function getMapSchema() {
         type: 'array',
         items: {
           type: 'object',
-          properties: {
-            location: { type: 'string' },
-            event: { type: 'string' },
-            tags: { type: 'array', items: { type: 'string' } },
-          },
+            properties: {
+              location: { type: 'string' },
+              event: { type: 'string' },
+              tags: { type: 'array', items: { type: 'string' } },
+            },
           required: ['location', 'event'],
           additionalProperties: true,
         },
@@ -1330,11 +1318,11 @@ async function updateMapFromSnapshot(snapshotText) {
         parsed = parseMapLLMResponse(retryText);
       } catch { /* ignore */ }
     }
-    if (!parsed) return;
+      if (!parsed) return;
 
-    parsed = ensureMapMinimums(parsed);
+      parsed = ensureMapMinimums(parsed);
 
-    const merged = mergeMapData(getMapData(), parsed);
+      const merged = mergeMapData(getMapData(), parsed);
     await setMapData(merged);
     updateMapPreview();
   } catch (e) {
@@ -1690,26 +1678,26 @@ function renderGridMap(mapData) {
         if (hasEvents) classes.push('sg-map-has-events');
         if (!cell.visited) classes.push('sg-map-unvisited');
 
-        const eventList = hasEvents ? cell.events.map(e => `• ${formatMapEventText(e)}`).join('\n') : '';
-        const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''}`;
+          const eventList = hasEvents ? cell.events.map(e => `• ${formatMapEventText(e)}`).join('\n') : '';
+          const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''}`;
 
         let inlineStyle = locationBaseStyle;
         if (isProtagonist) inlineStyle += 'background:rgba(100,200,100,0.25);border-color:rgba(100,200,100,0.5);box-shadow:0 0 8px rgba(100,200,100,0.3);';
         if (hasEvents) inlineStyle += 'border-color:rgba(255,180,80,0.5);';
         if (!cell.visited) inlineStyle += 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);opacity:0.6;';
-        const eventsJson = escapeHtml(JSON.stringify(Array.isArray(cell.events) ? cell.events : []));
-        const descAttr = escapeHtml(String(cell.description || ''));
-        const nameAttr = escapeHtml(String(cell.name || ''));
-        const groupAttr = escapeHtml(String(cell.group || ''));
-        const layerAttr = escapeHtml(String(cell.layer || ''));
-        html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}" data-group="${groupAttr}" data-layer="${layerAttr}">`;
-        if (cell.layer || cell.group) {
-          html += `<div class="sg-map-badges">`;
-          if (cell.layer) html += `<span class="sg-map-badge sg-map-badge-layer">${escapeHtml(String(cell.layer))}</span>`;
-          if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group">${escapeHtml(String(cell.group))}</span>`;
-          html += `</div>`;
-        }
-        html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
+          const eventsJson = escapeHtml(JSON.stringify(Array.isArray(cell.events) ? cell.events : []));
+          const descAttr = escapeHtml(String(cell.description || ''));
+          const nameAttr = escapeHtml(String(cell.name || ''));
+          const groupAttr = escapeHtml(String(cell.group || ''));
+          const layerAttr = escapeHtml(String(cell.layer || ''));
+          html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}" data-group="${groupAttr}" data-layer="${layerAttr}">`;
+          if (cell.layer || cell.group) {
+            html += `<div class="sg-map-badges">`;
+            if (cell.layer) html += `<span class="sg-map-badge sg-map-badge-layer">${escapeHtml(String(cell.layer))}</span>`;
+            if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group">${escapeHtml(String(cell.group))}</span>`;
+            html += `</div>`;
+          }
+          html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
         html += '</div>';
@@ -1719,10 +1707,10 @@ function renderGridMap(mapData) {
     }
   }
 
-  html += '</div>';
-  html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
-  html += '<div class="sg-map-event-panel">点击地点查看事件列表</div>';
-  html += '</div>';
+    html += '</div>';
+    html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
+    html += '<div class="sg-map-event-panel">点击地点查看事件列表</div>';
+    html += '</div>';
 
   return html;
 }
@@ -3054,14 +3042,14 @@ async function runAnalysis() {
       throw new Error('模型输出无法解析为 JSON（已切到 JSON 标签，看看原文）');
     }
 
-    const md = renderReportMarkdownFromModules(parsed, modules);
-    lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
-    renderMarkdownInto($('#sg_md'), md);
+      const md = renderReportMarkdownFromModules(parsed, modules);
+      lastReport = { json: parsed, markdown: md, createdAt: Date.now(), sourceSummary };
+      renderMarkdownInto($('#sg_md'), md);
 
-    await updateMapFromSnapshot(snapshotText);
+      await updateMapFromSnapshot(snapshotText);
 
-    // 同步面板报告到聊天末尾
-    try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
+      // 同步面板报告到聊天末尾
+      try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
 
     updateButtonsEnabled();
     showPane('md');
@@ -6492,19 +6480,19 @@ async function runInlineAppendForLastMessage(opts = {}) {
     return;
   }
 
-  try {
-    const { snapshotText } = buildSnapshot();
+    try {
+      const { snapshotText } = buildSnapshot();
 
-    const modules = getModules('append');
-    // append 里 schema 按 inline 模块生成；如果用户把 inline 全关了，就不生成
-    if (!modules.length) return;
+      const modules = getModules('append');
+      // append 里 schema 按 inline 模块生成；如果用户把 inline 全关了，就不生成
+      if (!modules.length) return;
 
-    await updateMapFromSnapshot(snapshotText);
+      await updateMapFromSnapshot(snapshotText);
 
-    // 对 “compact/standard” 给一点暗示（不强制），避免用户模块 prompt 很长时没起作用
-    const modeHint = (s.appendMode === 'standard')
-      ? `\n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
-      : `\n【附加要求】inline 输出尽量短：每个字段尽量 1~2 句/2 条以内。\n`;
+      // 对 “compact/standard” 给一点暗示（不强制），避免用户模块 prompt 很长时没起作用
+      const modeHint = (s.appendMode === 'standard')
+        ? `\n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
+        : `\n【附加要求】inline 输出尽量短：每个字段尽量 1~2 句/2 条以内。\n`;
 
     const schema = buildSchemaFromModules(modules);
     const messages = buildPromptMessages(snapshotText + modeHint, s.spoilerLevel, modules, 'append');
@@ -7235,7 +7223,6 @@ function buildModalHtml() {
             <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
             <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
-            <button class="sg-pgtab" id="sg_pgtab_map">🗺️ 地图</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
@@ -8025,87 +8012,6 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_roll -->
 
-          <div class="sg-page" id="sg_page_map">
-            <div class="sg-card">
-              <div class="sg-card-title">🗺️ 地图设置</div>
-              <div class="sg-hint" style="margin-bottom:10px;">从对话中自动提取地点信息生成网格地图。使用独立 API 配置，不影响剧情提示。</div>
-              
-              <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
-              <label class="sg-check" style="margin-left:16px;"><input type="checkbox" id="sg_mapAutoUpdate">剧情分析时自动更新地图</label>
-              
-              <div class="sg-grid2" style="margin-top:10px;">
-                <div class="sg-field">
-                  <label>地图 Provider</label>
-                  <select id="sg_mapProvider">
-                    <option value="st">使用当前 SillyTavern API</option>
-                    <option value="custom">独立 API</option>
-                  </select>
-                </div>
-                <div class="sg-field">
-                  <label>回溯消息数（增量更新）</label>
-                  <input id="sg_mapLookbackMessages" type="number" min="5" max="100" placeholder="20">
-                </div>
-              </div>
-            </div>
-
-            <div class="sg-card sg-subcard" id="sg_map_custom_block" style="display:none; margin-top:8px;">
-              <div class="sg-card-title">地图独立 API 配置</div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>API 基础URL</label>
-                  <input id="sg_mapCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
-                </div>
-                <div class="sg-field">
-                  <label>API Key</label>
-                  <input id="sg_mapCustomApiKey" type="password" placeholder="sk-...">
-                </div>
-              </div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>模型ID</label>
-                  <input id="sg_mapCustomModel" type="text" placeholder="gpt-4o-mini">
-                </div>
-                <div class="sg-field">
-                  <label>Max Tokens</label>
-                  <input id="sg_mapCustomMaxTokens" type="number" min="256" max="8192" placeholder="1024">
-                </div>
-              </div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>Temperature</label>
-                  <input id="sg_mapCustomTemperature" type="number" min="0" max="2" step="0.1" placeholder="0.2">
-                </div>
-                <div class="sg-field">
-                  <label>TopP</label>
-                  <input id="sg_mapCustomTopP" type="number" min="0" max="1" step="0.01" placeholder="0.95">
-                </div>
-              </div>
-              <label class="sg-check"><input type="checkbox" id="sg_mapCustomStream">stream（若支持）</label>
-            </div>
-
-            <div class="sg-card sg-subcard" style="margin-top:10px;">
-              <div class="sg-card-title">地图系统提示词</div>
-              <div class="sg-hint">用于指导 LLM 如何提取地点信息。可以根据你的游戏/世界观定制。</div>
-              <div class="sg-field" style="margin-top:8px;">
-                <textarea id="sg_mapSystemPrompt" rows="8" style="font-size:12px;"></textarea>
-              </div>
-              <div class="sg-row sg-inline" style="margin-top:8px;">
-                <button class="menu_button sg-btn" id="sg_resetMapPrompt">恢复默认提示词</button>
-              </div>
-            </div>
-
-            <div class="sg-card sg-subcard" style="margin-top:10px;">
-              <div class="sg-card-title">地图预览</div>
-              <div class="sg-row sg-inline" style="margin-bottom:8px;">
-                <button class="menu_button sg-btn" id="sg_manualMapRefresh">🔄 手动刷新地图</button>
-                <button class="menu_button sg-btn" id="sg_resetMap">🗑️ 重置地图</button>
-              </div>
-              <div id="sg_mapPreview" style="min-height:100px; max-height:300px; overflow:auto; background:rgba(0,0,0,0.15); border-radius:10px; padding:10px;">
-                <div class="sg-map-empty">点击"手动刷新地图"开始生成</div>
-              </div>
-            </div>
-          </div> <!-- sg_page_map -->
-
           <div class="sg-status" id="sg_status"></div>
         </div>
 
@@ -8220,64 +8126,6 @@ function ensureModal() {
     pullUiToSettings(); saveSettings();
   });
 
-  // ===== 地图设置事件 =====
-  // map provider toggle
-  $('#sg_mapProvider').on('change', () => {
-    const p = String($('#sg_mapProvider').val() || 'st');
-    $('#sg_map_custom_block').toggle(p === 'custom');
-    pullUiToSettings(); saveSettings();
-  });
-
-  // map enabled auto-save
-  $('#sg_mapEnabled, #sg_mapAutoUpdate').on('change', () => {
-    pullUiToSettings(); saveSettings();
-  });
-
-  // map custom settings auto-save
-  $('#sg_mapLookbackMessages, #sg_mapCustomEndpoint, #sg_mapCustomApiKey, #sg_mapCustomModel, #sg_mapCustomMaxTokens, #sg_mapCustomTemperature, #sg_mapCustomTopP, #sg_mapCustomStream').on('change input', () => {
-    pullUiToSettings(); saveSettings();
-  });
-
-  // map system prompt auto-save
-  $('#sg_mapSystemPrompt').on('change blur', () => {
-    pullUiToSettings(); saveSettings();
-  });
-
-  // reset map prompt button
-  $('#sg_resetMapPrompt').on('click', () => {
-    $('#sg_mapSystemPrompt').val(DEFAULT_SETTINGS.mapSystemPrompt);
-    pullUiToSettings();
-    saveSettings();
-    setStatus('已恢复默认地图提示词 ✅', 'ok');
-  });
-
-  // reset map data button
-  $('#sg_resetMap').on('click', async () => {
-    const ok = confirm('确定要清空当前地图数据吗？此操作不可撤销。');
-    if (!ok) return;
-    setMapData(getDefaultMapData());
-    updateMapPreview();
-    setStatus('地图已重置 🗺️', 'ok');
-  });
-
-  // manual map refresh button
-  $('#sg_manualMapRefresh').on('click', async () => {
-    const s = ensureSettings();
-    if (!s.mapEnabled) {
-      setStatus('请先启用地图功能', 'warn');
-      return;
-    }
-    setStatus('正在刷新地图...', 'load');
-    try {
-      const snapshot = buildFloatingStorySnapshot(s.mapLookbackMessages || 20, 'all');
-      await updateMapFromSnapshot(snapshot);
-      updateMapPreview();
-      setStatus('地图刷新完成 ✅', 'ok');
-    } catch (e) {
-      console.error('[SG] Manual map refresh error:', e);
-      setStatus('地图刷新失败: ' + (e.message || e), 'error');
-    }
-  });
 
   // wiTrigger match mode toggle
   $('#sg_wiTriggerMatchMode').on('change', () => {
@@ -8640,35 +8488,35 @@ function ensureModal() {
     updateWorldbookInfoLabel();
   });
 
-  // 地图功能事件处理
-  $('#sg_mapEnabled').on('change', () => {
-    pullUiToSettings();
-    saveSettings();
-  });
+    // 地图功能事件处理
+    $('#sg_mapEnabled').on('change', () => {
+      pullUiToSettings();
+      saveSettings();
+    });
 
-  $('#sg_mapSystemPrompt').on('change input', () => {
-    pullUiToSettings();
-    saveSettings();
-  });
+    $('#sg_mapSystemPrompt').on('change input', () => {
+      pullUiToSettings();
+      saveSettings();
+    });
 
-  $('#sg_mapResetPrompt').on('click', () => {
-    $('#sg_mapSystemPrompt').val(String(DEFAULT_SETTINGS.mapSystemPrompt || ''));
-    pullUiToSettings();
-    saveSettings();
-    setStatus('已恢复默认地图提示词 ✅', 'ok');
-  });
+    $('#sg_mapResetPrompt').on('click', () => {
+      $('#sg_mapSystemPrompt').val(String(DEFAULT_SETTINGS.mapSystemPrompt || ''));
+      pullUiToSettings();
+      saveSettings();
+      setStatus('已恢复默认地图提示词 ✅', 'ok');
+    });
 
-  bindMapEventPanelHandler();
+    bindMapEventPanelHandler();
 
-  $(document).on('click', (e) => {
-    const $t = $(e.target);
-    if ($t.closest('.sg-map-popover, .sg-map-location').length) return;
-    if (sgMapPopoverEl) sgMapPopoverEl.style.display = 'none';
-  });
+    $(document).on('click', (e) => {
+      const $t = $(e.target);
+      if ($t.closest('.sg-map-popover, .sg-map-location').length) return;
+      if (sgMapPopoverEl) sgMapPopoverEl.style.display = 'none';
+    });
 
-  $('#sg_resetMap').on('click', async () => {
-    try {
-      await setMapData(getDefaultMapData());
+    $('#sg_resetMap').on('click', async () => {
+      try {
+        await setMapData(getDefaultMapData());
       updateMapPreview();
       setStatus('地图已重置 ✅', 'ok');
     } catch (e) {
@@ -8786,8 +8634,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_map').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_map').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -8798,9 +8646,6 @@ function showSettingsPage(page) {
   } else if (p === 'roll') {
     $('#sg_pgtab_roll').addClass('active');
     $('#sg_page_roll').addClass('active');
-  } else if (p === 'map') {
-    $('#sg_pgtab_map').addClass('active');
-    $('#sg_page_map').addClass('active');
   } else {
     $('#sg_pgtab_guide').addClass('active');
     $('#sg_page_guide').addClass('active');
@@ -8828,7 +8673,6 @@ function setupSettingsPages() {
   $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
   $('#sg_pgtab_roll').on('click', () => showSettingsPage('roll'));
-  $('#sg_pgtab_map').on('click', () => showSettingsPage('map'));
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
@@ -9012,22 +8856,6 @@ function pullSettingsToUi() {
   renderSummaryPaneFromMeta();
   renderWiTriggerLogs();
   renderRollLogs();
-
-  // ===== 地图设置 =====
-  $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
-  $('#sg_mapAutoUpdate').prop('checked', s.mapAutoUpdate !== false);
-  $('#sg_mapProvider').val(String(s.mapProvider || 'st'));
-  $('#sg_mapLookbackMessages').val(s.mapLookbackMessages || 20);
-  $('#sg_mapCustomEndpoint').val(String(s.mapCustomEndpoint || ''));
-  $('#sg_mapCustomApiKey').val(String(s.mapCustomApiKey || ''));
-  $('#sg_mapCustomModel').val(String(s.mapCustomModel || 'gpt-4o-mini'));
-  $('#sg_mapCustomMaxTokens').val(s.mapCustomMaxTokens || 1024);
-  $('#sg_mapCustomTemperature').val(s.mapCustomTemperature ?? 0.2);
-  $('#sg_mapCustomTopP').val(s.mapCustomTopP ?? 0.95);
-  $('#sg_mapCustomStream').prop('checked', !!s.mapCustomStream);
-  $('#sg_mapSystemPrompt').val(String(s.mapSystemPrompt || DEFAULT_SETTINGS.mapSystemPrompt));
-  $('#sg_map_custom_block').toggle(String(s.mapProvider || 'st') === 'custom');
-  updateMapPreview();
 
   updateButtonsEnabled();
 }
@@ -9454,20 +9282,6 @@ function pullUiToSettings() {
   s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
   s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
-
-  // ===== 地图设置 =====
-  s.mapEnabled = $('#sg_mapEnabled').is(':checked');
-  s.mapAutoUpdate = $('#sg_mapAutoUpdate').is(':checked');
-  s.mapProvider = String($('#sg_mapProvider').val() || s.mapProvider || 'st');
-  s.mapLookbackMessages = clampInt($('#sg_mapLookbackMessages').val(), 5, 100, s.mapLookbackMessages || 20);
-  s.mapCustomEndpoint = String($('#sg_mapCustomEndpoint').val() || '').trim();
-  s.mapCustomApiKey = String($('#sg_mapCustomApiKey').val() || '');
-  s.mapCustomModel = String($('#sg_mapCustomModel').val() || 'gpt-4o-mini');
-  s.mapCustomMaxTokens = clampInt($('#sg_mapCustomMaxTokens').val(), 256, 8192, s.mapCustomMaxTokens || 1024);
-  s.mapCustomTemperature = clampFloat($('#sg_mapCustomTemperature').val(), 0, 2, s.mapCustomTemperature ?? 0.2);
-  s.mapCustomTopP = clampFloat($('#sg_mapCustomTopP').val(), 0, 1, s.mapCustomTopP ?? 0.95);
-  s.mapCustomStream = $('#sg_mapCustomStream').is(':checked');
-  s.mapSystemPrompt = String($('#sg_mapSystemPrompt').val() || DEFAULT_SETTINGS.mapSystemPrompt);
 }
 
 function openModal() {
@@ -9827,34 +9641,34 @@ function createFloatingPanel() {
     hideFloatingPanel();
   });
 
-  $('#sg_floating_show_report').on('click', () => {
-    showFloatingReport();
-  });
+    $('#sg_floating_show_report').on('click', () => {
+      showFloatingReport();
+    });
 
-  $('#sg_floating_show_map').on('click', () => {
-    showFloatingMap();
-  });
-
-  // Delegate inner refresh click
-  $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
-    // Only handle if inside our panel
-    if (!$(e.target).closest('#sg_floating_panel').length) return;
-    await refreshFloatingPanelContent();
-  });
-
-  $(document).on('click', '.sg-inner-map-reset-btn', async (e) => {
-    if (!$(e.target).closest('#sg_floating_panel').length) return;
-    try {
-      await setMapData(getDefaultMapData());
+    $('#sg_floating_show_map').on('click', () => {
       showFloatingMap();
-    } catch (err) {
-      console.warn('[StoryGuide] map reset failed:', err);
-    }
-  });
+    });
 
-  $('#sg_floating_roll_logs').on('click', () => {
-    showFloatingRollLogs();
-  });
+    // Delegate inner refresh click
+    $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
+      // Only handle if inside our panel
+      if (!$(e.target).closest('#sg_floating_panel').length) return;
+      await refreshFloatingPanelContent();
+    });
+
+    $(document).on('click', '.sg-inner-map-reset-btn', async (e) => {
+      if (!$(e.target).closest('#sg_floating_panel').length) return;
+      try {
+        await setMapData(getDefaultMapData());
+        showFloatingMap();
+      } catch (err) {
+        console.warn('[StoryGuide] map reset failed:', err);
+      }
+    });
+
+    $('#sg_floating_roll_logs').on('click', () => {
+      showFloatingRollLogs();
+    });
 
   $('#sg_floating_settings').on('click', () => {
     openModal();
@@ -10074,54 +9888,54 @@ function hideFloatingPanel() {
   }
 }
 
-async function refreshFloatingPanelContent() {
-  const $body = $('#sg_floating_body');
-  if (!$body.length) return;
+  async function refreshFloatingPanelContent() {
+    const $body = $('#sg_floating_body');
+    if (!$body.length) return;
 
-  $body.html('<div class="sg-floating-loading">正在分析剧情...</div>');
+    $body.html('<div class="sg-floating-loading">正在分析剧情...</div>');
 
-  try {
-    const s = ensureSettings();
-    const { snapshotText } = buildSnapshot();
-    const modules = getModules('panel');
+    try {
+      const s = ensureSettings();
+      const { snapshotText } = buildSnapshot();
+      const modules = getModules('panel');
 
-    if (!modules.length) {
-      $body.html('<div class="sg-floating-loading">没有配置模块</div>');
-      return;
-    }
+      if (!modules.length) {
+        $body.html('<div class="sg-floating-loading">没有配置模块</div>');
+        return;
+      }
 
-    const schema = buildSchemaFromModules(modules);
-    const messages = buildPromptMessages(snapshotText, s.spoilerLevel, modules, 'panel');
+      const schema = buildSchemaFromModules(modules);
+      const messages = buildPromptMessages(snapshotText, s.spoilerLevel, modules, 'panel');
 
-    let jsonText = '';
-    if (s.provider === 'custom') {
-      jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
-    } else {
-      jsonText = await callViaSillyTavern(messages, schema, s.temperature);
-      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-    }
+      let jsonText = '';
+      if (s.provider === 'custom') {
+        jsonText = await callViaCustom(s.customEndpoint, s.customApiKey, s.customModel, messages, s.temperature, s.customMaxTokens, s.customTopP, s.customStream);
+      } else {
+        jsonText = await callViaSillyTavern(messages, schema, s.temperature);
+        if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+      }
 
-    const parsed = safeJsonParse(jsonText);
-    if (!parsed) {
-      $body.html('<div class="sg-floating-loading">解析失败</div>');
-      return;
-    }
+      const parsed = safeJsonParse(jsonText);
+      if (!parsed) {
+        $body.html('<div class="sg-floating-loading">解析失败</div>');
+        return;
+      }
 
-    // 合并静态模块
-    const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
-    updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
+      // 合并静态模块
+      const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
+      updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
 
-    // 渲染内容
-    // Filter out quick_actions from main Markdown body to avoid duplication
-    const bodyModules = modules.filter(m => m.key !== 'quick_actions');
-    const md = renderReportMarkdownFromModules(mergedParsed, bodyModules);
-    const html = renderMarkdownToHtml(md);
+      // 渲染内容
+      // Filter out quick_actions from main Markdown body to avoid duplication
+      const bodyModules = modules.filter(m => m.key !== 'quick_actions');
+      const md = renderReportMarkdownFromModules(mergedParsed, bodyModules);
+      const html = renderMarkdownToHtml(md);
 
-    await updateMapFromSnapshot(snapshotText);
+      await updateMapFromSnapshot(snapshotText);
 
-    // 添加快捷选项
-    const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
-    const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
+      // 添加快捷选项
+      const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
+      const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
 
     const refreshBtnHtml = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
@@ -10146,9 +9960,9 @@ function updateFloatingPanelBody(html) {
   }
 }
 
-function showFloatingRollLogs() {
-  const $body = $('#sg_floating_body');
-  if (!$body.length) return;
+  function showFloatingRollLogs() {
+    const $body = $('#sg_floating_body');
+    if (!$body.length) return;
 
   const meta = getSummaryMeta();
   const logs = Array.isArray(meta?.rollLogs) ? meta.rollLogs : [];
@@ -10187,30 +10001,30 @@ function showFloatingRollLogs() {
     `;
   }).join('');
 
-  $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
-}
-
-function showFloatingMap() {
-  const $body = $('#sg_floating_body');
-  if (!$body.length) return;
-  const s = ensureSettings();
-  if (!s.mapEnabled) {
-    $body.html('<div class="sg-floating-loading">地图功能未启用</div>');
-    return;
+    $body.html(`<div style="padding:10px; overflow-y:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
   }
-  const mapData = getMapData();
-  const html = renderGridMap(mapData);
-  const tools = `
+
+  function showFloatingMap() {
+    const $body = $('#sg_floating_body');
+    if (!$body.length) return;
+    const s = ensureSettings();
+    if (!s.mapEnabled) {
+      $body.html('<div class="sg-floating-loading">地图功能未启用</div>');
+      return;
+    }
+    const mapData = getMapData();
+    const html = renderGridMap(mapData);
+    const tools = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
         <button class="sg-inner-map-reset-btn" title="重置地图" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🗑</button>
       </div>
     `;
-  $body.html(`${tools}<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
-}
+    $body.html(`${tools}<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
+  }
 
-function showFloatingReport() {
-  const $body = $('#sg_floating_body');
-  if (!$body.length) return;
+  function showFloatingReport() {
+    const $body = $('#sg_floating_body');
+    if (!$body.length) return;
 
   // Use last cached content if available, otherwise show empty state
   if (lastFloatingContent) {
