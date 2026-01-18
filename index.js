@@ -612,6 +612,16 @@ function ensureSettings() {
       saveSettingsDebounced();
     }
   }
+  // 迁移：删除了 chatbook 选项，强制使用 file 模式
+  if (extensionSettings[MODULE_NAME].summaryWorldInfoTarget === 'chatbook') {
+    extensionSettings[MODULE_NAME].summaryWorldInfoTarget = 'file';
+    saveSettingsDebounced();
+  }
+  // 迁移：蓝灯世界书默认开启
+  if (extensionSettings[MODULE_NAME].summaryToBlueWorldInfo === false) {
+    extensionSettings[MODULE_NAME].summaryToBlueWorldInfo = true;
+    saveSettingsDebounced();
+  }
   return extensionSettings[MODULE_NAME];
 }
 
@@ -2049,10 +2059,7 @@ async function onChatSwitched() {
   if (autoBindCreated || greenWI || blueWI) {
     console.log('[StoryGuide] 恢复已有绑定');
     await applyBoundWorldInfoToSettings();
-    const greenNow = String(getChatMetaValue(META_KEYS.boundGreenWI) || greenWI || '').trim();
-    showToast(`已切换到本聊天专属世界书\n绿灯：${greenNow || '(无)'}\n蓝灯：${blueWI || '(无)'}`, {
-      kind: 'info', spinner: false, sticky: false, duration: 2500
-    });
+
   } else {
     console.log('[StoryGuide] 新聊天，需要创建绑定');
     await ensureBoundWorldInfo();
