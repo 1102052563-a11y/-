@@ -1761,8 +1761,8 @@ function renderGridMap(mapData) {
           html += `<div class="${classes.join(' ')}" style="${inlineStyle}" title="${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}" data-group="${groupAttr}" data-layer="${layerAttr}">`;
           if (cell.layer || cell.group) {
             html += `<div class="sg-map-badges">`;
-            if (cell.layer) html += `<span class="sg-map-badge sg-map-badge-layer">${escapeHtml(String(cell.layer))}</span>`;
-            if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group">${escapeHtml(String(cell.group))}</span>`;
+            if (cell.layer) html += `<span class="sg-map-badge sg-map-badge-layer" title="${escapeHtml(String(cell.layer))}">L</span>`;
+            if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group" title="${escapeHtml(String(cell.group))}">G</span>`;
             html += `</div>`;
           }
           html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
