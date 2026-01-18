@@ -912,6 +912,12 @@ function bindMapEventPanelHandler() {
       $panel.addClass('sg-map-event-panel--floating');
     });
 
+    $(document).on('click', '.sg-map-wrapper', (e) => {
+      if ($(e.target).closest('.sg-map-location, .sg-map-event-panel').length) return;
+      const $wrap = $(e.currentTarget);
+      $wrap.find('.sg-map-event-panel').remove();
+    });
+
     $(document).on('click', '.sg-map-event-delete', async (e) => {
       e.preventDefault();
       e.stopPropagation();
