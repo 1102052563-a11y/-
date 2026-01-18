@@ -871,8 +871,11 @@ function bindMapEventPanelHandler() {
     $(document).on('click', '.sg-map-location', (e) => {
       const $cell = $(e.currentTarget);
       const $wrap = $cell.closest('.sg-map-wrapper');
-      const $panel = $wrap.find('.sg-map-event-panel');
-      if (!$panel.length) return;
+      let $panel = $wrap.find('.sg-map-event-panel');
+      if (!$panel.length) {
+        $wrap.append('<div class="sg-map-event-panel"></div>');
+        $panel = $wrap.find('.sg-map-event-panel');
+      }
 
     const name = String($cell.attr('data-name') || '').trim();
     const desc = String($cell.attr('data-desc') || '').trim();
@@ -906,6 +909,7 @@ function bindMapEventPanelHandler() {
         ? `<button class="sg-map-event-delete" data-name="${escapeHtml(name)}">删除地点</button>`
         : '';
       $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
+      $panel.addClass('sg-map-event-panel--floating');
     });
 
     $(document).on('click', '.sg-map-event-delete', async (e) => {

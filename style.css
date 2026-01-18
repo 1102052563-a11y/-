@@ -2088,6 +2088,7 @@ body.sg-zoom-lock {
 .sg-map-legend { margin-top: 8px; font-size: 11px; opacity: 0.7; text-align: center; }
 .sg-map-empty { text-align: center; padding: 20px; opacity: 0.6; font-size: 13px; }
 .sg-map-event-panel { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; }
+.sg-map-event-panel--floating { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5; max-width: 80%; max-height: 70%; overflow: auto; background: rgba(20, 20, 20, 0.9); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45); }
 .sg-map-event-header { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
 .sg-map-event-title { font-weight: 700; }
 .sg-map-event-chip { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); }
