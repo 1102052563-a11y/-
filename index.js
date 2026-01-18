@@ -342,8 +342,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 总结结果写入世界书（Lorebook / World Info）
   // —— 绿灯世界书（关键词触发）——
   summaryToWorldInfo: true,
-  // chatbook=写入当前聊天绑定世界书；file=写入指定世界书文件名
-  summaryWorldInfoTarget: 'chatbook',
+  // 写入指定世界书文件名
+  summaryWorldInfoTarget: 'file',
   summaryWorldInfoFile: '',
   summaryWorldInfoCommentPrefix: '剧情总结',
 
@@ -360,7 +360,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // —— 蓝灯世界书（常开索引：给本插件做检索用）——
   // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个。
-  summaryToBlueWorldInfo: false,
+  summaryToBlueWorldInfo: true,
   summaryBlueWorldInfoFile: '',
   summaryBlueWorldInfoCommentPrefix: '剧情总结',
 
@@ -8218,11 +8218,7 @@ function ensureModal() {
     setStatus('已恢复默认索引提示词 ✅', 'ok');
   });
 
-  $('#sg_summaryWorldInfoTarget').on('change', () => {
-    const t = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
-    $('#sg_summaryWorldInfoFile').toggle(t === 'file');
-    pullUiToSettings(); saveSettings();
-  });
+
 
   $('#sg_summaryToBlueWorldInfo').on('change', () => {
     const checked = $('#sg_summaryToBlueWorldInfo').is(':checked');
@@ -8911,7 +8907,7 @@ function pullSettingsToUi() {
   $('#sg_summaryMaxTotalChars').val(s.summaryMaxTotalChars || 24000);
 
   $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
-  $('#sg_summaryWorldInfoFile').toggle(String(s.summaryWorldInfoTarget || 'chatbook') === 'file');
+  $('#sg_summaryWorldInfoFile').show();
   $('#sg_summaryBlueWorldInfoFile').toggle(!!s.summaryToBlueWorldInfo);
   $('#sg_summaryIndexFormat').toggle(String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId');
 
