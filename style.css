@@ -2084,6 +2084,7 @@ body.sg-zoom-lock {
 .sg-map-badge { font-size: 8px; padding: 1px 3px; border-radius: 4px; background: rgba(0,0,0,0.25); color: #e5e7eb; }
 .sg-map-badge-layer { background: rgba(30, 60, 120, 0.35); }
 .sg-map-badge-group { background: rgba(60, 80, 40, 0.35); }
+.sg-map-event-delete { margin-top: 6px; padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(255, 80, 80, 0.5); background: rgba(255, 80, 80, 0.15); color: rgba(255, 200, 200, 0.95); font-size: 11px; cursor: pointer; }
 .sg-map-legend { margin-top: 8px; font-size: 11px; opacity: 0.7; text-align: center; }
 .sg-map-empty { text-align: center; padding: 20px; opacity: 0.6; font-size: 13px; }
 .sg-map-event-panel { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; }

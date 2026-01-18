@@ -770,7 +770,6 @@ let sgMapEventHandlerBound = false;
     sgMapEventHandlerBound = true;
 
     $(document).on('click', '.sg-map-location', (e) => {
-      if ($(e.target).closest('.sg-map-delete').length) return;
       const $cell = $(e.currentTarget);
       const $wrap = $cell.closest('.sg-map-wrapper');
       const $panel = $wrap.find('.sg-map-event-panel');
@@ -786,11 +785,11 @@ let sgMapEventHandlerBound = false;
     if (name) headerBits.push(`<span class="sg-map-event-title">${escapeHtml(name)}</span>`);
     if (layer) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(layer)}</span>`);
     if (group) headerBits.push(`<span class="sg-map-event-chip">${escapeHtml(group)}</span>`);
-    const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
-    const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
+      const header = headerBits.length ? `<div class="sg-map-event-header">${headerBits.join('')}</div>` : '';
+      const descHtml = desc ? `<div class="sg-map-event-desc">${escapeHtml(desc)}</div>` : '';
 
-    let listHtml = '';
-    if (events.length) {
+      let listHtml = '';
+      if (events.length) {
       const items = events.map((ev) => {
         const text = escapeHtml(String(ev?.text || ev?.event || ev || '').trim());
         const tags = Array.isArray(ev?.tags) ? ev.tags : [];
@@ -804,25 +803,28 @@ let sgMapEventHandlerBound = false;
       listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
     }
 
-      $panel.html(`${header}${descHtml}${listHtml}`);
+      const deleteBtn = name
+        ? `<button class="sg-map-event-delete" data-name="${escapeHtml(name)}">删除地点</button>`
+        : '';
+      $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
     });
 
-    $(document).on('click', '.sg-map-delete', async (e) => {
+    $(document).on('click', '.sg-map-event-delete', async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const $cell = $(e.currentTarget).closest('.sg-map-location');
-      const name = String($cell.attr('data-name') || '').trim();
+      const name = String($(e.currentTarget).attr('data-name') || '').trim();
       if (!name) return;
       try {
         const map = getMapData();
-        if (map.locations && map.locations[name]) {
-          delete map.locations[name];
+        const key = map.locations?.[name] ? name : (normalizeMapName(name) ? Array.from(Object.keys(map.locations || {})).find(k => normalizeMapName(k) === normalizeMapName(name)) : null);
+        if (key && map.locations && map.locations[key]) {
+          delete map.locations[key];
         }
         for (const loc of Object.values(map.locations || {})) {
           if (!Array.isArray(loc.connections)) continue;
-          loc.connections = loc.connections.filter(c => String(c || '').trim() !== name);
+          loc.connections = loc.connections.filter(c => normalizeMapName(c) !== normalizeMapName(name));
         }
-        if (map.protagonistLocation === name) {
+        if (map.protagonistLocation && normalizeMapName(map.protagonistLocation) === normalizeMapName(name)) {
           map.protagonistLocation = '';
         }
         await setMapData(map);
@@ -1606,7 +1608,6 @@ function renderGridMap(mapData) {
             if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group">${escapeHtml(String(cell.group))}</span>`;
             html += `</div>`;
           }
-          html += `<button class="sg-map-delete" title="删除地点">×</button>`;
           html += `<span class="sg-map-name">${escapeHtml(cell.name)}</span>`;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
