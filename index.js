@@ -511,6 +511,37 @@ const DEFAULT_SETTINGS = Object.freeze({
       { "location": "地点名", "event": "事件描述", "tags": ["任务"] }
     ]
   }`,
+
+  // ===== 图像生成模块 =====
+  imageGenEnabled: false,
+  novelaiApiKey: '',
+  novelaiModel: 'nai-diffusion-3', // nai-diffusion-3 | nai-diffusion-4-curated-preview
+  novelaiResolution: '832x1216', // 默认立绘尺寸
+  novelaiSteps: 28,
+  novelaiScale: 5,
+  novelaiSampler: 'k_euler',
+  novelaiNegativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
+  imageGenAutoSave: false,
+  imageGenSavePath: '', // 用户设置的保存路径
+  imageGenLookbackMessages: 5, // 读取最近几条消息
+  imageGenLlmProvider: 'st', // st | custom
+  imageGenSystemPrompt: `你是专业的AI绘画提示词生成器。根据提供的故事内容，分析场景或角色，输出 Novel AI 格式的 Danbooru 风格标签。
+
+要求：
+1. 使用英文标签，逗号分隔
+2. 包含角色外观（发色、瞳色、发型、身材）、服装、表情、动作、背景等
+3. 标签按重要性排序，重要的放前面
+4. 如果是角色，以 "1girl" 或 "1boy" 等人数标签开头
+5. 如果是场景，以场景类型标签开头（如 scenery, landscape, indoor）
+6. 输出纯 JSON 格式，不要有其他内容
+
+输出格式：
+{
+  "type": "character" 或 "scene",
+  "subject": "简短中文描述生成对象（如：黑发少女战斗姿态）",
+  "positive": "1girl, long black hair, red eyes, ...",
+  "negative": "额外的负面标签（可选，留空则使用默认）"
+}`,
 });
 
 const META_KEYS = Object.freeze({
@@ -6997,6 +7028,167 @@ async function refreshRollModels() {
 }
 
 
+// -------------------- 图像生成模块 --------------------
+
+function getRecentStoryContent(count) {
+  const chat = SillyTavern.getContext().chat || [];
+  const messages = chat.slice(-count).filter(m => m.mes && !m.is_system);
+  return messages.map(m => m.mes).join('\n\n');
+}
+
+function setImageGenStatus(text, kind = '') {
+  const $s = $('#sg_imageGenStatus');
+  $s.removeClass('ok err warn').addClass(kind || '');
+  $s.text(text || '');
+}
+
+async function generateImagePromptWithLLM(storyContent, genType) {
+  const s = ensureSettings();
+  const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
+
+  let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
+  if (genType === 'character') {
+    userPrompt += `【要求】：生成角色立绘的提示词，重点描述角色外观。\n\n`;
+  } else if (genType === 'scene') {
+    userPrompt += `【要求】：生成场景图的提示词，重点描述环境和氛围。\n\n`;
+  } else {
+    userPrompt += `【要求】：自动判断应该生成角色还是场景。\n\n`;
+  }
+  userPrompt += `【故事内容】：\n${storyContent}\n\n请输出 JSON 格式的提示词。`;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ];
+
+  try {
+    const result = await callLLM(messages, { temperature: 0.7, max_tokens: 1024 });
+
+    let parsed;
+    try {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('未找到 JSON');
+      }
+    } catch (e) {
+      console.warn('[ImageGen] Failed to parse LLM response:', e, result);
+      return { type: genType || 'auto', subject: '(解析失败)', positive: result.slice(0, 500), negative: '' };
+    }
+
+    return { type: parsed.type || genType || 'auto', subject: parsed.subject || '', positive: parsed.positive || '', negative: parsed.negative || '' };
+  } catch (e) {
+    console.error('[ImageGen] LLM call failed:', e);
+    throw new Error(`LLM 调用失败: ${e?.message || e}`);
+  }
+}
+
+async function generateImageWithNovelAI(positive, negative) {
+  const s = ensureSettings();
+  const apiKey = s.novelaiApiKey;
+
+  if (!apiKey) throw new Error('请先填写 Novel AI API Key');
+
+  const [width, height] = (s.novelaiResolution || '832x1216').split('x').map(Number);
+  const defaultNegative = s.novelaiNegativePrompt || DEFAULT_SETTINGS.novelaiNegativePrompt;
+  const finalNegative = negative ? `${defaultNegative}, ${negative}` : defaultNegative;
+
+  const payload = {
+    input: positive,
+    model: s.novelaiModel || 'nai-diffusion-3',
+    action: 'generate',
+    parameters: {
+      width: width || 832, height: height || 1216,
+      scale: s.novelaiScale || 5, steps: s.novelaiSteps || 28,
+      sampler: s.novelaiSampler || 'k_euler', negative_prompt: finalNegative,
+      n_samples: 1, ucPreset: 0, qualityToggle: true
+    }
+  };
+
+  setImageGenStatus('正在调用 Novel AI API 生成图像…', 'warn');
+
+  const response = await fetch('https://image.novelai.net/ai/generate-image', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'Accept': 'application/zip' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Novel AI API 错误: ${response.status} ${response.statusText}\n${errText}`);
+  }
+
+  const blob = await response.blob();
+
+  // 尝试用 JSZip 解压
+  try {
+    if (typeof JSZip !== 'undefined') {
+      const zip = await JSZip.loadAsync(blob);
+      const files = Object.keys(zip.files);
+      if (files.length > 0) {
+        const imageBlob = await zip.files[files[0]].async('blob');
+        return URL.createObjectURL(imageBlob);
+      }
+    }
+  } catch (e) { console.warn('[ImageGen] JSZip failed:', e); }
+
+  return URL.createObjectURL(blob);
+}
+
+async function runImageGeneration() {
+  const s = ensureSettings();
+
+  if (!s.novelaiApiKey) { setImageGenStatus('请先填写 Novel AI API Key', 'err'); return; }
+
+  const genType = $('#sg_imageGenType').val() || 'auto';
+  const lookback = s.imageGenLookbackMessages || 5;
+
+  try {
+    setImageGenStatus('正在读取最近对话…', 'warn');
+    const storyContent = getRecentStoryContent(lookback);
+
+    if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
+
+    setImageGenStatus('正在使用 LLM 生成图像提示词…', 'warn');
+    const promptResult = await generateImagePromptWithLLM(storyContent, genType);
+
+    $('#sg_imagePositivePrompt').val(promptResult.positive);
+    $('#sg_imagePromptPreview').show();
+
+    const imageUrl = await generateImageWithNovelAI(promptResult.positive, promptResult.negative);
+
+    $('#sg_generatedImage').attr('src', imageUrl);
+    $('#sg_imageResult').show();
+
+    setImageGenStatus(`✅ 生成成功！类型: ${promptResult.type}，主题: ${promptResult.subject}`, 'ok');
+
+    if (s.imageGenAutoSave && s.imageGenSavePath) {
+      try { await saveGeneratedImage(imageUrl); setImageGenStatus(`✅ 生成成功并已保存！`, 'ok'); }
+      catch (e) { console.warn('[ImageGen] Auto-save failed:', e); }
+    }
+  } catch (e) {
+    console.error('[ImageGen] Generation failed:', e);
+    setImageGenStatus(`❌ 生成失败: ${e?.message || e}`, 'err');
+  }
+}
+
+async function saveGeneratedImage(imageUrl) {
+  const response = await fetch(imageUrl);
+  const blob = await response.blob();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const filename = `sg_image_${timestamp}.png`;
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+
 async function refreshModels() {
   const s = ensureSettings();
   const raw = String($('#sg_customEndpoint').val() || s.customEndpoint || '').trim();
@@ -7411,6 +7603,7 @@ function buildModalHtml() {
             <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
             <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_image">图像生成</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
@@ -8202,6 +8395,116 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_roll -->
 
+          <div class="sg-page" id="sg_page_image">
+            <div class="sg-card">
+              <div class="sg-card-title">🎨 图像生成设置</div>
+              <div class="sg-hint" style="margin-bottom:10px;">读取最新剧情内容，使用 LLM 生成标签，调用 Novel AI API 生成角色/场景图像。</div>
+
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_imageGenEnabled">启用图像生成模块</label>
+              </div>
+
+              <div class="sg-field">
+                <label>Novel AI API Key</label>
+                <input id="sg_novelaiApiKey" type="password" placeholder="pst-...">
+                <div class="sg-hint">需要 Novel AI 订阅才能使用 API</div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>模型</label>
+                  <select id="sg_novelaiModel">
+                    <option value="nai-diffusion-3">NAI Diffusion V3</option>
+                    <option value="nai-diffusion-4-curated-preview">NAI Diffusion V4 (Preview)</option>
+                  </select>
+                </div>
+                <div class="sg-field">
+                  <label>分辨率</label>
+                  <select id="sg_novelaiResolution">
+                    <option value="832x1216">832×1216 (立绘)</option>
+                    <option value="1216x832">1216×832 (横向)</option>
+                    <option value="1024x1024">1024×1024 (方形)</option>
+                    <option value="640x640">640×640 (小)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>Steps</label>
+                  <input id="sg_novelaiSteps" type="number" min="1" max="50">
+                </div>
+                <div class="sg-field">
+                  <label>Scale (Guidance)</label>
+                  <input id="sg_novelaiScale" type="number" min="1" max="10" step="0.5">
+                </div>
+              </div>
+
+              <div class="sg-field">
+                <label>默认负面提示词</label>
+                <textarea id="sg_novelaiNegativePrompt" rows="2" placeholder="lowres, bad anatomy, ..."></textarea>
+              </div>
+
+              <hr class="sg-hr">
+
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_imageGenAutoSave">自动保存生成的图像</label>
+              </div>
+              <div class="sg-field">
+                <label>保存路径（留空则仅显示不保存）</label>
+                <input id="sg_imageGenSavePath" type="text" placeholder="例如：C:/Images/Generated">
+                <div class="sg-hint">图像会以时间戳命名保存到此目录</div>
+              </div>
+
+              <hr class="sg-hr">
+
+              <div class="sg-field">
+                <label>读取最近消息数</label>
+                <input id="sg_imageGenLookbackMessages" type="number" min="1" max="30">
+              </div>
+
+              <div class="sg-field">
+                <label>标签生成提示词 (System)</label>
+                <textarea id="sg_imageGenSystemPrompt" rows="8" placeholder="用于让 LLM 生成 Danbooru 风格标签的提示词"></textarea>
+                <div class="sg-actions-row">
+                  <button class="menu_button sg-btn" id="sg_imageGenResetPrompt">恢复默认提示词</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">生成图像</div>
+
+              <div class="sg-row sg-inline">
+                <label>生成类型</label>
+                <select id="sg_imageGenType">
+                  <option value="auto">自动识别</option>
+                  <option value="character">角色立绘</option>
+                  <option value="scene">场景图</option>
+                </select>
+                <button class="menu_button sg-btn-primary" id="sg_generateImage">🎨 根据剧情生成图像</button>
+              </div>
+
+              <div class="sg-field" id="sg_imagePromptPreview" style="display:none; margin-top:10px;">
+                <label>生成的提示词</label>
+                <textarea id="sg_imagePositivePrompt" rows="3" readonly style="background: var(--SmartThemeBlurTintColor);"></textarea>
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <button class="menu_button sg-btn" id="sg_editPromptAndGenerate">编辑并重新生成</button>
+                  <button class="menu_button sg-btn" id="sg_copyImagePrompt">📋 复制提示词</button>
+                </div>
+              </div>
+
+              <div id="sg_imageResult" class="sg-image-result" style="display:none; margin-top:12px;">
+                <img id="sg_generatedImage" src="" alt="Generated Image" style="max-width:100%; max-height:500px; border-radius:6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                <div class="sg-row sg-inline" style="margin-top:8px; justify-content:center;">
+                  <button class="menu_button sg-btn" id="sg_downloadImage">💾 保存图像</button>
+                </div>
+              </div>
+
+              <div class="sg-hint" id="sg_imageGenStatus" style="margin-top:10px;"></div>
+            </div>
+          </div> <!-- sg_page_image -->
+
           <div class="sg-status" id="sg_status"></div>
         </div>
 
@@ -8830,8 +9133,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -8842,6 +9145,9 @@ function showSettingsPage(page) {
   } else if (p === 'roll') {
     $('#sg_pgtab_roll').addClass('active');
     $('#sg_page_roll').addClass('active');
+  } else if (p === 'image') {
+    $('#sg_pgtab_image').addClass('active');
+    $('#sg_page_image').addClass('active');
   } else {
     $('#sg_pgtab_guide').addClass('active');
     $('#sg_page_guide').addClass('active');
@@ -8869,10 +9175,58 @@ function setupSettingsPages() {
   $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
   $('#sg_pgtab_roll').on('click', () => showSettingsPage('roll'));
+  $('#sg_pgtab_image').on('click', () => showSettingsPage('image'));
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
   $('#sg_gotoRollPage').on('click', () => showSettingsPage('roll'));
+
+  // 图像生成事件
+  $('#sg_generateImage').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await runImageGeneration();
+  });
+
+  $('#sg_downloadImage').on('click', async () => {
+    const src = $('#sg_generatedImage').attr('src');
+    if (src) await saveGeneratedImage(src);
+  });
+
+  $('#sg_copyImagePrompt').on('click', () => {
+    const prompt = $('#sg_imagePositivePrompt').val();
+    if (prompt) {
+      navigator.clipboard.writeText(prompt);
+      setImageGenStatus('提示词已复制到剪贴板', 'ok');
+    }
+  });
+
+  $('#sg_imageGenResetPrompt').on('click', () => {
+    $('#sg_imageGenSystemPrompt').val(DEFAULT_SETTINGS.imageGenSystemPrompt);
+    pullUiToSettings(); saveSettings();
+    setImageGenStatus('已恢复默认提示词', 'ok');
+  });
+
+  $('#sg_editPromptAndGenerate').on('click', async () => {
+    const $textarea = $('#sg_imagePositivePrompt');
+    if ($textarea.prop('readonly')) {
+      $textarea.prop('readonly', false);
+      $('#sg_editPromptAndGenerate').text('使用编辑后的提示词生成');
+    } else {
+      const positive = $textarea.val();
+      if (positive) {
+        const s = ensureSettings();
+        setImageGenStatus('正在使用编辑后的提示词生成…', 'warn');
+        try {
+          const imageUrl = await generateImageWithNovelAI(positive, '');
+          $('#sg_generatedImage').attr('src', imageUrl);
+          $('#sg_imageResult').show();
+          setImageGenStatus('✅ 生成成功！', 'ok');
+        } catch (e) {
+          setImageGenStatus(`❌ 生成失败: ${e?.message || e}`, 'err');
+        }
+      }
+    }
+  });
 }
 
 function pullSettingsToUi() {
@@ -9018,6 +9372,19 @@ function pullSettingsToUi() {
   $('#sg_wiRollSystemPrompt').val(String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT));
   $('#sg_roll_custom_block').toggle(String(s.wiRollProvider || 'custom') === 'custom');
   fillRollModelSelect(Array.isArray(s.wiRollCustomModelsCache) ? s.wiRollCustomModelsCache : [], s.wiRollCustomModel);
+
+  // 图像生成设置
+  $('#sg_imageGenEnabled').prop('checked', !!s.imageGenEnabled);
+  $('#sg_novelaiApiKey').val(String(s.novelaiApiKey || ''));
+  $('#sg_novelaiModel').val(String(s.novelaiModel || 'nai-diffusion-3'));
+  $('#sg_novelaiResolution').val(String(s.novelaiResolution || '832x1216'));
+  $('#sg_novelaiSteps').val(s.novelaiSteps || 28);
+  $('#sg_novelaiScale').val(s.novelaiScale || 5);
+  $('#sg_novelaiNegativePrompt').val(String(s.novelaiNegativePrompt || ''));
+  $('#sg_imageGenAutoSave').prop('checked', !!s.imageGenAutoSave);
+  $('#sg_imageGenSavePath').val(String(s.imageGenSavePath || ''));
+  $('#sg_imageGenLookbackMessages').val(s.imageGenLookbackMessages || 5);
+  $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt));
 
   $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
   $('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
@@ -9461,6 +9828,19 @@ function pullUiToSettings() {
   s.wiRollCustomTemperature = clampFloat($('#sg_wiRollCustomTemperature').val(), 0, 2, s.wiRollCustomTemperature ?? 0.2);
   s.wiRollCustomStream = $('#sg_wiRollCustomStream').is(':checked');
   s.wiRollSystemPrompt = String($('#sg_wiRollSystemPrompt').val() || '').trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
+
+  // 图像生成设置
+  s.imageGenEnabled = $('#sg_imageGenEnabled').is(':checked');
+  s.novelaiApiKey = String($('#sg_novelaiApiKey').val() || '').trim();
+  s.novelaiModel = String($('#sg_novelaiModel').val() || 'nai-diffusion-3');
+  s.novelaiResolution = String($('#sg_novelaiResolution').val() || '832x1216');
+  s.novelaiSteps = clampInt($('#sg_novelaiSteps').val(), 1, 50, s.novelaiSteps || 28);
+  s.novelaiScale = clampFloat($('#sg_novelaiScale').val(), 1, 10, s.novelaiScale || 5);
+  s.novelaiNegativePrompt = String($('#sg_novelaiNegativePrompt').val() || '').trim();
+  s.imageGenAutoSave = $('#sg_imageGenAutoSave').is(':checked');
+  s.imageGenSavePath = String($('#sg_imageGenSavePath').val() || '').trim();
+  s.imageGenLookbackMessages = clampInt($('#sg_imageGenLookbackMessages').val(), 1, 30, s.imageGenLookbackMessages || 5);
+  s.imageGenSystemPrompt = String($('#sg_imageGenSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.imageGenSystemPrompt;
 
   s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
   s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
