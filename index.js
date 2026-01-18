@@ -484,6 +484,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // ===== 地图功能 =====
   mapEnabled: false,
+  mapAutoUpdate: true,
   mapSystemPrompt: `从对话中提取地点信息，并尽量还原空间关系：
   1. 识别当前主角所在的地点名称
   2. 识别提及的新地点
@@ -1296,6 +1297,7 @@ function buildMapPromptMessages(snapshotText) {
 async function updateMapFromSnapshot(snapshotText) {
   const s = ensureSettings();
   if (!s.mapEnabled) return;
+  if (!s.mapAutoUpdate) return;
   const user = String(snapshotText || '').trim();
   if (!user) return;
 
@@ -7498,6 +7500,9 @@ function buildModalHtml() {
               <div class="sg-row sg-inline" style="margin-top: 10px;">
                 <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
               </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_mapAutoUpdate">随剧情提示自动更新地图</label>
+              </div>
 
               <div class="sg-field" style="margin-top: 10px;">
                 <label>地图提示词</label>
@@ -8541,6 +8546,11 @@ function ensureModal() {
       saveSettings();
     });
 
+    $('#sg_mapAutoUpdate').on('change', () => {
+      pullUiToSettings();
+      saveSettings();
+    });
+
     $('#sg_mapSystemPrompt').on('change input', () => {
       pullUiToSettings();
       saveSettings();
@@ -8833,6 +8843,7 @@ function pullSettingsToUi() {
 
   // 地图功能
   $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
+  $('#sg_mapAutoUpdate').prop('checked', s.mapAutoUpdate !== false);
   $('#sg_mapSystemPrompt').val(String(s.mapSystemPrompt || DEFAULT_SETTINGS.mapSystemPrompt || ''));
   setTimeout(() => updateMapPreview(), 100);
 
@@ -9278,6 +9289,7 @@ function pullUiToSettings() {
 
   // 地图功能
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
+  s.mapAutoUpdate = $('#sg_mapAutoUpdate').is(':checked');
   s.mapSystemPrompt = String($('#sg_mapSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.mapSystemPrompt;
 
   s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
