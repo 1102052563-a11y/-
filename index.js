@@ -1320,6 +1320,9 @@ async function updateMapFromSnapshot(snapshotText) {
     }
       if (!parsed) return;
 
+      if (parsed?.newLocations) {
+        parsed.newLocations = normalizeNewLocations(parsed.newLocations);
+      }
       parsed = ensureMapMinimums(parsed);
 
       const merged = mergeMapData(getMapData(), parsed);
@@ -1427,6 +1430,46 @@ function ensureMapMinimums(parsed) {
   return out;
 }
 
+function normalizeNewLocations(list) {
+  const result = [];
+  const seen = new Map();
+  for (const loc of Array.isArray(list) ? list : []) {
+    const rawName = String(loc?.name || '').trim();
+    if (!rawName) continue;
+    const key = normalizeMapName(rawName);
+    if (!key) continue;
+    if (!seen.has(key)) {
+      seen.set(key, {
+        ...loc,
+        name: rawName,
+        connectedTo: Array.isArray(loc.connectedTo) ? loc.connectedTo.slice() : [],
+      });
+      result.push(seen.get(key));
+      continue;
+    }
+    const existing = seen.get(key);
+    // Merge connections
+    const conn = Array.isArray(loc.connectedTo) ? loc.connectedTo : [];
+    for (const c of conn) {
+      if (!existing.connectedTo.includes(c)) existing.connectedTo.push(c);
+    }
+    // Prefer non-empty description/group/layer
+    if (!existing.description && loc.description) existing.description = loc.description;
+    if (!existing.group && loc.group) existing.group = loc.group;
+    if (!existing.layer && loc.layer) existing.layer = loc.layer;
+    // Prefer valid coordinates if existing lacks
+    const hasRow = Number.isFinite(Number(existing.row));
+    const hasCol = Number.isFinite(Number(existing.col));
+    const newRow = Number.isFinite(Number(loc.row)) ? Number(loc.row) : null;
+    const newCol = Number.isFinite(Number(loc.col)) ? Number(loc.col) : null;
+    if ((!hasRow || !hasCol) && newRow != null && newCol != null) {
+      existing.row = newRow;
+      existing.col = newCol;
+    }
+  }
+  return result;
+}
+
 function normalizeMapEvent(evt) {
   if (typeof evt === 'string') return { text: evt, tags: [] };
   if (!evt || typeof evt !== 'object') return null;
@@ -1517,9 +1560,13 @@ function mergeMapData(existingMap, newData) {
       }
       if (loc.group) map.locations[targetKey].group = String(loc.group || '').trim();
       if (loc.layer) map.locations[targetKey].layer = String(loc.layer || '').trim();
-      if (Number.isFinite(Number(loc.row)) && Number.isFinite(Number(loc.col))) {
-        map.locations[targetKey].row = Number(loc.row);
-        map.locations[targetKey].col = Number(loc.col);
+      const hasRow = Number.isFinite(Number(map.locations[targetKey].row));
+      const hasCol = Number.isFinite(Number(map.locations[targetKey].col));
+      const newRow = Number.isFinite(Number(loc.row)) ? Number(loc.row) : null;
+      const newCol = Number.isFinite(Number(loc.col)) ? Number(loc.col) : null;
+      if ((!hasRow || !hasCol) && newRow != null && newCol != null) {
+        map.locations[targetKey].row = newRow;
+        map.locations[targetKey].col = newCol;
         ensureGridSize(map, map.locations[targetKey].row, map.locations[targetKey].col);
       }
     }
