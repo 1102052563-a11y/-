@@ -1281,15 +1281,34 @@ function getMapSchema() {
   };
 }
 
+function buildMapContextSummary() {
+  const map = getMapData();
+  const locs = Object.entries(map.locations || {});
+  if (!locs.length) return '';
+  const lines = locs.slice(0, 60).map(([name, loc]) => {
+    const group = String(loc.group || '').trim();
+    const layer = String(loc.layer || '').trim();
+    const conns = Array.isArray(loc.connections) ? loc.connections.filter(Boolean) : [];
+    const parts = [name];
+    if (group) parts.push(`group=${group}`);
+    if (layer) parts.push(`layer=${layer}`);
+    if (conns.length) parts.push(`conn=${conns.slice(0, 6).join('|')}`);
+    return parts.join(' | ');
+  });
+  return `【已存在地图地点（用于去重）】\n${lines.join('\n')}`;
+}
+
 function buildMapPromptMessages(snapshotText) {
   const s = ensureSettings();
   let sys = String(s.mapSystemPrompt || '').trim();
   if (!sys) sys = String(DEFAULT_SETTINGS.mapSystemPrompt || '').trim();
   sys = sys + '\n\n' + MAP_JSON_REQUIREMENT;
   const user = String(snapshotText || '').trim();
+  const mapCtx = buildMapContextSummary();
+  const fullUser = mapCtx ? `${user}\n\n${mapCtx}` : user;
   return [
     { role: 'system', content: sys },
-    { role: 'user', content: user },
+    { role: 'user', content: fullUser },
   ];
 }
 
