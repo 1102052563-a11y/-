@@ -6677,7 +6677,22 @@ function fillIndexModelSelect(modelIds, selected) {
   const $sel = $('#sg_wiIndexModelSelect');
   if (!$sel.length) return;
   $sel.empty();
-  $sel.append(`<option value="">（选择模型）</option>`);
+  $sel.append(`<option value="">(选择模型)</option>`);
+  (modelIds || []).forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    if (selected && id === selected) opt.selected = true;
+    $sel.append(opt);
+  });
+}
+
+
+function fillRollModelSelect(modelIds, selected) {
+  const $sel = $('#sg_wiRollModelSelect');
+  if (!$sel.length) return;
+  $sel.empty();
+  $sel.append(`<option value="">(选择模型)</option>`);
   (modelIds || []).forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
@@ -6883,6 +6898,103 @@ async function refreshIndexModels() {
   }
 }
 
+
+
+async function refreshRollModels() {
+  const s = ensureSettings();
+  const raw = String($('#sg_wiRollCustomEndpoint').val() || s.wiRollCustomEndpoint || '').trim();
+  const apiBase = normalizeBaseUrl(raw);
+  if (!apiBase) { setStatus('请先填写"ROLL独立API基础URL"再刷新模型', 'warn'); return; }
+
+  setStatus('正在刷新"ROLL独立API"模型列表…', 'warn');
+
+  const apiKey = String($('#sg_wiRollCustomApiKey').val() || s.wiRollCustomApiKey || '');
+  const statusUrl = '/api/backends/chat-completions/status';
+
+  const body = {
+    reverse_proxy: apiBase,
+    chat_completion_source: 'custom',
+    custom_url: apiBase,
+    custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : ''
+  };
+
+  try {
+    const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
+    const res = await fetch(statusUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    const data = await res.json().catch(() => ({}));
+
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) {
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      return;
+    }
+
+    s.wiRollCustomModelsCache = ids;
+    saveSettings();
+    fillRollModelSelect(ids, s.wiRollCustomModel);
+    setStatus(`已刷新ROLL模型：${ids.length} 个（后端代理）`, 'ok');
+    return;
+  } catch (e) {
+    const status = e?.status;
+    if (!(status === 404 || status === 405)) console.warn('[StoryGuide] roll status check failed; fallback to direct /models', e);
+  }
+
+  try {
+    const modelsUrl = (function (base) {
+      const u = normalizeBaseUrl(base);
+      if (!u) return '';
+      if (/\/v1$/.test(u)) return u + '/models';
+      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      return u + '/v1/models';
+    })(apiBase);
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+    const res = await fetch(modelsUrl, { method: 'GET', headers });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+    }
+    const data = await res.json().catch(() => ({}));
+
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+
+    s.wiRollCustomModelsCache = ids;
+    saveSettings();
+    fillRollModelSelect(ids, s.wiRollCustomModel);
+    setStatus(`已刷新ROLL模型：${ids.length} 个（直连 fallback）`, 'ok');
+  } catch (e) {
+    setStatus(`刷新ROLL模型失败：${e?.message ?? e}`, 'err');
+  }
+}
 
 
 async function refreshModels() {
@@ -8049,6 +8161,12 @@ function buildModalHtml() {
                   <div class="sg-field">
                     <label>模型ID</label>
                     <input id="sg_wiRollCustomModel" type="text" placeholder="gpt-4o-mini">
+                    <div class="sg-row sg-inline" style="margin-top:6px;">
+                      <button class="menu_button sg-btn" id="sg_refreshRollModels">刷新模型</button>
+                      <select id="sg_wiRollModelSelect" class="sg-model-select">
+                        <option value="">（选择模型）</option>
+                      </select>
+                    </div>
                   </div>
                   <div class="sg-field">
                     <label>Max Tokens</label>
@@ -8384,6 +8502,16 @@ function ensureModal() {
   $('#sg_wiIndexModelSelect').on('change', () => {
     const id = String($('#sg_wiIndexModelSelect').val() || '').trim();
     if (id) $('#sg_wiIndexCustomModel').val(id);
+  });
+
+  $('#sg_refreshRollModels').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await refreshRollModels();
+  });
+
+  $('#sg_wiRollModelSelect').on('change', () => {
+    const id = String($('#sg_wiRollModelSelect').val() || '').trim();
+    if (id) $('#sg_wiRollCustomModel').val(id);
   });
 
   // 蓝灯索引导入/清空
@@ -8889,6 +9017,7 @@ function pullSettingsToUi() {
   $('#sg_wiRollCustomStream').prop('checked', !!s.wiRollCustomStream);
   $('#sg_wiRollSystemPrompt').val(String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT));
   $('#sg_roll_custom_block').toggle(String(s.wiRollProvider || 'custom') === 'custom');
+  fillRollModelSelect(Array.isArray(s.wiRollCustomModelsCache) ? s.wiRollCustomModelsCache : [], s.wiRollCustomModel);
 
   $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
   $('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
