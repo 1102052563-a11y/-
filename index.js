@@ -7500,9 +7500,6 @@ function buildModalHtml() {
               <div class="sg-row sg-inline" style="margin-top: 10px;">
                 <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
               </div>
-              <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_mapAutoUpdate">随剧情提示自动更新地图</label>
-              </div>
 
               <div class="sg-field" style="margin-top: 10px;">
                 <label>地图提示词</label>
@@ -8546,11 +8543,6 @@ function ensureModal() {
       saveSettings();
     });
 
-    $('#sg_mapAutoUpdate').on('change', () => {
-      pullUiToSettings();
-      saveSettings();
-    });
-
     $('#sg_mapSystemPrompt').on('change input', () => {
       pullUiToSettings();
       saveSettings();
@@ -8843,7 +8835,6 @@ function pullSettingsToUi() {
 
   // 地图功能
   $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
-  $('#sg_mapAutoUpdate').prop('checked', s.mapAutoUpdate !== false);
   $('#sg_mapSystemPrompt').val(String(s.mapSystemPrompt || DEFAULT_SETTINGS.mapSystemPrompt || ''));
   setTimeout(() => updateMapPreview(), 100);
 
@@ -9289,7 +9280,6 @@ function pullUiToSettings() {
 
   // 地图功能
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
-  s.mapAutoUpdate = $('#sg_mapAutoUpdate').is(':checked');
   s.mapSystemPrompt = String($('#sg_mapSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.mapSystemPrompt;
 
   s.wiTriggerEnabled = $('#sg_wiTriggerEnabled').is(':checked');
@@ -9725,6 +9715,14 @@ function createFloatingPanel() {
       }
     });
 
+    $(document).on('click', '.sg-inner-map-toggle-btn', (e) => {
+      if (!$(e.target).closest('#sg_floating_panel').length) return;
+      const s = ensureSettings();
+      s.mapAutoUpdate = s.mapAutoUpdate === false ? true : false;
+      saveSettings();
+      showFloatingMap();
+    });
+
     $('#sg_floating_roll_logs').on('click', () => {
       showFloatingRollLogs();
     });
@@ -10073,8 +10071,10 @@ function updateFloatingPanelBody(html) {
     }
     const mapData = getMapData();
     const html = renderGridMap(mapData);
+    const autoLabel = s.mapAutoUpdate === false ? '自动更新：关' : '自动更新：开';
     const tools = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
+        <button class="sg-inner-map-toggle-btn" title="切换自动更新" style="background:none; border:none; cursor:pointer; font-size:0.95em; opacity:0.85; margin-right:6px;">${autoLabel}</button>
         <button class="sg-inner-map-reset-btn" title="重置地图" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🗑</button>
       </div>
     `;
