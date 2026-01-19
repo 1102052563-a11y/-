@@ -555,6 +555,8 @@ const DEFAULT_SETTINGS = Object.freeze({
 }`,
   imageGenArtistPromptEnabled: true,
   imageGenArtistPrompt: '5::masterpiece, best quality ::, 3.65::3D, realistic, photorealistic ::,2.25::Artist:bm94199 ::,1.85::Artist:yueko (jiayue wu) ::,1.35::Artist:ruanjia ::,1.35::Artist:wo_jiushi_kanbudong ::,1.05::artist:seven_(sixplusone) ::,1.05::Artist:slash (slash-soft) ::,0.85::Artist:shal.e ::,0.75::Artist:nixeu ::,0.55::Artist:billyhhyb ::,-5::2D ::,-1::vivid::, year2025, cinematic , 0.9::lighting, volumetric lighting, no text, realistic, photo, real, artbook ::, 0.2::monochrome ::, 1.2::small eyes ::, 0.8::clean, normal ::,',
+  imageGenPromptRulesEnabled: false,
+  imageGenPromptRules: '',
 
 
   // 在线图库设置
@@ -823,6 +825,51 @@ function parseJsonArrayAttr(maybeJsonArray) {
     return [];
   }
 }
+
+function applyPromptRules(text, rulesText) {
+  const input = String(text || '');
+  const raw = String(rulesText || '').trim();
+  if (!raw) return input;
+
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#') && !l.startsWith('//'));
+  if (!lines.length) return input;
+
+  let output = input;
+  for (const line of lines) {
+    const eq = line.indexOf('=');
+    if (eq === -1) continue;
+    const trigger = line.slice(0, eq).trim();
+    const rest = line.slice(eq + 1).trim();
+    if (!trigger || !rest) continue;
+
+    const pipe = rest.indexOf('|');
+    const action = pipe === -1 ? 'replace' : rest.slice(0, pipe).trim();
+    const payload = pipe === -1 ? rest : rest.slice(pipe + 1).trim();
+    if (!payload) continue;
+
+    const escapedTrigger = trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(escapedTrigger, 'gi');
+
+    if (action === '前置前') {
+      output = output.replace(re, (match) => `${payload}, ${match}`);
+    } else if (action === '前置后') {
+      output = output.replace(re, (match) => `${match}, ${payload}`);
+    } else if (action === '后置前') {
+      output = output.replace(re, (match) => `${payload}, ${match}`);
+    } else if (action === '后置后') {
+      output = output.replace(re, (match) => `${match}, ${payload}`);
+    } else if (action === '最后置' || action === '末尾') {
+      if (re.test(output)) output = `${output}, ${payload}`;
+    } else if (action === '替换') {
+      output = output.replace(re, payload);
+    } else {
+      output = output.replace(re, payload);
+    }
+  }
+
+  return output;
+}
+
 
 function normalizeMapName(name) {
   let out = String(name || '').replace(/\s+/g, ' ').trim();
@@ -7372,7 +7419,11 @@ async function runImageGeneration() {
 
   try {
     setImageGenStatus('正在读取最近对话…', 'warn');
-    const storyContent = getRecentStoryContent(lookback);
+    let storyContent = getRecentStoryContent(lookback);
+    if (s.imageGenPromptRulesEnabled && s.imageGenPromptRules) {
+      storyContent = applyPromptRules(storyContent, s.imageGenPromptRules);
+    }
+
 
     if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
 
@@ -8883,6 +8934,20 @@ function buildModalHtml() {
                 </div>
               </div>
 
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title" style="font-size:0.95em;">提示词替换</div>
+                <div class="sg-hint">对剧情文本进行替换/插入，再交给 LLM 生成标签（命中规则时生效）。</div>
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenPromptRulesEnabled">启用提示词替换</label>
+                </div>
+                <div class="sg-field" style="margin-top:6px;">
+                  <textarea id="sg_imageGenPromptRules" rows="6" placeholder="触发词=前置前|插入词
+触发词=前置后|插入词
+触发词=替换|替换词
+# 以 # 或 // 开头为注释"></textarea>
+                </div>
+              </div>
+
             </div>
 
             <div class="sg-card">
@@ -9855,6 +9920,8 @@ function pullSettingsToUi() {
   $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt));
   $('#sg_imageGenArtistPromptEnabled').prop('checked', !!s.imageGenArtistPromptEnabled);
   $('#sg_imageGenArtistPrompt').val(String(s.imageGenArtistPrompt || ''));
+  $('#sg_imageGenPromptRulesEnabled').prop('checked', !!s.imageGenPromptRulesEnabled);
+  $('#sg_imageGenPromptRules').val(String(s.imageGenPromptRules || ''));
 
 
   // 在线图库设置
@@ -10333,6 +10400,8 @@ function pullUiToSettings() {
   s.imageGenSystemPrompt = String($('#sg_imageGenSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.imageGenSystemPrompt;
   s.imageGenArtistPromptEnabled = $('#sg_imageGenArtistPromptEnabled').is(':checked');
   s.imageGenArtistPrompt = String($('#sg_imageGenArtistPrompt').val() || '').trim();
+  s.imageGenPromptRulesEnabled = $('#sg_imageGenPromptRulesEnabled').is(':checked');
+  s.imageGenPromptRules = String($('#sg_imageGenPromptRules').val() || '').trim();
 
   // 在线图库设置
 
