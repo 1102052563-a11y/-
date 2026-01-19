@@ -569,8 +569,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenArtistPrompt: '5::masterpiece, best quality ::, 3.65::3D, realistic, photorealistic ::,2.25::Artist:bm94199 ::,1.85::Artist:yueko (jiayue wu) ::,1.35::Artist:ruanjia ::,1.35::Artist:wo_jiushi_kanbudong ::,1.05::artist:seven_(sixplusone) ::,1.05::Artist:slash (slash-soft) ::,0.85::Artist:shal.e ::,0.75::Artist:nixeu ::,0.55::Artist:billyhhyb ::,-5::2D ::,-1::vivid::, year2025, cinematic , 0.9::lighting, volumetric lighting, no text, realistic, photo, real, artbook ::, 0.2::monochrome ::, 1.2::small eyes ::, 0.8::clean, normal ::,',
   imageGenPromptRulesEnabled: false,
   imageGenPromptRules: '',
+  imageGenCharacterProfilesEnabled: false,
+  imageGenCharacterProfiles: [],
   imageGenBatchEnabled: true,
   imageGenBatchPatterns: JSON.stringify([
+
     { label: '单人-近景', type: 'character', detail: '近景/特写，怼脸构图，重点表现五官、表情与视线' },
     { label: '单人-全身', type: 'character', detail: '全身立绘，展示完整服装、姿态与肢体动作' },
     { label: '双人', type: 'duo', detail: '两人同框互动，突出动作关系与情绪交流' },
@@ -586,10 +589,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGalleryCacheTime: 0,
   imageGalleryMatchPrompt: '你是图片选择助手。根据故事内容，从图库中选择最合适的图片。规则：1.优先匹配角色名称 2.其次匹配场景类型 3.再匹配情绪/氛围。输出JSON：{"matchedId":"图片id","reason":"匹配原因"}',
 
-  // 图像生成世界书（角色标签库）
-  imageGenWorldBookEnabled: false,
-  imageGenWorldBookFile: '',
-  imageGenWorldBookCache: [],
+  imageGenCharacterProfilesEnabled: false,
+  imageGenCharacterProfiles: [],
+
 });
 
 const META_KEYS = Object.freeze({
@@ -2343,9 +2345,12 @@ function getImageGenPresetSnapshot() {
     imageGenPromptRules: s.imageGenPromptRules,
     imageGenBatchEnabled: s.imageGenBatchEnabled,
     imageGenBatchPatterns: s.imageGenBatchPatterns,
-    imageGenReadStatData: s.imageGenReadStatData,
-    imageGenStatVarName: s.imageGenStatVarName,
-    imageGenCustomMaxTokens: s.imageGenCustomMaxTokens
+  imageGenReadStatData: s.imageGenReadStatData,
+  imageGenStatVarName: s.imageGenStatVarName,
+  imageGenCustomMaxTokens: s.imageGenCustomMaxTokens,
+  imageGenCharacterProfilesEnabled: s.imageGenCharacterProfilesEnabled,
+  imageGenCharacterProfiles: s.imageGenCharacterProfiles
+
   };
 }
 
@@ -7398,54 +7403,91 @@ async function refreshImageGenModels() {
   }
 }
 
-// 加载图像生成用的世界书（角色标签库）
-async function loadImageGenWorldBook() {
-  const s = ensureSettings();
-  const fileName = String($('#sg_imageGenWorldBookFile').val() || s.imageGenWorldBookFile || '').trim();
+function normalizeCharacterProfiles(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
-  if (!fileName) {
-    $('#sg_imageGenWorldBookInfo').text('请输入世界书文件名');
+function getCharacterProfilesFromSettings() {
+  const s = ensureSettings();
+  const list = normalizeCharacterProfiles(s.imageGenCharacterProfiles);
+  return list.map((entry) => ({
+    name: String(entry?.name || '').trim(),
+    keys: Array.isArray(entry?.keys) ? entry.keys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean) : [],
+    tags: String(entry?.tags || '').trim(),
+    enabled: entry?.enabled !== false
+  })).filter(entry => entry.name && entry.tags);
+}
+
+function renderCharacterProfilesUi() {
+  const s = ensureSettings();
+  const list = getCharacterProfilesFromSettings();
+  const $wrap = $('#sg_imageGenProfiles');
+  if (!$wrap.length) return;
+  if (!list.length) {
+    $wrap.html('<div class="sg-hint">暂无人物形象，点击“添加人物”创建。</div>');
     return;
   }
 
-  $('#sg_imageGenWorldBookInfo').text('正在加载世界书…');
-
-  try {
-    const json = await fetchWorldInfoFileJsonCompat(fileName);
-    const parsed = parseWorldbookJson(JSON.stringify(json || {}));
-
-    // 解析条目为角色标签格式
-    const entries = parsed.filter(e => e && (e.content || e.keys?.length)).map(e => ({
-      name: String(e.comment || e.title || e.keys?.[0] || '').trim(),
-      keys: Array.isArray(e.keys) ? e.keys.map(k => String(k).toLowerCase().trim()).filter(Boolean) : [],
-      tags: String(e.content || '').trim(),
-      enabled: !e.disabled
-    })).filter(e => e.name && e.tags);
-
-    if (!entries.length) {
-      $('#sg_imageGenWorldBookInfo').text('⚠️ 未找到有效条目');
-      return;
-    }
-
-    // 保存到设置
-    s.imageGenWorldBookFile = fileName;
-    s.imageGenWorldBookCache = entries;
-    saveSettings();
-
-    $('#sg_imageGenWorldBookInfo').text(`✅ 已加载 ${entries.length} 个角色/条目`);
-    console.log('[ImageGen] Loaded world book:', entries);
-  } catch (e) {
-    console.error('[ImageGen] Load world book failed:', e);
-    $('#sg_imageGenWorldBookInfo').text(`❌ 加载失败: ${e?.message || e}`);
-  }
+  const rows = list.map((entry, idx) => {
+    const keys = (entry.keys || []).join(', ');
+    return `
+      <div class="sg-profile-row" data-index="${idx}">
+        <div class="sg-grid2">
+          <div class="sg-field">
+            <label>人物名</label>
+            <input type="text" class="sg-profile-name" value="${escapeHtml(entry.name)}">
+          </div>
+          <div class="sg-field">
+            <label>关键词（逗号分隔）</label>
+            <input type="text" class="sg-profile-keys" value="${escapeHtml(keys)}">
+          </div>
+        </div>
+        <div class="sg-field" style="margin-top:6px;">
+          <label>形象标签</label>
+          <textarea rows="3" class="sg-profile-tags" placeholder="1girl, silver hair, ...">${escapeHtml(entry.tags)}</textarea>
+        </div>
+        <div class="sg-row sg-inline" style="margin-top:6px; gap:12px;">
+          <label class="sg-check"><input type="checkbox" class="sg-profile-enabled" ${entry.enabled ? 'checked' : ''}>启用</label>
+          <button class="menu_button sg-btn sg-profile-delete" type="button">删除</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  $wrap.html(rows);
 }
 
-// 从故事内容匹配世界书中的角色标签
-function matchCharacterTagsFromWorldBook(storyContent) {
-  const s = ensureSettings();
-  if (!s.imageGenWorldBookEnabled) return '';
+function collectCharacterProfilesFromUi() {
+  const list = [];
+  $('#sg_imageGenProfiles .sg-profile-row').each((_, el) => {
+    const $row = $(el);
+    const name = String($row.find('.sg-profile-name').val() || '').trim();
+    const keysRaw = String($row.find('.sg-profile-keys').val() || '').trim();
+    const tags = String($row.find('.sg-profile-tags').val() || '').trim();
+    const enabled = $row.find('.sg-profile-enabled').is(':checked');
+    if (!name || !tags) return;
+    const keys = keysRaw
+      .split(',')
+      .map(k => String(k || '').toLowerCase().trim())
+      .filter(Boolean);
+    list.push({ name, keys, tags, enabled });
+  });
+  return list;
+}
 
-  const entries = s.imageGenWorldBookCache || [];
+function matchCharacterTagsFromProfiles(storyContent) {
+  const s = ensureSettings();
+  if (!s.imageGenCharacterProfilesEnabled) return '';
+  const entries = getCharacterProfilesFromSettings();
   if (!entries.length) return '';
 
   const text = String(storyContent || '').toLowerCase();
@@ -7453,22 +7495,18 @@ function matchCharacterTagsFromWorldBook(storyContent) {
 
   for (const entry of entries) {
     if (!entry.enabled) continue;
-    // 检查角色名或关键词是否出现在故事中
     const nameMatch = entry.name && text.includes(entry.name.toLowerCase());
     const keyMatch = entry.keys?.some(k => text.includes(k));
-
-    if (nameMatch || keyMatch) {
-      matched.push(entry);
-    }
+    if (nameMatch || keyMatch) matched.push(entry);
   }
 
   if (!matched.length) return '';
 
-  // 合并匹配到的标签
   const allTags = matched.map(e => e.tags).join(', ');
-  console.log('[ImageGen] Matched characters:', matched.map(e => e.name));
+  console.log('[ImageGen] Matched profiles:', matched.map(e => e.name));
   return allTags;
 }
+
 
 function getImageGenBatchPatterns() {
   const s = ensureSettings();
@@ -7600,7 +7638,8 @@ async function generateImagePromptBatch() {
   }
 
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
-  const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
+  const profileTags = matchCharacterTagsFromProfiles(storyContent);
+
   const patterns = getImageGenBatchPatterns();
   if (!patterns.length) throw new Error('未配置批次模板');
 
@@ -7643,7 +7682,8 @@ async function generateImagePromptBatch() {
     const positive = parsed?.positive || result.slice(0, 500);
     const negative = parsed?.negative || '';
     let finalPositive = positive;
-    if (worldBookTags) finalPositive = `${worldBookTags}, ${finalPositive}`;
+    if (profileTags) finalPositive = `${profileTags}, ${finalPositive}`;
+
     if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
       const artist = String(s.imageGenArtistPrompt || '').trim();
       if (artist) finalPositive = `${artist}, ${finalPositive}`;
@@ -7944,13 +7984,13 @@ async function runImageGeneration() {
       }
     };
 
-    // 从世界书匹配角色标签
-    const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
+    const profileTags = matchCharacterTagsFromProfiles(storyContent);
     let finalPositive = normalizePositive(promptResult.positive);
-    if (worldBookTags) {
-      finalPositive = `${normalizePositive(worldBookTags)}, ${finalPositive}`;
-      console.log('[ImageGen] Added world book tags:', worldBookTags);
+    if (profileTags) {
+      finalPositive = `${normalizePositive(profileTags)}, ${finalPositive}`;
+      console.log('[ImageGen] Added character profile tags:', profileTags);
     }
+
 
     if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
       const artistPrompt = normalizePositive(s.imageGenArtistPrompt);
@@ -9331,23 +9371,16 @@ function buildModalHtml() {
 
               </div>
 
-              <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">📚 角色标签世界书</div>
-                <div class="sg-hint">导入包含角色 NAI 标签的世界书，自动匹配剧情中的角色</div>
-                <div class="sg-row sg-inline" style="margin-top:8px;">
-                  <label class="sg-check"><input type="checkbox" id="sg_imageGenWorldBookEnabled">启用角色标签匹配</label>
-                </div>
-                <div class="sg-grid2" style="margin-top:8px;">
-                  <div class="sg-field">
-                    <label>世界书文件名</label>
-                    <input id="sg_imageGenWorldBookFile" type="text" placeholder="nai4 变量分角色.json">
-                  </div>
-                  <div class="sg-field" style="display:flex; align-items:flex-end;">
-                    <button class="menu_button sg-btn" id="sg_loadImageGenWorldBook">📖 加载世界书</button>
-                  </div>
-                </div>
-                <div id="sg_imageGenWorldBookInfo" class="sg-hint" style="margin-top:5px;"></div>
-              </div>
+               <div class="sg-card sg-subcard" style="margin-top:10px;">
+                 <div class="sg-card-title" style="font-size:0.95em;">🧍 人物形象库</div>
+                 <div class="sg-hint">在剧情中匹配角色名/关键词后，会将该人物的标签自动拼到正向提示词前面。</div>
+                 <div class="sg-row sg-inline" style="margin-top:8px; gap:12px;">
+                   <label class="sg-check"><input type="checkbox" id="sg_imageGenProfilesEnabled">启用人物形象匹配</label>
+                   <button class="menu_button sg-btn" id="sg_imageGenProfileAdd">添加人物</button>
+                 </div>
+                 <div id="sg_imageGenProfiles" style="margin-top:8px;"></div>
+               </div>
+
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-card-title" style="font-size:0.95em;">Novel AI 图像 API</div>
@@ -9856,7 +9889,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_imageGenProfilesEnabled, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt, #sg_imageGenProfiles').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -9872,6 +9905,35 @@ function ensureModal() {
     pullUiToSettings(); saveSettings();
     await refreshImageGenModels();
   });
+
+  $('#sg_imageGenProfileAdd').on('click', () => {
+    const s = ensureSettings();
+  const list = getCharacterProfilesFromSettings();
+  list.push({ name: `人物${list.length + 1}`, keys: [], tags: '', enabled: true });
+  s.imageGenCharacterProfiles = list;
+  saveSettings();
+  renderCharacterProfilesUi();
+  pullSettingsToUi();
+
+  });
+
+  $(document).on('input change', '#sg_imageGenProfiles input, #sg_imageGenProfiles textarea, #sg_imageGenProfiles .sg-profile-enabled', () => {
+    const s = ensureSettings();
+    s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
+    saveSettings();
+  });
+
+  $(document).on('click', '#sg_imageGenProfiles .sg-profile-delete', (e) => {
+    e.preventDefault();
+    const $row = $(e.currentTarget).closest('.sg-profile-row');
+    if (!$row.length) return;
+    $row.remove();
+    const s = ensureSettings();
+    s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
+    saveSettings();
+    renderCharacterProfilesUi();
+  });
+
 
   $('#sg_imageGenResetBatch').on('click', () => {
     $('#sg_imageGenBatchPatterns').val(String(DEFAULT_SETTINGS.imageGenBatchPatterns || ''));
@@ -9983,10 +10045,7 @@ function ensureModal() {
   });
 
 
-  $('#sg_loadImageGenWorldBook').on('click', async () => {
-    pullUiToSettings(); saveSettings();
-    await loadImageGenWorldBook();
-  });
+
 
   // 导出/导入全局预设
   $('#sg_exportPreset').on('click', () => {
@@ -10688,11 +10747,10 @@ function pullSettingsToUi() {
   }
 
   // 角色标签世界书设置
-  $('#sg_imageGenWorldBookEnabled').prop('checked', !!s.imageGenWorldBookEnabled);
-  $('#sg_imageGenWorldBookFile').val(String(s.imageGenWorldBookFile || ''));
-  if (s.imageGenWorldBookCache && s.imageGenWorldBookCache.length > 0) {
-    $('#sg_imageGenWorldBookInfo').text(`(已缓存 ${s.imageGenWorldBookCache.length} 个条目)`);
-  }
+  $('#sg_imageGenProfilesEnabled').prop('checked', !!s.imageGenCharacterProfilesEnabled);
+  renderCharacterProfilesUi();
+  $('#sg_imageGenProfilesEnabled').trigger('change');
+
 
   $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
   $('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
@@ -11177,8 +11235,10 @@ function pullUiToSettings() {
   s.imageGalleryUrl = String($('#sg_imageGalleryUrl').val() || '').trim();
 
   // 角色标签世界书设置
-  s.imageGenWorldBookEnabled = $('#sg_imageGenWorldBookEnabled').is(':checked');
-  s.imageGenWorldBookFile = String($('#sg_imageGenWorldBookFile').val() || '').trim();
+  s.imageGenCharacterProfilesEnabled = $('#sg_imageGenProfilesEnabled').is(':checked');
+  s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
+  s.imageGenCharacterProfiles = s.imageGenCharacterProfiles || [];
+
 
   s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
   s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
