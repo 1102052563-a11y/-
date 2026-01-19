@@ -571,15 +571,23 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenPromptRules: '',
   imageGenCharacterProfilesEnabled: false,
   imageGenCharacterProfiles: [],
+  imageGenProfilesScale: 1,
   imageGenBatchEnabled: true,
   imageGenBatchPatterns: JSON.stringify([
-
-    { label: '单人-近景', type: 'character', detail: '近景/特写，怼脸构图，重点表现五官、表情与视线' },
-    { label: '单人-全身', type: 'character', detail: '全身立绘，展示完整服装、姿态与肢体动作' },
-    { label: '双人', type: 'duo', detail: '两人同框互动，突出动作关系与情绪交流' },
-    { label: '场景', type: 'scene', detail: '纯场景要素为主，强调空间、环境细节与氛围光影' },
-    { label: '彩蛋', type: 'bonus', detail: '当前角色/场景做与剧情无关的轻松行为，自由发挥' }
+    { label: '剧情-1', type: 'story', detail: '正文第一段的代表性画面' },
+    { label: '剧情-2', type: 'story', detail: '正文第二段的代表性画面' },
+    { label: '剧情-3', type: 'story', detail: '正文第三段的代表性画面' },
+    { label: '剧情-4', type: 'story', detail: '正文第四段的代表性画面' },
+    { label: '剧情-5', type: 'story', detail: '正文第五段的代表性画面' },
+    { label: '单人-近景', type: 'character_close', detail: '单人女性近景特写，强调脸部与表情' },
+    { label: '单人-全身', type: 'character_full', detail: '单人女性全身立绘，展示服装与姿态' },
+    { label: '双人', type: 'duo', detail: '双人同框互动，突出动作关系与情绪交流' },
+    { label: '场景', type: 'scene', detail: '场景为主，强调空间、环境细节与氛围光影' },
+    { label: '彩蛋', type: 'bonus', detail: '当前角色/场景做与剧情无关的轻松行为，自由发挥' },
+    { label: '自定义-1', type: 'custom_female_1', detail: '使用自定义女性提示词 1' },
+    { label: '自定义-2', type: 'custom_female_2', detail: '使用自定义女性提示词 2' }
   ], null, 2),
+
 
 
   // 在线图库设置
@@ -2344,12 +2352,14 @@ function getImageGenPresetSnapshot() {
     imageGenPromptRulesEnabled: s.imageGenPromptRulesEnabled,
     imageGenPromptRules: s.imageGenPromptRules,
     imageGenBatchEnabled: s.imageGenBatchEnabled,
-    imageGenBatchPatterns: s.imageGenBatchPatterns,
-  imageGenReadStatData: s.imageGenReadStatData,
-  imageGenStatVarName: s.imageGenStatVarName,
+  imageGenBatchPatterns: s.imageGenBatchPatterns,
   imageGenCustomMaxTokens: s.imageGenCustomMaxTokens,
   imageGenCharacterProfilesEnabled: s.imageGenCharacterProfilesEnabled,
-  imageGenCharacterProfiles: s.imageGenCharacterProfiles
+  imageGenCharacterProfiles: s.imageGenCharacterProfiles,
+  imageGenCustomFemalePrompt1: s.imageGenCustomFemalePrompt1,
+  imageGenCustomFemalePrompt2: s.imageGenCustomFemalePrompt2,
+  imageGenProfilesScale: s.imageGenProfilesScale
+
 
   };
 }
@@ -7529,6 +7539,23 @@ function getImageGenBatchPatterns() {
   }
 }
 
+function splitStoryIntoParts(text, count) {
+  const clean = String(text || '').trim();
+  if (!clean) return Array(count).fill('');
+  const paras = clean.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  if (paras.length >= count) return paras.slice(0, count);
+  const parts = [];
+  const total = clean.length;
+  const chunk = Math.max(1, Math.floor(total / count));
+  for (let i = 0; i < count; i += 1) {
+    const start = i * chunk;
+    const end = i === count - 1 ? total : Math.min(total, (i + 1) * chunk);
+    parts.push(clean.slice(start, end).trim());
+  }
+  return parts;
+}
+
+
 function getBatchDistinctHint(index, total) {
   if (!Number.isFinite(index)) return '';
   const hints = [
@@ -7536,7 +7563,14 @@ function getBatchDistinctHint(index, total) {
     '使用中景构图，强调姿态与动作',
     '使用互动构图，强调人物关系',
     '使用远景构图，强调环境与气氛',
-    '使用趣味构图，强调轻松彩蛋动作'
+    '使用趣味构图，强调轻松彩蛋动作',
+    '使用全身构图，强调姿态与服装',
+    '使用对战构图，强调动感与张力',
+    '使用对话构图，强调视线互动',
+    '使用场景构图，强调空间层次',
+    '使用光影构图，强调氛围',
+    '使用情绪构图，强调情感',
+    '使用静态构图，强调安静氛围'
   ];
   return hints[index % hints.length];
 }
@@ -7647,22 +7681,40 @@ async function generateImagePromptBatch() {
   const patterns = getImageGenBatchPatterns();
   if (!patterns.length) throw new Error('未配置批次模板');
 
+  const storyParts = splitStoryIntoParts(storyContent, 5);
   const results = [];
+
   for (let i = 0; i < patterns.length; i += 1) {
     const pattern = patterns[i];
     let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
     if (statDataJson) {
       userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
     }
-    if (pattern.type === 'character') {
-      userPrompt += `【要求】：生成单人角色立绘提示词，重点描述角色外观。\n`;
+
+    if (pattern.type === 'story') {
+      const part = storyParts.shift() || storyContent;
+      userPrompt += `【要求】：生成剧情代表性画面，可能包含单人/多人/对战/交谈等。\n`;
+      userPrompt += `【剧情片段】：\n${part}\n`;
+    } else if (pattern.type === 'character_close') {
+      userPrompt += `【要求】：生成单人女性近景特写，强调脸部与表情。\n`;
+    } else if (pattern.type === 'character_full') {
+      userPrompt += `【要求】：生成单人女性全身立绘，展示服装与姿态。\n`;
     } else if (pattern.type === 'duo') {
-      userPrompt += `【要求】：生成双人同框提示词，突出两人互动和构图。\n`;
+      userPrompt += `【要求】：生成双人同框提示词，突出两人互动和构图；若剧情没有双人，请仍生成双人构图。\n`;
     } else if (pattern.type === 'scene') {
       userPrompt += `【要求】：生成场景图提示词，重点描述环境和氛围。\n`;
+    } else if (pattern.type === 'custom_female_1') {
+      const custom = String(s.imageGenCustomFemalePrompt1 || '').trim();
+      userPrompt += `【要求】：生成女性角色提示词，融合以下自定义描述。\n`;
+      if (custom) userPrompt += `【自定义】：${custom}\n`;
+    } else if (pattern.type === 'custom_female_2') {
+      const custom = String(s.imageGenCustomFemalePrompt2 || '').trim();
+      userPrompt += `【要求】：生成女性角色提示词，融合以下自定义描述。\n`;
+      if (custom) userPrompt += `【自定义】：${custom}\n`;
     } else {
       userPrompt += `【要求】：生成彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。\n`;
     }
+
     userPrompt += `【差异要求】：本组必须与其他组明显不同，不要重复上一组的构图与动作。\n`;
     const distinctHint = getBatchDistinctHint(i, patterns.length);
     if (distinctHint) userPrompt += `【构图提示】：${distinctHint}\n`;
@@ -7702,6 +7754,7 @@ async function generateImagePromptBatch() {
     });
   }
   return results;
+
 }
 
 async function generateImageFromBatch() {
@@ -9381,6 +9434,12 @@ function buildModalHtml() {
                  <div class="sg-row sg-inline" style="margin-top:8px; gap:12px;">
                    <label class="sg-check"><input type="checkbox" id="sg_imageGenProfilesEnabled">启用人物形象匹配</label>
                    <button class="menu_button sg-btn" id="sg_imageGenProfileAdd">添加人物</button>
+                   <div class="sg-row sg-inline sg-profile-scale-controls" style="gap:6px;">
+                     <span class="sg-hint">缩放</span>
+                     <button class="menu_button sg-btn" id="sg_imageGenProfilesScaleDown">-</button>
+                     <span id="sg_imageGenProfilesScaleLabel" class="sg-hint">100%</span>
+                     <button class="menu_button sg-btn" id="sg_imageGenProfilesScaleUp">+</button>
+                   </div>
                  </div>
                  <div id="sg_imageGenProfiles" style="margin-top:8px;"></div>
                </div>
@@ -9537,17 +9596,28 @@ function buildModalHtml() {
 
                <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-card-title" style="font-size:0.95em;">批量提示词模板</div>
-                <div class="sg-hint">用于生成五组提示词的模板（JSON 数组）。</div>
+                <div class="sg-hint">默认会生成 12 张：5 张剧情拆分 + 7 张固定类型。一般不需要手动修改。</div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
                   <label class="sg-check"><input type="checkbox" id="sg_imageGenBatchEnabled">启用批量提示词</label>
                 </div>
+                <div class="sg-grid2" style="margin-top:6px;">
+                  <div class="sg-field">
+                    <label>自定义女性提示词 1</label>
+                    <textarea id="sg_imageGenCustomFemalePrompt1" rows="3" placeholder="例如：1girl, close-up, soft light, ..."></textarea>
+                  </div>
+                  <div class="sg-field">
+                    <label>自定义女性提示词 2</label>
+                    <textarea id="sg_imageGenCustomFemalePrompt2" rows="3" placeholder="例如：1girl, full body, dynamic pose, ..."></textarea>
+                  </div>
+                </div>
                 <div class="sg-field" style="margin-top:6px;">
-                  <textarea id="sg_imageGenBatchPatterns" rows="8" placeholder='[{"label":"单人-1","type":"character","detail":"..."},{"label":"双人","type":"duo","detail":"..."}]'></textarea>
+                  <textarea id="sg_imageGenBatchPatterns" rows="8" placeholder='[{"label":"剧情-1","type":"story","detail":"..."}]'></textarea>
                 </div>
                 <div class="sg-actions-row" style="margin-top:6px;">
                   <button class="menu_button sg-btn" id="sg_imageGenResetBatch">恢复默认模板</button>
                 </div>
               </div>
+
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-card-title" style="font-size:0.95em;">图像生成预设</div>
@@ -9893,7 +9963,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_imageGenProfilesEnabled, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt, #sg_imageGenProfiles').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_imageGenProfilesEnabled, #sg_imageGenCustomFemalePrompt1, #sg_imageGenCustomFemalePrompt2, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt, #sg_imageGenProfiles').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -9912,11 +9982,29 @@ function ensureModal() {
 
   $(document).on('click', '#sg_imageGenProfileAdd', () => {
     const s = ensureSettings();
-    const list = getCharacterProfilesFromSettings();
+    const list = getCharacterProfilesFromSettings({ includeEmpty: true });
     list.push({ name: `人物${list.length + 1}`, keys: [], tags: '', enabled: true });
     s.imageGenCharacterProfiles = list;
     saveSettings();
     renderCharacterProfilesUi();
+    pullSettingsToUi();
+  });
+
+  $(document).on('click', '#sg_imageGenProfilesScaleDown', () => {
+    const s = ensureSettings();
+    const current = clampFloat(s.imageGenProfilesScale, 0.6, 1.4, 1);
+    const next = clampFloat(current - 0.1, 0.6, 1.4, 1);
+    s.imageGenProfilesScale = Number(next.toFixed(2));
+    saveSettings();
+    pullSettingsToUi();
+  });
+
+  $(document).on('click', '#sg_imageGenProfilesScaleUp', () => {
+    const s = ensureSettings();
+    const current = clampFloat(s.imageGenProfilesScale, 0.6, 1.4, 1);
+    const next = clampFloat(current + 0.1, 0.6, 1.4, 1);
+    s.imageGenProfilesScale = Number(next.toFixed(2));
+    saveSettings();
     pullSettingsToUi();
   });
 
@@ -10753,7 +10841,12 @@ function pullSettingsToUi() {
   // 角色标签世界书设置
   $('#sg_imageGenProfilesEnabled').prop('checked', !!s.imageGenCharacterProfilesEnabled);
   renderCharacterProfilesUi();
+  const scale = clampFloat(s.imageGenProfilesScale, 0.6, 1.4, 1);
+  $('#sg_imageGenProfilesScaleLabel').text(`${Math.round(scale * 100)}%`);
+  $('#sg_imageGenProfiles').css('transform', `scale(${scale})`).css('transform-origin', 'top left');
   $('#sg_imageGenProfilesEnabled').trigger('change');
+  $('#sg_imageGenCustomFemalePrompt1').val(String(s.imageGenCustomFemalePrompt1 || ''));
+  $('#sg_imageGenCustomFemalePrompt2').val(String(s.imageGenCustomFemalePrompt2 || ''));
 
 
   $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
@@ -11242,6 +11335,8 @@ function pullUiToSettings() {
   s.imageGenCharacterProfilesEnabled = $('#sg_imageGenProfilesEnabled').is(':checked');
   s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
   s.imageGenCharacterProfiles = s.imageGenCharacterProfiles || [];
+  s.imageGenCustomFemalePrompt1 = String($('#sg_imageGenCustomFemalePrompt1').val() || '').trim();
+  s.imageGenCustomFemalePrompt2 = String($('#sg_imageGenCustomFemalePrompt2').val() || '').trim();
 
 
   s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');

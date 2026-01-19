@@ -1481,6 +1481,11 @@ body.sg-zoom-lock {
   margin-top: 8px;
 }
 
+.sg-profile-scale-controls .sg-btn {
+  min-width: 28px;
+  padding: 2px 6px;
+}
+
 .sg-floating-row-actions {
   align-items: center;
 }
