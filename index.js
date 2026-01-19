@@ -7149,7 +7149,11 @@ async function generateImagePromptWithLLM(storyContent, genType) {
     return { type: parsed.type || genType || 'auto', subject: parsed.subject || '', positive: parsed.positive || '', negative: parsed.negative || '' };
   } catch (e) {
     console.error('[ImageGen] LLM call failed:', e);
-    throw new Error(`LLM 调用失败: ${e?.message || e}`);
+    const errMsg = e?.message || String(e);
+    if (errMsg.includes('not found') || errMsg.includes('404')) {
+      throw new Error(`LLM 模型不存在，请点击「🔄 刷新模型」获取可用模型列表`);
+    }
+    throw new Error(`LLM 调用失败: ${errMsg}`);
   }
 }
 
