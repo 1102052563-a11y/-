@@ -525,6 +525,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   novelaiSampler: 'k_euler',
   novelaiFixedSeedEnabled: false,
   novelaiFixedSeed: 0,
+  novelaiLegacy: true,
   novelaiNegativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
 
   imageGenAutoSave: false,
@@ -617,6 +618,8 @@ let imageGenImageUrls = [];
 let imageGenPreviewIndex = 0;
 let imageGenBatchStatus = '';
 let imageGenBatchBusy = false;
+let lastNovelaiPayload = null;
+
 
 
 // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
@@ -7518,13 +7521,17 @@ function renderImageGenBatchPreview() {
   const seedLabel = s.novelaiFixedSeedEnabled ? `固定:${clampInt(s.novelaiFixedSeed, 0, 4294967295, 0)}` : '随机';
   const negative = String((s.novelaiNegativePrompt || '').trim());
   const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '…' : ''}` : '（空）';
+  const legacyLabel = legacy ? '开' : '关';
   const paramsHtml = `
     <div class="sg-floating-params">
       <div><b>模型</b>：${escapeHtml(model)}</div>
       <div><b>分辨率</b>：${escapeHtml(resolution)}</div>
       <div><b>Steps</b>：${escapeHtml(String(steps))}｜<b>Scale</b>：${escapeHtml(String(scale))}</div>
-      <div><b>Sampler</b>：${escapeHtml(sampler)}｜<b>Seed</b>：${escapeHtml(seedLabel)}</div>
+      <div><b>Sampler</b>：${escapeHtml(sampler)}｜<b>Seed</b>：${escapeHtml(seedLabel)}｜<b>Legacy</b>：${escapeHtml(legacyLabel)}</div>
       <div><b>负面</b>：${escapeHtml(negativePreview)}</div>
+    </div>
+    <div class="sg-floating-row sg-floating-row-actions" style="margin-top:-2px;">
+      <button class="sg-floating-mini-btn" id="sg_imagegen_copy_payload">复制请求参数</button>
     </div>
   `;
   $wrap.html(`
@@ -7742,6 +7749,7 @@ async function generateImageWithNovelAI(positive, negative) {
   const fixedSeed = clampInt(s.novelaiFixedSeed, 0, 4294967295, 0);
   const seed = fixedSeedEnabled ? fixedSeed : Math.floor(Math.random() * 4294967295);
   const sampler = String(s.novelaiSampler || (isV4 ? 'k_euler_ancestral' : 'k_euler'));
+  const legacy = isV4 ? (s.novelaiLegacy !== false) : true;
 
 
   // V4/V4.5 需要完全不同的参数格式
@@ -7770,7 +7778,8 @@ async function generateImageWithNovelAI(positive, negative) {
         sm: false,
         sm_dyn: false,
         noise_schedule: 'native',
-        legacy: true,  // 启用以支持 V3 风格的 :: 权重语法
+        legacy: legacy,  // 启用以支持 V3 风格的 :: 权重语法
+
         legacy_v3_extend: false,
         skip_cfg_above_sigma: null,
         variety_boost: false,
@@ -7816,6 +7825,8 @@ async function generateImageWithNovelAI(positive, negative) {
 
   setImageGenStatus('正在调用 Novel AI API 生成图像…', 'warn');
 
+  const legacy = isV4 ? (s.novelaiLegacy !== false) : true;
+
   console.log('[ImageGen] NovelAI request params:', {
     model,
     width: width || 832,
@@ -7825,9 +7836,12 @@ async function generateImageWithNovelAI(positive, negative) {
     sampler,
     seed,
     fixedSeedEnabled,
+    legacy,
     negative: finalNegative,
     isV4
   });
+
+  lastNovelaiPayload = payload;
 
   const response = await fetch('https://image.novelai.net/ai/generate-image', {
     method: 'POST',
@@ -9356,7 +9370,7 @@ function buildModalHtml() {
                 </div>
               </div>
 
-              <div class="sg-field">
+                <div class="sg-field">
                   <label>默认负面提示词</label>
                   <textarea id="sg_novelaiNegativePrompt" rows="2" placeholder="lowres, bad anatomy, ..."></textarea>
                 </div>
@@ -9386,6 +9400,11 @@ function buildModalHtml() {
                     </div>
                   </div>
                 </div>
+
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <label class="sg-check"><input type="checkbox" id="sg_novelaiLegacy">V4 Legacy (支持 :: 权重语法)</label>
+                </div>
+
 
                 <hr class="sg-hr">
 
@@ -9801,7 +9820,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiNegativePrompt').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiLegacy, #sg_novelaiNegativePrompt').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -10589,6 +10608,7 @@ function pullSettingsToUi() {
   $('#sg_novelaiSampler').val(String(s.novelaiSampler || 'k_euler'));
   $('#sg_novelaiFixedSeedEnabled').prop('checked', !!s.novelaiFixedSeedEnabled);
   $('#sg_novelaiFixedSeed').val(Number.isFinite(Number(s.novelaiFixedSeed)) ? Number(s.novelaiFixedSeed) : 0);
+  $('#sg_novelaiLegacy').prop('checked', s.novelaiLegacy !== false);
   $('#sg_novelaiNegativePrompt').val(String(s.novelaiNegativePrompt || ''));
 
   $('#sg_imageGenAutoSave').prop('checked', !!s.imageGenAutoSave);
@@ -11088,6 +11108,7 @@ function pullUiToSettings() {
   s.novelaiSampler = String($('#sg_novelaiSampler').val() || s.novelaiSampler || 'k_euler');
   s.novelaiFixedSeedEnabled = $('#sg_novelaiFixedSeedEnabled').is(':checked');
   s.novelaiFixedSeed = clampInt($('#sg_novelaiFixedSeed').val(), 0, 4294967295, s.novelaiFixedSeed || 0);
+  s.novelaiLegacy = $('#sg_novelaiLegacy').is(':checked');
   s.novelaiNegativePrompt = String($('#sg_novelaiNegativePrompt').val() || '').trim();
 
   s.imageGenAutoSave = $('#sg_imageGenAutoSave').is(':checked');
@@ -11607,6 +11628,23 @@ function createFloatingPanel() {
       renderImageGenBatchPreview();
     }
   });
+
+  $(document).on('click', '#sg_imagegen_copy_payload', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    if (!lastNovelaiPayload) {
+      imageGenBatchStatus = '暂无可复制的请求参数';
+      renderImageGenBatchPreview();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(lastNovelaiPayload, null, 2));
+      imageGenBatchStatus = '已复制请求参数';
+    } catch (err) {
+      imageGenBatchStatus = `复制失败：${err?.message || err}`;
+    }
+    renderImageGenBatchPreview();
+  });
+
 
   // Drag logic
   const header = panel.querySelector('.sg-floating-header');
