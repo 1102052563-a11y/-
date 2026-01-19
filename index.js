@@ -552,6 +552,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGalleryCache: [],
   imageGalleryCacheTime: 0,
   imageGalleryMatchPrompt: '你是图片选择助手。根据故事内容，从图库中选择最合适的图片。规则：1.优先匹配角色名称 2.其次匹配场景类型 3.再匹配情绪/氛围。输出JSON：{"matchedId":"图片id","reason":"匹配原因"}',
+
+  // 图像生成世界书（角色标签库）
+  imageGenWorldBookEnabled: false,
+  imageGenWorldBookFile: '',
+  imageGenWorldBookCache: [],
 });
 
 const META_KEYS = Object.freeze({
@@ -7111,6 +7116,78 @@ async function refreshImageGenModels() {
   }
 }
 
+// 加载图像生成用的世界书（角色标签库）
+async function loadImageGenWorldBook() {
+  const s = ensureSettings();
+  const fileName = String($('#sg_imageGenWorldBookFile').val() || s.imageGenWorldBookFile || '').trim();
+
+  if (!fileName) {
+    $('#sg_imageGenWorldBookInfo').text('请输入世界书文件名');
+    return;
+  }
+
+  $('#sg_imageGenWorldBookInfo').text('正在加载世界书…');
+
+  try {
+    const json = await fetchWorldInfoFileJsonCompat(fileName);
+    const parsed = parseWorldbookJson(JSON.stringify(json || {}));
+
+    // 解析条目为角色标签格式
+    const entries = parsed.filter(e => e && (e.content || e.keys?.length)).map(e => ({
+      name: String(e.comment || e.title || e.keys?.[0] || '').trim(),
+      keys: Array.isArray(e.keys) ? e.keys.map(k => String(k).toLowerCase().trim()).filter(Boolean) : [],
+      tags: String(e.content || '').trim(),
+      enabled: !e.disabled
+    })).filter(e => e.name && e.tags);
+
+    if (!entries.length) {
+      $('#sg_imageGenWorldBookInfo').text('⚠️ 未找到有效条目');
+      return;
+    }
+
+    // 保存到设置
+    s.imageGenWorldBookFile = fileName;
+    s.imageGenWorldBookCache = entries;
+    saveSettings();
+
+    $('#sg_imageGenWorldBookInfo').text(`✅ 已加载 ${entries.length} 个角色/条目`);
+    console.log('[ImageGen] Loaded world book:', entries);
+  } catch (e) {
+    console.error('[ImageGen] Load world book failed:', e);
+    $('#sg_imageGenWorldBookInfo').text(`❌ 加载失败: ${e?.message || e}`);
+  }
+}
+
+// 从故事内容匹配世界书中的角色标签
+function matchCharacterTagsFromWorldBook(storyContent) {
+  const s = ensureSettings();
+  if (!s.imageGenWorldBookEnabled) return '';
+
+  const entries = s.imageGenWorldBookCache || [];
+  if (!entries.length) return '';
+
+  const text = String(storyContent || '').toLowerCase();
+  const matched = [];
+
+  for (const entry of entries) {
+    if (!entry.enabled) continue;
+    // 检查角色名或关键词是否出现在故事中
+    const nameMatch = entry.name && text.includes(entry.name.toLowerCase());
+    const keyMatch = entry.keys?.some(k => text.includes(k));
+
+    if (nameMatch || keyMatch) {
+      matched.push(entry);
+    }
+  }
+
+  if (!matched.length) return '';
+
+  // 合并匹配到的标签
+  const allTags = matched.map(e => e.tags).join(', ');
+  console.log('[ImageGen] Matched characters:', matched.map(e => e.name));
+  return allTags;
+}
+
 async function generateImagePromptWithLLM(storyContent, genType) {
   const s = ensureSettings();
   const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
@@ -7286,10 +7363,18 @@ async function runImageGeneration() {
     setImageGenStatus('正在使用 LLM 生成图像提示词…', 'warn');
     const promptResult = await generateImagePromptWithLLM(storyContent, genType);
 
-    $('#sg_imagePositivePrompt').val(promptResult.positive);
+    // 从世界书匹配角色标签
+    const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
+    let finalPositive = promptResult.positive;
+    if (worldBookTags) {
+      finalPositive = worldBookTags + ', ' + promptResult.positive;
+      console.log('[ImageGen] Added world book tags:', worldBookTags);
+    }
+
+    $('#sg_imagePositivePrompt').val(finalPositive);
     $('#sg_imagePromptPreview').show();
 
-    const imageUrl = await generateImageWithNovelAI(promptResult.positive, promptResult.negative);
+    const imageUrl = await generateImageWithNovelAI(finalPositive, promptResult.negative);
 
     $('#sg_generatedImage').attr('src', imageUrl);
     $('#sg_imageResult').show();
@@ -8648,6 +8733,24 @@ function buildModalHtml() {
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title" style="font-size:0.95em;">📚 角色标签世界书</div>
+                <div class="sg-hint">导入包含角色 NAI 标签的世界书，自动匹配剧情中的角色</div>
+                <div class="sg-row sg-inline" style="margin-top:8px;">
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenWorldBookEnabled">启用角色标签匹配</label>
+                </div>
+                <div class="sg-grid2" style="margin-top:8px;">
+                  <div class="sg-field">
+                    <label>世界书文件名</label>
+                    <input id="sg_imageGenWorldBookFile" type="text" placeholder="nai4 变量分角色.json">
+                  </div>
+                  <div class="sg-field" style="display:flex; align-items:flex-end;">
+                    <button class="menu_button sg-btn" id="sg_loadImageGenWorldBook">📖 加载世界书</button>
+                  </div>
+                </div>
+                <div id="sg_imageGenWorldBookInfo" class="sg-hint" style="margin-top:5px;"></div>
+              </div>
+
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-card-title" style="font-size:0.95em;">Novel AI 图像 API</div>
                 <div class="sg-field">
                   <label>Novel AI API Key</label>
@@ -9021,7 +9124,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -9037,6 +9140,11 @@ function ensureModal() {
   $('#sg_imageGenRefreshModels').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await refreshImageGenModels();
+  });
+
+  $('#sg_loadImageGenWorldBook').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await loadImageGenWorldBook();
   });
 
   // 导出/导入全局预设
@@ -9688,6 +9796,13 @@ function pullSettingsToUi() {
     $('#sg_galleryInfo').text(`(已缓存 ${s.imageGalleryCache.length} 张)`);
   }
 
+  // 角色标签世界书设置
+  $('#sg_imageGenWorldBookEnabled').prop('checked', !!s.imageGenWorldBookEnabled);
+  $('#sg_imageGenWorldBookFile').val(String(s.imageGenWorldBookFile || ''));
+  if (s.imageGenWorldBookCache && s.imageGenWorldBookCache.length > 0) {
+    $('#sg_imageGenWorldBookInfo').text(`(已缓存 ${s.imageGenWorldBookCache.length} 个条目)`);
+  }
+
   $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
   $('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
   $('#sg_wiIndexProvider').val(String(s.wiIndexProvider || 'st'));
@@ -10150,6 +10265,10 @@ function pullUiToSettings() {
   // 在线图库设置
   s.imageGalleryEnabled = $('#sg_imageGalleryEnabled').is(':checked');
   s.imageGalleryUrl = String($('#sg_imageGalleryUrl').val() || '').trim();
+
+  // 角色标签世界书设置
+  s.imageGenWorldBookEnabled = $('#sg_imageGenWorldBookEnabled').is(':checked');
+  s.imageGenWorldBookFile = String($('#sg_imageGenWorldBookFile').val() || '').trim();
 
   s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
   s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
