@@ -526,6 +526,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   novelaiFixedSeedEnabled: false,
   novelaiFixedSeed: 0,
   novelaiLegacy: true,
+  novelaiCfgRescale: 0,
+  novelaiNoiseSchedule: 'native',
+  novelaiVarietyBoost: false,
   novelaiNegativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
 
   imageGenAutoSave: false,
@@ -7526,6 +7529,9 @@ function renderImageGenBatchPreview() {
   const scale = s.novelaiScale || 5;
   const sampler = String(s.novelaiSampler || (model.includes('diffusion-4') ? 'k_euler_ancestral' : 'k_euler'));
   const legacy = model.includes('diffusion-4') ? (s.novelaiLegacy !== false) : true;
+  const cfgRescale = clampFloat(s.novelaiCfgRescale, 0, 1, 0);
+  const noiseSchedule = String(s.novelaiNoiseSchedule || 'native');
+  const varietyBoost = s.novelaiVarietyBoost ? '开' : '关';
   const seedLabel = s.novelaiFixedSeedEnabled ? `固定:${clampInt(s.novelaiFixedSeed, 0, 4294967295, 0)}` : '随机';
   const negative = String((s.novelaiNegativePrompt || '').trim());
   const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '…' : ''}` : '（空）';
@@ -7536,6 +7542,7 @@ function renderImageGenBatchPreview() {
       <div><b>分辨率</b>：${escapeHtml(resolution)}</div>
       <div><b>Steps</b>：${escapeHtml(String(steps))}｜<b>Scale</b>：${escapeHtml(String(scale))}</div>
       <div><b>Sampler</b>：${escapeHtml(sampler)}｜<b>Seed</b>：${escapeHtml(seedLabel)}｜<b>Legacy</b>：${escapeHtml(legacyLabel)}</div>
+      <div><b>CFG Rescale</b>：${escapeHtml(String(cfgRescale))}｜<b>Noise</b>：${escapeHtml(noiseSchedule)}｜<b>Variety</b>：${escapeHtml(varietyBoost)}</div>
       <div><b>负面</b>：${escapeHtml(negativePreview)}</div>
     </div>
     <div class="sg-floating-row sg-floating-row-actions" style="margin-top:-2px;">
@@ -7758,6 +7765,9 @@ async function generateImageWithNovelAI(positive, negative) {
   const seed = fixedSeedEnabled ? fixedSeed : Math.floor(Math.random() * 4294967295);
   const sampler = String(s.novelaiSampler || (isV4 ? 'k_euler_ancestral' : 'k_euler'));
   const legacy = isV4 ? (s.novelaiLegacy !== false) : true;
+  const cfgRescale = clampFloat(s.novelaiCfgRescale, 0, 1, 0);
+  const noiseSchedule = String(s.novelaiNoiseSchedule || 'native');
+  const varietyBoost = !!s.novelaiVarietyBoost;
 
 
   // V4/V4.5 需要完全不同的参数格式
@@ -7782,15 +7792,15 @@ async function generateImageWithNovelAI(positive, negative) {
         seed: seed,
         negative_prompt: finalNegative,
         // V4/V4.5 特有参数
-        cfg_rescale: 0,
+        cfg_rescale: cfgRescale,
         sm: false,
         sm_dyn: false,
-        noise_schedule: 'native',
+        noise_schedule: noiseSchedule,
         legacy: legacy,  // 启用以支持 V3 风格的 :: 权重语法
-
         legacy_v3_extend: false,
         skip_cfg_above_sigma: null,
-        variety_boost: false,
+        variety_boost: varietyBoost,
+
         decrisp_mode: false,
         use_coords: false,
         v4_prompt: {
@@ -7843,6 +7853,9 @@ async function generateImageWithNovelAI(positive, negative) {
     seed,
     fixedSeedEnabled,
     legacy,
+    cfgRescale,
+    noiseSchedule,
+    varietyBoost,
     negative: finalNegative,
     isV4
   });
@@ -9407,8 +9420,25 @@ function buildModalHtml() {
                   </div>
                 </div>
 
-                <div class="sg-row sg-inline" style="margin-top:6px;">
+                <div class="sg-grid2" style="margin-top:6px;">
+                  <div class="sg-field">
+                    <label>Prompt Guidance Rescale</label>
+                    <input id="sg_novelaiCfgRescale" type="number" min="0" max="1" step="0.01">
+                  </div>
+                  <div class="sg-field">
+                    <label>Noise Schedule</label>
+                    <select id="sg_novelaiNoiseSchedule">
+                      <option value="native">native</option>
+                      <option value="karras">karras</option>
+                      <option value="exponential">exponential</option>
+                      <option value="polyexponential">polyexponential</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="sg-row sg-inline" style="margin-top:6px; gap:12px;">
                   <label class="sg-check"><input type="checkbox" id="sg_novelaiLegacy">V4 Legacy (支持 :: 权重语法)</label>
+                  <label class="sg-check"><input type="checkbox" id="sg_novelaiVarietyBoost">Variety Boost</label>
                 </div>
 
 
@@ -9826,7 +9856,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiLegacy, #sg_novelaiNegativePrompt').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -10614,7 +10644,10 @@ function pullSettingsToUi() {
   $('#sg_novelaiSampler').val(String(s.novelaiSampler || 'k_euler'));
   $('#sg_novelaiFixedSeedEnabled').prop('checked', !!s.novelaiFixedSeedEnabled);
   $('#sg_novelaiFixedSeed').val(Number.isFinite(Number(s.novelaiFixedSeed)) ? Number(s.novelaiFixedSeed) : 0);
+  $('#sg_novelaiCfgRescale').val(Number.isFinite(Number(s.novelaiCfgRescale)) ? Number(s.novelaiCfgRescale) : 0);
+  $('#sg_novelaiNoiseSchedule').val(String(s.novelaiNoiseSchedule || 'native'));
   $('#sg_novelaiLegacy').prop('checked', s.novelaiLegacy !== false);
+  $('#sg_novelaiVarietyBoost').prop('checked', !!s.novelaiVarietyBoost);
   $('#sg_novelaiNegativePrompt').val(String(s.novelaiNegativePrompt || ''));
 
   $('#sg_imageGenAutoSave').prop('checked', !!s.imageGenAutoSave);
@@ -11114,7 +11147,10 @@ function pullUiToSettings() {
   s.novelaiSampler = String($('#sg_novelaiSampler').val() || s.novelaiSampler || 'k_euler');
   s.novelaiFixedSeedEnabled = $('#sg_novelaiFixedSeedEnabled').is(':checked');
   s.novelaiFixedSeed = clampInt($('#sg_novelaiFixedSeed').val(), 0, 4294967295, s.novelaiFixedSeed || 0);
+  s.novelaiCfgRescale = clampFloat($('#sg_novelaiCfgRescale').val(), 0, 1, s.novelaiCfgRescale ?? 0);
+  s.novelaiNoiseSchedule = String($('#sg_novelaiNoiseSchedule').val() || s.novelaiNoiseSchedule || 'native');
   s.novelaiLegacy = $('#sg_novelaiLegacy').is(':checked');
+  s.novelaiVarietyBoost = $('#sg_novelaiVarietyBoost').is(':checked');
   s.novelaiNegativePrompt = String($('#sg_novelaiNegativePrompt').val() || '').trim();
 
   s.imageGenAutoSave = $('#sg_imageGenAutoSave').is(':checked');
