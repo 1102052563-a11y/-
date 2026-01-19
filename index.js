@@ -530,15 +530,21 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenCustomEndpoint: '',
   imageGenCustomApiKey: '',
   imageGenCustomModel: 'gpt-4o-mini',
-  imageGenSystemPrompt: `你是专业的AI绘画提示词生成器。根据提供的故事内容，分析场景或角色，输出 Novel AI 格式的 Danbooru 风格标签。
+  imageGenSystemPrompt: `你是专业的 AI 绘画提示词生成器。根据提供的故事内容，分析场景或角色，只输出 Novel AI 可用的 Danbooru 标签。
+
+目标：尽可能完整地还原正文中出现的角色/场景细节，让标签更丰富、更具体。
 
 要求：
-1. 使用英文标签，逗号分隔
-2. 包含角色外观（发色、瞳色、发型、身材）、服装、表情、动作、背景等
-3. 标签按重要性排序，重要的放前面
-4. 如果是角色，以 "1girl" 或 "1boy" 等人数标签开头
-5. 如果是场景，以场景类型标签开头（如 scenery, landscape, indoor）
-6. 输出纯 JSON 格式，不要有其他内容
+1. 仅输出英文标签，逗号分隔；不要解释、不要额外文字
+2. positive / negative 字段必须是标签串（只给 Novel AI 看）
+3. 标签要“多且具体”，优先补齐以下信息：
+   - 角色：发色/瞳色/发型/发长、体型、年龄段、肤色、表情、动作、姿势、服装材质/风格/配饰、鞋袜、武器/道具
+   - 场景：地点类型、建筑/室内外、时间(白天/夜晚/黄昏)、天气、光照/光影、氛围、主色调、构图视角/镜头距离
+4. 若正文信息不足，使用常见合理标签补全（如 light rays, depth of field, cinematic lighting），但不要臆造关键设定
+5. 标签按重要性排序，重要的放前面；避免重复
+6. 如果是角色，以 "1girl" 或 "1boy" 等人数标签开头
+7. 如果是场景，以场景类型标签开头（如 scenery, landscape, indoor）
+8. 输出严格 JSON，不要 Markdown、不要代码块
 
 输出格式：
 {
