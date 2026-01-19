@@ -7417,20 +7417,24 @@ function normalizeCharacterProfiles(raw) {
   return [];
 }
 
-function getCharacterProfilesFromSettings() {
+function getCharacterProfilesFromSettings(options = {}) {
   const s = ensureSettings();
   const list = normalizeCharacterProfiles(s.imageGenCharacterProfiles);
-  return list.map((entry) => ({
+  const mapped = list.map((entry) => ({
     name: String(entry?.name || '').trim(),
     keys: Array.isArray(entry?.keys) ? entry.keys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean) : [],
     tags: String(entry?.tags || '').trim(),
     enabled: entry?.enabled !== false
-  })).filter(entry => entry.name && entry.tags);
+  }));
+  if (options.includeEmpty) {
+    return mapped.filter(entry => entry.name || entry.tags || (entry.keys && entry.keys.length));
+  }
+  return mapped.filter(entry => entry.name && entry.tags);
 }
 
 function renderCharacterProfilesUi() {
   const s = ensureSettings();
-  const list = getCharacterProfilesFromSettings();
+  const list = getCharacterProfilesFromSettings({ includeEmpty: true });
   const $wrap = $('#sg_imageGenProfiles');
   if (!$wrap.length) return;
   if (!list.length) {
@@ -7474,7 +7478,7 @@ function collectCharacterProfilesFromUi() {
     const keysRaw = String($row.find('.sg-profile-keys').val() || '').trim();
     const tags = String($row.find('.sg-profile-tags').val() || '').trim();
     const enabled = $row.find('.sg-profile-enabled').is(':checked');
-    if (!name || !tags) return;
+    if (!name && !tags && !keysRaw) return;
     const keys = keysRaw
       .split(',')
       .map(k => String(k || '').toLowerCase().trim())
