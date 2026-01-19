@@ -530,6 +530,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenCustomEndpoint: '',
   imageGenCustomApiKey: '',
   imageGenCustomModel: 'gpt-4o-mini',
+  imageGenCustomMaxTokens: 1024,
+
   imageGenSystemPrompt: `你是专业的 AI 绘画提示词生成器。根据提供的故事内容，分析场景或角色，只输出 Novel AI 可用的 Danbooru 标签。
 
 目标：尽可能完整地还原正文中出现的角色/场景细节，让标签更丰富、更具体。
@@ -7144,7 +7146,8 @@ function setImageGenStatus(text, kind = '') {
 async function callLLM(messages, opts = {}) {
   const s = ensureSettings();
   const temperature = opts.temperature ?? 0.7;
-  const maxTokens = opts.max_tokens ?? 1024;
+  const maxTokens = opts.max_tokens ?? s.imageGenCustomMaxTokens ?? 1024;
+
 
   // 使用图像生成模块独立的 API 配置
   const endpoint = s.imageGenCustomEndpoint || '';
@@ -7340,6 +7343,25 @@ async function generateImagePromptBatch() {
   }
   if (!storyContent.trim()) throw new Error('没有找到对话内容');
 
+  let statData = null;
+  if (s.imageGenReadStatData) {
+    try {
+      const ctx = SillyTavern.getContext();
+      const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+      const { statData: loaded } = await resolveStatDataComprehensive(chat, {
+        ...s,
+        wiRollStatVarName: s.imageGenStatVarName || 'stat_data'
+      });
+      if (loaded) {
+        statData = loaded;
+        console.log('[ImageGen] Loaded stat_data for image batch prompt:', statData);
+      }
+    } catch (e) {
+      console.warn('[ImageGen] Failed to load stat_data for image batch prompt:', e);
+    }
+  }
+
+  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
   const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
   const patterns = getImageGenBatchPatterns();
   if (!patterns.length) throw new Error('未配置批次模板');
@@ -7348,6 +7370,9 @@ async function generateImagePromptBatch() {
   for (let i = 0; i < patterns.length; i += 1) {
     const pattern = patterns[i];
     let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
+    if (statDataJson) {
+      userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+    }
     if (pattern.type === 'character') {
       userPrompt += `【要求】：生成单人角色立绘提示词，重点描述角色外观。\n`;
     } else if (pattern.type === 'duo') {
@@ -7368,7 +7393,69 @@ async function generateImagePromptBatch() {
       { role: 'user', content: userPrompt }
     ];
 
-    const result = await callLLM(messages, { temperature: 0.7, max_tokens: 1024 });
+    const result = await callLLM(messages, { temperature: 0.7 });
+    let parsed;
+    try {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      parsed = null;
+    }
+
+    const positive = parsed?.positive || result.slice(0, 500);
+    const negative = parsed?.negative || '';
+    let finalPositive = positive;
+    if (worldBookTags) finalPositive = `${worldBookTags}, ${finalPositive}`;
+    if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
+      const artist = String(s.imageGenArtistPrompt || '').trim();
+      if (artist) finalPositive = `${artist}, ${finalPositive}`;
+    }
+
+    results.push({
+      label: pattern.label,
+      type: pattern.type,
+      positive: finalPositive,
+      negative: negative,
+      subject: parsed?.subject || ''
+    });
+  }
+  return results;
+}
+
+  if (!storyContent.trim()) throw new Error('没有找到对话内容');
+
+  const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
+  const patterns = getImageGenBatchPatterns();
+  if (!patterns.length) throw new Error('未配置批次模板');
+
+  const results = [];
+  for (let i = 0; i < patterns.length; i += 1) {
+    const pattern = patterns[i];
+    let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
+  if (statDataJson) {
+    userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+  }
+    if (pattern.type === 'character') {
+      userPrompt += `【要求】：生成单人角色立绘提示词，重点描述角色外观。\n`;
+    } else if (pattern.type === 'duo') {
+      userPrompt += `【要求】：生成双人同框提示词，突出两人互动和构图。\n`;
+    } else if (pattern.type === 'scene') {
+      userPrompt += `【要求】：生成场景图提示词，重点描述环境和氛围。\n`;
+    } else {
+      userPrompt += `【要求】：生成彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。\n`;
+    }
+    userPrompt += `【差异要求】：本组必须与其他组明显不同，不要重复上一组的构图与动作。\n`;
+    const distinctHint = getBatchDistinctHint(i, patterns.length);
+    if (distinctHint) userPrompt += `【构图提示】：${distinctHint}\n`;
+    if (pattern.detail) userPrompt += `【细化】：${pattern.detail}\n`;
+    userPrompt += `\n【故事内容】：\n${storyContent}\n\n请输出 JSON 格式的提示词。`;
+
+    const messages = [
+      { role: 'system', content: s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    const result = await callLLM(messages, { temperature: 0.7 });
     let parsed;
     try {
       const jsonMatch = result.match(/\{[\s\S]*\}/);
@@ -7449,10 +7536,8 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
     userPrompt += `【要求】：自动判断应该生成角色还是场景。\n\n`;
   }
   userPrompt += `【故事内容】：\n${storyContent}\n\n`;
-  if (statDataJson) {
-    userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
-  }
   userPrompt += `请输出 JSON 格式的提示词。`;
+
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -7460,7 +7545,8 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
   ];
 
   try {
-    const result = await callLLM(messages, { temperature: 0.7, max_tokens: 1024 });
+    const result = await callLLM(messages, { temperature: 0.7 });
+
 
     let parsed;
     try {
@@ -7642,6 +7728,15 @@ async function runImageGeneration() {
       .replace(/\s*,+\s*$/g, '')
       .trim();
 
+    const normalizeStatText = (data) => {
+      if (!data) return '';
+      try {
+        return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      } catch {
+        return String(data);
+      }
+    };
+
     // 从世界书匹配角色标签
     const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
     let finalPositive = normalizePositive(promptResult.positive);
@@ -7657,8 +7752,8 @@ async function runImageGeneration() {
       }
     }
 
-
     $('#sg_imagePositivePrompt').val(finalPositive);
+
     $('#sg_imagePromptPreview').show();
 
     const imageUrl = await generateImageWithNovelAI(finalPositive, promptResult.negative);
@@ -9013,10 +9108,15 @@ function buildModalHtml() {
                       <option value="gpt-4o">gpt-4o</option>
                     </select>
                   </div>
-                  <div class="sg-field" style="display:flex; align-items:flex-end;">
-                    <button class="menu_button sg-btn" id="sg_imageGenRefreshModels">🔄 刷新模型</button>
+                  <div class="sg-field">
+                    <label>Max Tokens</label>
+                    <input id="sg_imageGenCustomMaxTokens" type="number" min="128" max="200000">
                   </div>
                 </div>
+                <div class="sg-row sg-inline" style="margin-top:6px; justify-content:flex-end;">
+                  <button class="menu_button sg-btn" id="sg_imageGenRefreshModels">🔄 刷新模型</button>
+                </div>
+
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
@@ -9463,7 +9563,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -10134,6 +10234,8 @@ function pullSettingsToUi() {
   $('#sg_imageGenCustomEndpoint').val(String(s.imageGenCustomEndpoint || ''));
   $('#sg_imageGenCustomApiKey').val(String(s.imageGenCustomApiKey || ''));
   $('#sg_imageGenCustomModel').val(String(s.imageGenCustomModel || 'gpt-4o-mini'));
+  $('#sg_imageGenCustomMaxTokens').val(s.imageGenCustomMaxTokens || 1024);
+
   $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt));
   $('#sg_imageGenArtistPromptEnabled').prop('checked', !!s.imageGenArtistPromptEnabled);
   $('#sg_imageGenArtistPrompt').val(String(s.imageGenArtistPrompt || ''));
@@ -10616,6 +10718,8 @@ function pullUiToSettings() {
   s.imageGenCustomEndpoint = String($('#sg_imageGenCustomEndpoint').val() || '').trim();
   s.imageGenCustomApiKey = String($('#sg_imageGenCustomApiKey').val() || '').trim();
   s.imageGenCustomModel = String($('#sg_imageGenCustomModel').val() || 'gpt-4o-mini');
+  s.imageGenCustomMaxTokens = clampInt($('#sg_imageGenCustomMaxTokens').val(), 128, 200000, s.imageGenCustomMaxTokens || 1024);
+
   s.imageGenSystemPrompt = String($('#sg_imageGenSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.imageGenSystemPrompt;
   s.imageGenArtistPromptEnabled = $('#sg_imageGenArtistPromptEnabled').is(':checked');
   s.imageGenArtistPrompt = String($('#sg_imageGenArtistPrompt').val() || '').trim();
