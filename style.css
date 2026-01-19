@@ -1486,9 +1486,6 @@ body.sg-zoom-lock {
   padding: 2px 8px;
 }
 
-.sg-tag-dict-controls .sg-btn {
-  min-width: 64px;
-}
 
 .sg-profiles-collapsed {
   max-height: 180px;
