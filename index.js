@@ -571,7 +571,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenPromptRules: '',
   imageGenCharacterProfilesEnabled: false,
   imageGenCharacterProfiles: [],
-  imageGenProfilesScale: 1,
+  imageGenProfilesExpanded: false,
   imageGenBatchEnabled: true,
   imageGenBatchPatterns: JSON.stringify([
     { label: '剧情-1', type: 'story', detail: '正文第一段的代表性画面' },
@@ -2358,7 +2358,7 @@ function getImageGenPresetSnapshot() {
   imageGenCharacterProfiles: s.imageGenCharacterProfiles,
   imageGenCustomFemalePrompt1: s.imageGenCustomFemalePrompt1,
   imageGenCustomFemalePrompt2: s.imageGenCustomFemalePrompt2,
-  imageGenProfilesScale: s.imageGenProfilesScale
+  imageGenProfilesExpanded: s.imageGenProfilesExpanded
 
 
   };
@@ -9435,10 +9435,7 @@ function buildModalHtml() {
                    <label class="sg-check"><input type="checkbox" id="sg_imageGenProfilesEnabled">启用人物形象匹配</label>
                    <button class="menu_button sg-btn" id="sg_imageGenProfileAdd">添加人物</button>
                    <div class="sg-row sg-inline sg-profile-scale-controls" style="gap:6px;">
-                     <span class="sg-hint">缩放</span>
-                     <button class="menu_button sg-btn" id="sg_imageGenProfilesScaleDown">-</button>
-                     <span id="sg_imageGenProfilesScaleLabel" class="sg-hint">100%</span>
-                     <button class="menu_button sg-btn" id="sg_imageGenProfilesScaleUp">+</button>
+                     <button class="menu_button sg-btn" id="sg_imageGenProfilesToggle">展开/折叠</button>
                    </div>
                  </div>
                  <div id="sg_imageGenProfiles" style="margin-top:8px;"></div>
@@ -9990,20 +9987,9 @@ function ensureModal() {
     pullSettingsToUi();
   });
 
-  $(document).on('click', '#sg_imageGenProfilesScaleDown', () => {
+  $(document).on('click', '#sg_imageGenProfilesToggle', () => {
     const s = ensureSettings();
-    const current = clampFloat(s.imageGenProfilesScale, 0.6, 1.4, 1);
-    const next = clampFloat(current - 0.1, 0.6, 1.4, 1);
-    s.imageGenProfilesScale = Number(next.toFixed(2));
-    saveSettings();
-    pullSettingsToUi();
-  });
-
-  $(document).on('click', '#sg_imageGenProfilesScaleUp', () => {
-    const s = ensureSettings();
-    const current = clampFloat(s.imageGenProfilesScale, 0.6, 1.4, 1);
-    const next = clampFloat(current + 0.1, 0.6, 1.4, 1);
-    s.imageGenProfilesScale = Number(next.toFixed(2));
+    s.imageGenProfilesExpanded = !s.imageGenProfilesExpanded;
     saveSettings();
     pullSettingsToUi();
   });
@@ -10841,9 +10827,9 @@ function pullSettingsToUi() {
   // 角色标签世界书设置
   $('#sg_imageGenProfilesEnabled').prop('checked', !!s.imageGenCharacterProfilesEnabled);
   renderCharacterProfilesUi();
-  const scale = clampFloat(s.imageGenProfilesScale, 0.6, 1.4, 1);
-  $('#sg_imageGenProfilesScaleLabel').text(`${Math.round(scale * 100)}%`);
-  $('#sg_imageGenProfiles').css('transform', `scale(${scale})`).css('transform-origin', 'top left');
+  const expanded = !!s.imageGenProfilesExpanded;
+  $('#sg_imageGenProfiles').toggleClass('sg-profiles-collapsed', !expanded);
+  $('#sg_imageGenProfilesToggle').text(expanded ? '折叠' : '展开');
   $('#sg_imageGenProfilesEnabled').trigger('change');
   $('#sg_imageGenCustomFemalePrompt1').val(String(s.imageGenCustomFemalePrompt1 || ''));
   $('#sg_imageGenCustomFemalePrompt2').val(String(s.imageGenCustomFemalePrompt2 || ''));
@@ -12145,7 +12131,8 @@ function showFloatingImageGen() {
     <div class="sg-floating-row">
       <div class="sg-floating-title-sm">图像生成</div>
       <div class="sg-floating-actions-mini">
-        <button class="sg-floating-mini-btn" id="sg_imagegen_build_batch">生成五组提示词</button>
+        <button class="sg-floating-mini-btn" id="sg_imagegen_build_batch">生成12组提示词</button>
+
         <button class="sg-floating-mini-btn" id="sg_imagegen_generate">生成图像</button>
       </div>
     </div>
