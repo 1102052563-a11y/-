@@ -578,6 +578,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenCharacterProfilesEnabled: false,
   imageGenCharacterProfiles: [],
   imageGenProfilesExpanded: false,
+  imageGenTagDictEnabled: false,
+  imageGenTagDictMaxDistance: 2,
+  imageGenTagDictExternal: '',
   imageGenBatchEnabled: true,
   imageGenBatchPatterns: JSON.stringify([
     { label: '剧情-1', type: 'story', detail: '正文第一段的代表性画面' },
@@ -2368,9 +2371,11 @@ function getImageGenPresetSnapshot() {
     imageGenCharacterProfiles: s.imageGenCharacterProfiles,
     imageGenCustomFemalePrompt1: s.imageGenCustomFemalePrompt1,
     imageGenCustomFemalePrompt2: s.imageGenCustomFemalePrompt2,
-    imageGenProfilesExpanded: s.imageGenProfilesExpanded,
-    imageGenTagDictEnabled: s.imageGenTagDictEnabled,
-    imageGenTagDictMaxDistance: s.imageGenTagDictMaxDistance
+  imageGenProfilesExpanded: s.imageGenProfilesExpanded,
+  imageGenTagDictEnabled: s.imageGenTagDictEnabled,
+  imageGenTagDictMaxDistance: s.imageGenTagDictMaxDistance,
+  imageGenTagDictExternal: s.imageGenTagDictExternal
+
 
   };
 }
@@ -7571,11 +7576,19 @@ async function loadTagDictionary(force = false) {
   if (tagDictLoadingPromise) return tagDictLoadingPromise;
 
   tagDictLoadingPromise = (async () => {
-    const base = EXT_BASE_URL || '';
-    const url = `${base}all_tags.csv`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`无法加载词典: ${res.status}`);
-    const text = await res.text();
+    const s = ensureSettings();
+    let text = '';
+    if (s.imageGenTagDictExternal) {
+      try { text = atob(String(s.imageGenTagDictExternal || '')); } catch { text = ''; }
+    }
+    if (!text) {
+      const base = EXT_BASE_URL || '';
+      const url = `${base}all_tags.csv`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`无法加载词典: ${res.status}`);
+      text = await res.text();
+    }
+
     const lines = text.split(/\r?\n/);
     const set = new Set();
     const buckets = new Map();
@@ -9761,6 +9774,7 @@ function buildModalHtml() {
                       <input id="sg_imageGenTagDictMaxDistance" type="number" min="1" max="3" step="1" style="width:60px;">
                     </label>
                     <button class="menu_button sg-btn" id="sg_imageGenTagDictLoad">加载词典</button>
+                    <button class="menu_button sg-btn" id="sg_imageGenTagDictImport">导入CSV</button>
                     <span class="sg-hint" id="sg_imageGenTagDictInfo">(未加载)</span>
                   </div>
                 </div>
@@ -10142,6 +10156,23 @@ function ensureModal() {
       saveSettings();
     } catch (e) {
       $('#sg_imageGenTagDictInfo').text(`加载失败: ${e?.message || e}`);
+    }
+  });
+
+  $('#sg_imageGenTagDictImport').on('click', async () => {
+    try {
+      const file = await pickFile('.csv,text/csv');
+      if (!file) return;
+      const text = await readFileText(file);
+      const s = ensureSettings();
+      s.imageGenTagDictExternal = btoa(text);
+      saveSettings();
+      tagDictSet = null;
+      tagDictBuckets = null;
+      const result = await loadTagDictionary(true);
+      $('#sg_imageGenTagDictInfo').text(`已加载 ${result.count} 条`);
+    } catch (e) {
+      $('#sg_imageGenTagDictInfo').text(`导入失败: ${e?.message || e}`);
     }
   });
 
@@ -11005,6 +11036,8 @@ function pullSettingsToUi() {
   $('#sg_imageGenTagDictMaxDistance').val(clampInt(s.imageGenTagDictMaxDistance, 1, 3, 2));
   if (tagDictSet) {
     $('#sg_imageGenTagDictInfo').text(`已加载 ${tagDictCount} 条`);
+  } else if (s.imageGenTagDictExternal) {
+    $('#sg_imageGenTagDictInfo').text('已导入外部CSV');
   }
 
 
@@ -11498,6 +11531,7 @@ function pullUiToSettings() {
   s.imageGenCustomFemalePrompt2 = String($('#sg_imageGenCustomFemalePrompt2').val() || '').trim();
   s.imageGenTagDictEnabled = $('#sg_imageGenTagDictEnabled').is(':checked');
   s.imageGenTagDictMaxDistance = clampInt($('#sg_imageGenTagDictMaxDistance').val(), 1, 3, s.imageGenTagDictMaxDistance ?? 2);
+  s.imageGenTagDictExternal = s.imageGenTagDictExternal || '';
   if (s.imageGenTagDictEnabled && !tagDictSet) {
     loadTagDictionary().then((result) => {
       if (result?.count != null) $('#sg_imageGenTagDictInfo').text(`已加载 ${result.count} 条`);
