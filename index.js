@@ -525,6 +525,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   novelaiSampler: 'k_euler',
   novelaiFixedSeedEnabled: false,
   novelaiFixedSeed: 0,
+  novelaiLegacy: true,
   novelaiNegativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
 
   imageGenAutoSave: false,
@@ -617,6 +618,8 @@ let imageGenImageUrls = [];
 let imageGenPreviewIndex = 0;
 let imageGenBatchStatus = '';
 let imageGenBatchBusy = false;
+let lastNovelaiPayload = null;
+
 
 
 // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
@@ -1033,11 +1036,11 @@ function bindMapEventPanelHandler() {
     const events = parseJsonArrayAttr($cell.attr('data-events'));
 
     const headerBits = [];
-    if (name) headerBits.push(`< span class= "sg-map-event-title" > ${escapeHtml(name)}</span > `);
-    if (layer) headerBits.push(`< span class= "sg-map-event-chip" > ${escapeHtml(layer)}</span > `);
-    if (group) headerBits.push(`< span class= "sg-map-event-chip" > ${escapeHtml(group)}</span > `);
-    const header = headerBits.length ? `< div class= "sg-map-event-header" > ${headerBits.join('')}</div > ` : '';
-    const descHtml = desc ? `< div class= "sg-map-event-desc" > ${escapeHtml(desc)}</div > ` : '';
+    if (name) headerBits.push(`<span class= "sg-map-event-title" > ${escapeHtml(name)}</span> `);
+    if (layer) headerBits.push(`<span class= "sg-map-event-chip" > ${escapeHtml(layer)}</span> `);
+    if (group) headerBits.push(`<span class= "sg-map-event-chip" > ${escapeHtml(group)}</span> `);
+    const header = headerBits.length ? `<div class= "sg-map-event-header" > ${headerBits.join('')}</div> ` : '';
+    const descHtml = desc ? `<div class= "sg-map-event-desc" > ${escapeHtml(desc)}</div> ` : '';
 
     let listHtml = '';
     if (events.length) {
@@ -1045,17 +1048,17 @@ function bindMapEventPanelHandler() {
         const text = escapeHtml(String(ev?.text || ev?.event || ev || '').trim());
         const tags = Array.isArray(ev?.tags) ? ev.tags : [];
         const tagsHtml = tags.length
-          ? `< span class= "sg-map-event-tags" > ${tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('')}</span > `
+          ? `<span class= "sg-map-event-tags" > ${tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('')}</span> `
           : '';
-        return `< li > <span class="sg-map-event-text">${text || '（无内容）'}</span>${tagsHtml}</li > `;
+        return `<li > <span class="sg-map-event-text">${text || '（无内容）'}</span>${tagsHtml}</li> `;
       }).join('');
-      listHtml = `< ul class= "sg-map-event-list" > ${items}</ul > `;
+      listHtml = `<ul class= "sg-map-event-list" > ${items}</ul> `;
     } else {
       listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
     }
 
     const deleteBtn = name
-      ? `< button class= "sg-map-event-delete" data - name="${escapeHtml(name)}" > 删除地点</button > `
+      ? `<button class= "sg-map-event-delete" data-name="${escapeHtml(name)}" > 删除地点</button> `
       : '';
     $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
     $panel.addClass('sg-map-event-panel--floating');
@@ -1099,11 +1102,11 @@ function showMapPopover($cell) {
   const events = parseJsonArrayAttr($cell.attr('data-events'));
 
   const parts = [];
-  if (name) parts.push(`< div class= "sg-map-popover-title" > ${escapeHtml(name)}</div > `);
-  if (desc) parts.push(`< div class= "sg-map-popover-desc" > ${escapeHtml(desc)}</div > `);
+  if (name) parts.push(`<div class= "sg-map-popover-title" > ${escapeHtml(name)}</div> `);
+  if (desc) parts.push(`<div class= "sg-map-popover-desc" > ${escapeHtml(desc)}</div> `);
   if (events.length) {
-    const items = events.map(e => `< li > ${escapeHtml(String(e || ''))}</li > `).join('');
-    parts.push(`< div class="sg-map-popover-events" ><div class="sg-map-popover-label">事件</div><ul>${items}</ul></div > `);
+    const items = events.map(e => `<li > ${escapeHtml(String(e || ''))}</li> `).join('');
+    parts.push(`<div class="sg-map-popover-events" ><div class="sg-map-popover-label">事件</div><ul>${items}</ul></div> `);
   } else {
     parts.push('<div class="sg-map-popover-empty">暂无事件</div>');
   }
@@ -1231,10 +1234,10 @@ function renderQuickOptionsHtml(context = 'inline') {
   const buttons = options.map((opt, i) => {
     const label = escapeHtml(opt.label || `选项${i + 1} `);
     const prompt = escapeHtml(opt.prompt || '');
-    return `< button class="sg-quick-option" data - sg - prompt="${prompt}" title = "${prompt}" > ${label}</button > `;
+    return `<button class="sg-quick-option" data - sg - prompt="${prompt}" title= "${prompt}" > ${label}</button> `;
   }).join('');
 
-  return `< div class="sg-quick-options" > ${buttons}</div > `;
+  return `<div class="sg-quick-options" > ${buttons}</div> `;
 }
 
 // 渲染AI生成的动态快捷选项（从分析结果的quick_actions数组生成按钮，直接显示选项内容）
@@ -1256,15 +1259,15 @@ function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
 
     const escapedText = escapeHtml(cleaned);
     // 按钮直接显示完整选项内容，点击后输入到聊天框
-    return `< button class="sg-quick-option sg-dynamic-option" data - sg - prompt="${escapedText}" title = "点击输入到聊天框" > ${escapedText}</button > `;
+    return `<button class="sg-quick-option sg-dynamic-option" data - sg - prompt="${escapedText}" title= "点击输入到聊天框" > ${escapedText}</button> `;
   }).filter(Boolean).join('');
 
   if (!buttons) return '';
 
-  return `< div class="sg-quick-options sg-dynamic-options" >
+  return `<div class="sg-quick-options sg-dynamic-options" >
   <div class="sg-quick-options-title">💡 快捷选项（点击输入）</div>
     ${buttons}
-  </div > `;
+  </div> `;
 }
 
 function installQuickOptionsClickHandler() {
@@ -1822,7 +1825,7 @@ function findNextGridPosition(map) {
 // 渲染网格地图为 HTML（纯 HTML/CSS 网格）
 function renderGridMap(mapData) {
   if (!mapData || Object.keys(mapData.locations).length === 0) {
-    return `< div class="sg-map-empty" > 暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成。</div > `;
+    return `<div class="sg-map-empty" > 暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成。</div> `;
   }
 
   const locList = Object.values(mapData.locations);
@@ -1876,13 +1879,13 @@ function renderGridMap(mapData) {
   }
 
   // 渲染 HTML（使用 CSS Grid）
-  const gridInlineStyle = `display: grid; grid - template - columns: repeat(${cols}, 80px); grid - auto - rows: 50px; gap: 4px; justify - content: center; `;
+  const gridInlineStyle = `display: grid; grid-template-columns: repeat(${cols}, 80px); grid-auto-rows: 50px; gap: 4px; justify-content: center; `;
   const baseCellStyle = 'width:80px;height:50px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;text-align:center;position:relative;';
   const emptyCellStyle = baseCellStyle + 'background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.08);';
   const locationBaseStyle = baseCellStyle + 'background:rgba(100,150,200,0.2);border:1px solid rgba(100,150,200,0.35);';
 
-  let html = `< div class="sg-map-wrapper" > `;
-  html += `< div class="sg-map-grid" style = "--sg-map-cols:${cols};${gridInlineStyle}" > `;
+  let html = `<div class="sg-map-wrapper" > `;
+  html += `<div class="sg-map-grid" style= "--sg-map-cols:${cols};${gridInlineStyle}" > `;
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -1907,19 +1910,19 @@ function renderGridMap(mapData) {
         const nameAttr = escapeHtml(String(cell.name || ''));
         const groupAttr = escapeHtml(String(cell.group || ''));
         const layerAttr = escapeHtml(String(cell.layer || ''));
-        html += `< div class="${classes.join(' ')}" style = "${inlineStyle}" title = "${escapeHtml(tooltip)}" data - name="${nameAttr}" data - desc="${descAttr}" data - events="${eventsJson}" data - group="${groupAttr}" data - layer="${layerAttr}" > `;
+        html += `<div class="${classes.join(' ')}" style= "${inlineStyle}" title= "${escapeHtml(tooltip)}" data-name="${nameAttr}" data-desc="${descAttr}" data-events="${eventsJson}" data-group="${groupAttr}" data-layer="${layerAttr}" > `;
         if (cell.layer || cell.group) {
-          html += `< div class="sg-map-badges" > `;
-          if (cell.layer) html += `< span class="sg-map-badge sg-map-badge-layer" title = "${escapeHtml(String(cell.layer))}" > ${escapeHtml(String(cell.layer || '').slice(0, 2))}</span > `;
-          if (cell.group) html += `< span class="sg-map-badge sg-map-badge-group" title = "${escapeHtml(String(cell.group))}" > ${escapeHtml(String(cell.group || '').slice(0, 2))}</span > `;
-          html += `</div > `;
+          html += `<div class="sg-map-badges" > `;
+          if (cell.layer) html += `<span class="sg-map-badge sg-map-badge-layer" title= "${escapeHtml(String(cell.layer))}" > ${escapeHtml(String(cell.layer || '').slice(0, 2))}</span> `;
+          if (cell.group) html += `<span class="sg-map-badge sg-map-badge-group" title= "${escapeHtml(String(cell.group))}" > ${escapeHtml(String(cell.group || '').slice(0, 2))}</span> `;
+          html += `</div> `;
         }
-        html += `< span class="sg-map-name" > ${escapeHtml(cell.name)}</span > `;
+        html += `<span class="sg-map-name" > ${escapeHtml(cell.name)}</span> `;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
         html += '</div>';
       } else {
-        html += `< div class="sg-map-cell sg-map-empty-cell" style = "${emptyCellStyle}" ></div > `;
+        html += `<div class="sg-map-cell sg-map-empty-cell" style= "${emptyCellStyle}" ></div> `;
       }
     }
   }
@@ -2282,7 +2285,7 @@ function validateAndNormalizeModules(raw) {
     const type = String(m.type || 'text').trim();
     if (type !== 'text' && type !== 'list') return { ok: false, error: `模块 ${key} 的 type 必须是 "text" 或 "list"`, modules: null };
 
-    const title = String(m.title || key).trim();
+    const title= String(m.title || key).trim();
     const prompt = String(m.prompt || '').trim();
 
     const required = m.required !== false; // default true
@@ -2580,7 +2583,7 @@ function parseWorldbookJson(rawText) {
   for (const e of entries) {
     if (!e || typeof e !== 'object') continue;
 
-    const title = String(e.title ?? e.name ?? e.comment ?? e.uid ?? e.id ?? '').trim();
+    const title= String(e.title ?? e.name ?? e.comment ?? e.uid ?? e.id ?? '').trim();
 
     // keys can be stored in many variants in ST exports
     const kRaw =
@@ -3623,7 +3626,7 @@ function appendToBlueIndexCache(rec) {
     range: rec?.range ?? undefined,
   };
   if (!item.summary) return;
-  if (!item.title) item.title = item.keywords?.[0] ? `条目：${item.keywords[0]}` : '条目';
+  if (!item.title) item.title= item.keywords?.[0] ? `条目：${item.keywords[0]}` : '条目';
   const arr = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
   // de-dup (only check recent items)
   for (let i = arr.length - 1; i >= 0 && i >= arr.length - 10; i--) {
@@ -4767,7 +4770,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         keywords = [indexId];
       }
 
-      const title = rawTitle || `${prefix}`;
+      const title= rawTitle || `${prefix}`;
 
       const rec = {
         title,
@@ -5010,7 +5013,7 @@ function stripTriggerInjection(text, tag = 'SG_WI_TRIGGERS') {
   return t.replace(reComment, '').replace(rePlain, '').trimEnd();
 }
 
-function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden') {
+function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style= 'hidden') {
   const kws = sanitizeKeywords(Array.isArray(keywords) ? keywords : []);
   if (!kws.length) return '';
   if (String(style || 'hidden') === 'plain') {
@@ -5307,7 +5310,7 @@ async function computeRollDecisionViaCustom(userText, statData, settings, random
   return res;
 }
 
-function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style = 'hidden') {
+function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style= 'hidden') {
   if (!res) return '';
   const action = String(res.actionLabel || res.action || '').trim();
   const formula = String(res.formula || '').trim();
@@ -5688,7 +5691,7 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
         userText: lastText,
       });
     }
-    const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
+    const style= String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
     const rollText = buildRollInjectionFromResult(res, rollTag, style);
     if (rollText) {
       const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', rollTag);
@@ -5789,7 +5792,7 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
     });
   }
   if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
-  const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
+  const style= String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
   const rollText = buildRollInjectionFromResult(res, rollTag, style);
   if (rollText) logStatus?.('ROLL 已注入：判定完成', 'ok');
   return rollText || null;
@@ -5853,7 +5856,7 @@ async function buildTriggerInjectionForText(userText, chat, settings, logStatus)
   const keywords = Array.from(kwSet);
   if (!keywords.length) return null;
 
-  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
+  const style= String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
   const injected = buildTriggerInjection(keywords, tagForStrip, style);
   if (injected) logStatus?.(`索引已注入：${pickedNames.slice(0, 4).join('、')}${pickedNames.length > 4 ? '…' : ''}`, 'ok');
   return injected || null;
@@ -6192,7 +6195,7 @@ function collectBlueIndexCandidates() {
 
   const fromMeta = Array.isArray(meta?.history) ? meta.history : [];
   for (const r of fromMeta) {
-    const title = String(r?.title || '').trim();
+    const title= String(r?.title || '').trim();
     const summary = String(r?.summary || '').trim();
     const keywords = sanitizeKeywords(r?.keywords);
     if (!summary) continue;
@@ -6204,7 +6207,7 @@ function collectBlueIndexCandidates() {
 
   const fromImported = getBlueIndexEntriesFast();
   for (const r of fromImported) {
-    const title = String(r?.title || '').trim();
+    const title= String(r?.title || '').trim();
     const summary = String(r?.summary || '').trim();
     const keywords = sanitizeKeywords(r?.keywords);
     if (!summary) continue;
@@ -6281,7 +6284,7 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
 
   const candidatesForModel = shortlist.map((x, i) => {
     const e = x.e || x;
-    const title = String(e.title || '').trim();
+    const title= String(e.title || '').trim();
     const summary0 = String(e.summary || '').trim();
     const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '…') : summary0;
     const kws = Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : [];
@@ -6436,7 +6439,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   if (!keywords.length) return;
 
   const tag = tagForStrip;
-  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
+  const style= String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
   const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', tag);
   const injected = cleaned + buildTriggerInjection(keywords, tag, style);
   last.mes = injected;
@@ -6498,7 +6501,7 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
 
     const hasKey = parsedJson && Object.hasOwn(parsedJson, m.key);
     const val = hasKey ? parsedJson[m.key] : undefined;
-    const title = m.title || m.key;
+    const title= m.title || m.key;
 
     if (m.type === 'list') {
       const arr = Array.isArray(val) ? val : [];
@@ -7498,10 +7501,17 @@ function renderImageGenBatchPreview() {
   const $wrap = $('#sg_imagegen_batch');
   if (!$wrap.length) return;
   if (!imageGenBatchPrompts.length) {
-
-    $wrap.html('<div class="sg-floating-empty">尚未生成提示词</div>');
+    const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '尚未生成提示词');
+    $wrap.html(`
+      <div class="sg-floating-row">
+        <div class="sg-floating-title-sm">提示词预览</div>
+        <div class="sg-floating-status">${escapeHtml(status)}</div>
+      </div>
+      <div class="sg-floating-empty">尚未生成提示词</div>
+    `);
     return;
   }
+
   const current = imageGenBatchPrompts[imageGenPreviewIndex] || imageGenBatchPrompts[0];
   const counter = `${imageGenPreviewIndex + 1}/${imageGenBatchPrompts.length}`;
   const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '就绪');
@@ -7518,13 +7528,17 @@ function renderImageGenBatchPreview() {
   const seedLabel = s.novelaiFixedSeedEnabled ? `固定:${clampInt(s.novelaiFixedSeed, 0, 4294967295, 0)}` : '随机';
   const negative = String((s.novelaiNegativePrompt || '').trim());
   const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '…' : ''}` : '（空）';
+  const legacyLabel = legacy ? '开' : '关';
   const paramsHtml = `
     <div class="sg-floating-params">
       <div><b>模型</b>：${escapeHtml(model)}</div>
       <div><b>分辨率</b>：${escapeHtml(resolution)}</div>
       <div><b>Steps</b>：${escapeHtml(String(steps))}｜<b>Scale</b>：${escapeHtml(String(scale))}</div>
-      <div><b>Sampler</b>：${escapeHtml(sampler)}｜<b>Seed</b>：${escapeHtml(seedLabel)}</div>
+      <div><b>Sampler</b>：${escapeHtml(sampler)}｜<b>Seed</b>：${escapeHtml(seedLabel)}｜<b>Legacy</b>：${escapeHtml(legacyLabel)}</div>
       <div><b>负面</b>：${escapeHtml(negativePreview)}</div>
+    </div>
+    <div class="sg-floating-row sg-floating-row-actions" style="margin-top:-2px;">
+      <button class="sg-floating-mini-btn" id="sg_imagegen_copy_payload">复制请求参数</button>
     </div>
   `;
   $wrap.html(`
@@ -7742,6 +7756,7 @@ async function generateImageWithNovelAI(positive, negative) {
   const fixedSeed = clampInt(s.novelaiFixedSeed, 0, 4294967295, 0);
   const seed = fixedSeedEnabled ? fixedSeed : Math.floor(Math.random() * 4294967295);
   const sampler = String(s.novelaiSampler || (isV4 ? 'k_euler_ancestral' : 'k_euler'));
+  const legacy = isV4 ? (s.novelaiLegacy !== false) : true;
 
 
   // V4/V4.5 需要完全不同的参数格式
@@ -7770,7 +7785,8 @@ async function generateImageWithNovelAI(positive, negative) {
         sm: false,
         sm_dyn: false,
         noise_schedule: 'native',
-        legacy: true,  // 启用以支持 V3 风格的 :: 权重语法
+        legacy: legacy,  // 启用以支持 V3 风格的 :: 权重语法
+
         legacy_v3_extend: false,
         skip_cfg_above_sigma: null,
         variety_boost: false,
@@ -7825,9 +7841,12 @@ async function generateImageWithNovelAI(positive, negative) {
     sampler,
     seed,
     fixedSeedEnabled,
+    legacy,
     negative: finalNegative,
     isV4
   });
+
+  lastNovelaiPayload = payload;
 
   const response = await fetch('https://image.novelai.net/ai/generate-image', {
     method: 'POST',
@@ -8173,7 +8192,7 @@ function createTopbarButton() {
   btn.id = 'sg_topbar_btn';
   btn.type = 'button';
   btn.className = 'sg-topbar-btn';
-  btn.title = '剧情指导 StoryGuide';
+  btn.title= '剧情指导 StoryGuide';
   btn.innerHTML = '<span class="sg-topbar-icon">📘</span>';
   btn.addEventListener('click', () => openModal());
 
@@ -9356,7 +9375,7 @@ function buildModalHtml() {
                 </div>
               </div>
 
-              <div class="sg-field">
+                <div class="sg-field">
                   <label>默认负面提示词</label>
                   <textarea id="sg_novelaiNegativePrompt" rows="2" placeholder="lowres, bad anatomy, ..."></textarea>
                 </div>
@@ -9386,6 +9405,11 @@ function buildModalHtml() {
                     </div>
                   </div>
                 </div>
+
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <label class="sg-check"><input type="checkbox" id="sg_novelaiLegacy">V4 Legacy (支持 :: 权重语法)</label>
+                </div>
+
 
                 <hr class="sg-hr">
 
@@ -9801,7 +9825,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiNegativePrompt').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiLegacy, #sg_novelaiNegativePrompt').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -10589,6 +10613,7 @@ function pullSettingsToUi() {
   $('#sg_novelaiSampler').val(String(s.novelaiSampler || 'k_euler'));
   $('#sg_novelaiFixedSeedEnabled').prop('checked', !!s.novelaiFixedSeedEnabled);
   $('#sg_novelaiFixedSeed').val(Number.isFinite(Number(s.novelaiFixedSeed)) ? Number(s.novelaiFixedSeed) : 0);
+  $('#sg_novelaiLegacy').prop('checked', s.novelaiLegacy !== false);
   $('#sg_novelaiNegativePrompt').val(String(s.novelaiNegativePrompt || ''));
 
   $('#sg_imageGenAutoSave').prop('checked', !!s.imageGenAutoSave);
@@ -10939,7 +10964,7 @@ function renderSummaryPaneFromMeta() {
   lastSummaryText = String(last?.summary || '');
 
   const md = hist.slice(-12).reverse().map((h, idx) => {
-    const title = String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '剧情总结'} #${hist.length - idx}`);
+    const title= String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '剧情总结'} #${hist.length - idx}`);
     const kws = Array.isArray(h.keywords) ? h.keywords : [];
     const when = h.createdAt ? new Date(h.createdAt).toLocaleString() : '';
     const range = h?.range ? `（${h.range.fromFloor}-${h.range.toFloor}）` : '';
@@ -11088,6 +11113,7 @@ function pullUiToSettings() {
   s.novelaiSampler = String($('#sg_novelaiSampler').val() || s.novelaiSampler || 'k_euler');
   s.novelaiFixedSeedEnabled = $('#sg_novelaiFixedSeedEnabled').is(':checked');
   s.novelaiFixedSeed = clampInt($('#sg_novelaiFixedSeed').val(), 0, 4294967295, s.novelaiFixedSeed || 0);
+  s.novelaiLegacy = $('#sg_novelaiLegacy').is(':checked');
   s.novelaiNegativePrompt = String($('#sg_novelaiNegativePrompt').val() || '').trim();
 
   s.imageGenAutoSave = $('#sg_imageGenAutoSave').is(':checked');
@@ -11329,7 +11355,7 @@ function createFloatingButton() {
   btn.id = 'sg_floating_btn';
   btn.className = 'sg-floating-btn';
   btn.innerHTML = '📘';
-  btn.title = '剧情指导';
+  btn.title= '剧情指导';
   // Allow dragging but also clicking. We need to distinguish click from drag.
   btn.style.touchAction = 'none';
 
@@ -11607,6 +11633,23 @@ function createFloatingPanel() {
       renderImageGenBatchPreview();
     }
   });
+
+  $(document).on('click', '#sg_imagegen_copy_payload', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    if (!lastNovelaiPayload) {
+      imageGenBatchStatus = '暂无可复制的请求参数';
+      renderImageGenBatchPreview();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(lastNovelaiPayload, null, 2));
+      imageGenBatchStatus = '已复制请求参数';
+    } catch (err) {
+      imageGenBatchStatus = `复制失败：${err?.message || err}`;
+    }
+    renderImageGenBatchPreview();
+  });
+
 
   // Drag logic
   const header = panel.querySelector('.sg-floating-header');
@@ -12037,7 +12080,7 @@ function injectFixedInputButton() {
     btn.style.padding = '5px 10px';
     btn.style.userSelect = 'none';
     btn.innerHTML = '📘 剧情';
-    btn.title = '打开剧情指导悬浮窗';
+    btn.title= '打开剧情指导悬浮窗';
     // Ensure height consistency
     btn.style.height = 'var(--input-height, auto)';
 
