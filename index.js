@@ -1,28 +1,28 @@
-'use strict';
+﻿'use strict';
 
 /**
- * 剧情指导 StoryGuide (SillyTavern UI Extension)
+ * 鍓ф儏鎸囧 StoryGuide (SillyTavern UI Extension)
  * v0.9.8
  *
- * 新增：输出模块自定义（更高自由度�?
- * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt�?
- * - 面板提供一个「模块配�?JSON)」编辑区：可增删字段、改顺序、改提示词、控制是否在面板/自动追加中展�?
- * - 插件会根据模块自动生�?JSON Schema（动态字段）并要求模型按�?Schema 输出
+ * 鏂板锛氳緭鍑烘ā鍧楄嚜瀹氫箟锛堟洿楂樿嚜鐢卞害锛?
+ * - 浣犲彲浠ヨ嚜瀹氫箟鈥滆緭鍑烘ā鍧楀垪琛ㄢ€濅互鍙婃瘡涓ā鍧楄嚜宸辩殑鎻愮ず璇嶏紙prompt锛?
+ * - 闈㈡澘鎻愪緵涓€涓€屾ā鍧楅厤缃?JSON)銆嶇紪杈戝尯锛氬彲澧炲垹瀛楁銆佹敼椤哄簭銆佹敼鎻愮ず璇嶃€佹帶鍒舵槸鍚﹀湪闈㈡澘/鑷姩杩藉姞涓睍绀?
+ * - 鎻掍欢浼氭牴鎹ā鍧楄嚜鍔ㄧ敓鎴?JSON Schema锛堝姩鎬佸瓧娈碉級骞惰姹傛ā鍨嬫寜璇?Schema 杈撳嚭
  *
- * 兼容：仍然保�?v0.3.x 的“独立API走后端代�?+ 抗变量更新覆盖（自动补贴�? 点击折叠”能�?
+ * 鍏煎锛氫粛鐒朵繚鎸?v0.3.x 鐨勨€滅嫭绔婣PI璧板悗绔唬鐞?+ 鎶楀彉閲忔洿鏂拌鐩栵紙鑷姩琛ヨ创锛? 鐐瑰嚮鎶樺彔鈥濊兘鍔?
  *
- * v0.8.2 修复：兼�?SlashCommand 返回 [object Object] 的情况（自动解析 UID / 文本输出�?
- * v0.8.3 新增：总结功能支持自定义提示词（system + user 模板，支持占位符�?
- * v0.8.6 修复：写入世界书不再依赖 JS 解析 UID（改为在同一�?STscript 管线内用 {{pipe}} 传�?UID），避免误报“无法解�?UID”�?
- * v0.9.0 修复：实时读取蓝灯世界书在部�?ST 版本返回包装字段（如 data �?JSON 字符串）时解析为 0 条的问题；并增强读取端点/文件名兼容�?
- * v0.9.1 新增：蓝灯索引→绿灯触发 的“索引日志”（显示命中条目名称/注入关键词），便于排查触发效果�?
- * v0.9.2 修复：条目标题前缀（comment）现在始终加在最前（即使模型输出了自定义 title 也会保留前缀）�?
- * v0.9.4 新增：总结写入世界书的“主要关键词(key)”可切换为“索引编号”（�?A-001），只写 1 个触发词，触发更精确�?
- * v0.9.5 改进：蓝灯索引匹配会综合“最�?N 条消息正�?+ 本次用户输入”，而不是只看最近正文（可在面板里关�?调整权重）�?
- * v0.9.6 改进：在面板标题处显示版本号，方便确认是否已正确更新到包含“用户输入权重”设置的版本�?
- * v0.9.9 改进：把“剧情指�?/ 总结设置 / 索引设置”拆成三页（左侧分页标签），界面更清晰�?
- * v0.9.8 新增：手动选择总结楼层范围（例�?20-40）并点击立即总结�?
- * v0.10.0 新增：手动楼层范围总结支持“按�?N 层拆分生成多条世界书条目”（例如 1-80 �?N=40 �?2 条）�?
+ * v0.8.2 淇锛氬吋瀹?SlashCommand 杩斿洖 [object Object] 鐨勬儏鍐碉紙鑷姩瑙ｆ瀽 UID / 鏂囨湰杈撳嚭锛?
+ * v0.8.3 鏂板锛氭€荤粨鍔熻兘鏀寔鑷畾涔夋彁绀鸿瘝锛坰ystem + user 妯℃澘锛屾敮鎸佸崰浣嶇锛?
+ * v0.8.6 淇锛氬啓鍏ヤ笘鐣屼功涓嶅啀渚濊禆 JS 瑙ｆ瀽 UID锛堟敼涓哄湪鍚屼竴娈?STscript 绠＄嚎鍐呯敤 {{pipe}} 浼犻€?UID锛夛紝閬垮厤璇姤鈥滄棤娉曡В鏋?UID鈥濄€?
+ * v0.9.0 淇锛氬疄鏃惰鍙栬摑鐏笘鐣屼功鍦ㄩ儴鍒?ST 鐗堟湰杩斿洖鍖呰瀛楁锛堝 data 涓?JSON 瀛楃涓诧級鏃惰В鏋愪负 0 鏉＄殑闂锛涘苟澧炲己璇诲彇绔偣/鏂囦欢鍚嶅吋瀹广€?
+ * v0.9.1 鏂板锛氳摑鐏储寮曗啋缁跨伅瑙﹀彂 鐨勨€滅储寮曟棩蹇椻€濓紙鏄剧ず鍛戒腑鏉＄洰鍚嶇О/娉ㄥ叆鍏抽敭璇嶏級锛屼究浜庢帓鏌ヨЕ鍙戞晥鏋溿€?
+ * v0.9.2 淇锛氭潯鐩爣棰樺墠缂€锛坈omment锛夌幇鍦ㄥ缁堝姞鍦ㄦ渶鍓嶏紙鍗充娇妯″瀷杈撳嚭浜嗚嚜瀹氫箟 title 涔熶細淇濈暀鍓嶇紑锛夈€?
+ * v0.9.4 鏂板锛氭€荤粨鍐欏叆涓栫晫涔︾殑鈥滀富瑕佸叧閿瘝(key)鈥濆彲鍒囨崲涓衡€滅储寮曠紪鍙封€濓紙濡?A-001锛夛紝鍙啓 1 涓Е鍙戣瘝锛岃Е鍙戞洿绮剧‘銆?
+ * v0.9.5 鏀硅繘锛氳摑鐏储寮曞尮閰嶄細缁煎悎鈥滄渶杩?N 鏉℃秷鎭鏂?+ 鏈鐢ㄦ埛杈撳叆鈥濓紝鑰屼笉鏄彧鐪嬫渶杩戞鏂囷紙鍙湪闈㈡澘閲屽叧闂?璋冩暣鏉冮噸锛夈€?
+ * v0.9.6 鏀硅繘锛氬湪闈㈡澘鏍囬澶勬樉绀虹増鏈彿锛屾柟渚跨‘璁ゆ槸鍚﹀凡姝ｇ‘鏇存柊鍒板寘鍚€滅敤鎴疯緭鍏ユ潈閲嶁€濊缃殑鐗堟湰銆?
+ * v0.9.9 鏀硅繘锛氭妸鈥滃墽鎯呮寚瀵?/ 鎬荤粨璁剧疆 / 绱㈠紩璁剧疆鈥濇媶鎴愪笁椤碉紙宸︿晶鍒嗛〉鏍囩锛夛紝鐣岄潰鏇存竻鏅般€?
+ * v0.9.8 鏂板锛氭墜鍔ㄩ€夋嫨鎬荤粨妤煎眰鑼冨洿锛堜緥濡?20-40锛夊苟鐐瑰嚮绔嬪嵆鎬荤粨銆?
+ * v0.10.0 鏂板锛氭墜鍔ㄦゼ灞傝寖鍥存€荤粨鏀寔鈥滄寜姣?N 灞傛媶鍒嗙敓鎴愬鏉′笘鐣屼功鏉＄洰鈥濓紙渚嬪 1-80 涓?N=40 鈫?2 鏉★級銆?
  */
 
 const SG_VERSION = '0.10.0';
@@ -30,149 +30,149 @@ const SG_VERSION = '0.10.0';
 const MODULE_NAME = 'storyguide';
 
 /**
- * 模块配置格式（JSON 数组）示例：
+ * 妯″潡閰嶇疆鏍煎紡锛圝SON 鏁扮粍锛夌ず渚嬶細
  * [
- *   {"key":"world_summary","title":"世界简�?,"type":"text","prompt":"1~3句概括世界与局�?,"required":true,"panel":true,"inline":true},
- *   {"key":"key_plot_points","title":"重要剧情�?,"type":"list","prompt":"3~8条关键剧情点（短句）","maxItems":8,"required":true,"panel":true,"inline":false}
+ *   {"key":"world_summary","title":"涓栫晫绠€浠?,"type":"text","prompt":"1~3鍙ユ鎷笘鐣屼笌灞€鍔?,"required":true,"panel":true,"inline":true},
+ *   {"key":"key_plot_points","title":"閲嶈鍓ф儏鐐?,"type":"list","prompt":"3~8鏉″叧閿墽鎯呯偣锛堢煭鍙ワ級","maxItems":8,"required":true,"panel":true,"inline":false}
  * ]
  *
- * 字段说明�?
- * - key: JSON 输出字段名（唯一�?
- * - title: 渲染到报告的标题
- * - type: "text" �?"list"（list = string[]�?
- * - prompt: 该模块的生成提示词（会写�?Output Fields�?
- * - required: 是否强制要求该字段输�?
- * - panel: 是否在“报告”里展示
- * - inline: 是否在“自动追加分析框”里展示
- * - maxItems: type=list 时限制最大条目（可选）
+ * 瀛楁璇存槑锛?
+ * - key: JSON 杈撳嚭瀛楁鍚嶏紙鍞竴锛?
+ * - title: 娓叉煋鍒版姤鍛婄殑鏍囬
+ * - type: "text" 鎴?"list"锛坙ist = string[]锛?
+ * - prompt: 璇ユā鍧楃殑鐢熸垚鎻愮ず璇嶏紙浼氬啓杩?Output Fields锛?
+ * - required: 鏄惁寮哄埗瑕佹眰璇ュ瓧娈佃緭鍑?
+ * - panel: 鏄惁鍦ㄢ€滄姤鍛娾€濋噷灞曠ず
+ * - inline: 鏄惁鍦ㄢ€滆嚜鍔ㄨ拷鍔犲垎鏋愭鈥濋噷灞曠ず
+ * - maxItems: type=list 鏃堕檺鍒舵渶澶ф潯鐩紙鍙€夛級
  */
 
 const DEFAULT_MODULES = Object.freeze([
-  { key: 'world_summary', title: '世界简�?, type: 'text', prompt: '1~3句概括世界与局�?, required: true, panel: true, inline: true, static: true },
-  { key: 'key_plot_points', title: '重要剧情�?, type: 'list', prompt: '3~8条关键剧情点（短句）', maxItems: 8, required: true, panel: true, inline: false, static: true },
-  { key: 'current_scene', title: '当前时间�?· 具体剧情', type: 'text', prompt: '描述当前发生了什么（地点/人物动机/冲突/悬念�?, required: true, panel: true, inline: true },
-  { key: 'next_events', title: '后续将会发生的事', type: 'list', prompt: '接下来最可能发生的事（条目）', maxItems: 6, required: true, panel: true, inline: true },
-  { key: 'protagonist_impact', title: '主角行为造成的影�?, type: 'text', prompt: '主角行为对剧�?关系/风险造成的改�?, required: true, panel: true, inline: false },
-  { key: 'tips', title: '给主角的提示（基于原著后�?大纲�?, type: 'list', prompt: '给出可执行提示（尽量具体�?, maxItems: 4, required: true, panel: true, inline: true },
-  { key: 'quick_actions', title: '快捷选项', type: 'list', prompt: '根据当前剧情走向，给�?~6个玩家可以发送的具体行动选项（每�?5~40字，可直接作为对话输入发送）', maxItems: 6, required: true, panel: true, inline: true },
+  { key: 'world_summary', title: '涓栫晫绠€浠?, type: 'text', prompt: '1~3鍙ユ鎷笘鐣屼笌灞€鍔?, required: true, panel: true, inline: true, static: true },
+  { key: 'key_plot_points', title: '閲嶈鍓ф儏鐐?, type: 'list', prompt: '3~8鏉″叧閿墽鎯呯偣锛堢煭鍙ワ級', maxItems: 8, required: true, panel: true, inline: false, static: true },
+  { key: 'current_scene', title: '褰撳墠鏃堕棿鐐?路 鍏蜂綋鍓ф儏', type: 'text', prompt: '鎻忚堪褰撳墠鍙戠敓浜嗕粈涔堬紙鍦扮偣/浜虹墿鍔ㄦ満/鍐茬獊/鎮康锛?, required: true, panel: true, inline: true },
+  { key: 'next_events', title: '鍚庣画灏嗕細鍙戠敓鐨勪簨', type: 'list', prompt: '鎺ヤ笅鏉ユ渶鍙兘鍙戠敓鐨勪簨锛堟潯鐩級', maxItems: 6, required: true, panel: true, inline: true },
+  { key: 'protagonist_impact', title: '涓昏琛屼负閫犳垚鐨勫奖鍝?, type: 'text', prompt: '涓昏琛屼负瀵瑰墽鎯?鍏崇郴/椋庨櫓閫犳垚鐨勬敼鍙?, required: true, panel: true, inline: false },
+  { key: 'tips', title: '缁欎富瑙掔殑鎻愮ず锛堝熀浜庡師钁楀悗缁?澶х翰锛?, type: 'list', prompt: '缁欏嚭鍙墽琛屾彁绀猴紙灏介噺鍏蜂綋锛?, maxItems: 4, required: true, panel: true, inline: true },
+  { key: 'quick_actions', title: '蹇嵎閫夐」', type: 'list', prompt: '鏍规嵁褰撳墠鍓ф儏璧板悜锛岀粰鍑?~6涓帺瀹跺彲浠ュ彂閫佺殑鍏蜂綋琛屽姩閫夐」锛堟瘡椤?5~40瀛楋紝鍙洿鎺ヤ綔涓哄璇濊緭鍏ュ彂閫侊級', maxItems: 6, required: true, panel: true, inline: true },
 ]);
 
-// ===== 总结提示词默认值（可在面板中自定义�?=====
-const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文�?50~400字，尽量包含：主要人�?目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
+// ===== 鎬荤粨鎻愮ず璇嶉粯璁ゅ€硷紙鍙湪闈㈡澘涓嚜瀹氫箟锛?=====
+const DEFAULT_SUMMARY_SYSTEM_PROMPT = `浣犳槸涓€涓€滃墽鎯呮€荤粨/涓栫晫涔﹁蹇嗏€濆姪鎵嬨€俓n\n浠诲姟锛歕n1) 闃呰鐢ㄦ埛涓嶢I瀵硅瘽鐗囨锛岀敓鎴愪竴娈电畝娲佹憳瑕侊紙涓枃锛?50~400瀛楋紝灏介噺鍖呭惈锛氫富瑕佷汉鐗?鐩爣/鍐茬獊/鍏抽敭鐗╁搧/鍦扮偣/鍏崇郴鍙樺寲/鏈В鍐崇殑鎮康锛夈€俓n2) 鎻愬彇 6~14 涓叧閿瘝锛堜腑鏂囦紭鍏堬紝浜虹墿/鍦扮偣/鍔垮姏/鐗╁搧/浜嬩欢/鍏崇郴绛夛級锛岀敤浜庝笘鐣屼功鏉＄洰瑙﹀彂璇嶃€傚叧閿瘝灏介噺鍘婚噸銆佷笉瑕佸お娉涳紙濡傗€滅劧鍚庘€濃€滃ソ鐨勨€濓級銆俙;
 
-const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\n\n【对话片段】\n{{chunk}}`;
+const DEFAULT_SUMMARY_USER_TEMPLATE = `銆愭ゼ灞傝寖鍥淬€憑{fromFloor}}-{{toFloor}}\n\n銆愬璇濈墖娈点€慭n{{chunk}}`;
 
-// 无论用户怎么自定义提示词，仍会强制追�?JSON 输出结构要求，避免写入世界书失败
-const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严�?JSON，不�?Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords �?6~14 个词/短语，尽量去重、避免泛词。`;
+// 鏃犺鐢ㄦ埛鎬庝箞鑷畾涔夋彁绀鸿瘝锛屼粛浼氬己鍒惰拷鍔?JSON 杈撳嚭缁撴瀯瑕佹眰锛岄伩鍏嶅啓鍏ヤ笘鐣屼功澶辫触
+const SUMMARY_JSON_REQUIREMENT = `杈撳嚭瑕佹眰锛歕n- 鍙緭鍑轰弗鏍?JSON锛屼笉瑕?Markdown銆佷笉瑕佷唬鐮佸潡銆佷笉瑕佷换浣曞浣欐枃瀛椼€俓n- JSON 缁撴瀯蹇呴』涓猴細{"title": string, "summary": string, "keywords": string[]}銆俓n- keywords 涓?6~14 涓瘝/鐭锛屽敖閲忓幓閲嶃€侀伩鍏嶆硾璇嶃€俙;
 
 
-// ===== 索引提示词默认值（可在面板中自定义；用�?LLM 综合判断"模式�?=====
-const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一�?剧情索引匹配"助手�?
+// ===== 绱㈠紩鎻愮ず璇嶉粯璁ゅ€硷紙鍙湪闈㈡澘涓嚜瀹氫箟锛涚敤浜?LLM 缁煎悎鍒ゆ柇"妯″紡锛?=====
+const DEFAULT_INDEX_SYSTEM_PROMPT = `浣犳槸涓€涓?鍓ф儏绱㈠紩鍖归厤"鍔╂墜銆?
 
-【任务�?
-- 输入包含：最近剧情正文（节选）、用户当前输入、以及若干候选索引条目（含标�?摘要/触发�?类型）�?
-- 你的目标是：综合判断哪些候选条目与"当前剧情"最相关，并返回这些候选的 id�?
+銆愪换鍔°€?
+- 杈撳叆鍖呭惈锛氭渶杩戝墽鎯呮鏂囷紙鑺傞€夛級銆佺敤鎴峰綋鍓嶈緭鍏ャ€佷互鍙婅嫢骞插€欓€夌储寮曟潯鐩紙鍚爣棰?鎽樿/瑙﹀彂璇?绫诲瀷锛夈€?
+- 浣犵殑鐩爣鏄細缁煎悎鍒ゆ柇鍝簺鍊欓€夋潯鐩笌"褰撳墠鍓ф儏"鏈€鐩稿叧锛屽苟杩斿洖杩欎簺鍊欓€夌殑 id銆?
 
-【选择优先级�?
-1. **人物相关**：当前剧情涉及某个NPC时，优先索引该NPC的档案条�?
-2. **装备相关**：当前剧情涉及某件装备时，优先索引该装备的条�?
-3. **历史剧情**：优先选择时间较久远但与当前剧情相关的条目（避免索引最近已在上下文中的剧情�?
-4. **因果关联**：当前事件的前因、伏笔、未解悬�?
+銆愰€夋嫨浼樺厛绾с€?
+1. **浜虹墿鐩稿叧**锛氬綋鍓嶅墽鎯呮秹鍙婃煇涓狽PC鏃讹紝浼樺厛绱㈠紩璇PC鐨勬。妗堟潯鐩?
+2. **瑁呭鐩稿叧**锛氬綋鍓嶅墽鎯呮秹鍙婃煇浠惰澶囨椂锛屼紭鍏堢储寮曡瑁呭鐨勬潯鐩?
+3. **鍘嗗彶鍓ф儏**锛氫紭鍏堥€夋嫨鏃堕棿杈冧箙杩滀絾涓庡綋鍓嶅墽鎯呯浉鍏崇殑鏉＄洰锛堥伩鍏嶇储寮曟渶杩戝凡鍦ㄤ笂涓嬫枃涓殑鍓ф儏锛?
+4. **鍥犳灉鍏宠仈**锛氬綋鍓嶄簨浠剁殑鍓嶅洜銆佷紡绗斻€佹湭瑙ｆ偓蹇?
 
-【避免�?
-- 不要选择刚刚发生的剧情（最�?层以内的内容通常已在上下文中�?
-- 避免选择明显无关或过于泛泛的条目
+銆愰伩鍏嶃€?
+- 涓嶈閫夋嫨鍒氬垰鍙戠敓鐨勫墽鎯咃紙鏈€杩?灞備互鍐呯殑鍐呭閫氬父宸插湪涓婁笅鏂囦腑锛?
+- 閬垮厤閫夋嫨鏄庢樉鏃犲叧鎴栬繃浜庢硾娉涚殑鏉＄洰
 
-【返回要求�?
-- 返回条目数量�?<= maxPick
-- 分类控制：人物条�?<= maxCharacters，装备条�?<= maxEquipments，剧情条�?<= maxPlot`;
+銆愯繑鍥炶姹傘€?
+- 杩斿洖鏉＄洰鏁伴噺搴?<= maxPick
+- 鍒嗙被鎺у埗锛氫汉鐗╂潯鐩?<= maxCharacters锛岃澶囨潯鐩?<= maxEquipments锛屽墽鎯呮潯鐩?<= maxPlot`;
 
-const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入�?
+const DEFAULT_INDEX_USER_TEMPLATE = `銆愮敤鎴峰綋鍓嶈緭鍏ャ€?
 {{userMessage}}
 
-【最近剧情（节选）�?
+銆愭渶杩戝墽鎯咃紙鑺傞€夛級銆?
 {{recentText}}
 
-【候选索引条目（JSON）�?
+銆愬€欓€夌储寮曟潯鐩紙JSON锛夈€?
 {{candidates}}
 
-【选择限制�?
-- 总数不超�?{{maxPick}} �?
-- 人物条目不超�?{{maxCharacters}} �?
-- 装备条目不超�?{{maxEquipments}} �?
-- 剧情条目不超�?{{maxPlot}} �?
+銆愰€夋嫨闄愬埗銆?
+- 鎬绘暟涓嶈秴杩?{{maxPick}} 鏉?
+- 浜虹墿鏉＄洰涓嶈秴杩?{{maxCharacters}} 鏉?
+- 瑁呭鏉＄洰涓嶈秴杩?{{maxEquipments}} 鏉?
+- 鍓ф儏鏉＄洰涓嶈秴杩?{{maxPlot}} 鏉?
 
-请从候选中选出与当前剧情最相关的条目，优先选择：与当前提到的人�?装备相关的条目、时间较久远的相关剧情。仅输出 JSON。`;
+璇蜂粠鍊欓€変腑閫夊嚭涓庡綋鍓嶅墽鎯呮渶鐩稿叧鐨勬潯鐩紝浼樺厛閫夋嫨锛氫笌褰撳墠鎻愬埌鐨勪汉鐗?瑁呭鐩稿叧鐨勬潯鐩€佹椂闂磋緝涔呰繙鐨勭浉鍏冲墽鎯呫€備粎杈撳嚭 JSON銆俙;
 
-const INDEX_JSON_REQUIREMENT = `输出要求�?
-- 只输出严�?JSON，不�?Markdown、不要代码块、不要任何多余文字�?
-- JSON 结构必须为：{"pickedIds": number[]}�?
-- pickedIds 必须是候选列表里�?id（整数）�?
-- 返回�?pickedIds 数量 <= maxPick。`;
+const INDEX_JSON_REQUIREMENT = `杈撳嚭瑕佹眰锛?
+- 鍙緭鍑轰弗鏍?JSON锛屼笉瑕?Markdown銆佷笉瑕佷唬鐮佸潡銆佷笉瑕佷换浣曞浣欐枃瀛椼€?
+- JSON 缁撴瀯蹇呴』涓猴細{"pickedIds": number[]}銆?
+- pickedIds 蹇呴』鏄€欓€夊垪琛ㄩ噷鐨?id锛堟暣鏁帮級銆?
+- 杩斿洖鐨?pickedIds 鏁伴噺 <= maxPick銆俙;
 
 
-// ===== 结构化世界书条目提示词默认�?=====
-const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一�?剧情记忆管理"助手，负责从对话片段中提取结构化信息用于长期记忆�?
+// ===== 缁撴瀯鍖栦笘鐣屼功鏉＄洰鎻愮ず璇嶉粯璁ゅ€?=====
+const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `浣犳槸涓€涓?鍓ф儏璁板繂绠＄悊"鍔╂墜锛岃礋璐ｄ粠瀵硅瘽鐗囨涓彁鍙栫粨鏋勫寲淇℃伅鐢ㄤ簬闀挎湡璁板繂銆?
 
-【任务�?
-1. 识别本次对话中出现的重要 NPC（不含主角）
-2. 识别主角当前持有/装备的关键物�?
-3. 识别主角新增或变化的能力
-4. 识别需要删除的条目（死亡的角色、卖�?分解的装备等�?
-5. 生成档案式的客观第三人称描述
+銆愪换鍔°€?
+1. 璇嗗埆鏈瀵硅瘽涓嚭鐜扮殑閲嶈 NPC锛堜笉鍚富瑙掞級
+2. 璇嗗埆涓昏褰撳墠鎸佹湁/瑁呭鐨勫叧閿墿鍝?
+3. 璇嗗埆涓昏鏂板鎴栧彉鍖栫殑鑳藉姏
+4. 璇嗗埆闇€瑕佸垹闄ょ殑鏉＄洰锛堟浜＄殑瑙掕壊銆佸崠鎺?鍒嗚В鐨勮澶囩瓑锛?
+5. 鐢熸垚妗ｆ寮忕殑瀹㈣绗笁浜虹О鎻忚堪
 
-【筛选标准�?
-- NPC：只记录有名有姓的角色，忽略杂兵、无名NPC、普通敌�?
-- 装备：只记录绿色品质以上的装备，或紫色品质以上的重要物品
+銆愮瓫閫夋爣鍑嗐€?
+- NPC锛氬彧璁板綍鏈夊悕鏈夊鐨勮鑹诧紝蹇界暐鏉傚叺銆佹棤鍚峃PC銆佹櫘閫氭晫浜?
+- 瑁呭锛氬彧璁板綍缁胯壊鍝佽川浠ヤ笂鐨勮澶囷紝鎴栫传鑹插搧璐ㄤ互涓婄殑閲嶈鐗╁搧
 
-【去重规则（重要）�?
-- 仔细检查【已知人物列表】和【已知装备列表】，避免重复创建条目
-- 同一角色可能有多种写法（如繁�?简体、英�?中文翻译），必须识别为同一�?
-- 如果发现角色已存在于列表中，使用 isUpdated=true 更新而不是创建新条目
-- 将不同名称写法添加到 aliases 数组�?
+銆愬幓閲嶈鍒欙紙閲嶈锛夈€?
+- 浠旂粏妫€鏌ャ€愬凡鐭ヤ汉鐗╁垪琛ㄣ€戝拰銆愬凡鐭ヨ澶囧垪琛ㄣ€戯紝閬垮厤閲嶅鍒涘缓鏉＄洰
+- 鍚屼竴瑙掕壊鍙兘鏈夊绉嶅啓娉曪紙濡傜箒浣?绠€浣撱€佽嫳鏂?涓枃缈昏瘧锛夛紝蹇呴』璇嗗埆涓哄悓涓€浜?
+- 濡傛灉鍙戠幇瑙掕壊宸插瓨鍦ㄤ簬鍒楄〃涓紝浣跨敤 isUpdated=true 鏇存柊鑰屼笉鏄垱寤烘柊鏉＄洰
+- 灏嗕笉鍚屽悕绉板啓娉曟坊鍔犲埌 aliases 鏁扮粍涓?
 
-【删除条目规则�?
-- 若角色在对话中明确死�?永久离开，将其加�?deletedCharacters 数组
-- 若装备被卖掉/分解/丢弃/彻底损坏，将其加�?deletedEquipments 数组
-- 若能力被遗忘/剥夺/彻底失效，将其加�?deletedAbilities 数组
+銆愬垹闄ゆ潯鐩鍒欍€?
+- 鑻ヨ鑹插湪瀵硅瘽涓槑纭浜?姘镐箙绂诲紑锛屽皢鍏跺姞鍏?deletedCharacters 鏁扮粍
+- 鑻ヨ澶囪鍗栨帀/鍒嗚В/涓㈠純/褰诲簳鎹熷潖锛屽皢鍏跺姞鍏?deletedEquipments 鏁扮粍
+- 鑻ヨ兘鍔涜閬楀繕/鍓ュず/褰诲簳澶辨晥锛屽皢鍏跺姞鍏?deletedAbilities 鏁扮粍
 
-【重要�?
-- 若提供了 statData，请从中提取该角�?物品�?*关键数�?*（如属性、等级、状态），精简�?-2�?
-- 不要完整复制 statData，只提取最重要的信�?
-- 重点描述：与主角的关系发展、角色背景、性格特点、关键事�?
+銆愰噸瑕併€?
+- 鑻ユ彁渚涗簡 statData锛岃浠庝腑鎻愬彇璇ヨ鑹?鐗╁搧鐨?*鍏抽敭鏁板€?*锛堝灞炴€с€佺瓑绾с€佺姸鎬侊級锛岀簿绠€涓?-2琛?
+- 涓嶈瀹屾暣澶嶅埗 statData锛屽彧鎻愬彇鏈€閲嶈鐨勪俊鎭?
+- 閲嶇偣鎻忚堪锛氫笌涓昏鐨勫叧绯诲彂灞曘€佽鑹茶儗鏅€佹€ф牸鐗圭偣銆佸叧閿簨浠?
 
-【性格铆钉�?
-- 为每个重要NPC提取「核心性格」：不会因剧情发展而轻易改变的根本特质
-- 提取「角色动机」：该角色自己的目标/追求，不是围绕主角转
-- 评估「关系阶段」：陌生/初识/熟悉/信任/亲密，关系发展应循序渐进`;
-const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
-const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人�?
+銆愭€ф牸閾嗛拤銆?
+- 涓烘瘡涓噸瑕丯PC鎻愬彇銆屾牳蹇冩€ф牸銆嶏細涓嶄細鍥犲墽鎯呭彂灞曡€岃交鏄撴敼鍙樼殑鏍规湰鐗硅川
+- 鎻愬彇銆岃鑹插姩鏈恒€嶏細璇ヨ鑹茶嚜宸辩殑鐩爣/杩芥眰锛屼笉鏄洿缁曚富瑙掕浆
+- 璇勪及銆屽叧绯婚樁娈点€嶏細闄岀敓/鍒濊瘑/鐔熸倝/淇′换/浜插瘑锛屽叧绯诲彂灞曞簲寰簭娓愯繘`;
+const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `銆愭ゼ灞傝寖鍥淬€憑{fromFloor}}-{{toFloor}}\\n銆愬璇濈墖娈点€慭\n{{chunk}}\\n銆愬凡鐭ヤ汉鐗╁垪琛ㄣ€慭\n{{knownCharacters}}\\n銆愬凡鐭ヨ澶囧垪琛ㄣ€慭\n{{knownEquipments}}`;
+const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `鍙褰曟湁鍚嶆湁濮撶殑閲嶈NPC锛堜笉鍚富瑙掞級锛屽拷鐣ユ潅鍏点€佹棤鍚嶆晫浜恒€佽矾浜恒€?
 
-【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事�?
+銆愬繀濉瓧娈点€戦樀钀ヨ韩浠姐€佹€ф牸鐗圭偣銆佽儗鏅晠浜嬨€佷笌涓昏鍏崇郴鍙婂彂灞曘€佸叧閿簨浠?
 
-【性格铆钉字段（重要）�?
-- corePersonality：核心性格锚点，不会轻易改变的根本特质（如"傲慢"�?多疑"�?重义"），即使与主角关系改善也会保�?
-- motivation：角色自己的独立目标/动机，不应为了主角而放�?
-- relationshipStage：与主角的关系阶段（陌生/初识/熟悉/信任/亲密），关系不应跳跃式发�?
+銆愭€ф牸閾嗛拤瀛楁锛堥噸瑕侊級銆?
+- corePersonality锛氭牳蹇冩€ф牸閿氱偣锛屼笉浼氳交鏄撴敼鍙樼殑鏍规湰鐗硅川锛堝"鍌叉參"銆?澶氱枒"銆?閲嶄箟"锛夛紝鍗充娇涓庝富瑙掑叧绯绘敼鍠勪篃浼氫繚鎸?
+- motivation锛氳鑹茶嚜宸辩殑鐙珛鐩爣/鍔ㄦ満锛屼笉搴斾负浜嗕富瑙掕€屾斁寮?
+- relationshipStage锛氫笌涓昏鐨勫叧绯婚樁娈碉紙闄岀敓/鍒濊瘑/鐔熸倝/淇′换/浜插瘑锛夛紝鍏崇郴涓嶅簲璺宠穬寮忓彂灞?
 
-若角色死�?永久离开，将其名字加�?deletedCharacters。若�?statData，在 statInfo 中精简总结。信息不足写"待确�?。`;
-const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻�?奖励等）、当前状态。若有强�?升级，描述主角如何培养这件装备。若装备被卖�?分解/丢弃/损坏，将其名字加�?deletedEquipments。若�?statData，精简总结其属性。`;
-const DEFAULT_STRUCTURED_ABILITY_PROMPT = `记录主角的能�?技能。说明类型、效果、触发条件、代价。若能力被遗�?剥夺/失效，将其名字加�?deletedAbilities。若�?statData，精简总结其数值。`;
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结�?-2行）�?
+鑻ヨ鑹叉浜?姘镐箙绂诲紑锛屽皢鍏跺悕瀛楀姞鍏?deletedCharacters銆傝嫢鏈?statData锛屽湪 statInfo 涓簿绠€鎬荤粨銆備俊鎭笉瓒冲啓"寰呯‘璁?銆俙;
+const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `鍙褰曠豢鑹插搧璐ㄤ互涓婄殑瑁呭锛屾垨绱壊鍝佽川浠ヤ笂鐨勯噸瑕佺墿鍝侊紙蹇界暐鐧借壊/鐏拌壊鏅€氱墿鍝侊級銆傚繀椤昏褰曪細鑾峰緱鏃堕棿銆佽幏寰楀湴鐐广€佹潵婧愶紙鎺夎惤/璐拱/閿婚€?濂栧姳绛夛級銆佸綋鍓嶇姸鎬併€傝嫢鏈夊己鍖?鍗囩骇锛屾弿杩颁富瑙掑浣曞煿鍏昏繖浠惰澶囥€傝嫢瑁呭琚崠鎺?鍒嗚В/涓㈠純/鎹熷潖锛屽皢鍏跺悕瀛楀姞鍏?deletedEquipments銆傝嫢鏈?statData锛岀簿绠€鎬荤粨鍏跺睘鎬с€俙;
+const DEFAULT_STRUCTURED_ABILITY_PROMPT = `璁板綍涓昏鐨勮兘鍔?鎶€鑳姐€傝鏄庣被鍨嬨€佹晥鏋溿€佽Е鍙戞潯浠躲€佷唬浠枫€傝嫢鑳藉姏琚仐蹇?鍓ュず/澶辨晥锛屽皢鍏跺悕瀛楀姞鍏?deletedAbilities銆傝嫢鏈?statData锛岀簿绠€鎬荤粨鍏舵暟鍊笺€俙;
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `杈撳嚭瑕佹眰锛氬彧杈撳嚭涓ユ牸 JSON銆傚悇瀛楁瑕佸～鍐欏畬鏁达紝statInfo 鍙～鍏抽敭鏁板€肩殑绮剧畝鎬荤粨锛?-2琛岋級銆?
 
-结构：{"characters":[...],"equipments":[...],"abilities":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedAbilities":[...]}
+缁撴瀯锛歿"characters":[...],"equipments":[...],"abilities":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedAbilities":[...]}
 
-characters 条目结构：{name,uid,aliases[],faction,status,personality,corePersonality:"核心性格锚点（不轻易改变�?,motivation:"角色独立动机/目标",relationshipStage:"陌生|初识|熟悉|信任|亲密",background,relationToProtagonist,keyEvents[],statInfo,isNew,isUpdated}
+characters 鏉＄洰缁撴瀯锛歿name,uid,aliases[],faction,status,personality,corePersonality:"鏍稿績鎬ф牸閿氱偣锛堜笉杞绘槗鏀瑰彉锛?,motivation:"瑙掕壊鐙珛鍔ㄦ満/鐩爣",relationshipStage:"闄岀敓|鍒濊瘑|鐔熸倝|淇′换|浜插瘑",background,relationToProtagonist,keyEvents[],statInfo,isNew,isUpdated}
 
-equipments 条目结构：{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}
+equipments 鏉＄洰缁撴瀯锛歿name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}
 
-abilities 条目结构：{name,uid,type,effects,trigger,cost,statInfo,boundEvents[],isNegative,isNew}`;
+abilities 鏉＄洰缁撴瀯锛歿name,uid,type,effects,trigger,cost,statInfo,boundEvents[],isNegative,isNew}`;
 
-// ===== ROLL 判定默认配置 =====
+// ===== ROLL 鍒ゅ畾榛樿閰嶇疆 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
-  { key: 'combat', label: '战斗', keywords: ['战斗', '攻击', '出手', '挥剑', '射击', '格挡', '闪避', '搏斗', '�?, '杀', '�?, 'fight', 'attack', 'strike'] },
-  { key: 'persuade', label: '劝说', keywords: ['劝说', '说服', '谈判', '交涉', '威胁', '恐吓', '欺骗', 'persuade', 'negotiate', 'intimidate', 'deceive'] },
-  { key: 'learn', label: '学习', keywords: ['学习', '修炼', '练习', '研究', '掌握', '学会', '技�?, 'learn', 'train', 'practice'] },
+  { key: 'combat', label: '鎴樻枟', keywords: ['鎴樻枟', '鏀诲嚮', '鍑烘墜', '鎸ュ墤', '灏勫嚮', '鏍兼尅', '闂伩', '鎼忔枟', '鐮?, '鏉€', '鎵?, 'fight', 'attack', 'strike'] },
+  { key: 'persuade', label: '鍔濊', keywords: ['鍔濊', '璇存湇', '璋堝垽', '浜ゆ秹', '濞佽儊', '鎭愬悡', '娆洪獥', 'persuade', 'negotiate', 'intimidate', 'deceive'] },
+  { key: 'learn', label: '瀛︿範', keywords: ['瀛︿範', '淇偧', '缁冧範', '鐮旂┒', '鎺屾彙', '瀛︿細', '鎶€鑳?, 'learn', 'train', 'practice'] },
 ]);
 const DEFAULT_ROLL_FORMULAS = Object.freeze({
   combat: '(PC.str + PC.dex + PC.atk + MOD.total + CTX.bonus + CTX.penalty) / 4',
@@ -181,114 +181,114 @@ const DEFAULT_ROLL_FORMULAS = Object.freeze({
   default: 'MOD.total',
 });
 const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze(['skill', 'talent', 'trait', 'buff', 'equipment']);
-const DEFAULT_ROLL_SYSTEM_PROMPT = `你是一个专业的TRPG/ROLL点裁判�?
+const DEFAULT_ROLL_SYSTEM_PROMPT = `浣犳槸涓€涓笓涓氱殑TRPG/ROLL鐐硅鍒ゃ€?
 
-【任务�?
-- 根据用户行为与属性数�?(statDataJson) 进行动作判定�?
-- 难度模式 difficulty：simple (简�? / normal (普�? / hard (困难) / hell (地狱)�?
-- 设定 成功阈�?DC (Difficulty Class)�?
+銆愪换鍔°€?
+- 鏍规嵁鐢ㄦ埛琛屼负涓庡睘鎬ф暟鎹?(statDataJson) 杩涜鍔ㄤ綔鍒ゅ畾銆?
+- 闅惧害妯″紡 difficulty锛歴imple (绠€鍗? / normal (鏅€? / hard (鍥伴毦) / hell (鍦扮嫳)銆?
+- 璁惧畾 鎴愬姛闃堝€?DC (Difficulty Class)锛?
   - normal: DC 15~20
   - hard: DC 20~25
   - hell: DC 25~30
-  - 成功判定基于 margin (final - threshold)�?
-    - margin >= 8 : critical_success (大成�?
-    - margin 0 ~ 7 : success (成功)
-    - margin -1 ~ -7 : failure (失败)
-    - margin <= -8 : fumble (大失�?
+  - 鎴愬姛鍒ゅ畾鍩轰簬 margin (final - threshold)锛?
+    - margin >= 8 : critical_success (澶ф垚鍔?
+    - margin 0 ~ 7 : success (鎴愬姛)
+    - margin -1 ~ -7 : failure (澶辫触)
+    - margin <= -8 : fumble (澶уけ璐?
 
-【数值映射建议�?
-- 将文本描述的等级转化为数值修�?(MOD)�?
+銆愭暟鍊兼槧灏勫缓璁€?
+- 灏嗘枃鏈弿杩扮殑绛夌骇杞寲涓烘暟鍊间慨姝?(MOD)锛?
   - F=0, E=+0.5, D=+1, C=+2, B=+3, A=+4, S=+6, SS=+8, SSS=+10
-  - 若为数�?(�?Lv.5)，则直接取�?(�?+5)�?
-- 品级修正：若装备/技能有稀有度划分，可参考上述映射给予额外加值�?
-- Buff/Debuff：根据上下文给予 +/- 1~5 的临时调整�?
+  - 鑻ヤ负鏁板€?(濡?Lv.5)锛屽垯鐩存帴鍙栧€?(濡?+5)銆?
+- 鍝佺骇淇锛氳嫢瑁呭/鎶€鑳芥湁绋€鏈夊害鍒掑垎锛屽彲鍙傝€冧笂杩版槧灏勭粰浜堥澶栧姞鍊笺€?
+- Buff/Debuff锛氭牴鎹笂涓嬫枃缁欎簣 +/- 1~5 鐨勪复鏃惰皟鏁淬€?
 
-【D20 规则参考�?
-- 核心公式：d20 + 属性修�?+ 熟练�?+ 其他修正 >= DC
-- randomRoll (1~100) 换算�?d20 = ceil(randomRoll / 5)�?
-- 大成�?大失败：
-  - d20 = 20 (�?randomRoll 96~100) 视为“大成功�?不论数值，除非 DC 极高)�?
-  - d20 = 1 (�?randomRoll 1~5) 视为“大失败”�?
+銆怐20 瑙勫垯鍙傝€冦€?
+- 鏍稿績鍏紡锛歞20 + 灞炴€т慨姝?+ 鐔熺粌鍊?+ 鍏朵粬淇 >= DC
+- randomRoll (1~100) 鎹㈢畻涓?d20 = ceil(randomRoll / 5)銆?
+- 澶ф垚鍔?澶уけ璐ワ細
+  - d20 = 20 (鍗?randomRoll 96~100) 瑙嗕负鈥滃ぇ鎴愬姛鈥?涓嶈鏁板€硷紝闄ら潪 DC 鏋侀珮)銆?
+  - d20 = 1 (鍗?randomRoll 1~5) 瑙嗕负鈥滃ぇ澶辫触鈥濄€?
 
-【计算流程�?
-1. 确定 action (动作类型) �?formula (计算公式)�?
-2. 计算 base (基础�? �?mods (所有修正来源之�?�?
-3. 计算 final = base + mods + 随机要素�?
-4. 比较 final �?threshold，得�?success (true/false) �?outcomeTier�?
+銆愯绠楁祦绋嬨€?
+1. 纭畾 action (鍔ㄤ綔绫诲瀷) 涓?formula (璁＄畻鍏紡)銆?
+2. 璁＄畻 base (鍩虹鍊? 涓?mods (鎵€鏈変慨姝ｆ潵婧愪箣鍜?銆?
+3. 璁＄畻 final = base + mods + 闅忔満瑕佺礌銆?
+4. 姣旇緝 final 涓?threshold锛屽緱鍑?success (true/false) 涓?outcomeTier銆?
 
-【输出要求�?
-- 必须输出符合 JSON Requirement �?JSON 格式�?
-- explanation: 简短描述判定过程与结果 (1~2�?�?
-- analysisSummary: 汇总修正来源与关键映射逻辑�?
+銆愯緭鍑鸿姹傘€?
+- 蹇呴』杈撳嚭绗﹀悎 JSON Requirement 鐨?JSON 鏍煎紡銆?
+- explanation: 绠€鐭弿杩板垽瀹氳繃绋嬩笌缁撴灉 (1~2鍙?銆?
+- analysisSummary: 姹囨€讳慨姝ｆ潵婧愪笌鍏抽敭鏄犲皠閫昏緫銆?
 `;
 
-const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
-const ROLL_JSON_REQUIREMENT = `输出要求（严�?JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，建议包含“修正来源汇�?映射应用”两段；explanation 建议 1~2 句。`;
-const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严�?JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
+const DEFAULT_ROLL_USER_TEMPLATE = `鍔ㄤ綔={{action}}\n鍏紡={{formula}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
+const ROLL_JSON_REQUIREMENT = `杈撳嚭瑕佹眰锛堜弗鏍?JSON锛夛細\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}\n- analysisSummary 鍙€夛紝鐢ㄤ簬鏃ュ織鏄剧ず锛屽缓璁寘鍚€滀慨姝ｆ潵婧愭眹鎬?鏄犲皠搴旂敤鈥濅袱娈碉紱explanation 寤鸿 1~2 鍙ャ€俙;
+const ROLL_DECISION_JSON_REQUIREMENT = `杈撳嚭瑕佹眰锛堜弗鏍?JSON锛夛細\n- 鑻ユ棤闇€鍒ゅ畾锛氬彧杈撳嚭 {"needRoll": false}銆俓n- 鑻ラ渶瑕佸垽瀹氾細杈撳嚭 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}銆俓n- 涓嶈 Markdown銆佷笉瑕佷唬鐮佸潡銆佷笉瑕佷换浣曞浣欐枃瀛椼€俙;
 
-const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是一个判定动作是否需要ROLL点的辅助AI�?
+const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `浣犳槸涓€涓垽瀹氬姩浣滄槸鍚﹂渶瑕丷OLL鐐圭殑杈呭姪AI銆?
 
-【任务�?
-- 核心任务是判断用户的行为是否需要进行随机性判�?(ROLL)�?
-- 只有当行为具有不确定性、挑战性或对抗性时才需�?ROLL�?
-- �?needRoll=true，则同时进行判定计算�?
+銆愪换鍔°€?
+- 鏍稿績浠诲姟鏄垽鏂敤鎴风殑琛屼负鏄惁闇€瑕佽繘琛岄殢鏈烘€у垽瀹?(ROLL)銆?
+- 鍙湁褰撹涓哄叿鏈変笉纭畾鎬с€佹寫鎴樻€ф垨瀵规姉鎬ф椂鎵嶉渶瑕?ROLL銆?
+- 鑻?needRoll=true锛屽垯鍚屾椂杩涜鍒ゅ畾璁＄畻銆?
 
-【判定原�?(needRoll)�?
+銆愬垽瀹氬師鍒?(needRoll)銆?
 - needRoll = false: 
-  - 日常行为 (吃饭/走路/闲聊)�?
-  - 必定成功的行�?(没有干扰/难度极低)�?
-  - 纯粹的情感表达或心理活动�?
+  - 鏃ュ父琛屼负 (鍚冮キ/璧拌矾/闂茶亰)銆?
+  - 蹇呭畾鎴愬姛鐨勮涓?(娌℃湁骞叉壈/闅惧害鏋佷綆)銆?
+  - 绾补鐨勬儏鎰熻〃杈炬垨蹇冪悊娲诲姩銆?
 - needRoll = true:
-  - 战斗/攻击/防御�?
-  - 尝试说服/欺骗/恐吓他人�?
-  - 具有风险或难度的动作 (撬锁/攀�?潜行)�?
-  - 知识检�?感知检�?(发现隐藏线索)�?
+  - 鎴樻枟/鏀诲嚮/闃插尽銆?
+  - 灏濊瘯璇存湇/娆洪獥/鎭愬悡浠栦汉銆?
+  - 鍏锋湁椋庨櫓鎴栭毦搴︾殑鍔ㄤ綔 (鎾攣/鏀€鐖?娼滆)銆?
+  - 鐭ヨ瘑妫€瀹?鎰熺煡妫€瀹?(鍙戠幇闅愯棌绾跨储)銆?
 
-【若 needRoll=true，计算参考�?
-- 难度模式 difficulty �?成功阈�?DC (simple/normal/hard/hell)�?
-- 数值映射建议：F=0, E=+0.5, D=+1, C=+2, B=+3, A=+4, S=+6, SS=+8, SSS=+10�?
-- 品级修正：参考装�?技能品级�?
-- margin 判定�?=8 大成功，0~7 成功�?1~-7 失败�?=-8 大失败�?
+銆愯嫢 needRoll=true锛岃绠楀弬鑰冦€?
+- 闅惧害妯″紡 difficulty 涓?鎴愬姛闃堝€?DC (simple/normal/hard/hell)銆?
+- 鏁板€兼槧灏勫缓璁細F=0, E=+0.5, D=+1, C=+2, B=+3, A=+4, S=+6, SS=+8, SSS=+10銆?
+- 鍝佺骇淇锛氬弬鑰冭澶?鎶€鑳藉搧绾с€?
+- margin 鍒ゅ畾锛?=8 澶ф垚鍔燂紝0~7 鎴愬姛锛?1~-7 澶辫触锛?=-8 澶уけ璐ャ€?
 
-【输出要求�?
-- 若无需判定：{"needRoll": false}
-- 若需要判定：{"needRoll": true, "result": { ...完整计算过程... }}
-- 严格遵循 JSON Requirement 格式，不要输�?Markdown 代码块�?
+銆愯緭鍑鸿姹傘€?
+- 鑻ユ棤闇€鍒ゅ畾锛歿"needRoll": false}
+- 鑻ラ渶瑕佸垽瀹氾細{"needRoll": true, "result": { ...瀹屾暣璁＄畻杩囩▼... }}
+- 涓ユ牸閬靛惊 JSON Requirement 鏍煎紡锛屼笉瑕佽緭鍑?Markdown 浠ｇ爜鍧椼€?
 `;
 
-const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
+const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `鐢ㄦ埛杈撳叆={{userText}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
 
-  // 输入截取
+  // 杈撳叆鎴彇
   maxMessages: 40,
   maxCharsPerMessage: 1600,
   includeUser: true,
   includeAssistant: true,
 
-  // 生成控制（仍保留剧透与 temperature；更多风格可通过自定�?system/constraints 做）
+  // 鐢熸垚鎺у埗锛堜粛淇濈暀鍓ч€忎笌 temperature锛涙洿澶氶鏍煎彲閫氳繃鑷畾涔?system/constraints 鍋氾級
   spoilerLevel: 'mild', // none | mild | full
   temperature: 0.4,
 
-  // 自动刷新（面板报告）
+  // 鑷姩鍒锋柊锛堥潰鏉挎姤鍛婏級
   autoRefresh: false,
   autoRefreshOn: 'received', // received | sent | both
   debounceMs: 1200,
 
-  // 自动追加到正文末�?
+  // 鑷姩杩藉姞鍒版鏂囨湯灏?
   autoAppendBox: true,
   appendMode: 'compact', // compact | standard
   appendDebounceMs: 700,
 
-  // 追加框展示哪些模�?
+  // 杩藉姞妗嗗睍绀哄摢浜涙ā鍧?
   inlineModulesSource: 'inline', // inline | panel | all
-  inlineShowEmpty: false,        // 是否显示空字段占�?
+  inlineShowEmpty: false,        // 鏄惁鏄剧ず绌哄瓧娈靛崰浣?
 
   // provider
   provider: 'st', // st | custom
 
-  // custom API（建议填“API基础URL”，�?https://api.openai.com/v1 �?
+  // custom API锛堝缓璁～鈥淎PI鍩虹URL鈥濓紝濡?https://api.openai.com/v1 锛?
   customEndpoint: '',
   customApiKey: '',
   customModel: 'gpt-4o-mini',
@@ -297,39 +297,39 @@ const DEFAULT_SETTINGS = Object.freeze({
   customMaxTokens: 8192,
   customStream: false,
 
-  // 预设导入/导出
+  // 棰勮瀵煎叆/瀵煎嚭
   presetIncludeApiKey: false,
 
-  // 世界书（World Info/Lorebook）导入与注入
+  // 涓栫晫涔︼紙World Info/Lorebook锛夊鍏ヤ笌娉ㄥ叆
   worldbookEnabled: false,
   worldbookMode: 'active', // active | all
   worldbookMaxChars: 6000,
   worldbookWindowMessages: 18,
   worldbookJson: '',
 
-  // ===== 总结功能（独立于剧情提示�?API 设置�?=====
+  // ===== 鎬荤粨鍔熻兘锛堢嫭绔嬩簬鍓ф儏鎻愮ず鐨?API 璁剧疆锛?=====
   summaryEnabled: false,
-  // 多少“楼层”总结一次（楼层统计方式�?summaryCountMode�?
+  // 澶氬皯鈥滄ゼ灞傗€濇€荤粨涓€娆★紙妤煎眰缁熻鏂瑰紡瑙?summaryCountMode锛?
   summaryEvery: 20,
-  // 手动楼层范围总结：是否按“每 N 层”拆分生成多条（N=summaryEvery�?
+  // 鎵嬪姩妤煎眰鑼冨洿鎬荤粨锛氭槸鍚︽寜鈥滄瘡 N 灞傗€濇媶鍒嗙敓鎴愬鏉★紙N=summaryEvery锛?
   summaryManualSplit: false,
-  // assistant: 仅统�?AI 回复；all: 统计全部消息（用�?AI�?
+  // assistant: 浠呯粺璁?AI 鍥炲锛沘ll: 缁熻鍏ㄩ儴娑堟伅锛堢敤鎴?AI锛?
   summaryCountMode: 'assistant',
-  // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最�?summaryEvery �?
+  // 鑷姩鎬荤粨鏃讹紝榛樿鍙€荤粨鈥滀笂娆℃€荤粨涔嬪悗鏂板鈥濈殑鍐呭锛涢娆″垯鎬荤粨鏈€杩?summaryEvery 娈?
   summaryMaxCharsPerMessage: 4000,
   summaryMaxTotalChars: 24000,
 
-  // 是否读取 stat_data 变量作为总结上下文（类似 roll 点模块）
+  // 鏄惁璇诲彇 stat_data 鍙橀噺浣滀负鎬荤粨涓婁笅鏂囷紙绫讳技 roll 鐐规ā鍧楋級
   summaryReadStatData: false,
   summaryStatVarName: 'stat_data',
 
-  // 总结调用方式：st=走酒馆当前已连接�?LLM；custom=独立 OpenAI 兼容 API
+  // 鎬荤粨璋冪敤鏂瑰紡锛歴t=璧伴厭棣嗗綋鍓嶅凡杩炴帴鐨?LLM锛沜ustom=鐙珛 OpenAI 鍏煎 API
   summaryProvider: 'st',
   summaryTemperature: 0.4,
 
-  // 自定义总结提示词（可选）
-  // - system：决定总结风格/重点
-  // - userTemplate：决定如何把楼层范围/对话片段塞给模型（支持占位符�?
+  // 鑷畾涔夋€荤粨鎻愮ず璇嶏紙鍙€夛級
+  // - system锛氬喅瀹氭€荤粨椋庢牸/閲嶇偣
+  // - userTemplate锛氬喅瀹氬浣曟妸妤煎眰鑼冨洿/瀵硅瘽鐗囨濉炵粰妯″瀷锛堟敮鎸佸崰浣嶇锛?
   summarySystemPrompt: DEFAULT_SUMMARY_SYSTEM_PROMPT,
   summaryUserTemplate: DEFAULT_SUMMARY_USER_TEMPLATE,
   summaryCustomEndpoint: '',
@@ -339,54 +339,54 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryCustomMaxTokens: 2048,
   summaryCustomStream: false,
 
-  // 总结结果写入世界书（Lorebook / World Info�?
-  // —�?绿灯世界书（关键词触发）—�?
+  // 鎬荤粨缁撴灉鍐欏叆涓栫晫涔︼紙Lorebook / World Info锛?
+  // 鈥斺€?缁跨伅涓栫晫涔︼紙鍏抽敭璇嶈Е鍙戯級鈥斺€?
   summaryToWorldInfo: true,
-  // 写入指定世界书文件名
+  // 鍐欏叆鎸囧畾涓栫晫涔︽枃浠跺悕
   summaryWorldInfoTarget: 'file',
   summaryWorldInfoFile: '',
-  summaryWorldInfoCommentPrefix: '剧情总结',
+  summaryWorldInfoCommentPrefix: '鍓ф儏鎬荤粨',
 
-  // 总结写入世界�?key（触发词）的来源
-  // - keywords: 使用模型输出�?keywords（默认）
-  // - indexId: 使用自动生成的索引编号（�?A-001），只写 1 个触发词，触发更精确
+  // 鎬荤粨鍐欏叆涓栫晫涔?key锛堣Е鍙戣瘝锛夌殑鏉ユ簮
+  // - keywords: 浣跨敤妯″瀷杈撳嚭鐨?keywords锛堥粯璁わ級
+  // - indexId: 浣跨敤鑷姩鐢熸垚鐨勭储寮曠紪鍙凤紙濡?A-001锛夛紝鍙啓 1 涓Е鍙戣瘝锛岃Е鍙戞洿绮剧‘
   summaryWorldInfoKeyMode: 'keywords',
-  // �?keyMode=indexId 时：索引编号格式
+  // 褰?keyMode=indexId 鏃讹細绱㈠紩缂栧彿鏍煎紡
   summaryIndexPrefix: 'A-',
   summaryIndexPad: 3,
   summaryIndexStart: 1,
-  // 是否把索引编号写入条目标题（comment），便于世界书列表定�?
+  // 鏄惁鎶婄储寮曠紪鍙峰啓鍏ユ潯鐩爣棰橈紙comment锛夛紝渚夸簬涓栫晫涔﹀垪琛ㄥ畾浣?
   summaryIndexInComment: true,
 
-  // —�?蓝灯世界书（常开索引：给本插件做检索用）—�?
-  // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个�?
+  // 鈥斺€?钃濈伅涓栫晫涔︼紙甯稿紑绱㈠紩锛氱粰鏈彃浠跺仛妫€绱㈢敤锛夆€斺€?
+  // 娉ㄦ剰锛氳摑鐏笘鐣屼功寤鸿鍐欏叆鈥滄寚瀹氫笘鐣屼功鏂囦欢鍚嶁€濓紝鍥犱负 chatbook 閫氬父鍙湁涓€涓€?
   summaryToBlueWorldInfo: true,
   summaryBlueWorldInfoFile: '',
-  summaryBlueWorldInfoCommentPrefix: '剧情总结',
+  summaryBlueWorldInfoCommentPrefix: '鍓ф儏鎬荤粨',
 
-  // —�?自动绑定世界书（每个聊天自动生成专属世界书）—�?
+  // 鈥斺€?鑷姩缁戝畾涓栫晫涔︼紙姣忎釜鑱婂ぉ鑷姩鐢熸垚涓撳睘涓栫晫涔︼級鈥斺€?
   autoBindWorldInfo: false,
   autoBindWorldInfoPrefix: 'SG',
 
-  // —�?蓝灯索引 �?绿灯触发 —�?
+  // 鈥斺€?钃濈伅绱㈠紩 鈫?缁跨伅瑙﹀彂 鈥斺€?
   wiTriggerEnabled: false,
 
-  // 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API�?
+  // 鍖归厤鏂瑰紡锛歭ocal=鏈湴鐩镐技搴︼紱llm=LLM 缁煎悎鍒ゆ柇锛堝彲鑷畾涔夋彁绀鸿瘝 & 鐙珛 API锛?
   wiTriggerMatchMode: 'local',
 
-  // —�?索引 LLM（独立于总结 API 的第二套配置）—�?
+  // 鈥斺€?绱㈠紩 LLM锛堢嫭绔嬩簬鎬荤粨 API 鐨勭浜屽閰嶇疆锛夆€斺€?
   wiIndexProvider: 'st',         // st | custom
   wiIndexTemperature: 0.2,
   wiIndexTopP: 0.95,
   wiIndexSystemPrompt: DEFAULT_INDEX_SYSTEM_PROMPT,
   wiIndexUserTemplate: DEFAULT_INDEX_USER_TEMPLATE,
 
-  // LLM 模式：先用本地相似度预筛�?TopK，再交给模型综合判断（更�?tokens�?
+  // LLM 妯″紡锛氬厛鐢ㄦ湰鍦扮浉浼煎害棰勭瓫閫?TopK锛屽啀浜ょ粰妯″瀷缁煎悎鍒ゆ柇锛堟洿鐪?tokens锛?
   wiIndexPrefilterTopK: 24,
-  // 每条候选摘要截断字符（控制 tokens�?
+  // 姣忔潯鍊欓€夋憳瑕佹埅鏂瓧绗︼紙鎺у埗 tokens锛?
   wiIndexCandidateMaxChars: 420,
 
-  // 索引独立 OpenAI 兼容 API
+  // 绱㈠紩鐙珛 OpenAI 鍏煎 API
   wiIndexCustomEndpoint: '',
   wiIndexCustomApiKey: '',
   wiIndexCustomModel: 'gpt-4o-mini',
@@ -394,34 +394,34 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiIndexCustomMaxTokens: 1024,
   wiIndexCustomStream: false,
 
-  // 在用户发送消息前（MESSAGE_SENT）读取“最�?N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目�?
+  // 鍦ㄧ敤鎴峰彂閫佹秷鎭墠锛圡ESSAGE_SENT锛夎鍙栤€滄渶杩?N 鏉℃秷鎭鏂団€濓紙涓嶅惈褰撳墠鏉★級锛屼粠钃濈伅绱㈠紩閲屾寫鐩稿叧鏉＄洰銆?
   wiTriggerLookbackMessages: 20,
-  // 是否把“本次用户输入”纳入索引匹配（综合判断）�?
+  // 鏄惁鎶娾€滄湰娆＄敤鎴疯緭鍏モ€濈撼鍏ョ储寮曞尮閰嶏紙缁煎悎鍒ゆ柇锛夈€?
   wiTriggerIncludeUserMessage: true,
-  // 本次用户输入在相似度向量中的权重（越大越看重用户输入�?=与最近正文同权重�?
+  // 鏈鐢ㄦ埛杈撳叆鍦ㄧ浉浼煎害鍚戦噺涓殑鏉冮噸锛堣秺澶ц秺鐪嬮噸鐢ㄦ埛杈撳叆锛?=涓庢渶杩戞鏂囧悓鏉冮噸锛?
   wiTriggerUserMessageWeight: 1.6,
-  // 至少已有 N �?AI 回复（楼层）才开始索引触发；0=立即
+  // 鑷冲皯宸叉湁 N 鏉?AI 鍥炲锛堟ゼ灞傦級鎵嶅紑濮嬬储寮曡Е鍙戯紱0=绔嬪嵆
   wiTriggerStartAfterAssistantMessages: 0,
-  // 最多选择多少�?summary 条目来触�?
+  // 鏈€澶氶€夋嫨澶氬皯鏉?summary 鏉＄洰鏉ヨЕ鍙?
   wiTriggerMaxEntries: 4,
-  // 分类最大索引数
-  wiTriggerMaxCharacters: 2, // 最多索引多少个人物条目
-  wiTriggerMaxEquipments: 2, // 最多索引多少个装备条目
-  wiTriggerMaxPlot: 3,       // 最多索引多少个剧情条目（优先较久远的）
-  // 相关度阈值（0~1，越大越严格�?
+  // 鍒嗙被鏈€澶х储寮曟暟
+  wiTriggerMaxCharacters: 2, // 鏈€澶氱储寮曞灏戜釜浜虹墿鏉＄洰
+  wiTriggerMaxEquipments: 2, // 鏈€澶氱储寮曞灏戜釜瑁呭鏉＄洰
+  wiTriggerMaxPlot: 3,       // 鏈€澶氱储寮曞灏戜釜鍓ф儏鏉＄洰锛堜紭鍏堣緝涔呰繙鐨勶級
+  // 鐩稿叧搴﹂槇鍊硷紙0~1锛岃秺澶ц秺涓ユ牸锛?
   wiTriggerMinScore: 0.08,
-  // 最多注入多少个触发词（去重后）
+  // 鏈€澶氭敞鍏ュ灏戜釜瑙﹀彂璇嶏紙鍘婚噸鍚庯級
   wiTriggerMaxKeywords: 24,
-  // 注入模式：appendToUser = 追加到用户消息末�?
+  // 娉ㄥ叆妯″紡锛歛ppendToUser = 杩藉姞鍒扮敤鎴锋秷鎭湯灏?
   wiTriggerInjectMode: 'appendToUser',
-  // 注入样式：hidden=HTML 注释隐藏；plain=直接文本（更稳）
+  // 娉ㄥ叆鏍峰紡锛歨idden=HTML 娉ㄩ噴闅愯棌锛沺lain=鐩存帴鏂囨湰锛堟洿绋筹級
   wiTriggerInjectStyle: 'hidden',
   wiTriggerTag: 'SG_WI_TRIGGERS',
   wiTriggerDebugLog: false,
 
-  // ROLL 判定（本回合行动判定�?
+  // ROLL 鍒ゅ畾锛堟湰鍥炲悎琛屽姩鍒ゅ畾锛?
   wiRollEnabled: false,
-  wiRollStatSource: 'variable', // variable (综合多来�? | template | latest
+  wiRollStatSource: 'variable', // variable (缁煎悎澶氭潵婧? | template | latest
   wiRollStatVarName: 'stat_data',
   wiRollRandomWeight: 0.3,
   wiRollDifficulty: 'normal',
@@ -439,84 +439,84 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiRollCustomTemperature: 0.2,
   wiRollCustomStream: false,
 
-  // 蓝灯索引读取方式：默认“实时读取蓝灯世界书文件�?
-  // - live：每次触发前会按需拉取蓝灯世界书（带缓�?节流�?
-  // - cache：只使用导入/缓存�?summaryBlueIndex
+  // 钃濈伅绱㈠紩璇诲彇鏂瑰紡锛氶粯璁も€滃疄鏃惰鍙栬摑鐏笘鐣屼功鏂囦欢鈥?
+  // - live锛氭瘡娆¤Е鍙戝墠浼氭寜闇€鎷夊彇钃濈伅涓栫晫涔︼紙甯︾紦瀛?鑺傛祦锛?
+  // - cache锛氬彧浣跨敤瀵煎叆/缂撳瓨鐨?summaryBlueIndex
   wiBlueIndexMode: 'live',
-  // 读取蓝灯索引时使用的世界书文件名；留空则回退使用 summaryBlueWorldInfoFile
+  // 璇诲彇钃濈伅绱㈠紩鏃朵娇鐢ㄧ殑涓栫晫涔︽枃浠跺悕锛涚暀绌哄垯鍥為€€浣跨敤 summaryBlueWorldInfoFile
   wiBlueIndexFile: '',
-  // 实时读取的最小刷新间隔（秒），防止每条消息都请求一�?
+  // 瀹炴椂璇诲彇鐨勬渶灏忓埛鏂伴棿闅旓紙绉掞級锛岄槻姝㈡瘡鏉℃秷鎭兘璇锋眰涓€娆?
   wiBlueIndexMinRefreshSec: 20,
 
-  // 蓝灯索引缓存（可选：用于检索；每条�?{title, summary, keywords, range?}�?
+  // 钃濈伅绱㈠紩缂撳瓨锛堝彲閫夛細鐢ㄤ簬妫€绱紱姣忔潯涓?{title, summary, keywords, range?}锛?
   summaryBlueIndex: [],
 
-  // 模块自定义（JSON 字符�?+ 解析备份�?
+  // 妯″潡鑷畾涔夛紙JSON 瀛楃涓?+ 瑙ｆ瀽澶囦唤锛?
   modulesJson: '',
-  // 额外可自定义提示词“骨架�?
-  customSystemPreamble: '',     // 附加在默�?system 之后
-  customConstraints: '',        // 附加在默�?constraints 之后
+  // 棰濆鍙嚜瀹氫箟鎻愮ず璇嶁€滈鏋垛€?
+  customSystemPreamble: '',     // 闄勫姞鍦ㄩ粯璁?system 涔嬪悗
+  customConstraints: '',        // 闄勫姞鍦ㄩ粯璁?constraints 涔嬪悗
 
-  // ===== 结构化世界书条目（人�?装备/能力�?=====
+  // ===== 缁撴瀯鍖栦笘鐣屼功鏉＄洰锛堜汉鐗?瑁呭/鑳藉姏锛?=====
   structuredEntriesEnabled: true,
   characterEntriesEnabled: true,
   equipmentEntriesEnabled: true,
-  abilityEntriesEnabled: false, // 默认关闭
-  characterEntryPrefix: '人物',
-  equipmentEntryPrefix: '装备',
-  abilityEntryPrefix: '能力',
+  abilityEntriesEnabled: false, // 榛樿鍏抽棴
+  characterEntryPrefix: '浜虹墿',
+  equipmentEntryPrefix: '瑁呭',
+  abilityEntryPrefix: '鑳藉姏',
   structuredEntriesSystemPrompt: '',
   structuredEntriesUserTemplate: '',
   structuredCharacterPrompt: '',
   structuredEquipmentPrompt: '',
   structuredAbilityPrompt: '',
 
-  // ===== 快捷选项功能 =====
+  // ===== 蹇嵎閫夐」鍔熻兘 =====
   quickOptionsEnabled: true,
   quickOptionsShowIn: 'inline', // inline | panel | both
-  // 预设默认选项（JSON 字符串）: [{label, prompt}]
+  // 棰勮榛樿閫夐」锛圝SON 瀛楃涓诧級: [{label, prompt}]
   quickOptionsJson: JSON.stringify([
-    { label: '继续', prompt: '继续当前剧情发展' },
-    { label: '详述', prompt: '请更详细地描述当前场�? },
-    { label: '对话', prompt: '让角色之间展开更多对话' },
-    { label: '行动', prompt: '描述接下来的具体行动' },
+    { label: '缁х画', prompt: '缁х画褰撳墠鍓ф儏鍙戝睍' },
+    { label: '璇﹁堪', prompt: '璇锋洿璇︾粏鍦版弿杩板綋鍓嶅満鏅? },
+    { label: '瀵硅瘽', prompt: '璁╄鑹蹭箣闂村睍寮€鏇村瀵硅瘽' },
+    { label: '琛屽姩', prompt: '鎻忚堪鎺ヤ笅鏉ョ殑鍏蜂綋琛屽姩' },
   ], null, 2),
 
-  // ===== 地图功能 =====
+  // ===== 鍦板浘鍔熻兘 =====
   mapEnabled: false,
   mapAutoUpdate: true,
-  mapSystemPrompt: `从对话中提取地点信息，并尽量还原空间关系�?
-  1. 识别当前主角所在的地点名称
-  2. 识别提及的新地点
-  3. 判断地点之间的连接关系（哪些地点相邻/可通行，方向感如：�?�?�?�?楼上/楼下�?
-  4. 记录该地点发生的重要事件（事件用一句话，包含触发条�?影响�?
-  5. 若文本明确提到相对位�?楼层/方位，请给出 row/col（网格坐标）或相邻关�?
-  6. 在原著世界观下，结合谷歌搜索的原著资料补充“待探索地点”，并为每个地点写明可能触发的任�?简�?
-  7. 待探索地点数量不超过 6 个，避免与已有地点重复；若对话中地点较少，至少补�?2 个待探索地点
-  8. 若无法给�?row/col，至少给�?connectedTo 或方位词
-  9. 没有明确依据时用“待确认”描述，不要乱猜
-  10. 必须输出 currentLocation/newLocations/events 三个字段，数组可为空但字段必须存在；newLocations 总数不少�?3（含待探索地点）
-  11. 为地点补充分�?图层信息：group（室�?室内/楼层区域等），layer（如“一�?二层/地下”）
-  12. 事件允许附带 tags（如：战�?任务/对话/解谜/探索），每个事件 1~3 个标�?
-  13. 避免同义地点重复：输出前先合并同义词（如 豪宅/宅邸/府邸/公馆；学�?学院/学校；城�?要塞/王城；寺�?神殿/道观/教堂；洞�?洞窟；遗�?秘境�?
-  14. 仅依据对�?设定/原著信息进行推断，不要引入无根据的信�?
+  mapSystemPrompt: `浠庡璇濅腑鎻愬彇鍦扮偣淇℃伅锛屽苟灏介噺杩樺師绌洪棿鍏崇郴锛?
+  1. 璇嗗埆褰撳墠涓昏鎵€鍦ㄧ殑鍦扮偣鍚嶇О
+  2. 璇嗗埆鎻愬強鐨勬柊鍦扮偣
+  3. 鍒ゆ柇鍦扮偣涔嬮棿鐨勮繛鎺ュ叧绯伙紙鍝簺鍦扮偣鐩搁偦/鍙€氳锛屾柟鍚戞劅濡傦細鍖?鍗?涓?瑗?妤间笂/妤间笅锛?
+  4. 璁板綍璇ュ湴鐐瑰彂鐢熺殑閲嶈浜嬩欢锛堜簨浠剁敤涓€鍙ヨ瘽锛屽寘鍚Е鍙戞潯浠?褰卞搷锛?
+  5. 鑻ユ枃鏈槑纭彁鍒扮浉瀵逛綅缃?妤煎眰/鏂逛綅锛岃缁欏嚭 row/col锛堢綉鏍煎潗鏍囷級鎴栫浉閭诲叧绯?
+  6. 鍦ㄥ師钁椾笘鐣岃涓嬶紝缁撳悎璋锋瓕鎼滅储鐨勫師钁楄祫鏂欒ˉ鍏呪€滃緟鎺㈢储鍦扮偣鈥濓紝骞朵负姣忎釜鍦扮偣鍐欐槑鍙兘瑙﹀彂鐨勪换鍔?绠€浠?
+  7. 寰呮帰绱㈠湴鐐规暟閲忎笉瓒呰繃 6 涓紝閬垮厤涓庡凡鏈夊湴鐐归噸澶嶏紱鑻ュ璇濅腑鍦扮偣杈冨皯锛岃嚦灏戣ˉ鍏?2 涓緟鎺㈢储鍦扮偣
+  8. 鑻ユ棤娉曠粰鍑?row/col锛岃嚦灏戠粰鍑?connectedTo 鎴栨柟浣嶈瘝
+  9. 娌℃湁鏄庣‘渚濇嵁鏃剁敤鈥滃緟纭鈥濇弿杩帮紝涓嶈涔辩寽
+  10. 蹇呴』杈撳嚭 currentLocation/newLocations/events 涓変釜瀛楁锛屾暟缁勫彲涓虹┖浣嗗瓧娈靛繀椤诲瓨鍦紱newLocations 鎬绘暟涓嶅皯浜?3锛堝惈寰呮帰绱㈠湴鐐癸級
+  11. 涓哄湴鐐硅ˉ鍏呭垎缁?鍥惧眰淇℃伅锛歡roup锛堝澶?瀹ゅ唴/妤煎眰鍖哄煙绛夛級锛宭ayer锛堝鈥滀竴灞?浜屽眰/鍦颁笅鈥濓級
+  12. 浜嬩欢鍏佽闄勫甫 tags锛堝锛氭垬鏂?浠诲姟/瀵硅瘽/瑙ｈ皽/鎺㈢储锛夛紝姣忎釜浜嬩欢 1~3 涓爣绛?
+  13. 閬垮厤鍚屼箟鍦扮偣閲嶅锛氳緭鍑哄墠鍏堝悎骞跺悓涔夎瘝锛堝 璞畢/瀹呴偢/搴滈偢/鍏锛涘鍥?瀛﹂櫌/瀛︽牎锛涘煄鍫?瑕佸/鐜嬪煄锛涘搴?绁炴/閬撹/鏁欏爞锛涙礊绌?娲炵獰锛涢仐杩?绉樺锛?
+  14. 浠呬緷鎹璇?璁惧畾/鍘熻憲淇℃伅杩涜鎺ㄦ柇锛屼笉瑕佸紩鍏ユ棤鏍规嵁鐨勪俊鎭?
   
-  输出 JSON 格式�?
+  杈撳嚭 JSON 鏍煎紡锛?
   {
-    "currentLocation": "主角当前所在地�?,
+    "currentLocation": "涓昏褰撳墠鎵€鍦ㄥ湴鐐?,
     "newLocations": [
-      { "name": "地点�?, "description": "简�?, "connectedTo": ["相邻地点1"], "row": 0, "col": 0, "group": "室外", "layer": "一�? }
+      { "name": "鍦扮偣鍚?, "description": "绠€杩?, "connectedTo": ["鐩搁偦鍦扮偣1"], "row": 0, "col": 0, "group": "瀹ゅ", "layer": "涓€灞? }
     ],
     "events": [
-      { "location": "地点�?, "event": "事件描述", "tags": ["任务"] }
+      { "location": "鍦扮偣鍚?, "event": "浜嬩欢鎻忚堪", "tags": ["浠诲姟"] }
     ]
   }`,
 
-  // ===== 图像生成模块 =====
+  // ===== 鍥惧儚鐢熸垚妯″潡 =====
   imageGenEnabled: false,
   novelaiApiKey: '',
   novelaiModel: 'nai-diffusion-4-5-full', // V4.5 Full | V4 Full | V4 Curated | V3
-  novelaiResolution: '832x1216', // 默认立绘尺寸
+  novelaiResolution: '832x1216', // 榛樿绔嬬粯灏哄
   novelaiSteps: 28,
   novelaiScale: 5,
   novelaiSampler: 'k_euler',
@@ -549,14 +549,14 @@ Output format:
   "negative": "tagA, tagB, ..."
 }`,
 
-  // 在线图库设置
+  // 鍦ㄧ嚎鍥惧簱璁剧疆
   imageGalleryEnabled: false,
   imageGalleryUrl: '',
   imageGalleryCache: [],
   imageGalleryCacheTime: 0,
-  imageGalleryMatchPrompt: '你是图片选择助手。根据故事内容，从图库中选择最合适的图片。规则：1.优先匹配角色名称 2.其次匹配场景类型 3.再匹配情�?氛围。输出JSON：{"matchedId":"图片id","reason":"匹配原因"}',
+  imageGalleryMatchPrompt: '浣犳槸鍥剧墖閫夋嫨鍔╂墜銆傛牴鎹晠浜嬪唴瀹癸紝浠庡浘搴撲腑閫夋嫨鏈€鍚堥€傜殑鍥剧墖銆傝鍒欙細1.浼樺厛鍖归厤瑙掕壊鍚嶇О 2.鍏舵鍖归厤鍦烘櫙绫诲瀷 3.鍐嶅尮閰嶆儏缁?姘涘洿銆傝緭鍑篔SON锛歿"matchedId":"鍥剧墖id","reason":"鍖归厤鍘熷洜"}',
 
-  // 图像生成世界书（角色标签库）
+  // 鍥惧儚鐢熸垚涓栫晫涔︼紙瑙掕壊鏍囩搴擄級
   imageGenWorldBookEnabled: false,
   imageGenWorldBookFile: '',
   imageGenWorldBookCache: [],
@@ -584,13 +584,13 @@ let isSummarizing = false;
 let summaryCancelled = false;
 let sgToastTimer = null;
 
-// 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
+// 钃濈伅绱㈠紩鈥滃疄鏃惰鍙栤€濈紦瀛橈紙闃叉姣忔潯娑堟伅閮借姹備竴娆★級
 let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
 
-// ============== 关键：DOM 追加缓存 & 观察者（抗重渲染�?==============
+// ============== 鍏抽敭锛欴OM 杩藉姞缂撳瓨 & 瑙傚療鑰咃紙鎶楅噸娓叉煋锛?==============
 /**
  * inlineCache: Map<mesKey, { htmlInner: string, collapsed: boolean, createdAt: number }>
- * mesKey 优先�?DOM �?mesid（如果拿不到则用 chatIndex�?
+ * mesKey 浼樺厛鐢?DOM 鐨?mesid锛堝鏋滄嬁涓嶅埌鍒欑敤 chatIndex锛?
  */
 const inlineCache = new Map();
 const panelCache = new Map(); // <mesKey, { htmlInner, collapsed, createdAt }>
@@ -634,14 +634,14 @@ function ensureSettings() {
   const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
   if (!extensionSettings[MODULE_NAME]) {
     extensionSettings[MODULE_NAME] = clone(DEFAULT_SETTINGS);
-    // 初始写入默认 modulesJson
+    // 鍒濆鍐欏叆榛樿 modulesJson
     extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
     saveSettingsDebounced();
   } else {
     for (const k of Object.keys(DEFAULT_SETTINGS)) {
       if (!Object.hasOwn(extensionSettings[MODULE_NAME], k)) extensionSettings[MODULE_NAME][k] = DEFAULT_SETTINGS[k];
     }
-    // 兼容旧版：若 modulesJson 为空，补默认
+    // 鍏煎鏃х増锛氳嫢 modulesJson 涓虹┖锛岃ˉ榛樿
     if (!extensionSettings[MODULE_NAME].modulesJson) {
       extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
     }
@@ -661,12 +661,12 @@ function ensureSettings() {
       saveSettingsDebounced();
     }
   }
-  // 迁移：删除了 chatbook 选项，强制使�?file 模式
+  // 杩佺Щ锛氬垹闄や簡 chatbook 閫夐」锛屽己鍒朵娇鐢?file 妯″紡
   if (extensionSettings[MODULE_NAME].summaryWorldInfoTarget === 'chatbook') {
     extensionSettings[MODULE_NAME].summaryWorldInfoTarget = 'file';
     saveSettingsDebounced();
   }
-  // 迁移：蓝灯世界书默认开�?
+  // 杩佺Щ锛氳摑鐏笘鐣屼功榛樿寮€鍚?
   if (extensionSettings[MODULE_NAME].summaryToBlueWorldInfo === false) {
     extensionSettings[MODULE_NAME].summaryToBlueWorldInfo = true;
     saveSettingsDebounced();
@@ -676,7 +676,7 @@ function ensureSettings() {
 
 function saveSettings() { SillyTavern.getContext().saveSettingsDebounced(); }
 
-// 导出全局预设
+// 瀵煎嚭鍏ㄥ眬棰勮
 function exportPreset() {
   const s = ensureSettings();
   const preset = {
@@ -685,12 +685,12 @@ function exportPreset() {
     _exportedAt: new Date().toISOString(),
     settings: { ...s }
   };
-  // 移除敏感信息（API Key�?
+  // 绉婚櫎鏁忔劅淇℃伅锛圓PI Key锛?
   delete preset.settings.customApiKey;
   delete preset.settings.summaryCustomApiKey;
   delete preset.settings.wiIndexCustomApiKey;
   delete preset.settings.wiRollCustomApiKey;
-  // 移除缓存数据
+  // 绉婚櫎缂撳瓨鏁版嵁
   delete preset.settings.customModelsCache;
   delete preset.settings.summaryCustomModelsCache;
   delete preset.settings.wiIndexCustomModelsCache;
@@ -707,10 +707,10 @@ function exportPreset() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  showToast('预设已导�?�?, { kind: 'ok' });
+  showToast('棰勮宸插鍑?鉁?, { kind: 'ok' });
 }
 
-// 导入全局预设
+// 瀵煎叆鍏ㄥ眬棰勮
 async function importPreset(file) {
   if (!file) return;
 
@@ -718,25 +718,25 @@ async function importPreset(file) {
     const text = await file.text();
     const preset = JSON.parse(text);
 
-    // 验证格式
+    // 楠岃瘉鏍煎紡
     if (preset._type !== 'StoryGuide_Preset') {
-      showToast('无效的预设文件格�?, { kind: 'err' });
+      showToast('鏃犳晥鐨勯璁炬枃浠舵牸寮?, { kind: 'err' });
       return;
     }
 
     if (!preset.settings || typeof preset.settings !== 'object') {
-      showToast('预设文件内容无效', { kind: 'err' });
+      showToast('棰勮鏂囦欢鍐呭鏃犳晥', { kind: 'err' });
       return;
     }
 
-    // 获取当前设置并保留敏感信�?
+    // 鑾峰彇褰撳墠璁剧疆骞朵繚鐣欐晱鎰熶俊鎭?
     const currentSettings = ensureSettings();
     const preservedKeys = [
       'customApiKey', 'summaryCustomApiKey', 'wiIndexCustomApiKey', 'wiRollCustomApiKey',
       'customModelsCache', 'summaryCustomModelsCache', 'wiIndexCustomModelsCache', 'wiRollCustomModelsCache'
     ];
 
-    // 合并设置（保留敏感信息）
+    // 鍚堝苟璁剧疆锛堜繚鐣欐晱鎰熶俊鎭級
     const newSettings = { ...preset.settings };
     for (const key of preservedKeys) {
       if (currentSettings[key]) {
@@ -744,18 +744,18 @@ async function importPreset(file) {
       }
     }
 
-    // 应用新设�?
+    // 搴旂敤鏂拌缃?
     const { extensionSettings } = SillyTavern.getContext();
     Object.assign(extensionSettings[MODULE_NAME], newSettings);
     saveSettings();
 
-    // 刷新 UI
+    // 鍒锋柊 UI
     pullSettingsToUi();
 
-    showToast(`预设已导�?✅\n版本: ${preset._version || '未知'}\n导出时间: ${preset._exportedAt || '未知'}`, { kind: 'ok', duration: 3000 });
+    showToast(`棰勮宸插鍏?鉁匼n鐗堟湰: ${preset._version || '鏈煡'}\n瀵煎嚭鏃堕棿: ${preset._exportedAt || '鏈煡'}`, { kind: 'ok', duration: 3000 });
   } catch (e) {
     console.error('[StoryGuide] Import preset failed:', e);
-    showToast(`导入失败: ${e.message}`, { kind: 'err' });
+    showToast(`瀵煎叆澶辫触: ${e.message}`, { kind: 'err' });
   }
 }
 
@@ -786,7 +786,7 @@ function clampFloat(v, min, max, fallback) {
   return fallback;
 }
 
-// 简易模板替换：支持 {{fromFloor}} / {{toFloor}} / {{chunk}} 等占位符
+// 绠€鏄撴ā鏉挎浛鎹細鏀寔 {{fromFloor}} / {{toFloor}} / {{chunk}} 绛夊崰浣嶇
 function renderTemplate(tpl, vars = {}) {
   const str = String(tpl ?? '');
   return str.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => {
@@ -818,94 +818,94 @@ function parseJsonArrayAttr(maybeJsonArray) {
 
 function normalizeMapName(name) {
   let out = String(name || '').replace(/\s+/g, ' ').trim();
-  // common CN place variants (reduce duplicates like "豪宅/宅邸/府邸/公馆")
-  out = out.replace(/(家|�?(豪宅|宅邸|府邸|公馆|别墅|庄园|大宅|府|宅|宅子)$/g, '宅邸');
-  out = out.replace(/(豪宅|府邸|公馆|别墅|庄园|大宅|府|宅|宅子)$/g, '宅邸');
-  out = out.replace(/宅邸$/g, '宅邸');
+  // common CN place variants (reduce duplicates like "璞畢/瀹呴偢/搴滈偢/鍏")
+  out = out.replace(/(瀹秥瀹?(璞畢|瀹呴偢|搴滈偢|鍏|鍒|搴勫洯|澶у畢|搴渱瀹厊瀹呭瓙)$/g, '瀹呴偢');
+  out = out.replace(/(璞畢|搴滈偢|鍏|鍒|搴勫洯|澶у畢|搴渱瀹厊瀹呭瓙)$/g, '瀹呴偢');
+  out = out.replace(/瀹呴偢$/g, '瀹呴偢');
   // broader suffix normalization
   const rules = [
-    [/学校$/g, '学校'],
-    [/学园$/g, '学校'],
-    [/学院$/g, '学校'],
-    [/大学$/g, '学校'],
-    [/大桥$/g, '�?],
-    [/桥梁$/g, '�?],
-    [/�?/g, '�?],
-    [/大道$/g, '�?],
-    [/大街$/g, '�?],
-    [/街道$/g, '�?],
-    [/�?/g, '�?],
-    [/商业街区$/g, '商业�?],
-    [/商业�?/g, '商业�?],
-    [/步行�?/g, '商业�?],
-    [/购物中心$/g, '商场'],
-    [/商城$/g, '商场'],
-    [/商场$/g, '商场'],
-    [/商业�?/g, '商业�?],
-    [/广场$/g, '广场'],
-    [/公园$/g, '公园'],
-    [/园区$/g, '公园'],
-    [/体育�?/g, '体育�?],
-    [/运动�?/g, '体育�?],
-    [/体育中心$/g, '体育�?],
-    [/图书�?/g, '图书�?],
-    [/阅览�?/g, '图书�?],
-    [/医院$/g, '医院'],
-    [/诊所$/g, '医院'],
-    [/车站$/g, '车站'],
-    [/站点$/g, '车站'],
-    [/地铁�?/g, '地铁�?],
-    [/地铁�?/g, '地铁�?],
-    [/机场$/g, '机场'],
-    [/港口$/g, '港口'],
-    [/码头$/g, '港口'],
-    [/旅馆$/g, '旅馆'],
-    [/酒店$/g, '旅馆'],
-    [/宾馆$/g, '旅馆'],
-    [/大厦$/g, '大楼'],
-    [/大楼$/g, '大楼'],
-    [/楼宇$/g, '大楼'],
-    [/楼栋$/g, '大楼'],
-    [/中心$/g, '中心'],
-    [/森林$/g, '森林'],
-    [/林地$/g, '森林'],
-    [/树林$/g, '森林'],
-    [/山脉$/g, '�?],
-    [/高地$/g, '�?],
-    [/河流$/g, '�?],
-    [/�?/g, '�?],
-    [/湖泊$/g, '�?],
-    [/�?/g, '�?],
-    [/海岸$/g, '海边'],
-    [/海滩$/g, '海边'],
-    [/海边$/g, '海边'],
-    [/地下�?/g, '地下'],
-    [/地底$/g, '地下'],
-    [/地下$/g, '地下'],
+    [/瀛︽牎$/g, '瀛︽牎'],
+    [/瀛﹀洯$/g, '瀛︽牎'],
+    [/瀛﹂櫌$/g, '瀛︽牎'],
+    [/澶у$/g, '瀛︽牎'],
+    [/澶фˉ$/g, '妗?],
+    [/妗ユ$/g, '妗?],
+    [/妗?/g, '妗?],
+    [/澶ч亾$/g, '璺?],
+    [/澶ц$/g, '琛?],
+    [/琛楅亾$/g, '琛?],
+    [/琛?/g, '琛?],
+    [/鍟嗕笟琛楀尯$/g, '鍟嗕笟琛?],
+    [/鍟嗕笟琛?/g, '鍟嗕笟琛?],
+    [/姝ヨ琛?/g, '鍟嗕笟琛?],
+    [/璐墿涓績$/g, '鍟嗗満'],
+    [/鍟嗗煄$/g, '鍟嗗満'],
+    [/鍟嗗満$/g, '鍟嗗満'],
+    [/鍟嗕笟鍖?/g, '鍟嗕笟鍖?],
+    [/骞垮満$/g, '骞垮満'],
+    [/鍏洯$/g, '鍏洯'],
+    [/鍥尯$/g, '鍏洯'],
+    [/浣撹偛棣?/g, '浣撹偛棣?],
+    [/杩愬姩棣?/g, '浣撹偛棣?],
+    [/浣撹偛涓績$/g, '浣撹偛棣?],
+    [/鍥句功棣?/g, '鍥句功棣?],
+    [/闃呰瀹?/g, '鍥句功棣?],
+    [/鍖婚櫌$/g, '鍖婚櫌'],
+    [/璇婃墍$/g, '鍖婚櫌'],
+    [/杞︾珯$/g, '杞︾珯'],
+    [/绔欑偣$/g, '杞︾珯'],
+    [/鍦伴搧绔?/g, '鍦伴搧绔?],
+    [/鍦伴搧鍙?/g, '鍦伴搧绔?],
+    [/鏈哄満$/g, '鏈哄満'],
+    [/娓彛$/g, '娓彛'],
+    [/鐮佸ご$/g, '娓彛'],
+    [/鏃呴$/g, '鏃呴'],
+    [/閰掑簵$/g, '鏃呴'],
+    [/瀹鹃$/g, '鏃呴'],
+    [/澶у帵$/g, '澶фゼ'],
+    [/澶фゼ$/g, '澶фゼ'],
+    [/妤煎畤$/g, '澶фゼ'],
+    [/妤兼爧$/g, '澶фゼ'],
+    [/涓績$/g, '涓績'],
+    [/妫灄$/g, '妫灄'],
+    [/鏋楀湴$/g, '妫灄'],
+    [/鏍戞灄$/g, '妫灄'],
+    [/灞辫剦$/g, '灞?],
+    [/楂樺湴$/g, '灞?],
+    [/娌虫祦$/g, '娌?],
+    [/娌?/g, '娌?],
+    [/婀栨硦$/g, '婀?],
+    [/婀?/g, '婀?],
+    [/娴峰哺$/g, '娴疯竟'],
+    [/娴锋哗$/g, '娴疯竟'],
+    [/娴疯竟$/g, '娴疯竟'],
+    [/鍦颁笅瀹?/g, '鍦颁笅'],
+    [/鍦板簳$/g, '鍦颁笅'],
+    [/鍦颁笅$/g, '鍦颁笅'],
     // fantasy/setting-specific systems
-    [/宫殿$/g, '城堡'],
-    [/王城$/g, '城堡'],
-    [/城堡$/g, '城堡'],
-    [/要塞$/g, '城堡'],
-    [/城邦$/g, '城堡'],
-    [/堡垒$/g, '城堡'],
-    [/神殿$/g, '寺庙'],
-    [/寺庙$/g, '寺庙'],
-    [/道观$/g, '寺庙'],
-    [/教堂$/g, '寺庙'],
-    [/大教�?/g, '寺庙'],
-    [/修道�?/g, '寺庙'],
-    [/洞穴$/g, '洞穴'],
-    [/洞窟$/g, '洞穴'],
-    [/遗迹$/g, '遗迹'],
-    [/秘境$/g, '遗迹'],
-    [/秘境之门$/g, '遗迹'],
-    [/遗址$/g, '遗迹'],
-    [/门派$/g, '宗门'],
-    [/宗门$/g, '宗门'],
-    [/帮会$/g, '宗门'],
-    [/门派驻地$/g, '宗门'],
-    [/宗门驻地$/g, '宗门'],
+    [/瀹$/g, '鍩庡牎'],
+    [/鐜嬪煄$/g, '鍩庡牎'],
+    [/鍩庡牎$/g, '鍩庡牎'],
+    [/瑕佸$/g, '鍩庡牎'],
+    [/鍩庨偊$/g, '鍩庡牎'],
+    [/鍫″瀿$/g, '鍩庡牎'],
+    [/绁炴$/g, '瀵哄簷'],
+    [/瀵哄簷$/g, '瀵哄簷'],
+    [/閬撹$/g, '瀵哄簷'],
+    [/鏁欏爞$/g, '瀵哄簷'],
+    [/澶ф暀鍫?/g, '瀵哄簷'],
+    [/淇亾闄?/g, '瀵哄簷'],
+    [/娲炵┐$/g, '娲炵┐'],
+    [/娲炵獰$/g, '娲炵┐'],
+    [/閬楄抗$/g, '閬楄抗'],
+    [/绉樺$/g, '閬楄抗'],
+    [/绉樺涔嬮棬$/g, '閬楄抗'],
+    [/閬楀潃$/g, '閬楄抗'],
+    [/闂ㄦ淳$/g, '瀹楅棬'],
+    [/瀹楅棬$/g, '瀹楅棬'],
+    [/甯細$/g, '瀹楅棬'],
+    [/闂ㄦ淳椹诲湴$/g, '瀹楅棬'],
+    [/瀹楅棬椹诲湴$/g, '瀹楅棬'],
   ];
   for (const [re, rep] of rules) out = out.replace(re, rep);
   return out.toLowerCase();
@@ -958,15 +958,15 @@ function bindMapEventPanelHandler() {
         const tagsHtml = tags.length
           ? `< span class= "sg-map-event-tags" > ${tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('')}</span > `
           : '';
-        return `< li > <span class="sg-map-event-text">${text || '（无内容�?}</span>${tagsHtml}</li > `;
+        return `< li > <span class="sg-map-event-text">${text || '锛堟棤鍐呭锛?}</span>${tagsHtml}</li > `;
       }).join('');
       listHtml = `< ul class= "sg-map-event-list" > ${items}</ul > `;
     } else {
-      listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
+      listHtml = '<div class="sg-map-event-empty">鏆傛棤浜嬩欢</div>';
     }
 
     const deleteBtn = name
-      ? `< button class= "sg-map-event-delete" data - name="${escapeHtml(name)}" > 删除地点</button > `
+      ? `< button class= "sg-map-event-delete" data - name="${escapeHtml(name)}" > 鍒犻櫎鍦扮偣</button > `
       : '';
     $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
     $panel.addClass('sg-map-event-panel--floating');
@@ -1014,9 +1014,9 @@ function showMapPopover($cell) {
   if (desc) parts.push(`< div class= "sg-map-popover-desc" > ${escapeHtml(desc)}</div > `);
   if (events.length) {
     const items = events.map(e => `< li > ${escapeHtml(String(e || ''))}</li > `).join('');
-    parts.push(`< div class="sg-map-popover-events" ><div class="sg-map-popover-label">事件</div><ul>${items}</ul></div > `);
+    parts.push(`< div class="sg-map-popover-events" ><div class="sg-map-popover-label">浜嬩欢</div><ul>${items}</ul></div > `);
   } else {
-    parts.push('<div class="sg-map-popover-empty">暂无事件</div>');
+    parts.push('<div class="sg-map-popover-empty">鏆傛棤浜嬩欢</div>');
   }
 
   const $panelHost = $cell.closest('#sg_floating_panel, .sg-modal');
@@ -1069,7 +1069,7 @@ function showMapPopover($cell) {
   pop.style.visibility = 'visible';
 }
 
-// ===== 快捷选项功能 =====
+// ===== 蹇嵎閫夐」鍔熻兘 =====
 
 function getQuickOptions() {
   const s = ensureSettings();
@@ -1080,14 +1080,14 @@ function getQuickOptions() {
 
   try {
     let arr = JSON.parse(raw);
-    // 支持 [[label, prompt], ...] �?[{label, prompt}, ...] 两种格式
+    // 鏀寔 [[label, prompt], ...] 鍜?[{label, prompt}, ...] 涓ょ鏍煎紡
     if (!Array.isArray(arr)) return [];
     return arr.map((item, i) => {
       if (Array.isArray(item)) {
-        return { label: String(item[0] || `选项${i + 1} `), prompt: String(item[1] || '') };
+        return { label: String(item[0] || `閫夐」${i + 1} `), prompt: String(item[1] || '') };
       }
       if (item && typeof item === 'object') {
-        return { label: String(item.label || `选项${i + 1} `), prompt: String(item.prompt || '') };
+        return { label: String(item.label || `閫夐」${i + 1} `), prompt: String(item.prompt || '') };
       }
       return null;
     }).filter(Boolean);
@@ -1097,7 +1097,7 @@ function getQuickOptions() {
 }
 
 function injectToUserInput(text) {
-  // 尝试多种可能的输入框选择�?
+  // 灏濊瘯澶氱鍙兘鐨勮緭鍏ユ閫夋嫨鍣?
   const selectors = ['#send_textarea', 'textarea#send_textarea', '.send_textarea', 'textarea.send_textarea'];
   let textarea = null;
 
@@ -1107,20 +1107,20 @@ function injectToUserInput(text) {
   }
 
   if (!textarea) {
-    console.warn('[StoryGuide] 未找到聊天输入框');
+    console.warn('[StoryGuide] 鏈壘鍒拌亰澶╄緭鍏ユ');
     return false;
   }
 
-  // 设置文本�?
+  // 璁剧疆鏂囨湰鍊?
   textarea.value = String(text || '');
 
-  // 触发 input 事件以通知 SillyTavern
+  // 瑙﹀彂 input 浜嬩欢浠ラ€氱煡 SillyTavern
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
-  // 聚焦输入�?
+  // 鑱氱劍杈撳叆妗?
   textarea.focus();
 
-  // 将光标移到末�?
+  // 灏嗗厜鏍囩Щ鍒版湯灏?
   if (textarea.setSelectionRange) {
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }
@@ -1133,14 +1133,14 @@ function renderQuickOptionsHtml(context = 'inline') {
   if (!s.quickOptionsEnabled) return '';
 
   const showIn = String(s.quickOptionsShowIn || 'inline');
-  // 检查当前上下文是否应该显示
+  // 妫€鏌ュ綋鍓嶄笂涓嬫枃鏄惁搴旇鏄剧ず
   if (showIn !== 'both' && showIn !== context) return '';
 
   const options = getQuickOptions();
   if (!options.length) return '';
 
   const buttons = options.map((opt, i) => {
-    const label = escapeHtml(opt.label || `选项${i + 1} `);
+    const label = escapeHtml(opt.label || `閫夐」${i + 1} `);
     const prompt = escapeHtml(opt.prompt || '');
     return `< button class="sg-quick-option" data - sg - prompt="${prompt}" title = "${prompt}" > ${label}</button > `;
   }).join('');
@@ -1148,11 +1148,11 @@ function renderQuickOptionsHtml(context = 'inline') {
   return `< div class="sg-quick-options" > ${buttons}</div > `;
 }
 
-// 渲染AI生成的动态快捷选项（从分析结果的quick_actions数组生成按钮，直接显示选项内容�?
+// 娓叉煋AI鐢熸垚鐨勫姩鎬佸揩鎹烽€夐」锛堜粠鍒嗘瀽缁撴灉鐨剄uick_actions鏁扮粍鐢熸垚鎸夐挳锛岀洿鎺ユ樉绀洪€夐」鍐呭锛?
 function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
   const s = ensureSettings();
 
-  // 如果没有动态选项，返回空
+  // 濡傛灉娌℃湁鍔ㄦ€侀€夐」锛岃繑鍥炵┖
   if (!Array.isArray(quickActions) || !quickActions.length) {
     return '';
   }
@@ -1161,19 +1161,19 @@ function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
     const text = String(action || '').trim();
     if (!text) return '';
 
-    // 移除可能的编号前缀�?"�?�? �?"1."
-    const cleaned = text.replace(/^【\d+】\s*/, '').replace(/^\d+[\.\)\:：]\s*/, '').trim();
+    // 绉婚櫎鍙兘鐨勭紪鍙峰墠缂€濡?"銆?銆? 鎴?"1."
+    const cleaned = text.replace(/^銆怽d+銆慭s*/, '').replace(/^\d+[\.\)\:锛歖\s*/, '').trim();
     if (!cleaned) return '';
 
     const escapedText = escapeHtml(cleaned);
-    // 按钮直接显示完整选项内容，点击后输入到聊天框
-    return `< button class="sg-quick-option sg-dynamic-option" data - sg - prompt="${escapedText}" title = "点击输入到聊天框" > ${escapedText}</button > `;
+    // 鎸夐挳鐩存帴鏄剧ず瀹屾暣閫夐」鍐呭锛岀偣鍑诲悗杈撳叆鍒拌亰澶╂
+    return `< button class="sg-quick-option sg-dynamic-option" data - sg - prompt="${escapedText}" title = "鐐瑰嚮杈撳叆鍒拌亰澶╂" > ${escapedText}</button > `;
   }).filter(Boolean).join('');
 
   if (!buttons) return '';
 
   return `< div class="sg-quick-options sg-dynamic-options" >
-  <div class="sg-quick-options-title">💡 快捷选项（点击输入）</div>
+  <div class="sg-quick-options-title">馃挕 蹇嵎閫夐」锛堢偣鍑昏緭鍏ワ級</div>
     ${buttons}
   </div > `;
 }
@@ -1220,12 +1220,12 @@ function getDefaultSummaryMeta() {
   return {
     lastFloor: 0,
     lastChatLen: 0,
-    // 用于“索引编号触发”（A-001/A-002…）的递增计数器（按聊天存储）
+    // 鐢ㄤ簬鈥滅储寮曠紪鍙疯Е鍙戔€濓紙A-001/A-002鈥︼級鐨勯€掑璁℃暟鍣紙鎸夎亰澶╁瓨鍌級
     nextIndex: 1,
     history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
     wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
     rollLogs: [], // [{ts, action, summary, final, success, userText}]
-    // 结构化条目缓存（用于去重与更�?- 方案C混合策略�?
+    // 缁撴瀯鍖栨潯鐩紦瀛橈紙鐢ㄤ簬鍘婚噸涓庢洿鏂?- 鏂规C娣峰悎绛栫暐锛?
     characterEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     equipmentEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     abilityEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
@@ -1257,7 +1257,7 @@ async function setSummaryMeta(meta) {
   await setChatMetaValue(META_KEYS.summaryMeta, JSON.stringify(meta ?? getDefaultSummaryMeta()));
 }
 
-// ===== 静态模块缓存（只在首次或手动刷新时生成的模块结果）=====
+// ===== 闈欐€佹ā鍧楃紦瀛橈紙鍙湪棣栨鎴栨墜鍔ㄥ埛鏂版椂鐢熸垚鐨勬ā鍧楃粨鏋滐級=====
 function getStaticModulesCache() {
   const raw = String(getChatMetaValue(META_KEYS.staticModulesCache) || '').trim();
   if (!raw) return {};
@@ -1273,7 +1273,7 @@ async function setStaticModulesCache(cache) {
   await setChatMetaValue(META_KEYS.staticModulesCache, JSON.stringify(cache ?? {}));
 }
 
-// ===== 地图数据（网格地图功能）=====
+// ===== 鍦板浘鏁版嵁锛堢綉鏍煎湴鍥惧姛鑳斤級=====
 function getDefaultMapData() {
   return {
     locations: {},
@@ -1303,7 +1303,7 @@ async function setMapData(mapData) {
   await setChatMetaValue(META_KEYS.mapData, JSON.stringify(mapData ?? getDefaultMapData()));
 }
 
-// 更新地图预览
+// 鏇存柊鍦板浘棰勮
 function updateMapPreview() {
   try {
     const mapData = getMapData();
@@ -1317,8 +1317,8 @@ function updateMapPreview() {
   }
 }
 
-const MAP_JSON_REQUIREMENT = `输出要求�?
-- 只输出严�?JSON，不�?Markdown、不要代码块、不要任何多余文字。`;
+const MAP_JSON_REQUIREMENT = `杈撳嚭瑕佹眰锛?
+- 鍙緭鍑轰弗鏍?JSON锛屼笉瑕?Markdown銆佷笉瑕佷唬鐮佸潡銆佷笉瑕佷换浣曞浣欐枃瀛椼€俙;
 
 function getMapSchema() {
   return {
@@ -1414,14 +1414,14 @@ async function updateMapFromSnapshot(snapshotText) {
   }
 }
 
-// 合并静态模块缓存到分析结果�?
+// 鍚堝苟闈欐€佹ā鍧楃紦瀛樺埌鍒嗘瀽缁撴灉涓?
 function mergeStaticModulesIntoResult(parsedJson, modules) {
   const cache = getStaticModulesCache();
   const result = { ...parsedJson };
 
   for (const m of modules) {
     if (m.static && cache[m.key] !== undefined) {
-      // 使用缓存值替代（如果AI此次没生成或我们跳过了生成）
+      // 浣跨敤缂撳瓨鍊兼浛浠ｏ紙濡傛灉AI姝ゆ娌＄敓鎴愭垨鎴戜滑璺宠繃浜嗙敓鎴愶級
       if (result[m.key] === undefined || result[m.key] === null || result[m.key] === '') {
         result[m.key] = cache[m.key];
       }
@@ -1431,14 +1431,14 @@ function mergeStaticModulesIntoResult(parsedJson, modules) {
   return result;
 }
 
-// 更新静态模块缓�?
+// 鏇存柊闈欐€佹ā鍧楃紦瀛?
 async function updateStaticModulesCache(parsedJson, modules) {
   const cache = getStaticModulesCache();
   let changed = false;
 
   for (const m of modules) {
     if (m.static && parsedJson[m.key] !== undefined && parsedJson[m.key] !== null && parsedJson[m.key] !== '') {
-      // 只在首次生成或值有变化时更新缓�?
+      // 鍙湪棣栨鐢熸垚鎴栧€兼湁鍙樺寲鏃舵洿鏂扮紦瀛?
       if (cache[m.key] === undefined || JSON.stringify(cache[m.key]) !== JSON.stringify(parsedJson[m.key])) {
         cache[m.key] = parsedJson[m.key];
         changed = true;
@@ -1451,9 +1451,9 @@ async function updateStaticModulesCache(parsedJson, modules) {
   }
 }
 
-// ===== 地图功能：提取和渲染 =====
+// ===== 鍦板浘鍔熻兘锛氭彁鍙栧拰娓叉煋 =====
 
-// �?LLM 响应中提取地图数�?
+// 浠?LLM 鍝嶅簲涓彁鍙栧湴鍥炬暟鎹?
 function parseMapLLMResponse(responseText) {
   const parsed = safeJsonParse(responseText);
   if (!parsed) return null;
@@ -1479,7 +1479,7 @@ function ensureMapMinimums(parsed) {
   let exploreCount = 0;
   for (const loc of out.newLocations) {
     const desc = String(loc?.description || '').trim();
-    if (desc.includes('待探�?)) exploreCount += 1;
+    if (desc.includes('寰呮帰绱?)) exploreCount += 1;
   }
 
   const desiredMin = 3;
@@ -1489,7 +1489,7 @@ function ensureMapMinimums(parsed) {
   const addCount = Math.max(neededTotal, neededExplore);
 
   if (addCount > 0) {
-    const baseName = out.currentLocation ? `${out.currentLocation}·待探索` : '待探索地�?;
+    const baseName = out.currentLocation ? `${out.currentLocation}路寰呮帰绱 : '寰呮帰绱㈠湴鐐?;
     for (let i = 0; i < addCount; i++) {
       let name = `${baseName}${i + 1} `;
       let n = 1;
@@ -1500,7 +1500,7 @@ function ensureMapMinimums(parsed) {
       existingNames.add(name);
       out.newLocations.push({
         name,
-        description: '待探�?,
+        description: '寰呮帰绱?,
         connectedTo: out.currentLocation ? [out.currentLocation] : [],
         group: '',
         layer: '',
@@ -1568,7 +1568,7 @@ function formatMapEventText(evt) {
 }
 
 
-// 合并新地图数据到现有地图
+// 鍚堝苟鏂板湴鍥炬暟鎹埌鐜版湁鍦板浘
 function mergeMapData(existingMap, newData) {
   if (!newData) return existingMap;
 
@@ -1579,12 +1579,12 @@ function mergeMapData(existingMap, newData) {
     if (norm) existingNameMap.set(norm, key);
   }
 
-  // 更新主角位置
+  // 鏇存柊涓昏浣嶇疆
   if (newData.currentLocation) {
     const normalized = normalizeMapName(newData.currentLocation);
     const existingKey = existingNameMap.get(normalized);
     map.protagonistLocation = existingKey || newData.currentLocation;
-    // 确保当前位置存在
+    // 纭繚褰撳墠浣嶇疆瀛樺湪
     if (!map.locations[map.protagonistLocation]) {
       map.locations[map.protagonistLocation] = {
         row: 0, col: 0, connections: [], events: [], visited: true, description: ''
@@ -1593,7 +1593,7 @@ function mergeMapData(existingMap, newData) {
     map.locations[map.protagonistLocation].visited = true;
   }
 
-  // 添加新地�?
+  // 娣诲姞鏂板湴鐐?
   for (const loc of newData.newLocations) {
     const name = String(loc.name || '').trim();
     if (!name) continue;
@@ -1631,7 +1631,7 @@ function mergeMapData(existingMap, newData) {
       ensureGridSize(map, row, col);
       if (!existingKey && normalized) existingNameMap.set(normalized, targetKey);
     } else {
-      // 更新现有地点的连�?
+      // 鏇存柊鐜版湁鍦扮偣鐨勮繛鎺?
       if (Array.isArray(loc.connectedTo)) {
         for (const conn of loc.connectedTo) {
           if (!map.locations[targetKey].connections.includes(conn)) {
@@ -1653,7 +1653,7 @@ function mergeMapData(existingMap, newData) {
     }
   }
 
-  // 添加事件
+  // 娣诲姞浜嬩欢
   for (const evt of newData.events) {
     const locName = String(evt.location || '').trim();
     const normalized = normalizeMapName(locName);
@@ -1667,7 +1667,7 @@ function mergeMapData(existingMap, newData) {
     }
   }
 
-  // 更新双向连接
+  // 鏇存柊鍙屽悜杩炴帴
   for (const [name, loc] of Object.entries(map.locations)) {
     for (const conn of loc.connections) {
       if (map.locations[conn] && !map.locations[conn].connections.includes(name)) {
@@ -1711,7 +1711,7 @@ function ensureGridSize(map, row, col) {
   if (c >= map.gridSize.cols) map.gridSize.cols = c + 1;
 }
 
-// 寻找网格中的下一个空�?
+// 瀵绘壘缃戞牸涓殑涓嬩竴涓┖浣?
 function findNextGridPosition(map) {
   const occupied = new Set();
   for (const loc of Object.values(map.locations)) {
@@ -1725,15 +1725,15 @@ function findNextGridPosition(map) {
       }
     }
   }
-  // 扩展网格
+  // 鎵╁睍缃戞牸
   map.gridSize.rows++;
   return { row: map.gridSize.rows - 1, col: 0 };
 }
 
-// 渲染网格地图�?HTML（纯 HTML/CSS 网格�?
+// 娓叉煋缃戞牸鍦板浘涓?HTML锛堢函 HTML/CSS 缃戞牸锛?
 function renderGridMap(mapData) {
   if (!mapData || Object.keys(mapData.locations).length === 0) {
-    return `< div class="sg-map-empty" > 暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成�?/div > `;
+    return `< div class="sg-map-empty" > 鏆傛棤鍦板浘鏁版嵁銆傚紑鍚湴鍥惧姛鑳藉苟杩涜鍓ф儏鍒嗘瀽鍚庯紝鍦板浘灏嗚嚜鍔ㄧ敓鎴愩€?/div > `;
   }
 
   const locList = Object.values(mapData.locations);
@@ -1772,7 +1772,7 @@ function renderGridMap(mapData) {
 
   const grid = Array(rows).fill(null).map(() => Array(cols).fill(null));
 
-  // 填充网格
+  // 濉厖缃戞牸
   for (const [name, loc] of Object.entries(mapData.locations)) {
     const rr = mapIndex(rowVals, Number(loc.row), rows);
     const cc = mapIndex(colVals, Number(loc.col), cols);
@@ -1786,7 +1786,7 @@ function renderGridMap(mapData) {
     }
   }
 
-  // 渲染 HTML（使�?CSS Grid�?
+  // 娓叉煋 HTML锛堜娇鐢?CSS Grid锛?
   const gridInlineStyle = `display: grid; grid - template - columns: repeat(${cols}, 80px); grid - auto - rows: 50px; gap: 4px; justify - content: center; `;
   const baseCellStyle = 'width:80px;height:50px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;text-align:center;position:relative;';
   const emptyCellStyle = baseCellStyle + 'background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.08);';
@@ -1806,7 +1806,7 @@ function renderGridMap(mapData) {
         if (hasEvents) classes.push('sg-map-has-events');
         if (!cell.visited) classes.push('sg-map-unvisited');
 
-        const eventList = hasEvents ? cell.events.map(e => `�?${formatMapEventText(e)} `).join('\n') : '';
+        const eventList = hasEvents ? cell.events.map(e => `鈥?${formatMapEventText(e)} `).join('\n') : '';
         const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''} `;
 
         let inlineStyle = locationBaseStyle;
@@ -1826,8 +1826,8 @@ function renderGridMap(mapData) {
           html += `</div > `;
         }
         html += `< span class="sg-map-name" > ${escapeHtml(cell.name)}</span > `;
-        if (isProtagonist) html += '<span class="sg-map-marker">�?/span>';
-        if (hasEvents) html += '<span class="sg-map-event-marker">�?/span>';
+        if (isProtagonist) html += '<span class="sg-map-marker">鈽?/span>';
+        if (hasEvents) html += '<span class="sg-map-event-marker">鈿?/span>';
         html += '</div>';
       } else {
         html += `< div class="sg-map-cell sg-map-empty-cell" style = "${emptyCellStyle}" ></div > `;
@@ -1836,19 +1836,19 @@ function renderGridMap(mapData) {
   }
 
   html += '</div>';
-  html += '<div class="sg-map-legend">�?主角位置 | �?有事�?| 灰色 = 未探�?/div>';
-  html += '<div class="sg-map-event-panel">点击地点查看事件列表</div>';
+  html += '<div class="sg-map-legend">鈽?涓昏浣嶇疆 | 鈿?鏈変簨浠?| 鐏拌壊 = 鏈帰绱?/div>';
+  html += '<div class="sg-map-event-panel">鐐瑰嚮鍦扮偣鏌ョ湅浜嬩欢鍒楄〃</div>';
   html += '</div>';
 
   return html;
 }
 
-// 清除静态模块缓存（手动刷新时使用）
+// 娓呴櫎闈欐€佹ā鍧楃紦瀛橈紙鎵嬪姩鍒锋柊鏃朵娇鐢級
 async function clearStaticModulesCache() {
   await setStaticModulesCache({});
 }
 
-// 清除结构化条目缓存（人物/装备/能力�?
+// 娓呴櫎缁撴瀯鍖栨潯鐩紦瀛橈紙浜虹墿/瑁呭/鑳藉姏锛?
 async function clearStructuredEntriesCache() {
   const meta = getSummaryMeta();
   meta.characterEntries = {};
@@ -1860,8 +1860,8 @@ async function clearStructuredEntriesCache() {
   await setSummaryMeta(meta);
 }
 
-// -------------------- 自动绑定世界书（每个聊天专属世界书） --------------------
-// 生成唯一的世界书文件�?
+// -------------------- 鑷姩缁戝畾涓栫晫涔︼紙姣忎釜鑱婂ぉ涓撳睘涓栫晫涔︼級 --------------------
+// 鐢熸垚鍞竴鐨勪笘鐣屼功鏂囦欢鍚?
 function generateBoundWorldInfoName(type) {
   const ctx = SillyTavern.getContext();
   const charName = String(ctx.characterId || ctx.name2 || ctx.name || 'UnknownChar')
@@ -1872,51 +1872,51 @@ function generateBoundWorldInfoName(type) {
   return `${prefix}_${charName}_${ts}_${type} `;
 }
 
-// 检查并确保当前聊天启用了自动绑定（使用 chatbook 模式�?
+// 妫€鏌ュ苟纭繚褰撳墠鑱婂ぉ鍚敤浜嗚嚜鍔ㄧ粦瀹氾紙浣跨敤 chatbook 妯″紡锛?
 async function ensureBoundWorldInfo(opts = {}) {
   const s = ensureSettings();
   if (!s.autoBindWorldInfo) return false;
 
   const alreadyApplied = !!getChatMetaValue(META_KEYS.autoBindCreated);
 
-  // 如果已经应用过，只需重新应用设置
+  // 濡傛灉宸茬粡搴旂敤杩囷紝鍙渶閲嶆柊搴旂敤璁剧疆
   if (alreadyApplied) {
     await applyBoundWorldInfoToSettings();
     return false;
   }
 
-  // 首次启用：设置标记并应用
+  // 棣栨鍚敤锛氳缃爣璁板苟搴旂敤
   await setChatMetaValue(META_KEYS.autoBindCreated, '1');
 
-  // 显示用户提示
-  showToast(`已启用自动写入世界书\n绿灯总结将写入聊天绑定的世界书\n（由 SillyTavern 自动创建和管理）`, {
+  // 鏄剧ず鐢ㄦ埛鎻愮ず
+  showToast(`宸插惎鐢ㄨ嚜鍔ㄥ啓鍏ヤ笘鐣屼功\n缁跨伅鎬荤粨灏嗗啓鍏ヨ亰澶╃粦瀹氱殑涓栫晫涔n锛堢敱 SillyTavern 鑷姩鍒涘缓鍜岀鐞嗭級`, {
     kind: 'ok', spinner: false, sticky: false, duration: 3500
   });
 
-  // 应用设置
+  // 搴旂敤璁剧疆
   await applyBoundWorldInfoToSettings();
   return true;
 }
 
-// 创建世界书文件（通过多种方法尝试�?
-async function createWorldInfoFile(fileName, initialContent = '初始化条�?) {
-  if (!fileName) throw new Error('文件名为�?);
+// 鍒涘缓涓栫晫涔︽枃浠讹紙閫氳繃澶氱鏂规硶灏濊瘯锛?
+async function createWorldInfoFile(fileName, initialContent = '鍒濆鍖栨潯鐩?) {
+  if (!fileName) throw new Error('鏂囦欢鍚嶄负绌?);
 
-  console.log('[StoryGuide] 尝试创建世界书文�?', fileName);
+  console.log('[StoryGuide] 灏濊瘯鍒涘缓涓栫晫涔︽枃浠?', fileName);
 
-  // 方法1: 尝试使用 SillyTavern 内部�?world_info 模块
+  // 鏂规硶1: 灏濊瘯浣跨敤 SillyTavern 鍐呴儴鐨?world_info 妯″潡
   try {
     const worldInfoModule = await import('/scripts/world-info.js');
     if (worldInfoModule && typeof worldInfoModule.createNewWorldInfo === 'function') {
       await worldInfoModule.createNewWorldInfo(fileName);
-      console.log('[StoryGuide] 使用内部模块创建成功:', fileName);
+      console.log('[StoryGuide] 浣跨敤鍐呴儴妯″潡鍒涘缓鎴愬姛:', fileName);
       return true;
     }
   } catch (e) {
-    console.log('[StoryGuide] 内部模块方法失败:', e?.message || e);
+    console.log('[StoryGuide] 鍐呴儴妯″潡鏂规硶澶辫触:', e?.message || e);
   }
 
-  // 方法2: 尝试使用导入 API (模拟文件上传)
+  // 鏂规硶2: 灏濊瘯浣跨敤瀵煎叆 API (妯℃嫙鏂囦欢涓婁紶)
   try {
     const headers = getStRequestHeadersCompat();
     const worldInfoData = {
@@ -1925,7 +1925,7 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条�?) 
           uid: 0,
           key: ['__SG_INIT__'],
           keysecondary: [],
-          comment: '�?StoryGuide 自动创建',
+          comment: '鐢?StoryGuide 鑷姩鍒涘缓',
           content: initialContent,
           constant: false,
           disable: false,
@@ -1935,7 +1935,7 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条�?) 
       }
     };
 
-    // 创建一�?Blob 作为 JSON 文件
+    // 鍒涘缓涓€涓?Blob 浣滀负 JSON 鏂囦欢
     const blob = new Blob([JSON.stringify(worldInfoData)], { type: 'application/json' });
     const formData = new FormData();
     formData.append('avatar', blob, `${fileName}.json`);
@@ -1947,15 +1947,15 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条�?) 
     });
 
     if (res.ok) {
-      console.log('[StoryGuide] 使用导入 API 创建成功:', fileName);
+      console.log('[StoryGuide] 浣跨敤瀵煎叆 API 鍒涘缓鎴愬姛:', fileName);
       return true;
     }
-    console.log('[StoryGuide] 导入 API 响应:', res.status);
+    console.log('[StoryGuide] 瀵煎叆 API 鍝嶅簲:', res.status);
   } catch (e) {
-    console.log('[StoryGuide] 导入 API 方法失败:', e?.message || e);
+    console.log('[StoryGuide] 瀵煎叆 API 鏂规硶澶辫触:', e?.message || e);
   }
 
-  // 方法3: 尝试直接 POST �?/api/worldinfo/edit (编辑/创建)
+  // 鏂规硶3: 灏濊瘯鐩存帴 POST 鍒?/api/worldinfo/edit (缂栬緫/鍒涘缓)
   try {
     const headers = {
       'Content-Type': 'application/json',
@@ -1973,7 +1973,7 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条�?) 
               uid: 0,
               key: ['__SG_INIT__'],
               content: initialContent,
-              comment: '�?StoryGuide 自动创建',
+              comment: '鐢?StoryGuide 鑷姩鍒涘缓',
             }
           }
         }
@@ -1981,33 +1981,33 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条�?) 
     });
 
     if (res.ok) {
-      console.log('[StoryGuide] 使用 edit API 创建成功:', fileName);
+      console.log('[StoryGuide] 浣跨敤 edit API 鍒涘缓鎴愬姛:', fileName);
       return true;
     }
-    console.log('[StoryGuide] edit API 响应:', res.status);
+    console.log('[StoryGuide] edit API 鍝嶅簲:', res.status);
   } catch (e) {
-    console.log('[StoryGuide] edit API 方法失败:', e?.message || e);
+    console.log('[StoryGuide] edit API 鏂规硶澶辫触:', e?.message || e);
   }
 
-  // 方法4: 最后尝�?STscript (可能需要文件已存在)
+  // 鏂规硶4: 鏈€鍚庡皾璇?STscript (鍙兘闇€瑕佹枃浠跺凡瀛樺湪)
   try {
     const safeFileName = quoteSlashValue(fileName);
     const safeKey = quoteSlashValue('__SG_INIT__');
     const safeContent = quoteSlashValue(initialContent);
     const cmd = `/ createentry file = ${safeFileName} key = ${safeKey} ${safeContent} `;
     await execSlash(cmd);
-    console.log('[StoryGuide] STscript 方式可能成功');
+    console.log('[StoryGuide] STscript 鏂瑰紡鍙兘鎴愬姛');
     return true;
   } catch (e) {
-    console.log('[StoryGuide] STscript 方式失败:', e?.message || e);
+    console.log('[StoryGuide] STscript 鏂瑰紡澶辫触:', e?.message || e);
   }
 
-  // 所有方法都失败 - 显示警告但不阻断
-  console.warn('[StoryGuide] 无法自动创建世界书文件，请手动创�?', fileName);
+  // 鎵€鏈夋柟娉曢兘澶辫触 - 鏄剧ず璀﹀憡浣嗕笉闃绘柇
+  console.warn('[StoryGuide] 鏃犳硶鑷姩鍒涘缓涓栫晫涔︽枃浠讹紝璇锋墜鍔ㄥ垱寤?', fileName);
   return false;
 }
 
-// 解析当前聊天绑定�?chatbook 文件名（用于持久绑定�?
+// 瑙ｆ瀽褰撳墠鑱婂ぉ缁戝畾鐨?chatbook 鏂囦欢鍚嶏紙鐢ㄤ簬鎸佷箙缁戝畾锛?
 async function resolveChatbookFileName() {
   const varName = '__sg_chatbook_name';
   try {
@@ -2023,12 +2023,12 @@ async function resolveChatbookFileName() {
   }
 }
 
-// 将绑定的世界书应用到设置
+// 灏嗙粦瀹氱殑涓栫晫涔﹀簲鐢ㄥ埌璁剧疆
 async function applyBoundWorldInfoToSettings() {
   const s = ensureSettings();
   if (!s.autoBindWorldInfo) return;
 
-  console.log('[StoryGuide] 应用自动绑定设置（使�?chatbook 模式�?);
+  console.log('[StoryGuide] 搴旂敤鑷姩缁戝畾璁剧疆锛堜娇鐢?chatbook 妯″紡锛?);
 
   let greenWI = String(getChatMetaValue(META_KEYS.boundGreenWI) || '').trim();
   if (!greenWI) {
@@ -2036,36 +2036,36 @@ async function applyBoundWorldInfoToSettings() {
     if (greenWI) await setChatMetaValue(META_KEYS.boundGreenWI, greenWI);
   }
 
-  // 绿灯世界书：优先使用已解析的绑定文件名，避免切换/刷新后产生新文件
+  // 缁跨伅涓栫晫涔︼細浼樺厛浣跨敤宸茶В鏋愮殑缁戝畾鏂囦欢鍚嶏紝閬垮厤鍒囨崲/鍒锋柊鍚庝骇鐢熸柊鏂囦欢
   s.summaryToWorldInfo = true;
   if (greenWI) {
     s.summaryWorldInfoTarget = 'file';
     s.summaryWorldInfoFile = greenWI;
-    console.log('[StoryGuide] 绿灯设置: file（绑定文件）', greenWI);
+    console.log('[StoryGuide] 缁跨伅璁剧疆: file锛堢粦瀹氭枃浠讹級', greenWI);
   } else {
     s.summaryWorldInfoTarget = 'chatbook';
     s.summaryWorldInfoFile = '';
-    console.log('[StoryGuide] 绿灯设置: chatbook（将使用聊天绑定的世界书�?);
+    console.log('[StoryGuide] 缁跨伅璁剧疆: chatbook锛堝皢浣跨敤鑱婂ぉ缁戝畾鐨勪笘鐣屼功锛?);
   }
 
-  // 蓝灯世界书：暂时禁用（因为无法自动创建独立文件）
-  // 用户如需蓝灯功能，需要手动创建世界书文件并在设置中指�?
+  // 钃濈伅涓栫晫涔︼細鏆傛椂绂佺敤锛堝洜涓烘棤娉曡嚜鍔ㄥ垱寤虹嫭绔嬫枃浠讹級
+  // 鐢ㄦ埛濡傞渶钃濈伅鍔熻兘锛岄渶瑕佹墜鍔ㄥ垱寤轰笘鐣屼功鏂囦欢骞跺湪璁剧疆涓寚瀹?
   s.summaryToBlueWorldInfo = false;
-  console.log('[StoryGuide] 蓝灯设置: 禁用（无法自动创建独立文件）');
+  console.log('[StoryGuide] 钃濈伅璁剧疆: 绂佺敤锛堟棤娉曡嚜鍔ㄥ垱寤虹嫭绔嬫枃浠讹級');
 
-  // 更新 UI（如果面板已打开�?
+  // 鏇存柊 UI锛堝鏋滈潰鏉垮凡鎵撳紑锛?
   updateAutoBindUI();
   saveSettings();
 }
 
-// 更新自动绑定UI显示
+// 鏇存柊鑷姩缁戝畾UI鏄剧ず
 function updateAutoBindUI() {
   const s = ensureSettings();
   const $info = $('#sg_autoBindInfo');
 
   if ($info.length) {
     if (s.autoBindWorldInfo) {
-      $info.html(`<span style="color: var(--SmartThemeQuoteColor)">�?已启用：总结将写入聊天绑定的世界�?/span>`);
+      $info.html(`<span style="color: var(--SmartThemeQuoteColor)">鉁?宸插惎鐢細鎬荤粨灏嗗啓鍏ヨ亰澶╃粦瀹氱殑涓栫晫涔?/span>`);
       $info.show();
     } else {
       $info.hide();
@@ -2073,44 +2073,44 @@ function updateAutoBindUI() {
   }
 }
 
-// 聊天切换时的处理（带提示�?
+// 鑱婂ぉ鍒囨崲鏃剁殑澶勭悊锛堝甫鎻愮ず锛?
 async function onChatSwitched() {
   const s = ensureSettings();
 
-  console.log('[StoryGuide] onChatSwitched 被调�? autoBindWorldInfo =', s.autoBindWorldInfo);
+  console.log('[StoryGuide] onChatSwitched 琚皟鐢? autoBindWorldInfo =', s.autoBindWorldInfo);
 
   if (!s.autoBindWorldInfo) {
-    console.log('[StoryGuide] autoBindWorldInfo 未开启，跳过自动绑定');
+    console.log('[StoryGuide] autoBindWorldInfo 鏈紑鍚紝璺宠繃鑷姩缁戝畾');
     return;
   }
 
-  // 等待 chatMetadata 加载完成（增加重试机制）
+  // 绛夊緟 chatMetadata 鍔犺浇瀹屾垚锛堝鍔犻噸璇曟満鍒讹級
   let retries = 0;
   const maxRetries = 5;
   while (retries < maxRetries) {
     await new Promise(r => setTimeout(r, 200));
     const { chatMetadata } = SillyTavern.getContext();
     if (chatMetadata && Object.keys(chatMetadata).length > 0) {
-      console.log('[StoryGuide] chatMetadata 已加载，keys:', Object.keys(chatMetadata).length);
+      console.log('[StoryGuide] chatMetadata 宸插姞杞斤紝keys:', Object.keys(chatMetadata).length);
       break;
     }
     retries++;
-    console.log(`[StoryGuide] 等待 chatMetadata 加载... (${retries}/${maxRetries})`);
+    console.log(`[StoryGuide] 绛夊緟 chatMetadata 鍔犺浇... (${retries}/${maxRetries})`);
   }
 
   const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
   const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
   const autoBindCreated = getChatMetaValue(META_KEYS.autoBindCreated);
 
-  console.log('[StoryGuide] 当前聊天绑定信息:', { greenWI, blueWI, autoBindCreated });
+  console.log('[StoryGuide] 褰撳墠鑱婂ぉ缁戝畾淇℃伅:', { greenWI, blueWI, autoBindCreated });
 
-  // 如果已经创建过绑定（即使 greenWI 为空也尝试恢复）
+  // 濡傛灉宸茬粡鍒涘缓杩囩粦瀹氾紙鍗充娇 greenWI 涓虹┖涔熷皾璇曟仮澶嶏級
   if (autoBindCreated || greenWI || blueWI) {
-    console.log('[StoryGuide] 恢复已有绑定');
+    console.log('[StoryGuide] 鎭㈠宸叉湁缁戝畾');
     await applyBoundWorldInfoToSettings();
   } else {
-    // 不再自动为新聊天创建世界书（用户反馈：每次新对话都会创建�?
-    console.log('[StoryGuide] 新聊天，跳过自动创建世界�?);
+    // 涓嶅啀鑷姩涓烘柊鑱婂ぉ鍒涘缓涓栫晫涔︼紙鐢ㄦ埛鍙嶉锛氭瘡娆℃柊瀵硅瘽閮戒細鍒涘缓锛?
+    console.log('[StoryGuide] 鏂拌亰澶╋紝璺宠繃鑷姩鍒涘缓涓栫晫涔?);
   }
 }
 
@@ -2178,7 +2178,7 @@ function showPane(name) {
 
 function validateAndNormalizeModules(raw) {
   const mods = Array.isArray(raw) ? raw : null;
-  if (!mods) return { ok: false, error: '模块配置必须�?JSON 数组�?, modules: null };
+  if (!mods) return { ok: false, error: '妯″潡閰嶇疆蹇呴』鏄?JSON 鏁扮粍銆?, modules: null };
 
   const seen = new Set();
   const normalized = [];
@@ -2187,11 +2187,11 @@ function validateAndNormalizeModules(raw) {
     if (!m || typeof m !== 'object') continue;
     const key = String(m.key || '').trim();
     if (!key) continue;
-    if (seen.has(key)) return { ok: false, error: `模块 key 重复�?{key}`, modules: null };
+    if (seen.has(key)) return { ok: false, error: `妯″潡 key 閲嶅锛?{key}`, modules: null };
     seen.add(key);
 
     const type = String(m.type || 'text').trim();
-    if (type !== 'text' && type !== 'list') return { ok: false, error: `模块 ${key} �?type 必须�?"text" �?"list"`, modules: null };
+    if (type !== 'text' && type !== 'list') return { ok: false, error: `妯″潡 ${key} 鐨?type 蹇呴』鏄?"text" 鎴?"list"`, modules: null };
 
     const title = String(m.title || key).trim();
     const prompt = String(m.prompt || '').trim();
@@ -2199,14 +2199,14 @@ function validateAndNormalizeModules(raw) {
     const required = m.required !== false; // default true
     const panel = m.panel !== false;       // default true
     const inline = m.inline === true;      // default false unless explicitly true
-    const isStatic = m.static === true;    // default false: 静态模块只在首次或手动刷新时生�?
+    const isStatic = m.static === true;    // default false: 闈欐€佹ā鍧楀彧鍦ㄩ娆℃垨鎵嬪姩鍒锋柊鏃剁敓鎴?
 
     const maxItems = (type === 'list' && Number.isFinite(Number(m.maxItems))) ? clampInt(m.maxItems, 1, 50, 8) : undefined;
 
     normalized.push({ key, title, type, prompt, required, panel, inline, static: isStatic, ...(maxItems ? { maxItems } : {}) });
   }
 
-  if (!normalized.length) return { ok: false, error: '模块配置为空：至少需�?1 个模块�?, modules: null };
+  if (!normalized.length) return { ok: false, error: '妯″潡閰嶇疆涓虹┖锛氳嚦灏戦渶瑕?1 涓ā鍧椼€?, modules: null };
   return { ok: true, error: '', modules: normalized };
 }
 
@@ -2251,8 +2251,8 @@ function readFileText(file) {
   });
 }
 
-// 尝试解析 SillyTavern 世界书导�?JSON（不同版本结构可能不同）
-// 返回：[{ title, keys: string[], content: string }]
+// 灏濊瘯瑙ｆ瀽 SillyTavern 涓栫晫涔﹀鍑?JSON锛堜笉鍚岀増鏈粨鏋勫彲鑳戒笉鍚岋級
+// 杩斿洖锛歔{ title, keys: string[], content: string }]
 function parseWorldbookJson(rawText) {
   if (!rawText) return [];
   let data = null;
@@ -2337,7 +2337,7 @@ function parseWorldbookJson(rawText) {
 
   function splitKeys(str) {
     return String(str || '')
-      .split(/[\n,�?；\|]+/g)
+      .split(/[\n,锛?锛沑|]+/g)
       .map(s => s.trim())
       .filter(Boolean);
   }
@@ -2387,12 +2387,12 @@ function parseWorldbookJson(rawText) {
     ).trim();
 
     if (!content) continue;
-    norm.push({ title: title || (keys[0] ? `条目�?{keys[0]}` : '条目'), keys, content });
+    norm.push({ title: title || (keys[0] ? `鏉＄洰锛?{keys[0]}` : '鏉＄洰'), keys, content });
   }
   return norm;
 }
 
-// -------------------- 实时读取蓝灯世界书（World Info / Lorebook�?--------------------
+// -------------------- 瀹炴椂璇诲彇钃濈伅涓栫晫涔︼紙World Info / Lorebook锛?--------------------
 
 function pickBlueIndexFileName() {
   const s = ensureSettings();
@@ -2400,7 +2400,7 @@ function pickBlueIndexFileName() {
   if (explicit) return explicit;
   const fromBlueWrite = String(s.summaryBlueWorldInfoFile || '').trim();
   if (fromBlueWrite) return fromBlueWrite;
-  // 最后兜底：若用户把蓝灯索引建在绿灯同文件里，也能读到（不推荐，但不阻断�?
+  // 鏈€鍚庡厹搴曪細鑻ョ敤鎴锋妸钃濈伅绱㈠紩寤哄湪缁跨伅鍚屾枃浠堕噷锛屼篃鑳借鍒帮紙涓嶆帹鑽愶紝浣嗕笉闃绘柇锛?
   const fromGreen = String(s.summaryWorldInfoFile || '').trim();
   return fromGreen;
 }
@@ -2421,10 +2421,10 @@ async function fetchJsonCompat(url, options) {
   try { return JSON.parse(t); } catch { return { text: t }; }
 }
 
-// 尝试�?ST 后端读取指定世界书文件（不同版本的参数名/方法可能不同�?
+// 灏濊瘯浠?ST 鍚庣璇诲彇鎸囧畾涓栫晫涔︽枃浠讹紙涓嶅悓鐗堟湰鐨勫弬鏁板悕/鏂规硶鍙兘涓嶅悓锛?
 async function fetchWorldInfoFileJsonCompat(fileName) {
   const raw = String(fileName || '').trim();
-  if (!raw) throw new Error('蓝灯世界书文件名为空');
+  if (!raw) throw new Error('钃濈伅涓栫晫涔︽枃浠跺悕涓虹┖');
 
   // Some ST versions store lorebook names with/without .json extension.
   const names = Array.from(new Set([
@@ -2476,18 +2476,18 @@ async function fetchWorldInfoFileJsonCompat(fileName) {
       lastErr = e;
     }
   }
-  throw lastErr || new Error('读取世界书失�?);
+  throw lastErr || new Error('璇诲彇涓栫晫涔﹀け璐?);
 }
 
 function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
-  // 复用 parseWorldbookJson 的“兼容解析”逻辑
+  // 澶嶇敤 parseWorldbookJson 鐨勨€滃吋瀹硅В鏋愨€濋€昏緫
   const parsed = parseWorldbookJson(JSON.stringify(worldInfoJson || {}));
   const prefix = String(prefixFilter || '').trim();
 
   const base = parsed.filter(e => e && e.content);
 
-  // 优先用“总结前缀”筛选（避免把其他世界书条目全塞进索引）
-  // 但如果因不同 ST 结构导致 title/comment 不一致而筛选到 0 条，则自动回退到全部条目，避免“明明有内容却显�?0 条”�?
+  // 浼樺厛鐢ㄢ€滄€荤粨鍓嶇紑鈥濈瓫閫夛紙閬垮厤鎶婂叾浠栦笘鐣屼功鏉＄洰鍏ㄥ杩涚储寮曪級
+  // 浣嗗鏋滃洜涓嶅悓 ST 缁撴瀯瀵艰嚧 title/comment 涓嶄竴鑷磋€岀瓫閫夊埌 0 鏉★紝鍒欒嚜鍔ㄥ洖閫€鍒板叏閮ㄦ潯鐩紝閬垮厤鈥滄槑鏄庢湁鍐呭鍗存樉绀?0 鏉♀€濄€?
   let picked = base;
   if (prefix) {
     picked = base.filter(e =>
@@ -2499,7 +2499,7 @@ function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
 
   const items = picked
     .map(e => ({
-      title: String(e.title || '').trim() || (e.keys?.[0] ? `条目�?{e.keys[0]}` : '条目'),
+      title: String(e.title || '').trim() || (e.keys?.[0] ? `鏉＄洰锛?{e.keys[0]}` : '鏉＄洰'),
       summary: String(e.content || '').trim(),
       keywords: Array.isArray(e.keys) ? e.keys.slice(0, 120) : [],
       importedAt: Date.now(),
@@ -2536,7 +2536,7 @@ async function ensureBlueIndexLive(force = false) {
 
     blueIndexLiveCache = { file, loadedAt: now, entries, lastError: '' };
 
-    // 同步到设置里，便�?UI 显示（同时也是“缓存”兜底）
+    // 鍚屾鍒拌缃噷锛屼究浜?UI 鏄剧ず锛堝悓鏃朵篃鏄€滅紦瀛樷€濆厹搴曪級
     s.summaryBlueIndex = entries;
     saveSettings();
     updateBlueIndexInfoLabel();
@@ -2544,7 +2544,7 @@ async function ensureBlueIndexLive(force = false) {
     return entries;
   } catch (e) {
     blueIndexLiveCache.lastError = String(e?.message ?? e);
-    // 读取失败就回退到现有缓�?
+    // 璇诲彇澶辫触灏卞洖閫€鍒扮幇鏈夌紦瀛?
     const fallback = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
     return fallback;
   }
@@ -2609,7 +2609,7 @@ function computeWorldbookInjection() {
   result.importedEntries = entries.length;
   if (!entries.length) return result;
 
-  // 如果未启用注入：仅返回“导入数量”，不计算注入内容（UI 也能看到导入成功�?
+  // 濡傛灉鏈惎鐢ㄦ敞鍏ワ細浠呰繑鍥炩€滃鍏ユ暟閲忊€濓紝涓嶈绠楁敞鍏ュ唴瀹癸紙UI 涔熻兘鐪嬪埌瀵煎叆鎴愬姛锛?
   if (!enabled) return result;
 
   // recent window text for activation
@@ -2639,7 +2639,7 @@ function computeWorldbookInjection() {
   let used = 0;
 
   for (const e of use) {
-    const head = `- �?{e.title}�?{(e.keys && e.keys.length) ? `（触发：${e.keys.slice(0, 6).join(' / ')}）` : ''}\n`;
+    const head = `- 銆?{e.title}銆?{(e.keys && e.keys.length) ? `锛堣Е鍙戯細${e.keys.slice(0, 6).join(' / ')}锛塦 : ''}\n`;
     const body = e.content.trim() + '\n';
     const chunk = head + body + '\n';
     if ((acc.length + chunk.length) > maxChars) break;
@@ -2663,7 +2663,7 @@ function buildWorldbookBlock() {
 
   if (!info.enabled) return '';
   if (!info.text) return '';
-  return `\n【世界书/World Info（已导入�?{info.importedEntries}条，本次注入�?{info.injectedEntries}条，�?{info.injectedTokens} tokens）】\n${info.text}\n`;
+  return `\n銆愪笘鐣屼功/World Info锛堝凡瀵煎叆锛?{info.importedEntries}鏉★紝鏈娉ㄥ叆锛?{info.injectedEntries}鏉★紝绾?{info.injectedTokens} tokens锛夈€慭n${info.text}\n`;
 }
 function getModules(mode /* panel|append */) {
   const s = ensureSettings();
@@ -2688,10 +2688,10 @@ function getModules(mode /* panel|append */) {
 
 function spoilerPolicyText(level) {
   switch (level) {
-    case 'none': return `【剧透策略】严格不剧透：不要透露原著明确未来事件与真相；只给“行动建�?风险提示”，避免点名关键反转。`;
-    case 'full': return `【剧透策略】允许全剧透：可以直接指出原著后续的关键事�?真相，并解释如何影响当前路线。`;
+    case 'none': return `銆愬墽閫忕瓥鐣ャ€戜弗鏍间笉鍓ч€忥細涓嶈閫忛湶鍘熻憲鏄庣‘鏈潵浜嬩欢涓庣湡鐩革紱鍙粰鈥滆鍔ㄥ缓璁?椋庨櫓鎻愮ず鈥濓紝閬垮厤鐐瑰悕鍏抽敭鍙嶈浆銆俙;
+    case 'full': return `銆愬墽閫忕瓥鐣ャ€戝厑璁稿叏鍓ч€忥細鍙互鐩存帴鎸囧嚭鍘熻憲鍚庣画鐨勫叧閿簨浠?鐪熺浉锛屽苟瑙ｉ噴濡備綍褰卞搷褰撳墠璺嚎銆俙;
     case 'mild':
-    default: return `【剧透策略】轻剧透：可以用“隐晦提�?+ 关键风险点”，避免把原著后续完整摊开；必要时可点到为止。`;
+    default: return `銆愬墽閫忕瓥鐣ャ€戣交鍓ч€忥細鍙互鐢ㄢ€滈殣鏅︽彁绀?+ 鍏抽敭椋庨櫓鐐光€濓紝閬垮厤鎶婂師钁楀悗缁畬鏁存憡寮€锛涘繀瑕佹椂鍙偣鍒颁负姝€俙;
   }
 }
 
@@ -2715,7 +2715,7 @@ function buildSchemaFromModules(modules) {
 
   return {
     name: 'StoryGuideDynamicReport',
-    description: '剧情指导动态输出（按模块配置生成）',
+    description: '鍓ф儏鎸囧鍔ㄦ€佽緭鍑猴紙鎸夋ā鍧楅厤缃敓鎴愶級',
     strict: true,
     value: {
       '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -2728,11 +2728,11 @@ function buildSchemaFromModules(modules) {
 }
 
 function buildOutputFieldsText(modules) {
-  // 每个模块一行：key: title �?prompt
+  // 姣忎釜妯″潡涓€琛岋細key: title 鈥?prompt
   const lines = [];
   for (const m of modules) {
-    const p = m.prompt ? ` �?${m.prompt}` : '';
-    const t = m.title ? `�?{m.title}）` : '';
+    const p = m.prompt ? ` 鈥?${m.prompt}` : '';
+    const t = m.title ? `锛?{m.title}锛塦 : '';
     if (m.type === 'list') {
       lines.push(`- ${m.key}${t}: string[]${m.maxItems ? ` (<=${m.maxItems})` : ''}${p}`);
     } else {
@@ -2745,8 +2745,8 @@ function buildOutputFieldsText(modules) {
 function buildPromptMessages(snapshotText, spoilerLevel, modules, mode /* panel|append */) {
   const s = ensureSettings();
   const compactHint = mode === 'append'
-    ? `【输出偏好】更精简：少废话、少铺垫、直给关键信息。`
-    : `【输出偏好】适度详细：以“可执行引导”为主，不要流水账。`;
+    ? `銆愯緭鍑哄亸濂姐€戞洿绮剧畝锛氬皯搴熻瘽銆佸皯閾哄灚銆佺洿缁欏叧閿俊鎭€俙
+    : `銆愯緭鍑哄亸濂姐€戦€傚害璇︾粏锛氫互鈥滃彲鎵ц寮曞鈥濅负涓伙紝涓嶈娴佹按璐︺€俙;
 
   const extraSystem = String(s.customSystemPreamble || '').trim();
   const extraConstraints = String(s.customConstraints || '').trim();
@@ -2754,17 +2754,17 @@ function buildPromptMessages(snapshotText, spoilerLevel, modules, mode /* panel|
   const system = [
     `---BEGIN PROMPT---`,
     `[System]`,
-    `你是执行型“剧情指�?编剧顾问”。从“正在经历的世界”（聊天+设定）提炼结构，并给出后续引导。`,
+    `浣犳槸鎵ц鍨嬧€滃墽鎯呮寚瀵?缂栧墽椤鹃棶鈥濄€備粠鈥滄鍦ㄧ粡鍘嗙殑涓栫晫鈥濓紙鑱婂ぉ+璁惧畾锛夋彁鐐肩粨鏋勶紝骞剁粰鍑哄悗缁紩瀵笺€俙,
     spoilerPolicyText(spoilerLevel),
     compactHint,
-    extraSystem ? `\n【自定义 System 补充】\n${extraSystem}` : ``,
+    extraSystem ? `\n銆愯嚜瀹氫箟 System 琛ュ厖銆慭n${extraSystem}` : ``,
     ``,
     `[Constraints]`,
-    `1) 不要凭空杜撰世界�?人物/地点；不确定写“未�?待确认”。`,
-    `2) 不要复述流水账；只提炼关键矛盾、动机、风险与走向。`,
-    `3) 输出必须�?JSON 对象本体（无 Markdown、无代码块、无多余解释）。`,
-    `4) 只输出下面列出的字段，不要额外字段。`,
-    extraConstraints ? `\n【自定义 Constraints 补充】\n${extraConstraints}` : ``,
+    `1) 涓嶈鍑┖鏉滄挵涓栫晫瑙?浜虹墿/鍦扮偣锛涗笉纭畾鍐欌€滄湭鐭?寰呯‘璁も€濄€俙,
+    `2) 涓嶈澶嶈堪娴佹按璐︼紱鍙彁鐐煎叧閿煕鐩俱€佸姩鏈恒€侀闄╀笌璧板悜銆俙,
+    `3) 杈撳嚭蹇呴』鏄?JSON 瀵硅薄鏈綋锛堟棤 Markdown銆佹棤浠ｇ爜鍧椼€佹棤澶氫綑瑙ｉ噴锛夈€俙,
+    `4) 鍙緭鍑轰笅闈㈠垪鍑虹殑瀛楁锛屼笉瑕侀澶栧瓧娈点€俙,
+    extraConstraints ? `\n銆愯嚜瀹氫箟 Constraints 琛ュ厖銆慭n${extraConstraints}` : ``,
     ``,
     `[Output Fields]`,
     buildOutputFieldsText(modules),
@@ -2798,12 +2798,12 @@ function buildSnapshot() {
         const scenario = c.scenario ?? '';
         const first = c.first_mes ?? c.first_message ?? '';
         charBlock =
-          `【角色卡】\n` +
-          `- 名称�?{stripHtml(name)}\n` +
-          `- 描述�?{stripHtml(desc)}\n` +
-          `- 性格�?{stripHtml(personality)}\n` +
-          `- 场景/设定�?{stripHtml(scenario)}\n` +
-          (first ? `- 开场白�?{stripHtml(first)}\n` : '');
+          `銆愯鑹插崱銆慭n` +
+          `- 鍚嶇О锛?{stripHtml(name)}\n` +
+          `- 鎻忚堪锛?{stripHtml(desc)}\n` +
+          `- 鎬ф牸锛?{stripHtml(personality)}\n` +
+          `- 鍦烘櫙/璁惧畾锛?{stripHtml(scenario)}\n` +
+          (first ? `- 寮€鍦虹櫧锛?{stripHtml(first)}\n` : '');
       }
     }
   } catch (e) { console.warn('[StoryGuide] character read failed:', e); }
@@ -2823,8 +2823,8 @@ function buildSnapshot() {
     const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
     let text = stripHtml(m.mes ?? m.message ?? '');
     if (!text) continue;
-    if (text.length > maxChars) text = text.slice(0, maxChars) + '�?截断)';
-    picked.push(`�?{name}�?{text}`);
+    if (text.length > maxChars) text = text.slice(0, maxChars) + '鈥?鎴柇)';
+    picked.push(`銆?{name}銆?{text}`);
   }
   picked.reverse();
 
@@ -2837,15 +2837,15 @@ function buildSnapshot() {
   };
 
   const snapshotText = [
-    `【任务】你是“剧情指导”。根据下方“正在经历的世界”（聊天 + 设定）输出结构化报告。`,
+    `銆愪换鍔°€戜綘鏄€滃墽鎯呮寚瀵尖€濄€傛牴鎹笅鏂光€滄鍦ㄧ粡鍘嗙殑涓栫晫鈥濓紙鑱婂ぉ + 璁惧畾锛夎緭鍑虹粨鏋勫寲鎶ュ憡銆俙,
     ``,
-    charBlock ? charBlock : `【角色卡】（未获取到/可能是群聊）`,
+    charBlock ? charBlock : `銆愯鑹插崱銆戯紙鏈幏鍙栧埌/鍙兘鏄兢鑱婏級`,
     ``,
-    world ? `【世界观/设定补充】\n${world}\n` : `【世界观/设定补充】（未提供）\n`,
-    canon ? `【原著后�?大纲】\n${canon}\n` : `【原著后�?大纲】（未提供）\n`,
+    world ? `銆愪笘鐣岃/璁惧畾琛ュ厖銆慭n${world}\n` : `銆愪笘鐣岃/璁惧畾琛ュ厖銆戯紙鏈彁渚涳級\n`,
+    canon ? `銆愬師钁楀悗缁?澶х翰銆慭n${canon}\n` : `銆愬師钁楀悗缁?澶х翰銆戯紙鏈彁渚涳級\n`,
     buildWorldbookBlock(),
-    `【聊天记录（最�?{picked.length}条）】`,
-    picked.length ? picked.join('\n\n') : '（空�?
+    `銆愯亰澶╄褰曪紙鏈€杩?{picked.length}鏉★級銆慲,
+    picked.length ? picked.join('\n\n') : '锛堢┖锛?
   ].join('\n');
 
   return { snapshotText, sourceSummary };
@@ -2861,21 +2861,21 @@ async function callViaSillyTavern(messages, schema, temperature) {
     const txt = await globalThis.TavernHelper.generateRaw({ ordered_prompts: messages, should_stream: false });
     return String(txt || '');
   }
-  throw new Error('未找到可用的生成函数（generateRaw/generateQuietPrompt）�?);
+  throw new Error('鏈壘鍒板彲鐢ㄧ殑鐢熸垚鍑芥暟锛坓enerateRaw/generateQuietPrompt锛夈€?);
 }
 
 async function fallbackAskJson(messages, temperature) {
   const ctx = SillyTavern.getContext();
   const retry = clone(messages);
-  retry.unshift({ role: 'system', content: `再次强调：只输出 JSON 对象本体，不要任何额外文字。` });
+  retry.unshift({ role: 'system', content: `鍐嶆寮鸿皟锛氬彧杈撳嚭 JSON 瀵硅薄鏈綋锛屼笉瑕佷换浣曢澶栨枃瀛椼€俙 });
   if (typeof ctx.generateRaw === 'function') return await ctx.generateRaw({ prompt: retry, temperature });
   if (typeof ctx.generateQuietPrompt === 'function') return await ctx.generateQuietPrompt({ messages: retry, temperature });
-  throw new Error('fallback 失败：缺�?generateRaw/generateQuietPrompt');
+  throw new Error('fallback 澶辫触锛氱己灏?generateRaw/generateQuietPrompt');
 }
 
 async function fallbackAskJsonCustom(apiBaseUrl, apiKey, model, messages, temperature, maxTokens, topP, stream) {
   const retry = clone(messages);
-  retry.unshift({ role: 'system', content: `再次强调：只输出 JSON 对象本体，不要任何额外文字，不要代码块。` });
+  retry.unshift({ role: 'system', content: `鍐嶆寮鸿皟锛氬彧杈撳嚭 JSON 瀵硅薄鏈綋锛屼笉瑕佷换浣曢澶栨枃瀛楋紝涓嶈浠ｇ爜鍧椼€俙 });
   return await callViaCustom(apiBaseUrl, apiKey, model, retry, temperature, maxTokens, topP, stream);
 }
 
@@ -3025,7 +3025,7 @@ async function callViaCustomBackendProxy(apiBaseUrl, apiKey, model, messages, te
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    const err = new Error(`后端代理请求失败: HTTP ${res.status} ${res.statusText}\n${text}`);
+    const err = new Error(`鍚庣浠ｇ悊璇锋眰澶辫触: HTTP ${res.status} ${res.statusText}\n${text}`);
     err.status = res.status;
     throw err;
   }
@@ -3046,7 +3046,7 @@ async function callViaCustomBackendProxy(apiBaseUrl, apiKey, model, messages, te
 
 async function callViaCustomBrowserDirect(apiBaseUrl, apiKey, model, messages, temperature, maxTokens, topP, stream) {
   const endpoint = deriveChatCompletionsUrl(apiBaseUrl);
-  if (!endpoint) throw new Error('custom 模式：API基础URL 为空');
+  if (!endpoint) throw new Error('custom 妯″紡锛欰PI鍩虹URL 涓虹┖');
 
   const body = {
     model,
@@ -3062,7 +3062,7 @@ async function callViaCustomBrowserDirect(apiBaseUrl, apiKey, model, messages, t
   const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`直连请求失败: HTTP ${res.status} ${res.statusText}\n${text}`);
+    throw new Error(`鐩磋繛璇锋眰澶辫触: HTTP ${res.status} ${res.statusText}\n${text}`);
   }
 
   const ct = String(res.headers.get('content-type') || '');
@@ -3077,7 +3077,7 @@ async function callViaCustomBrowserDirect(apiBaseUrl, apiKey, model, messages, t
 
 async function callViaCustom(apiBaseUrl, apiKey, model, messages, temperature, maxTokens, topP, stream) {
   const base = normalizeBaseUrl(apiBaseUrl);
-  if (!base) throw new Error('custom 模式需要填�?API基础URL');
+  if (!base) throw new Error('custom 妯″紡闇€瑕佸～鍐?API鍩虹URL');
 
   try {
     return await callViaCustomBackendProxy(base, apiKey, model, messages, temperature, maxTokens, topP, stream);
@@ -3095,7 +3095,7 @@ async function callViaCustom(apiBaseUrl, apiKey, model, messages, temperature, m
 
 function renderReportMarkdownFromModules(parsedJson, modules) {
   const lines = [];
-  lines.push(`# 剧情指导报告`);
+  lines.push(`# 鍓ф儏鎸囧鎶ュ憡`);
   lines.push('');
 
   for (const m of modules) {
@@ -3105,9 +3105,9 @@ function renderReportMarkdownFromModules(parsedJson, modules) {
     if (m.type === 'list') {
       const arr = Array.isArray(val) ? val : [];
       if (!arr.length) {
-        lines.push('（空�?);
+        lines.push('锛堢┖锛?);
       } else {
-        // tips 用有序列表更舒服
+        // tips 鐢ㄦ湁搴忓垪琛ㄦ洿鑸掓湇
         if (m.key === 'tips') {
           arr.forEach((t, i) => lines.push(`${i + 1}. ${t}`));
         } else {
@@ -3115,7 +3115,7 @@ function renderReportMarkdownFromModules(parsedJson, modules) {
         }
       }
     } else {
-      lines.push(val ? String(val) : '（空�?);
+      lines.push(val ? String(val) : '锛堢┖锛?);
     }
     lines.push('');
   }
@@ -3127,9 +3127,9 @@ function renderReportMarkdownFromModules(parsedJson, modules) {
 
 async function runAnalysis() {
   const s = ensureSettings();
-  if (!s.enabled) { setStatus('插件未启�?, 'warn'); return; }
+  if (!s.enabled) { setStatus('鎻掍欢鏈惎鐢?, 'warn'); return; }
 
-  setStatus('分析中�?, 'warn');
+  setStatus('鍒嗘瀽涓€?, 'warn');
   $('#sg_analyze').prop('disabled', true);
 
   try {
@@ -3160,10 +3160,10 @@ async function runAnalysis() {
     $('#sg_src').text(JSON.stringify(sourceSummary, null, 2));
 
     if (!parsed) {
-      // 同步原文到聊天末尾（解析失败时也不至于“聊天里看不到”）
+      // 鍚屾鍘熸枃鍒拌亰澶╂湯灏撅紙瑙ｆ瀽澶辫触鏃朵篃涓嶈嚦浜庘€滆亰澶╅噷鐪嬩笉鍒扳€濓級
       try { syncPanelOutputToChat(String(jsonText || lastJsonText || ''), true); } catch { /* ignore */ }
       showPane('json');
-      throw new Error('模型输出无法解析�?JSON（已切到 JSON 标签，看看原文）');
+      throw new Error('妯″瀷杈撳嚭鏃犳硶瑙ｆ瀽涓?JSON锛堝凡鍒囧埌 JSON 鏍囩锛岀湅鐪嬪師鏂囷級');
     }
 
     const md = renderReportMarkdownFromModules(parsed, modules);
@@ -3172,15 +3172,15 @@ async function runAnalysis() {
 
     await updateMapFromSnapshot(snapshotText);
 
-    // 同步面板报告到聊天末�?
+    // 鍚屾闈㈡澘鎶ュ憡鍒拌亰澶╂湯灏?
     try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
 
     updateButtonsEnabled();
     showPane('md');
-    setStatus('完成 �?, 'ok');
+    setStatus('瀹屾垚 鉁?, 'ok');
   } catch (e) {
     console.error('[StoryGuide] analysis failed:', e);
-    setStatus(`分析失败�?{e?.message ?? e}`, 'err');
+    setStatus(`鍒嗘瀽澶辫触锛?{e?.message ?? e}`, 'err');
   } finally {
     $('#sg_analyze').prop('disabled', false);
   }
@@ -3237,11 +3237,11 @@ function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars
   for (let i = start; i < arr.length; i++) {
     const m = arr[i];
     if (!isCountableMessage(m)) continue;
-    const who = m.is_user === true ? '用户' : (m.name || 'AI');
+    const who = m.is_user === true ? '鐢ㄦ埛' : (m.name || 'AI');
     let txt = stripHtml(m.mes || '');
     if (!txt) continue;
-    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '�?;
-    const block = `�?{who}�?{txt}`;
+    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '鈥?;
+    const block = `銆?{who}銆?{txt}`;
     if (total + block.length + 2 > totalMax) break;
     parts.push(block);
     total += block.length + 2;
@@ -3249,7 +3249,7 @@ function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars
   return parts.join('\n');
 }
 
-// 手动楼层范围总结：按 floor 号定位到聊天索引
+// 鎵嬪姩妤煎眰鑼冨洿鎬荤粨锛氭寜 floor 鍙峰畾浣嶅埌鑱婂ぉ绱㈠紩
 function findChatIndexByFloor(chat, mode, floorNo) {
   const arr = Array.isArray(chat) ? chat : [];
   const target = Math.max(1, Number(floorNo) || 1);
@@ -3275,7 +3275,7 @@ function resolveChatRangeByFloors(chat, mode, fromFloor, toFloor) {
   let endIdx = findChatIndexByFloor(chat, mode, b);
   if (startIdx < 0 || endIdx < 0) return null;
 
-  // �?assistant 模式下，为了更贴近“回合”，把起�?assistant 楼层前一条用户消息也纳入（若存在）�?
+  // 鍦?assistant 妯″紡涓嬶紝涓轰簡鏇磋创杩戔€滃洖鍚堚€濓紝鎶婅捣濮?assistant 妤煎眰鍓嶄竴鏉＄敤鎴锋秷鎭篃绾冲叆锛堣嫢瀛樺湪锛夈€?
   if (mode === 'assistant' && startIdx > 0) {
     const prev = chat[startIdx - 1];
     if (prev && prev.is_user === true && isCountableMessage(prev)) startIdx -= 1;
@@ -3297,11 +3297,11 @@ function buildSummaryChunkTextRange(chat, startIdx, endIdx, maxCharsPerMessage, 
   for (let i = start; i <= end; i++) {
     const m = arr[i];
     if (!isCountableMessage(m)) continue;
-    const who = m.is_user === true ? '用户' : (m.name || 'AI');
+    const who = m.is_user === true ? '鐢ㄦ埛' : (m.name || 'AI');
     let txt = stripHtml(m.mes || '');
     if (!txt) continue;
-    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '�?;
-    const block = `�?{who}�?{txt}`;
+    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '鈥?;
+    const block = `銆?{who}銆?{txt}`;
     if (total + block.length + 2 > totalMax) break;
     parts.push(block);
     total += block.length + 2;
@@ -3328,14 +3328,14 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = nu
   // system prompt
   let sys = String(s.summarySystemPrompt || '').trim();
   if (!sys) sys = DEFAULT_SUMMARY_SYSTEM_PROMPT;
-  // 强制追加 JSON 结构要求，避免用户自定义提示词导致解析失�?
+  // 寮哄埗杩藉姞 JSON 缁撴瀯瑕佹眰锛岄伩鍏嶇敤鎴疯嚜瀹氫箟鎻愮ず璇嶅鑷磋В鏋愬け璐?
   sys = sys + '\n\n' + SUMMARY_JSON_REQUIREMENT;
 
   // user template (supports placeholders)
   let tpl = String(s.summaryUserTemplate || '').trim();
   if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
 
-  // 格式�?statData（如果有�?
+  // 鏍煎紡鍖?statData锛堝鏋滄湁锛?
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
 
   let user = renderTemplate(tpl, {
@@ -3344,13 +3344,13 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = nu
     chunk: String(chunkText || ''),
     statData: statDataJson,
   });
-  // 如果用户模板里没有包�?chunk，占位补回去，防止误配导致无内容
+  // 濡傛灉鐢ㄦ埛妯℃澘閲屾病鏈夊寘鍚?chunk锛屽崰浣嶈ˉ鍥炲幓锛岄槻姝㈣閰嶅鑷存棤鍐呭
   if (!/{{\s*chunk\s*}}/i.test(tpl) && !String(user).includes(String(chunkText || '').slice(0, 12))) {
-    user = String(user || '').trim() + `\n\n【对话片段】\n${chunkText}`;
+    user = String(user || '').trim() + `\n\n銆愬璇濈墖娈点€慭n${chunkText}`;
   }
-  // 如果�?statData 且用户模板里没有包含，追加到末尾
+  // 濡傛灉鏈?statData 涓旂敤鎴锋ā鏉块噷娌℃湁鍖呭惈锛岃拷鍔犲埌鏈熬
   if (statData && !/{{\s*statData\s*}}/i.test(tpl)) {
-    user = String(user || '').trim() + `\n\n【角色状态数据】\n${statDataJson}`;
+    user = String(user || '').trim() + `\n\n銆愯鑹茬姸鎬佹暟鎹€慭n${statDataJson}`;
   }
   return [
     { role: 'system', content: sys },
@@ -3366,7 +3366,7 @@ function sanitizeKeywords(kws) {
     if (!t) continue;
     t = t.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
     // split by common delimiters
-    const split = t.split(/[,，�?�?|]+/g).map(x => x.trim()).filter(Boolean);
+    const split = t.split(/[,锛屻€?锛?|]+/g).map(x => x.trim()).filter(Boolean);
     for (const s of split) {
       if (s.length < 2) continue;
       if (s.length > 24) continue;
@@ -3389,7 +3389,7 @@ function appendToBlueIndexCache(rec) {
     range: rec?.range ?? undefined,
   };
   if (!item.summary) return;
-  if (!item.title) item.title = item.keywords?.[0] ? `条目�?{item.keywords[0]}` : '条目';
+  if (!item.title) item.title = item.keywords?.[0] ? `鏉＄洰锛?{item.keywords[0]}` : '鏉＄洰';
   const arr = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
   // de-dup (only check recent items)
   for (let i = arr.length - 1; i >= 0 && i >= arr.length - 10; i--) {
@@ -3407,7 +3407,7 @@ function appendToBlueIndexCache(rec) {
   updateBlueIndexInfoLabel();
 }
 
-// ===== 结构化世界书条目核心函数 =====
+// ===== 缁撴瀯鍖栦笘鐣屼功鏉＄洰鏍稿績鍑芥暟 =====
 
 function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta, statData = null) {
   const s = ensureSettings();
@@ -3418,23 +3418,23 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
   const abilityPrompt = String(s.structuredAbilityPrompt || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
   sys = [
     sys,
-    `【人物条目要求】\n${charPrompt}`,
-    `【装备条目要求】\n${equipPrompt}`,
-    `【能力条目要求】\n${abilityPrompt}`,
+    `銆愪汉鐗╂潯鐩姹傘€慭n${charPrompt}`,
+    `銆愯澶囨潯鐩姹傘€慭n${equipPrompt}`,
+    `銆愯兘鍔涙潯鐩姹傘€慭n${abilityPrompt}`,
     STRUCTURED_ENTRIES_JSON_REQUIREMENT,
   ].join('\n\n');
 
-  // 构建已知列表�?LLM 判断是否新增/更新（包含别名以帮助识别不同写法�?
+  // 鏋勫缓宸茬煡鍒楄〃渚?LLM 鍒ゆ柇鏄惁鏂板/鏇存柊锛堝寘鍚埆鍚嶄互甯姪璇嗗埆涓嶅悓鍐欐硶锛?
   const knownChars = Object.values(meta.characterEntries || {}).map(c => {
-    const aliases = Array.isArray(c.aliases) && c.aliases.length > 0 ? `[别名:${c.aliases.join('/')}]` : '';
+    const aliases = Array.isArray(c.aliases) && c.aliases.length > 0 ? `[鍒悕:${c.aliases.join('/')}]` : '';
     return `${c.name}${aliases}`;
-  }).join('�?) || '�?;
+  }).join('銆?) || '鏃?;
   const knownEquips = Object.values(meta.equipmentEntries || {}).map(e => {
-    const aliases = Array.isArray(e.aliases) && e.aliases.length > 0 ? `[别名:${e.aliases.join('/')}]` : '';
+    const aliases = Array.isArray(e.aliases) && e.aliases.length > 0 ? `[鍒悕:${e.aliases.join('/')}]` : '';
     return `${e.name}${aliases}`;
-  }).join('�?) || '�?;
+  }).join('銆?) || '鏃?;
 
-  // 格式�?statData
+  // 鏍煎紡鍖?statData
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
 
   let tpl = String(s.structuredEntriesUserTemplate || '').trim();
@@ -3447,9 +3447,9 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
     knownEquipments: knownEquips,
     statData: statDataJson,
   });
-  // 如果�?statData 且模板里没有包含，追加到末尾
+  // 濡傛灉鏈?statData 涓旀ā鏉块噷娌℃湁鍖呭惈锛岃拷鍔犲埌鏈熬
   if (statData && !/\{\{\s*statData\s*\}\}/i.test(tpl)) {
-    user = String(user || '').trim() + `\n\n【角色状态数�?statData】\n${statDataJson}`;
+    user = String(user || '').trim() + `\n\n銆愯鑹茬姸鎬佹暟鎹?statData銆慭n${statDataJson}`;
   }
   return [
     { role: 'system', content: sys },
@@ -3478,69 +3478,69 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
   };
 }
 
-// 构建条目�?key（用于世界书触发词和去重�?
+// 鏋勫缓鏉＄洰鐨?key锛堢敤浜庝笘鐣屼功瑙﹀彂璇嶅拰鍘婚噸锛?
 function buildStructuredEntryKey(prefix, name, indexId) {
-  return `${prefix}�?{name}�?{indexId}`;
+  return `${prefix}锝?{name}锝?{indexId}`;
 }
 
-// 构建条目内容（档案式描述�?
+// 鏋勫缓鏉＄洰鍐呭锛堟。妗堝紡鎻忚堪锛?
 function buildCharacterContent(char) {
   const parts = [];
-  if (char.name) parts.push(`【人物�?{char.name}`);
-  if (char.aliases?.length) parts.push(`别名�?{char.aliases.join('�?)}`);
-  if (char.faction) parts.push(`阵营/身份�?{char.faction}`);
-  if (char.status) parts.push(`状态：${char.status}`);
-  if (char.personality) parts.push(`性格�?{char.personality}`);
+  if (char.name) parts.push(`銆愪汉鐗┿€?{char.name}`);
+  if (char.aliases?.length) parts.push(`鍒悕锛?{char.aliases.join('銆?)}`);
+  if (char.faction) parts.push(`闃佃惀/韬唤锛?{char.faction}`);
+  if (char.status) parts.push(`鐘舵€侊細${char.status}`);
+  if (char.personality) parts.push(`鎬ф牸锛?{char.personality}`);
 
-  // 性格铆钉（用特殊格式突出显示�?
-  if (char.corePersonality) parts.push(`【核心性格锚点�?{char.corePersonality}（不会轻易改变）`);
-  if (char.motivation) parts.push(`【角色动机�?{char.motivation}（独立于主角的目标）`);
-  if (char.relationshipStage) parts.push(`【关系阶段�?{char.relationshipStage}`);
+  // 鎬ф牸閾嗛拤锛堢敤鐗规畩鏍煎紡绐佸嚭鏄剧ず锛?
+  if (char.corePersonality) parts.push(`銆愭牳蹇冩€ф牸閿氱偣銆?{char.corePersonality}锛堜笉浼氳交鏄撴敼鍙橈級`);
+  if (char.motivation) parts.push(`銆愯鑹插姩鏈恒€?{char.motivation}锛堢嫭绔嬩簬涓昏鐨勭洰鏍囷級`);
+  if (char.relationshipStage) parts.push(`銆愬叧绯婚樁娈点€?{char.relationshipStage}`);
 
-  if (char.background) parts.push(`背景�?{char.background}`);
-  if (char.relationToProtagonist) parts.push(`与主角关系：${char.relationToProtagonist}`);
-  if (char.keyEvents?.length) parts.push(`关键事件�?{char.keyEvents.join('�?)}`);
+  if (char.background) parts.push(`鑳屾櫙锛?{char.background}`);
+  if (char.relationToProtagonist) parts.push(`涓庝富瑙掑叧绯伙細${char.relationToProtagonist}`);
+  if (char.keyEvents?.length) parts.push(`鍏抽敭浜嬩欢锛?{char.keyEvents.join('锛?)}`);
   if (char.statInfo) {
     const infoStr = typeof char.statInfo === 'object' ? JSON.stringify(char.statInfo, null, 2) : String(char.statInfo);
-    parts.push(`属性数据：${infoStr}`);
+    parts.push(`灞炴€ф暟鎹細${infoStr}`);
   }
   return parts.join('\n');
 }
 
 function buildEquipmentContent(equip) {
   const parts = [];
-  if (equip.name) parts.push(`【装备�?{equip.name}`);
-  if (equip.aliases?.length) parts.push(`别名�?{equip.aliases.join('�?)}`);
-  if (equip.type) parts.push(`类型�?{equip.type}`);
-  if (equip.rarity) parts.push(`品质�?{equip.rarity}`);
-  if (equip.effects) parts.push(`效果�?{equip.effects}`);
-  if (equip.source) parts.push(`来源�?{equip.source}`);
-  if (equip.currentState) parts.push(`当前状态：${equip.currentState}`);
+  if (equip.name) parts.push(`銆愯澶囥€?{equip.name}`);
+  if (equip.aliases?.length) parts.push(`鍒悕锛?{equip.aliases.join('銆?)}`);
+  if (equip.type) parts.push(`绫诲瀷锛?{equip.type}`);
+  if (equip.rarity) parts.push(`鍝佽川锛?{equip.rarity}`);
+  if (equip.effects) parts.push(`鏁堟灉锛?{equip.effects}`);
+  if (equip.source) parts.push(`鏉ユ簮锛?{equip.source}`);
+  if (equip.currentState) parts.push(`褰撳墠鐘舵€侊細${equip.currentState}`);
   if (equip.statInfo) {
     const infoStr = typeof equip.statInfo === 'object' ? JSON.stringify(equip.statInfo, null, 2) : String(equip.statInfo);
-    parts.push(`属性数据：${infoStr}`);
+    parts.push(`灞炴€ф暟鎹細${infoStr}`);
   }
-  if (equip.boundEvents?.length) parts.push(`相关事件�?{equip.boundEvents.join('�?)}`);
+  if (equip.boundEvents?.length) parts.push(`鐩稿叧浜嬩欢锛?{equip.boundEvents.join('锛?)}`);
   return parts.join('\n');
 }
 
 function buildAbilityContent(ability) {
   const parts = [];
-  if (ability.name) parts.push(`【能力�?{ability.name}${ability.isNegative ? '（负面）' : ''}`);
-  if (ability.type) parts.push(`类型�?{ability.type}`);
-  if (ability.effects) parts.push(`效果�?{ability.effects}`);
-  if (ability.trigger) parts.push(`触发条件�?{ability.trigger}`);
-  if (ability.cost) parts.push(`代价/冷却�?{ability.cost}`);
+  if (ability.name) parts.push(`銆愯兘鍔涖€?{ability.name}${ability.isNegative ? '锛堣礋闈級' : ''}`);
+  if (ability.type) parts.push(`绫诲瀷锛?{ability.type}`);
+  if (ability.effects) parts.push(`鏁堟灉锛?{ability.effects}`);
+  if (ability.trigger) parts.push(`瑙﹀彂鏉′欢锛?{ability.trigger}`);
+  if (ability.cost) parts.push(`浠ｄ环/鍐峰嵈锛?{ability.cost}`);
   if (ability.statInfo) {
     const infoStr = typeof ability.statInfo === 'object' ? JSON.stringify(ability.statInfo, null, 2) : String(ability.statInfo);
-    parts.push(`属性数据：${infoStr}`);
+    parts.push(`灞炴€ф暟鎹細${infoStr}`);
   }
-  if (ability.boundEvents?.length) parts.push(`相关事件�?{ability.boundEvents.join('�?)}`);
+  if (ability.boundEvents?.length) parts.push(`鐩稿叧浜嬩欢锛?{ability.boundEvents.join('锛?)}`);
   return parts.join('\n');
 }
 
-// 写入或更新结构化条目（方案C：混合策略）
-// targetType: 'green' = 绿灯世界书（触发词触发）, 'blue' = 蓝灯世界书（常开索引�?
+// 鍐欏叆鎴栨洿鏂扮粨鏋勫寲鏉＄洰锛堟柟妗圕锛氭贩鍚堢瓥鐣ワ級
+// targetType: 'green' = 缁跨伅涓栫晫涔︼紙瑙﹀彂璇嶈Е鍙戯級, 'blue' = 钃濈伅涓栫晫涔︼紙甯稿紑绱㈠紩锛?
 async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings, {
   buildContent,
   entriesCache,
@@ -3548,22 +3548,22 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   prefix,
   targetType = 'green', // 'green' | 'blue'
 }) {
-  // 使用规范化的名称作为唯一标识符（忽略 LLM 提供�?uid，因为不可靠�?
+  // 浣跨敤瑙勮寖鍖栫殑鍚嶇О浣滀负鍞竴鏍囪瘑绗︼紙蹇界暐 LLM 鎻愪緵鐨?uid锛屽洜涓轰笉鍙潬锛?
   const entryName = String(entryData.name || '').trim();
   if (!entryName) return null;
 
-  // 规范化名称：移除特殊字符，用于缓�?key
-  const normalizedName = entryName.replace(/[|�?，\s]/g, '_').toLowerCase();
+  // 瑙勮寖鍖栧悕绉帮細绉婚櫎鐗规畩瀛楃锛岀敤浜庣紦瀛?key
+  const normalizedName = entryName.replace(/[|锝?锛孿s]/g, '_').toLowerCase();
   const cacheKey = `${normalizedName}_${targetType}`;
 
-  // 首先�?cacheKey 直接查找
+  // 棣栧厛鎸?cacheKey 鐩存帴鏌ユ壘
   let cached = entriesCache[cacheKey];
 
-  // 如果直接查找失败，遍历缓存按名称模糊匹配（处理同一人物不同写法�?
+  // 濡傛灉鐩存帴鏌ユ壘澶辫触锛岄亶鍘嗙紦瀛樻寜鍚嶇О妯＄硦鍖归厤锛堝鐞嗗悓涓€浜虹墿涓嶅悓鍐欐硶锛?
   if (!cached) {
     for (const [key, value] of Object.entries(entriesCache)) {
       if (!key.endsWith(`_${targetType}`)) continue;
-      const cachedNameNorm = String(value.name || '').replace(/[|�?，\s]/g, '_').toLowerCase();
+      const cachedNameNorm = String(value.name || '').replace(/[|锝?锛孿s]/g, '_').toLowerCase();
       const cachedAliases = Array.isArray(value.aliases) ? value.aliases.map(a => String(a).toLowerCase().trim()) : [];
       const newAliases = Array.isArray(entryData.aliases) ? entryData.aliases.map(a => String(a).toLowerCase().trim()) : [];
       const nameMatch = cachedNameNorm === normalizedName || cachedNameNorm.includes(normalizedName) || normalizedName.includes(cachedNameNorm);
@@ -3585,38 +3585,38 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     }
   }
 
-  const content = buildContent(entryData).replace(/\|/g, '�?);
+  const content = buildContent(entryData).replace(/\|/g, '锝?);
 
-  // 根据 targetType 选择世界书目�?
+  // 鏍规嵁 targetType 閫夋嫨涓栫晫涔︾洰鏍?
   let target, file, constant;
   if (targetType === 'blue') {
     target = 'file';
     file = String(settings.summaryBlueWorldInfoFile || '');
-    constant = 1; // 蓝灯=常开
-    if (!file) return null; // 蓝灯必须指定文件�?
+    constant = 1; // 钃濈伅=甯稿紑
+    if (!file) return null; // 钃濈伅蹇呴』鎸囧畾鏂囦欢鍚?
   } else {
     target = String(settings.summaryWorldInfoTarget || 'chatbook');
     file = String(settings.summaryWorldInfoFile || '');
-    constant = 0; // 绿灯=触发词触�?
+    constant = 0; // 缁跨伅=瑙﹀彂璇嶈Е鍙?
   }
   const fileExprForQuery = (target === 'chatbook') ? '{{getchatbook}}' : file;
 
-  // 去重和更新检查：如果本地缓存已有此条�?
+  // 鍘婚噸鍜屾洿鏂版鏌ワ細濡傛灉鏈湴缂撳瓨宸叉湁姝ゆ潯鐩?
   if (cached) {
-    // 内容相同 -> 跳过
+    // 鍐呭鐩稿悓 -> 璺宠繃
     if (cached.content === content) {
       console.log(`[StoryGuide] Skip unchanged ${entryType} (${targetType}): ${entryName}`);
       return { skipped: true, name: entryName, targetType, reason: 'unchanged' };
     }
 
-    // 内容不同 -> 尝试使用 /findentry 查找并更�?
+    // 鍐呭涓嶅悓 -> 灏濊瘯浣跨敤 /findentry 鏌ユ壘骞舵洿鏂?
     console.log(`[StoryGuide] Content changed for ${entryType} (${targetType}): ${entryName}, attempting update via /findentry...`);
     try {
-      // 使用 /findentry 通过 comment 字段查找条目 UID
-      // comment 格式�? "人物｜角色名｜CHA-001"
-      const searchPattern = `${prefix}�?{entryName}`;
+      // 浣跨敤 /findentry 閫氳繃 comment 瀛楁鏌ユ壘鏉＄洰 UID
+      // comment 鏍煎紡涓? "浜虹墿锝滆鑹插悕锝淐HA-001"
+      const searchPattern = `${prefix}锝?{entryName}`;
 
-      // 构建查找脚本
+      // 鏋勫缓鏌ユ壘鑴氭湰
       let findParts = [];
       const findUidVar = '__sg_find_uid';
       const findFileVar = '__sg_find_file';
@@ -3633,22 +3633,22 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
       const findResult = await execSlash(findParts.join(' | '));
 
-      // DEBUG: 查看 findentry 返回�?
+      // DEBUG: 鏌ョ湅 findentry 杩斿洖鍊?
       console.log(`[StoryGuide] DEBUG /findentry result:`, findResult, `type:`, typeof findResult);
 
-      // 解析 UID - 处理多种可能的返回格�?
+      // 瑙ｆ瀽 UID - 澶勭悊澶氱鍙兘鐨勮繑鍥炴牸寮?
       let foundUid = null;
       if (findResult !== null && findResult !== undefined) {
-        // 如果是数字，直接使用
+        // 濡傛灉鏄暟瀛楋紝鐩存帴浣跨敤
         if (typeof findResult === 'number') {
           foundUid = String(findResult);
         } else if (typeof findResult === 'string') {
           const trimmed = findResult.trim();
-          // 直接是数字字符串
+          // 鐩存帴鏄暟瀛楀瓧绗︿覆
           if (trimmed.match(/^\d+$/)) {
             foundUid = trimmed;
           } else {
-            // 尝试解析 JSON
+            // 灏濊瘯瑙ｆ瀽 JSON
             try {
               const parsed = JSON.parse(trimmed);
               if (typeof parsed === 'number') {
@@ -3661,7 +3661,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
             } catch { /* not JSON */ }
           }
         } else if (typeof findResult === 'object') {
-          // 对象形式 {pipe: xxx} �?{result: xxx}
+          // 瀵硅薄褰㈠紡 {pipe: xxx} 鎴?{result: xxx}
           if (findResult?.pipe !== undefined) {
             foundUid = String(findResult.pipe);
           } else if (findResult?.result !== undefined) {
@@ -3671,19 +3671,19 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       }
       console.log(`[StoryGuide] DEBUG parsed foundUid:`, foundUid);
 
-      // 清理临时变量
+      // 娓呯悊涓存椂鍙橀噺
       try { await execSlash(`/flushvar ${findUidVar}`); } catch { /* ignore */ }
       if (target === 'chatbook') {
         try { await execSlash(`/flushvar ${findFileVar}`); } catch { /* ignore */ }
       }
 
       if (foundUid) {
-        // 找到条目，更新内�?
+        // 鎵惧埌鏉＄洰锛屾洿鏂板唴瀹?
         let updateParts = [];
         const updateFileVar = '__sg_update_file';
 
         if (target === 'chatbook') {
-          // chatbook 模式需要先获取文件�?
+          // chatbook 妯″紡闇€瑕佸厛鑾峰彇鏂囦欢鍚?
           updateParts.push('/getchatbook');
           updateParts.push(`/setvar key=${updateFileVar}`);
           updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=content ${quoteSlashValue(content)}`);
@@ -3699,38 +3699,38 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         return { updated: true, name: entryName, targetType, uid: foundUid };
       } else {
         console.log(`[StoryGuide] Entry not found via /findentry: ${searchPattern}, skipping update`);
-        // 未找到条目（可能被手动删除），只更新缓存
+        // 鏈壘鍒版潯鐩紙鍙兘琚墜鍔ㄥ垹闄わ級锛屽彧鏇存柊缂撳瓨
         cached.content = content;
         cached.lastUpdated = Date.now();
         return { skipped: true, name: entryName, targetType, reason: 'entry_not_found' };
       }
     } catch (e) {
       console.warn(`[StoryGuide] Update ${entryType} (${targetType}) via /findentry failed:`, e);
-      // 更新失败，只更新缓存
+      // 鏇存柊澶辫触锛屽彧鏇存柊缂撳瓨
       cached.content = content;
       cached.lastUpdated = Date.now();
       return { skipped: true, name: entryName, targetType, reason: 'update_failed' };
     }
   }
 
-  // 创建新条�?
-  // 对于蓝灯条目，先检查是否有对应的绿灯条目，复用�?indexId
+  // 鍒涘缓鏂版潯鐩?
+  // 瀵逛簬钃濈伅鏉＄洰锛屽厛妫€鏌ユ槸鍚︽湁瀵瑰簲鐨勭豢鐏潯鐩紝澶嶇敤鍏?indexId
   let indexId;
   const greenCacheKey = `${normalizedName}_green`;
   const existingGreenEntry = entriesCache[greenCacheKey];
 
   if (targetType === 'blue' && existingGreenEntry?.indexId) {
-    // 蓝灯复用绿灯�?indexId
+    // 钃濈伅澶嶇敤缁跨伅鐨?indexId
     indexId = existingGreenEntry.indexId;
     console.log(`[StoryGuide] Reusing green indexId for blue: ${entryName} -> ${indexId}`);
   } else {
-    // 绿灯或没有对应绿灯条目时，生成新 indexId
+    // 缁跨伅鎴栨病鏈夊搴旂豢鐏潯鐩椂锛岀敓鎴愭柊 indexId
     const indexNum = meta[nextIndexKey] || 1;
     indexId = `${entryType.substring(0, 3).toUpperCase()}-${String(indexNum).padStart(3, '0')}`;
   }
 
   const keyValue = buildStructuredEntryKey(prefix, entryName, indexId);
-  const comment = `${prefix}�?{entryName}�?{indexId}`;
+  const comment = `${prefix}锝?{entryName}锝?{indexId}`;
 
   const uidVar = '__sg_struct_uid';
   const fileVar = '__sg_struct_wbfile';
@@ -3751,7 +3751,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
   try {
     await execSlash(parts.join(' | '));
-    // 更新缓存
+    // 鏇存柊缂撳瓨
     entriesCache[cacheKey] = {
       name: entryName,
       aliases: entryData.aliases || [],
@@ -3761,7 +3761,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       targetType,
     };
     if (targetType === 'green' && !existingGreenEntry) {
-      // 只在绿灯首次创建时递增索引
+      // 鍙湪缁跨伅棣栨鍒涘缓鏃堕€掑绱㈠紩
       meta[nextIndexKey] = (meta[nextIndexKey] || 1) + 1;
     }
     console.log(`[StoryGuide] Created ${entryType} (${targetType}): ${entryName} -> ${indexId}`);
@@ -3776,24 +3776,24 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 async function writeOrUpdateCharacterEntry(char, meta, settings) {
   if (!char?.name) return null;
   const results = [];
-  // 写入绿灯世界�?
+  // 鍐欏叆缁跨伅涓栫晫涔?
   if (settings.summaryToWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('character', char, meta, settings, {
       buildContent: buildCharacterContent,
       entriesCache: meta.characterEntries,
       nextIndexKey: 'nextCharacterIndex',
-      prefix: settings.characterEntryPrefix || '人物',
+      prefix: settings.characterEntryPrefix || '浜虹墿',
       targetType: 'green',
     });
     if (r) results.push(r);
   }
-  // 写入蓝灯世界�?
+  // 鍐欏叆钃濈伅涓栫晫涔?
   if (settings.summaryToBlueWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('character', char, meta, settings, {
       buildContent: buildCharacterContent,
       entriesCache: meta.characterEntries,
       nextIndexKey: 'nextCharacterIndex',
-      prefix: settings.characterEntryPrefix || '人物',
+      prefix: settings.characterEntryPrefix || '浜虹墿',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -3804,24 +3804,24 @@ async function writeOrUpdateCharacterEntry(char, meta, settings) {
 async function writeOrUpdateEquipmentEntry(equip, meta, settings) {
   if (!equip?.name) return null;
   const results = [];
-  // 写入绿灯世界�?
+  // 鍐欏叆缁跨伅涓栫晫涔?
   if (settings.summaryToWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('equipment', equip, meta, settings, {
       buildContent: buildEquipmentContent,
       entriesCache: meta.equipmentEntries,
       nextIndexKey: 'nextEquipmentIndex',
-      prefix: settings.equipmentEntryPrefix || '装备',
+      prefix: settings.equipmentEntryPrefix || '瑁呭',
       targetType: 'green',
     });
     if (r) results.push(r);
   }
-  // 写入蓝灯世界�?
+  // 鍐欏叆钃濈伅涓栫晫涔?
   if (settings.summaryToBlueWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('equipment', equip, meta, settings, {
       buildContent: buildEquipmentContent,
       entriesCache: meta.equipmentEntries,
       nextIndexKey: 'nextEquipmentIndex',
-      prefix: settings.equipmentEntryPrefix || '装备',
+      prefix: settings.equipmentEntryPrefix || '瑁呭',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -3832,24 +3832,24 @@ async function writeOrUpdateEquipmentEntry(equip, meta, settings) {
 async function writeOrUpdateAbilityEntry(ability, meta, settings) {
   if (!ability?.name) return null;
   const results = [];
-  // 写入绿灯世界�?
+  // 鍐欏叆缁跨伅涓栫晫涔?
   if (settings.summaryToWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('ability', ability, meta, settings, {
       buildContent: buildAbilityContent,
       entriesCache: meta.abilityEntries,
       nextIndexKey: 'nextAbilityIndex',
-      prefix: settings.abilityEntryPrefix || '能力',
+      prefix: settings.abilityEntryPrefix || '鑳藉姏',
       targetType: 'green',
     });
     if (r) results.push(r);
   }
-  // 写入蓝灯世界�?
+  // 鍐欏叆钃濈伅涓栫晫涔?
   if (settings.summaryToBlueWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('ability', ability, meta, settings, {
       buildContent: buildAbilityContent,
       entriesCache: meta.abilityEntries,
       nextIndexKey: 'nextAbilityIndex',
-      prefix: settings.abilityEntryPrefix || '能力',
+      prefix: settings.abilityEntryPrefix || '鑳藉姏',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -3857,7 +3857,7 @@ async function writeOrUpdateAbilityEntry(ability, meta, settings) {
   return results.length ? results : null;
 }
 
-// 删除结构化条目（从世界书中删除死亡角色、卖掉装备等�?
+// 鍒犻櫎缁撴瀯鍖栨潯鐩紙浠庝笘鐣屼功涓垹闄ゆ浜¤鑹层€佸崠鎺夎澶囩瓑锛?
 async function deleteStructuredEntry(entryType, entryName, meta, settings, {
   entriesCache,
   prefix,
@@ -3866,7 +3866,7 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
   if (!entryName) return null;
   const normalizedName = String(entryName || '').trim().toLowerCase();
 
-  // 查找缓存中的条目
+  // 鏌ユ壘缂撳瓨涓殑鏉＄洰
   const cacheKey = `${normalizedName}_${targetType}`;
   const cached = entriesCache[cacheKey];
   if (!cached) {
@@ -3874,10 +3874,10 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     return null;
   }
 
-  // 构建 comment 用于查找世界书条�?
-  const comment = `${prefix}�?{cached.name}�?{cached.indexId}`;
+  // 鏋勫缓 comment 鐢ㄤ簬鏌ユ壘涓栫晫涔︽潯鐩?
+  const comment = `${prefix}锝?{cached.name}锝?{cached.indexId}`;
 
-  // 确定目标世界�?
+  // 纭畾鐩爣涓栫晫涔?
   let target = 'chatbook';
   let file = '';
   if (targetType === 'blue') {
@@ -3895,12 +3895,12 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     }
   }
 
-  // 使用 /findentry 查找条目 UID
+  // 浣跨敤 /findentry 鏌ユ壘鏉＄洰 UID
   try {
     let findExpr;
     const findFileVar = 'sgTmpFindFile';
     if (target === 'chatbook') {
-      // 使用 setvar/getvar 管道获取 chatbook 文件�?
+      // 浣跨敤 setvar/getvar 绠￠亾鑾峰彇 chatbook 鏂囦欢鍚?
       await execSlash(`/getchatbook | /setvar key=${findFileVar}`);
       findExpr = `/findentry file={{getvar::${findFileVar}}} field=comment ${quoteSlashValue(comment)}`;
     } else {
@@ -3910,12 +3910,12 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     const findResult = await execSlash(findExpr);
     const findText = slashOutputToText(findResult);
 
-    // 清理临时变量
+    // 娓呯悊涓存椂鍙橀噺
     if (target === 'chatbook') {
       await execSlash(`/flushvar ${findFileVar}`);
     }
 
-    // 解析 UID
+    // 瑙ｆ瀽 UID
     let uid = null;
     if (findText && findText !== 'null' && findText !== 'undefined') {
       const parsed = safeJsonParse(findText);
@@ -3928,20 +3928,20 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
 
     if (!uid) {
       console.log(`[StoryGuide] Delete ${entryType} (${targetType}): ${entryName} not found in world book`);
-      // 仍然从缓存中删除
+      // 浠嶇劧浠庣紦瀛樹腑鍒犻櫎
       delete entriesCache[cacheKey];
       return { deleted: true, name: entryName, source: 'cache_only' };
     }
 
-    // SillyTavern 没有 /delentry 命令，改为禁用条目并标记为已删除
-    // 1. 设置 disable=1（禁用条目）
-    // 2. 清空内容或标记为已删�?
+    // SillyTavern 娌℃湁 /delentry 鍛戒护锛屾敼涓虹鐢ㄦ潯鐩苟鏍囪涓哄凡鍒犻櫎
+    // 1. 璁剧疆 disable=1锛堢鐢ㄦ潯鐩級
+    // 2. 娓呯┖鍐呭鎴栨爣璁颁负宸插垹闄?
 
-    // 构建文件表达式（chatbook 需要特殊处理）
+    // 鏋勫缓鏂囦欢琛ㄨ揪寮忥紙chatbook 闇€瑕佺壒娈婂鐞嗭級
     let fileExpr;
     const fileVar = 'sgTmpDeleteFile';
     if (target === 'chatbook') {
-      // 使用 setvar/getvar 管道获取 chatbook 文件�?
+      // 浣跨敤 setvar/getvar 绠￠亾鑾峰彇 chatbook 鏂囦欢鍚?
       await execSlash(`/getchatbook | /setvar key=${fileVar}`);
       fileExpr = `{{getvar::${fileVar}}}`;
     } else {
@@ -3951,40 +3951,40 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     const disableExpr = `/setentryfield file=${fileExpr} uid=${uid} field=disable 1`;
     await execSlash(disableExpr);
 
-    // 修改 comment 为已删除标记
-    const deletedComment = `[已删除] ${comment}`;
+    // 淇敼 comment 涓哄凡鍒犻櫎鏍囪
+    const deletedComment = `[宸插垹闄 ${comment}`;
     const commentExpr = `/setentryfield file=${fileExpr} uid=${uid} field=comment ${quoteSlashValue(deletedComment)}`;
     await execSlash(commentExpr);
 
-    // 清空触发词（避免被触发）
+    // 娓呯┖瑙﹀彂璇嶏紙閬垮厤琚Е鍙戯級
     const keyExpr = `/setentryfield file=${fileExpr} uid=${uid} field=key ""`;
     await execSlash(keyExpr);
 
-    // 清理临时变量
+    // 娓呯悊涓存椂鍙橀噺
     if (target === 'chatbook') {
       await execSlash(`/flushvar ${fileVar}`);
     }
 
-    // 从缓存中删除
+    // 浠庣紦瀛樹腑鍒犻櫎
     delete entriesCache[cacheKey];
 
     console.log(`[StoryGuide] Disabled ${entryType} (${targetType}): ${entryName} (UID: ${uid})`);
     return { deleted: true, name: entryName, uid, targetType };
   } catch (e) {
     console.warn(`[StoryGuide] Delete ${entryType} (${targetType}) failed:`, e);
-    // 仍然从缓存中删除（避免下次再次尝试）
+    // 浠嶇劧浠庣紦瀛樹腑鍒犻櫎锛堥伩鍏嶄笅娆″啀娆″皾璇曪級
     delete entriesCache[cacheKey];
     return null;
   }
 }
 
-// 删除角色条目
+// 鍒犻櫎瑙掕壊鏉＄洰
 async function deleteCharacterEntry(charName, meta, settings) {
   const results = [];
   if (settings.summaryToWorldInfo) {
     const r = await deleteStructuredEntry('character', charName, meta, settings, {
       entriesCache: meta.characterEntries,
-      prefix: settings.characterEntryPrefix || '人物',
+      prefix: settings.characterEntryPrefix || '浜虹墿',
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -3992,7 +3992,7 @@ async function deleteCharacterEntry(charName, meta, settings) {
   if (settings.summaryToBlueWorldInfo) {
     const r = await deleteStructuredEntry('character', charName, meta, settings, {
       entriesCache: meta.characterEntries,
-      prefix: settings.characterEntryPrefix || '人物',
+      prefix: settings.characterEntryPrefix || '浜虹墿',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4000,13 +4000,13 @@ async function deleteCharacterEntry(charName, meta, settings) {
   return results.length ? results : null;
 }
 
-// 删除装备条目
+// 鍒犻櫎瑁呭鏉＄洰
 async function deleteEquipmentEntry(equipName, meta, settings) {
   const results = [];
   if (settings.summaryToWorldInfo) {
     const r = await deleteStructuredEntry('equipment', equipName, meta, settings, {
       entriesCache: meta.equipmentEntries,
-      prefix: settings.equipmentEntryPrefix || '装备',
+      prefix: settings.equipmentEntryPrefix || '瑁呭',
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -4014,7 +4014,7 @@ async function deleteEquipmentEntry(equipName, meta, settings) {
   if (settings.summaryToBlueWorldInfo) {
     const r = await deleteStructuredEntry('equipment', equipName, meta, settings, {
       entriesCache: meta.equipmentEntries,
-      prefix: settings.equipmentEntryPrefix || '装备',
+      prefix: settings.equipmentEntryPrefix || '瑁呭',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4022,13 +4022,13 @@ async function deleteEquipmentEntry(equipName, meta, settings) {
   return results.length ? results : null;
 }
 
-// 删除能力条目
+// 鍒犻櫎鑳藉姏鏉＄洰
 async function deleteAbilityEntry(abilityName, meta, settings) {
   const results = [];
   if (settings.summaryToWorldInfo) {
     const r = await deleteStructuredEntry('ability', abilityName, meta, settings, {
       entriesCache: meta.abilityEntries,
-      prefix: settings.abilityEntryPrefix || '能力',
+      prefix: settings.abilityEntryPrefix || '鑳藉姏',
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -4036,7 +4036,7 @@ async function deleteAbilityEntry(abilityName, meta, settings) {
   if (settings.summaryToBlueWorldInfo) {
     const r = await deleteStructuredEntry('ability', abilityName, meta, settings, {
       entriesCache: meta.abilityEntries,
-      prefix: settings.abilityEntryPrefix || '能力',
+      prefix: settings.abilityEntryPrefix || '鑳藉姏',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4118,7 +4118,7 @@ async function getSlashExecutor() {
   }
 
   cachedSlashExecutor = null;
-  throw new Error('未找到可用的 STscript/SlashCommand 执行函数（无法自动写入世界书）�?);
+  throw new Error('鏈壘鍒板彲鐢ㄧ殑 STscript/SlashCommand 鎵ц鍑芥暟锛堟棤娉曡嚜鍔ㄥ啓鍏ヤ笘鐣屼功锛夈€?);
 }
 
 async function execSlash(cmd) {
@@ -4143,11 +4143,11 @@ function safeStringifyShort(v, maxLen = 260) {
 }
 
 /**
- * 兼容不同版本 SlashCommand 执行器的返回值形态：
+ * 鍏煎涓嶅悓鐗堟湰 SlashCommand 鎵ц鍣ㄧ殑杩斿洖鍊煎舰鎬侊細
  * - string
  * - number/boolean
  * - array
- * - object（常见字段：text/output/message/result/value/data/html...�?
+ * - object锛堝父瑙佸瓧娈碉細text/output/message/result/value/data/html...锛?
  */
 function slashOutputToText(out, seen = new Set()) {
   if (out == null) return '';
@@ -4184,9 +4184,9 @@ function slashOutputToText(out, seen = new Set()) {
 }
 
 /**
- * �?SlashCommand 输出中提取世界书条目 UID
- * - 支持 text / object / array 多种形�?
- * - 支持 uid=123、UID:123、以及返回对象里直接包含 uid 字段
+ * 浠?SlashCommand 杈撳嚭涓彁鍙栦笘鐣屼功鏉＄洰 UID
+ * - 鏀寔 text / object / array 澶氱褰㈡€?
+ * - 鏀寔 uid=123銆乁ID:123銆佷互鍙婅繑鍥炲璞￠噷鐩存帴鍖呭惈 uid 瀛楁
  */
 function extractUid(out, seen = new Set()) {
   if (out == null) return null;
@@ -4262,46 +4262,46 @@ function quoteSlashValue(v) {
 async function writeSummaryToWorldInfoEntry(rec, meta, {
   target = 'file',
   file = '',
-  commentPrefix = '剧情总结',
+  commentPrefix = '鍓ф儏鎬荤粨',
   constant = 0,
 } = {}) {
   const kws = sanitizeKeywords(rec.keywords);
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
-  const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
+  const prefix = String(commentPrefix || '鍓ф儏鎬荤粨').trim() || '鍓ф儏鎬荤粨';
   const rawTitle = String(rec.title || '').trim();
 
   const s = ensureSettings();
   const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
   const indexId = String(rec?.indexId || '').trim();
   const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
-  // comment 字段通常就是世界书列表里�?标题"。这里保�?prefix 始终在最前，避免"前缀设置无效"�?
+  // comment 瀛楁閫氬父灏辨槸涓栫晫涔﹀垪琛ㄩ噷鐨?鏍囬"銆傝繖閲屼繚璇?prefix 濮嬬粓鍦ㄦ渶鍓嶏紝閬垮厤"鍓嶇紑璁剧疆鏃犳晥"銆?
   let commentTitle = rawTitle;
   if (prefix) {
     if (!commentTitle) commentTitle = prefix;
-    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}�?{commentTitle}`;
+    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}锝?{commentTitle}`;
   }
-  // 若启用“索引编号触发”：�?A-001 写进 comment，便于在世界书列表里一眼定位�?
+  // 鑻ュ惎鐢ㄢ€滅储寮曠紪鍙疯Е鍙戔€濓細鎶?A-001 鍐欒繘 comment锛屼究浜庡湪涓栫晫涔﹀垪琛ㄩ噷涓€鐪煎畾浣嶃€?
   if (indexInComment) {
     if (!commentTitle.includes(indexId)) {
-      if (commentTitle === prefix) commentTitle = `${prefix}�?{indexId}`;
-      else if (commentTitle.startsWith(`${prefix}｜`)) commentTitle = commentTitle.replace(`${prefix}｜`, `${prefix}�?{indexId}｜`);
-      else commentTitle = `${prefix}�?{indexId}�?{commentTitle}`;
-      commentTitle = commentTitle.replace(/｜｜+/g, '�?);
+      if (commentTitle === prefix) commentTitle = `${prefix}锝?{indexId}`;
+      else if (commentTitle.startsWith(`${prefix}锝渀)) commentTitle = commentTitle.replace(`${prefix}锝渀, `${prefix}锝?{indexId}锝渀);
+      else commentTitle = `${prefix}锝?{indexId}锝?{commentTitle}`;
+      commentTitle = commentTitle.replace(/锝滐綔+/g, '锝?);
     }
   }
-  if (!commentTitle) commentTitle = '剧情总结';
-  const comment = `${commentTitle}${range ? `�?{range}）` : ''}`;
+  if (!commentTitle) commentTitle = '鍓ф儏鎬荤粨';
+  const comment = `${commentTitle}${range ? `锛?{range}锛塦 : ''}`;
 
   // normalize content and make it safe for slash parser (avoid accidental pipe split)
   const content = String(rec.summary || '')
     .replace(/\s*\n+\s*/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/\|/g, '�?);
+    .replace(/\|/g, '锝?);
 
   const t = String(target || 'file');
   const f = String(file || '').trim();
-  if (t === 'file' && !f) throw new Error('WorldInfo 目标�?file 时必须填写世界书文件名�?);
+  if (t === 'file' && !f) throw new Error('WorldInfo 鐩爣涓?file 鏃跺繀椤诲～鍐欎笘鐣屼功鏂囦欢鍚嶃€?);
 
   // We purposely avoid parsing UID in JS, because some ST builds return only a status object
   // (e.g. {pipe:"0", ...}) even when the command pipes the UID internally.
@@ -4343,7 +4343,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const script = parts.join(' | ');
   const out = await execSlash(script);
   if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
-    throw new Error(`写入世界书失败（返回�?{safeStringifyShort(out)}）`);
+    throw new Error(`鍐欏叆涓栫晫涔﹀け璐ワ紙杩斿洖锛?{safeStringifyShort(out)}锛塦);
   }
 
   // store link (UID is intentionally omitted because it may be inaccessible from JS in some ST builds)
@@ -4373,8 +4373,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
   if (isSummarizing) return;
   isSummarizing = true;
   summaryCancelled = false;
-  setStatus('总结中�?, 'warn');
-  showToast('正在总结�?, { kind: 'warn', spinner: true, sticky: true });
+  setStatus('鎬荤粨涓€?, 'warn');
+  showToast('姝ｅ湪鎬荤粨鈥?, { kind: 'warn', spinner: true, sticky: true });
 
   try {
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -4390,8 +4390,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     if (reason === 'manual_range') {
       const resolved0 = resolveChatRangeByFloors(chat, mode, manualFromFloor, manualToFloor);
       if (!resolved0) {
-        setStatus('手动楼层范围无效（请检查起止层号）', 'warn');
-        showToast('手动楼层范围无效（请检查起止层号）', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
+        setStatus('鎵嬪姩妤煎眰鑼冨洿鏃犳晥锛堣妫€鏌ヨ捣姝㈠眰鍙凤級', 'warn');
+        showToast('鎵嬪姩妤煎眰鑼冨洿鏃犳晥锛堣妫€鏌ヨ捣姝㈠眰鍙凤級', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
         return;
       }
 
@@ -4427,8 +4427,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     const totalSeg = segments.length;
     if (!totalSeg) {
-      setStatus('没有可总结的内容（范围为空�?, 'warn');
-      showToast('没有可总结的内容（范围为空�?, { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
+      setStatus('娌℃湁鍙€荤粨鐨勫唴瀹癸紙鑼冨洿涓虹┖锛?, 'warn');
+      showToast('娌℃湁鍙€荤粨鐨勫唴瀹癸紙鑼冨洿涓虹┖锛?, { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
       return;
     }
 
@@ -4441,7 +4441,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     const writeErrs = [];
     const runErrs = [];
 
-    // 读取 stat_data（如果启用）
+    // 璇诲彇 stat_data锛堝鏋滃惎鐢級
     let summaryStatData = null;
     if (s.summaryReadStatData) {
       try {
@@ -4459,10 +4459,10 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     }
 
     for (let i = 0; i < segments.length; i++) {
-      // 检查是否被取消
+      // 妫€鏌ユ槸鍚﹁鍙栨秷
       if (summaryCancelled) {
-        setStatus('总结已取�?, 'warn');
-        showToast('总结已取�?, { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+        setStatus('鎬荤粨宸插彇娑?, 'warn');
+        showToast('鎬荤粨宸插彇娑?, { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
         break;
       }
 
@@ -4472,12 +4472,12 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       const fromFloor = seg.fromFloor;
       const toFloor = seg.toFloor;
 
-      if (totalSeg > 1) setStatus(`手动分段总结中…（${i + 1}/${totalSeg}�?{fromFloor}-${toFloor}）`, 'warn');
-      else setStatus('总结中�?, 'warn');
+      if (totalSeg > 1) setStatus(`鎵嬪姩鍒嗘鎬荤粨涓€︼紙${i + 1}/${totalSeg}锝?{fromFloor}-${toFloor}锛塦, 'warn');
+      else setStatus('鎬荤粨涓€?, 'warn');
 
       const chunkText = buildSummaryChunkTextRange(chat, startIdx, endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
       if (!chunkText) {
-        runErrs.push(`${fromFloor}-${toFloor}：片段为空`);
+        runErrs.push(`${fromFloor}-${toFloor}锛氱墖娈典负绌篳);
         continue;
       }
 
@@ -4501,11 +4501,11 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
       const parsed = safeJsonParse(jsonText);
       if (!parsed || !parsed.summary) {
-        runErrs.push(`${fromFloor}-${toFloor}：总结输出无法解析�?JSON`);
+        runErrs.push(`${fromFloor}-${toFloor}锛氭€荤粨杈撳嚭鏃犳硶瑙ｆ瀽涓?JSON`);
         continue;
       }
 
-      const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+      const prefix = String(s.summaryWorldInfoCommentPrefix || '鍓ф儏鎬荤粨').trim() || '鍓ф儏鎬荤粨';
       const rawTitle = String(parsed.title || '').trim();
       const summary = String(parsed.summary || '').trim();
       const modelKeywords = sanitizeKeywords(parsed.keywords);
@@ -4559,30 +4559,30 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       await setSummaryMeta(meta);
       created += 1;
 
-      // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
+      // 鍚屾杩涜摑鐏储寮曠紦瀛橈紙鐢ㄤ簬鏈湴鍖归厤/棰勭瓫閫夛級
       try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
 
-      // 生成结构化世界书条目（人�?装备/能力 - 与剧情总结同一事务�?
+      // 鐢熸垚缁撴瀯鍖栦笘鐣屼功鏉＄洰锛堜汉鐗?瑁呭/鑳藉姏 - 涓庡墽鎯呮€荤粨鍚屼竴浜嬪姟锛?
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         try {
           const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
           console.log('[StoryGuide] Structured entries result:', structuredResult);
           if (structuredResult) {
-            // 写入/更新人物条目（去重由 writeOrUpdate 内部处理�?
+            // 鍐欏叆/鏇存柊浜虹墿鏉＄洰锛堝幓閲嶇敱 writeOrUpdate 鍐呴儴澶勭悊锛?
             if (s.characterEntriesEnabled && structuredResult.characters?.length) {
               console.log(`[StoryGuide] Processing ${structuredResult.characters.length} character(s)`);
               for (const char of structuredResult.characters) {
                 await writeOrUpdateCharacterEntry(char, meta, s);
               }
             }
-            // 写入/更新装备条目
+            // 鍐欏叆/鏇存柊瑁呭鏉＄洰
             if (s.equipmentEntriesEnabled && structuredResult.equipments?.length) {
               console.log(`[StoryGuide] Processing ${structuredResult.equipments.length} equipment(s)`);
               for (const equip of structuredResult.equipments) {
                 await writeOrUpdateEquipmentEntry(equip, meta, s);
               }
             }
-            // 写入/更新能力条目
+            // 鍐欏叆/鏇存柊鑳藉姏鏉＄洰
             if (s.abilityEntriesEnabled && structuredResult.abilities?.length) {
               console.log(`[StoryGuide] Processing ${structuredResult.abilities.length} ability(s)`);
               for (const ability of structuredResult.abilities) {
@@ -4590,7 +4590,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
               }
             }
 
-            // 处理删除的条�?
+            // 澶勭悊鍒犻櫎鐨勬潯鐩?
             if (structuredResult.deletedCharacters?.length) {
               console.log(`[StoryGuide] Deleting ${structuredResult.deletedCharacters.length} character(s)`);
               for (const charName of structuredResult.deletedCharacters) {
@@ -4614,7 +4614,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           }
         } catch (e) {
           console.warn('[StoryGuide] Structured entries generation failed:', e);
-          // 结构化条目生成失败不阻断主流�?
+          // 缁撴瀯鍖栨潯鐩敓鎴愬け璐ヤ笉闃绘柇涓绘祦绋?
         }
       }
 
@@ -4625,13 +4625,13 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
             await writeSummaryToWorldInfoEntry(rec, meta, {
               target: String(s.summaryWorldInfoTarget || 'chatbook'),
               file: String(s.summaryWorldInfoFile || ''),
-              commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
+              commentPrefix: String(s.summaryWorldInfoCommentPrefix || '鍓ф儏鎬荤粨'),
               constant: 0,
             });
             wroteGreenOk += 1;
           } catch (e) {
             console.warn('[StoryGuide] write green world info failed:', e);
-            writeErrs.push(`${fromFloor}-${toFloor} 绿灯�?{e?.message ?? e}`);
+            writeErrs.push(`${fromFloor}-${toFloor} 缁跨伅锛?{e?.message ?? e}`);
           }
         }
 
@@ -4640,13 +4640,13 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
             await writeSummaryToWorldInfoEntry(rec, meta, {
               target: 'file',
               file: String(s.summaryBlueWorldInfoFile || ''),
-              commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
+              commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '鍓ф儏鎬荤粨'),
               constant: 1,
             });
             wroteBlueOk += 1;
           } catch (e) {
             console.warn('[StoryGuide] write blue world info failed:', e);
-            writeErrs.push(`${fromFloor}-${toFloor} 蓝灯�?{e?.message ?? e}`);
+            writeErrs.push(`${fromFloor}-${toFloor} 钃濈伅锛?{e?.message ?? e}`);
           }
         }
       }
@@ -4655,32 +4655,32 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     updateSummaryInfoLabel();
     renderSummaryPaneFromMeta();
 
-    // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓�?
+    // 鑻ュ惎鐢ㄥ疄鏃惰鍙栫储寮曪細鍦ㄦ墜鍔ㄥ垎娈靛啓鍏ヨ摑鐏悗锛屽敖蹇埛鏂颁竴娆＄紦瀛?
     if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
       ensureBlueIndexLive(true).catch(() => void 0);
     }
 
     if (created <= 0) {
-      setStatus(`总结未生成（${runErrs.length ? runErrs[0] : '未知原因'}）`, 'warn');
-      showToast(`总结未生成（${runErrs.length ? runErrs[0] : '未知原因'}）`, { kind: 'warn', spinner: false, sticky: false, duration: 2600 });
+      setStatus(`鎬荤粨鏈敓鎴愶紙${runErrs.length ? runErrs[0] : '鏈煡鍘熷洜'}锛塦, 'warn');
+      showToast(`鎬荤粨鏈敓鎴愶紙${runErrs.length ? runErrs[0] : '鏈煡鍘熷洜'}锛塦, { kind: 'warn', spinner: false, sticky: false, duration: 2600 });
       return;
     }
 
     // final status
     if (totalSeg > 1) {
-      const parts = [`生成 ${created} 条`];
+      const parts = [`鐢熸垚 ${created} 鏉];
       if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
         const wrote = [];
-        if (s.summaryToWorldInfo) wrote.push(`绿灯 ${wroteGreenOk}/${created}`);
-        if (s.summaryToBlueWorldInfo) wrote.push(`蓝灯 ${wroteBlueOk}/${created}`);
-        if (wrote.length) parts.push(`写入�?{wrote.join('�?)}`);
+        if (s.summaryToWorldInfo) wrote.push(`缁跨伅 ${wroteGreenOk}/${created}`);
+        if (s.summaryToBlueWorldInfo) wrote.push(`钃濈伅 ${wroteBlueOk}/${created}`);
+        if (wrote.length) parts.push(`鍐欏叆锛?{wrote.join('锝?)}`);
       }
       const errCount = writeErrs.length + runErrs.length;
       if (errCount) {
-        const sample = (writeErrs.concat(runErrs)).slice(0, 2).join('�?);
-        setStatus(`手动分段总结完成 ✅（${parts.join('�?)}｜失败：${errCount}�?{sample}${errCount > 2 ? '�? : ''}）`, 'warn');
+        const sample = (writeErrs.concat(runErrs)).slice(0, 2).join('锛?);
+        setStatus(`鎵嬪姩鍒嗘鎬荤粨瀹屾垚 鉁咃紙${parts.join('锝?)}锝滃け璐ワ細${errCount}锝?{sample}${errCount > 2 ? '鈥? : ''}锛塦, 'warn');
       } else {
-        setStatus(`手动分段总结完成 ✅（${parts.join('�?)}）`, 'ok');
+        setStatus(`鎵嬪姩鍒嗘鎬荤粨瀹屾垚 鉁咃紙${parts.join('锝?)}锛塦, 'ok');
       }
     } else {
       // single
@@ -4688,17 +4688,17 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         const ok = [];
         const err = [];
         if (s.summaryToWorldInfo) {
-          if (wroteGreenOk >= 1) ok.push('绿灯世界�?);
-          else if (writeErrs.find(x => x.includes('绿灯'))) err.push(writeErrs.find(x => x.includes('绿灯')));
+          if (wroteGreenOk >= 1) ok.push('缁跨伅涓栫晫涔?);
+          else if (writeErrs.find(x => x.includes('缁跨伅'))) err.push(writeErrs.find(x => x.includes('缁跨伅')));
         }
         if (s.summaryToBlueWorldInfo) {
-          if (wroteBlueOk >= 1) ok.push('蓝灯世界�?);
-          else if (writeErrs.find(x => x.includes('蓝灯'))) err.push(writeErrs.find(x => x.includes('蓝灯')));
+          if (wroteBlueOk >= 1) ok.push('钃濈伅涓栫晫涔?);
+          else if (writeErrs.find(x => x.includes('钃濈伅'))) err.push(writeErrs.find(x => x.includes('钃濈伅')));
         }
-        if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ') || '（无�?}）`, 'ok');
-        else setStatus(`总结完成 ✅（写入失败�?{err.join('�?)}）`, 'warn');
+        if (!err.length) setStatus(`鎬荤粨瀹屾垚 鉁咃紙宸插啓鍏ワ細${ok.join(' + ') || '锛堟棤锛?}锛塦, 'ok');
+        else setStatus(`鎬荤粨瀹屾垚 鉁咃紙鍐欏叆澶辫触锛?{err.join('锛?)}锛塦, 'warn');
       } else {
-        setStatus('总结完成 �?, 'ok');
+        setStatus('鎬荤粨瀹屾垚 鉁?, 'ok');
       }
     }
 
@@ -4707,8 +4707,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       const errCount = (writeErrs?.length || 0) + (runErrs?.length || 0);
       const kind = errCount ? 'warn' : 'ok';
       const text = (totalSeg > 1)
-        ? (errCount ? '分段总结完成 ⚠️' : '分段总结完成 �?)
-        : (errCount ? '总结完成 ⚠️' : '总结完成 �?);
+        ? (errCount ? '鍒嗘鎬荤粨瀹屾垚 鈿狅笍' : '鍒嗘鎬荤粨瀹屾垚 鉁?)
+        : (errCount ? '鎬荤粨瀹屾垚 鈿狅笍' : '鎬荤粨瀹屾垚 鉁?);
       showToast(text, { kind, spinner: false, sticky: false, duration: errCount ? 2600 : 1700 });
     } catch { /* ignore toast errors */ }
 
@@ -4716,14 +4716,14 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
   } catch (e) {
     console.error('[StoryGuide] Summary failed:', e);
-    const msg = (e && (e.message || String(e))) ? (e.message || String(e)) : '未知错误';
-    setStatus(`总结失败 ❌（${msg}）`, 'err');
-    showToast(`总结失败 ❌（${msg}）`, { kind: 'err', spinner: false, sticky: false, duration: 3200 });
+    const msg = (e && (e.message || String(e))) ? (e.message || String(e)) : '鏈煡閿欒';
+    setStatus(`鎬荤粨澶辫触 鉂岋紙${msg}锛塦, 'err');
+    showToast(`鎬荤粨澶辫触 鉂岋紙${msg}锛塦, { kind: 'err', spinner: false, sticky: false, duration: 3200 });
   } finally {
 
     isSummarizing = false;
     updateButtonsEnabled();
-    // avoid stuck "正在总结" toast on unexpected exits
+    // avoid stuck "姝ｅ湪鎬荤粨" toast on unexpected exits
     try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
   }
 }
@@ -4761,7 +4761,7 @@ async function maybeAutoSummary(reason = '') {
   await runSummary({ reason: 'auto' });
 }
 
-// -------------------- 蓝灯索引 �?绿灯触发（发送消息时注入触发词） --------------------
+// -------------------- 钃濈伅绱㈠紩 鈫?缁跨伅瑙﹀彂锛堝彂閫佹秷鎭椂娉ㄥ叆瑙﹀彂璇嶏級 --------------------
 
 function escapeRegExp(str) {
   return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -4788,7 +4788,7 @@ function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden
   return `\n\n<!--${tag}\n${body}\n-->`;
 }
 
-// -------------------- ROLL 判定 --------------------
+// -------------------- ROLL 鍒ゅ畾 --------------------
 function rollDice(sides = 100) {
   const s = Math.max(2, Number(sides) || 100);
   return Math.floor(Math.random() * s) + 1;
@@ -5085,13 +5085,13 @@ function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style = 'hidden') {
   const weight = Number.isFinite(Number(res.random?.weight)) ? Number(res.random?.weight) : 0;
   const mods = Array.isArray(res.mods) ? res.mods : [];
   const modLine = mods.map(m => `${m.source}:${Number(m.value) >= 0 ? '+' : ''}${Number(m.value) || 0}`).join(' | ');
-  const outcome = String(res.outcomeTier || '').trim() || (success == null ? 'N/A' : (success ? '成功' : '失败'));
+  const outcome = String(res.outcomeTier || '').trim() || (success == null ? 'N/A' : (success ? '鎴愬姛' : '澶辫触'));
 
   if (String(style || 'hidden') === 'plain') {
-    return `\n\n[${tag}] 动作=${action} | 结果=${outcome} | 最�?${final.toFixed(2)} | 阈�?=${threshold == null ? 'N/A' : threshold} | 基础=${base.toFixed(2)} | 随机=1d100:${roll}*${weight} | 修正=${modLine} | 公式=${formula}\n`;
+    return `\n\n[${tag}] 鍔ㄤ綔=${action} | 缁撴灉=${outcome} | 鏈€缁?${final.toFixed(2)} | 闃堝€?=${threshold == null ? 'N/A' : threshold} | 鍩虹=${base.toFixed(2)} | 闅忔満=1d100:${roll}*${weight} | 淇=${modLine} | 鍏紡=${formula}\n`;
   }
 
-  return `\n\n<!--${tag}\n动作=${action}\n结果=${outcome}\n最�?${final.toFixed(2)}\n阈�?=${threshold == null ? 'N/A' : threshold}\n基础=${base.toFixed(2)}\n随机=1d100:${roll}*${weight}\n修正=${modLine}\n公式=${formula}\n-->`;
+  return `\n\n<!--${tag}\n鍔ㄤ綔=${action}\n缁撴灉=${outcome}\n鏈€缁?${final.toFixed(2)}\n闃堝€?=${threshold == null ? 'N/A' : threshold}\n鍩虹=${base.toFixed(2)}\n闅忔満=1d100:${roll}*${weight}\n淇=${modLine}\n鍏紡=${formula}\n-->`;
 }
 
 function getLatestAssistantText(chat, strip = true) {
@@ -5121,20 +5121,20 @@ function resolveStatDataFromVariableStore(settings) {
   if (!key) return { statData: null, rawText: '' };
   const ctx = SillyTavern.getContext?.() ?? {};
 
-  // 扩展所有可能的变量来源，按优先级排�?
+  // 鎵╁睍鎵€鏈夊彲鑳界殑鍙橀噺鏉ユ簮锛屾寜浼樺厛绾ф帓搴?
   const sources = [
-    // 优先�?context 获取（最新值）
+    // 浼樺厛浠?context 鑾峰彇锛堟渶鏂板€硷級
     ctx?.variables,
     ctx?.chatMetadata?.variables,
     ctx?.chatMetadata,
-    // 全局变量存储
+    // 鍏ㄥ眬鍙橀噺瀛樺偍
     globalThis?.SillyTavern?.chatVariables,
     globalThis?.SillyTavern?.variables,
     globalThis?.variables,
     globalThis?.chatVariables,
-    // extension_settings 中可能存储的变量
+    // extension_settings 涓彲鑳藉瓨鍌ㄧ殑鍙橀噺
     ctx?.extensionSettings?.variables,
-    // window 对象上的变量
+    // window 瀵硅薄涓婄殑鍙橀噺
     window?.variables,
     window?.chatVariables,
   ].filter(Boolean);
@@ -5147,7 +5147,7 @@ function resolveStatDataFromVariableStore(settings) {
     }
   }
 
-  // 如果上述来源都没找到，尝试从 chat 数组中的最后一条消息的 extra 字段读取
+  // 濡傛灉涓婅堪鏉ユ簮閮芥病鎵惧埌锛屽皾璇曚粠 chat 鏁扮粍涓殑鏈€鍚庝竴鏉℃秷鎭殑 extra 瀛楁璇诲彇
   if (raw == null && Array.isArray(ctx?.chat)) {
     for (let i = ctx.chat.length - 1; i >= Math.max(0, ctx.chat.length - 5); i--) {
       const msg = ctx.chat[i];
@@ -5205,9 +5205,9 @@ async function resolveStatDataFromTemplate(settings) {
 }
 
 /**
- * 最稳定的变量读取方式：通过 /getvar 斜杠命令读取变量
- * 由于 SillyTavern 变量系统可能存在缓存或上下文不同步问题，
- * 使用 slash command 可以确保读取到最新的变量�?
+ * 鏈€绋冲畾鐨勫彉閲忚鍙栨柟寮忥細閫氳繃 /getvar 鏂滄潬鍛戒护璇诲彇鍙橀噺
+ * 鐢变簬 SillyTavern 鍙橀噺绯荤粺鍙兘瀛樺湪缂撳瓨鎴栦笂涓嬫枃涓嶅悓姝ラ棶棰橈紝
+ * 浣跨敤 slash command 鍙互纭繚璇诲彇鍒版渶鏂扮殑鍙橀噺鍊?
  */
 async function resolveStatDataViaSlashCommand(settings) {
   const s = settings || ensureSettings();
@@ -5215,7 +5215,7 @@ async function resolveStatDataViaSlashCommand(settings) {
   if (!key) return { statData: null, rawText: '' };
 
   try {
-    // 尝试使用 /getvar 命令读取变量（最稳定的方式）
+    // 灏濊瘯浣跨敤 /getvar 鍛戒护璇诲彇鍙橀噺锛堟渶绋冲畾鐨勬柟寮忥級
     const result = await execSlash(`/getvar ${key}`);
     const raw = slashOutputToText(result);
 
@@ -5223,9 +5223,9 @@ async function resolveStatDataViaSlashCommand(settings) {
       return { statData: null, rawText: '' };
     }
 
-    // 解析变量内容
+    // 瑙ｆ瀽鍙橀噺鍐呭
     if (typeof raw === 'string') {
-      // 尝试 JSON 解析
+      // 灏濊瘯 JSON 瑙ｆ瀽
       const parsed = parseStatData(raw, s.wiRollStatParseMode || 'json');
       if (parsed) {
         return { statData: parsed, rawText: raw };
@@ -5234,15 +5234,15 @@ async function resolveStatDataViaSlashCommand(settings) {
 
     return { statData: null, rawText: raw };
   } catch (e) {
-    // /getvar 命令失败时静默处理，回退到其他方�?
+    // /getvar 鍛戒护澶辫触鏃堕潤榛樺鐞嗭紝鍥為€€鍒板叾浠栨柟娉?
     console.debug('[StoryGuide] resolveStatDataViaSlashCommand failed:', e);
     return { statData: null, rawText: '' };
   }
 }
 
 /**
- * 扩展的变量读取：尝试�?chat 数组中的最新消息读取变量（直接读取 DOM�?
- * 作为变量存储和模板方法的补充回退方案
+ * 鎵╁睍鐨勫彉閲忚鍙栵細灏濊瘯浠?chat 鏁扮粍涓殑鏈€鏂版秷鎭鍙栧彉閲忥紙鐩存帴璇诲彇 DOM锛?
+ * 浣滀负鍙橀噺瀛樺偍鍜屾ā鏉挎柟娉曠殑琛ュ厖鍥為€€鏂规
  */
 function resolveStatDataFromChatDOM(settings) {
   const s = settings || ensureSettings();
@@ -5250,20 +5250,20 @@ function resolveStatDataFromChatDOM(settings) {
   if (!key) return { statData: null, rawText: '' };
 
   try {
-    // 尝试�?DOM 中查找最近的状态块
+    // 灏濊瘯浠?DOM 涓煡鎵炬渶杩戠殑鐘舵€佸潡
     const chatContainer = document.querySelector('#chat, .chat, [id*="chat"]');
     if (!chatContainer) return { statData: null, rawText: '' };
 
-    // 查找所有消息块
+    // 鏌ユ壘鎵€鏈夋秷鎭潡
     const messages = chatContainer.querySelectorAll('.mes, [class*="message"]');
     if (!messages.length) return { statData: null, rawText: '' };
 
-    // 从后往前查找包含状态数据的消息
+    // 浠庡悗寰€鍓嶆煡鎵惧寘鍚姸鎬佹暟鎹殑娑堟伅
     for (let i = messages.length - 1; i >= Math.max(0, messages.length - 10); i--) {
       const msg = messages[i];
       if (!msg) continue;
 
-      // 跳过用户消息
+      // 璺宠繃鐢ㄦ埛娑堟伅
       const isUser = msg.classList.contains('user_mes') || msg.dataset.isUser === 'true';
       if (isUser) continue;
 
@@ -5273,7 +5273,7 @@ function resolveStatDataFromChatDOM(settings) {
       const text = textEl.innerText || textEl.textContent || '';
       if (!text) continue;
 
-      // 尝试提取状态块
+      // 灏濊瘯鎻愬彇鐘舵€佸潡
       const block = extractStatusBlock(text);
       if (block) {
         const parsed = parseStatData(block, s.wiRollStatParseMode || 'json');
@@ -5291,18 +5291,18 @@ function resolveStatDataFromChatDOM(settings) {
 }
 
 /**
- * 综合查找变量数据：尝试多种来源以确保能读取到最新数�?
- * 按优先级依次尝试�?
- * 1. /getvar 斜杠命令（最稳定�?
- * 2. 变量存储对象
- * 3. 模板渲染
- * 4. �?DOM 读取
- * 5. 从最�?AI 回复读取
+ * 缁煎悎鏌ユ壘鍙橀噺鏁版嵁锛氬皾璇曞绉嶆潵婧愪互纭繚鑳借鍙栧埌鏈€鏂版暟鎹?
+ * 鎸変紭鍏堢骇渚濇灏濊瘯锛?
+ * 1. /getvar 鏂滄潬鍛戒护锛堟渶绋冲畾锛?
+ * 2. 鍙橀噺瀛樺偍瀵硅薄
+ * 3. 妯℃澘娓叉煋
+ * 4. 浠?DOM 璇诲彇
+ * 5. 浠庢渶鏂?AI 鍥炲璇诲彇
  */
 async function resolveStatDataComprehensive(chat, settings) {
   const s = settings || ensureSettings();
 
-  // 方法1：使�?/getvar 斜杠命令（最稳定�?
+  // 鏂规硶1锛氫娇鐢?/getvar 鏂滄潬鍛戒护锛堟渶绋冲畾锛?
   try {
     const { statData, rawText } = await resolveStatDataViaSlashCommand(s);
     if (statData) {
@@ -5311,7 +5311,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法2：从变量存储对象读取
+  // 鏂规硶2锛氫粠鍙橀噺瀛樺偍瀵硅薄璇诲彇
   try {
     const { statData, rawText } = resolveStatDataFromVariableStore(s);
     if (statData) {
@@ -5320,7 +5320,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法3：通过模板渲染读取
+  // 鏂规硶3锛氶€氳繃妯℃澘娓叉煋璇诲彇
   try {
     const { statData, rawText } = await resolveStatDataFromTemplate(s);
     if (statData) {
@@ -5329,7 +5329,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法4：从 DOM 读取
+  // 鏂规硶4锛氫粠 DOM 璇诲彇
   try {
     const { statData, rawText } = resolveStatDataFromChatDOM(s);
     if (statData) {
@@ -5338,7 +5338,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法5：从最�?AI 回复读取
+  // 鏂规硶5锛氫粠鏈€鏂?AI 鍥炲璇诲彇
   try {
     const { statData, rawText } = resolveStatDataFromLatestAssistant(chat, s);
     if (statData) {
@@ -5396,18 +5396,18 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
       varSource = 'latestAssistant';
     }
   } else {
-    // 默认使用综合方法（最稳定�?
+    // 榛樿浣跨敤缁煎悎鏂规硶锛堟渶绋冲畾锛?
     const result = await resolveStatDataComprehensive(chat, s);
     statData = result.statData;
     varSource = result.source || '';
   }
   if (!statData) {
     const name = String(s.wiRollStatVarName || 'stat_data').trim() || 'stat_data';
-    logStatus(`ROLL 未触发：未读取到变量�?{name}）`, 'warn');
+    logStatus(`ROLL 鏈Е鍙戯細鏈鍙栧埌鍙橀噺锛?{name}锛塦, 'warn');
     return;
   }
   if (s.wiRollDebugLog && varSource) {
-    console.debug(`[StoryGuide] ROLL 变量读取来源: ${varSource}`);
+    console.debug(`[StoryGuide] ROLL 鍙橀噺璇诲彇鏉ユ簮: ${varSource}`);
   }
 
   const randomRoll = rollDice(100);
@@ -5417,7 +5417,7 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
     try {
       res = await computeRollDecisionViaCustom(lastText, statData, s, randomRoll);
       if (res?.noRoll) {
-        logStatus('ROLL 未触发：AI 判定无需判定', 'info');
+        logStatus('ROLL 鏈Е鍙戯細AI 鍒ゅ畾鏃犻渶鍒ゅ畾', 'info');
         return;
       }
     } catch (e) {
@@ -5425,7 +5425,7 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
     }
   }
   if (!res) {
-    logStatus('ROLL 未触发：AI 判定失败或无结果', 'warn');
+    logStatus('ROLL 鏈Е鍙戯細AI 鍒ゅ畾澶辫触鎴栨棤缁撴灉', 'warn');
     return;
   }
 
@@ -5459,7 +5459,7 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
     if (rollText) {
       const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', rollTag);
       last.mes = cleaned + rollText;
-      logStatus('ROLL 已注入：判定完成', 'ok');
+      logStatus('ROLL 宸叉敞鍏ワ細鍒ゅ畾瀹屾垚', 'ok');
     }
   }
 
@@ -5496,18 +5496,18 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
       varSource = 'latestAssistant';
     }
   } else {
-    // 默认使用综合方法（最稳定�?
+    // 榛樿浣跨敤缁煎悎鏂规硶锛堟渶绋冲畾锛?
     const result = await resolveStatDataComprehensive(chat, s);
     statData = result.statData;
     varSource = result.source || '';
   }
   if (!statData) {
     const name = String(s.wiRollStatVarName || 'stat_data').trim() || 'stat_data';
-    logStatus?.(`ROLL 未触发：未读取到变量�?{name}）`, 'warn');
+    logStatus?.(`ROLL 鏈Е鍙戯細鏈鍙栧埌鍙橀噺锛?{name}锛塦, 'warn');
     return null;
   }
   if (s.wiRollDebugLog && varSource) {
-    console.debug(`[StoryGuide] buildRollInjectionForText 变量读取来源: ${varSource}`);
+    console.debug(`[StoryGuide] buildRollInjectionForText 鍙橀噺璇诲彇鏉ユ簮: ${varSource}`);
   }
 
   const randomRoll = rollDice(100);
@@ -5517,7 +5517,7 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
     try {
       res = await computeRollDecisionViaCustom(userText, statData, s, randomRoll);
       if (res?.noRoll) {
-        logStatus?.('ROLL 未触发：AI 判定无需判定', 'info');
+        logStatus?.('ROLL 鏈Е鍙戯細AI 鍒ゅ畾鏃犻渶鍒ゅ畾', 'info');
         return null;
       }
     } catch (e) {
@@ -5525,7 +5525,7 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
     }
   }
   if (!res) {
-    logStatus?.('ROLL 未触发：AI 判定失败或无结果', 'warn');
+    logStatus?.('ROLL 鏈Е鍙戯細AI 鍒ゅ畾澶辫触鎴栨棤缁撴灉', 'warn');
     return null;
   }
   if (!res) return null;
@@ -5557,7 +5557,7 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
   if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
   const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
   const rollText = buildRollInjectionFromResult(res, rollTag, style);
-  if (rollText) logStatus?.('ROLL 已注入：判定完成', 'ok');
+  if (rollText) logStatus?.('ROLL 宸叉敞鍏ワ細鍒ゅ畾瀹屾垚', 'ok');
   return rollText || null;
 }
 
@@ -5569,7 +5569,7 @@ async function buildTriggerInjectionForText(userText, chat, settings, logStatus)
   if (startAfter > 0) {
     const assistantFloors = computeFloorCount(chat, 'assistant');
     if (assistantFloors < startAfter) {
-      logStatus?.(`索引未触发：AI 楼层不足 ${assistantFloors}/${startAfter}`, 'info');
+      logStatus?.(`绱㈠紩鏈Е鍙戯細AI 妤煎眰涓嶈冻 ${assistantFloors}/${startAfter}`, 'info');
       return null;
     }
   }
@@ -5606,7 +5606,7 @@ async function buildTriggerInjectionForText(userText, chat, settings, logStatus)
   const kwSet = new Set();
   const pickedNames = [];
   for (const { e } of picked) {
-    const name = String(e.title || '').trim() || '条目';
+    const name = String(e.title || '').trim() || '鏉＄洰';
     pickedNames.push(name);
     for (const k of (Array.isArray(e.keywords) ? e.keywords : [])) {
       const kk = String(k || '').trim();
@@ -5621,7 +5621,7 @@ async function buildTriggerInjectionForText(userText, chat, settings, logStatus)
 
   const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
   const injected = buildTriggerInjection(keywords, tagForStrip, style);
-  if (injected) logStatus?.(`索引已注入：${pickedNames.slice(0, 4).join('�?)}${pickedNames.length > 4 ? '�? : ''}`, 'ok');
+  if (injected) logStatus?.(`绱㈠紩宸叉敞鍏ワ細${pickedNames.slice(0, 4).join('銆?)}${pickedNames.length > 4 ? '鈥? : ''}`, 'ok');
   return injected || null;
 }
 
@@ -5939,8 +5939,8 @@ function getBlueIndexEntriesFast() {
   const ageMs = now - Number(blueIndexLiveCache.loadedAt || 0);
   const need = (blueIndexLiveCache.file !== file) || ageMs > (minSec * 1000);
 
-  // 注意：为了尽量不阻塞 MESSAGE_SENT（确保触发词注入在生成前完成），这里�?await�?
-  // 如果需要刷新，就后台拉取一次，下次消息即可使用最新索引�?
+  // 娉ㄦ剰锛氫负浜嗗敖閲忎笉闃诲 MESSAGE_SENT锛堢‘淇濊Е鍙戣瘝娉ㄥ叆鍦ㄧ敓鎴愬墠瀹屾垚锛夛紝杩欓噷涓?await銆?
+  // 濡傛灉闇€瑕佸埛鏂帮紝灏卞悗鍙版媺鍙栦竴娆★紝涓嬫娑堟伅鍗冲彲浣跨敤鏈€鏂扮储寮曘€?
   if (need) {
     ensureBlueIndexLive(false).catch(() => void 0);
   }
@@ -5965,7 +5965,7 @@ function collectBlueIndexCandidates() {
     const key = `${title}__${summary.slice(0, 24)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ title: title || (keywords[0] ? `条目�?{keywords[0]}` : '条目'), summary, keywords });
+    out.push({ title: title || (keywords[0] ? `鏉＄洰锛?{keywords[0]}` : '鏉＄洰'), summary, keywords });
   }
 
   const fromImported = getBlueIndexEntriesFast();
@@ -5977,7 +5977,7 @@ function collectBlueIndexCandidates() {
     const key = `${title}__${summary.slice(0, 24)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ title: title || (keywords[0] ? `条目�?{keywords[0]}` : '条目'), summary, keywords });
+    out.push({ title: title || (keywords[0] ? `鏉＄洰锛?{keywords[0]}` : '鏉＄洰'), summary, keywords });
   }
 
   return out;
@@ -6049,9 +6049,9 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
     const e = x.e || x;
     const title = String(e.title || '').trim();
     const summary0 = String(e.summary || '').trim();
-    const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '�?) : summary0;
+    const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '鈥?) : summary0;
     const kws = Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : [];
-    return { id: i, title: title || '条目', summary, keywords: kws };
+    return { id: i, title: title || '鏉＄洰', summary, keywords: kws };
   });
 
   const messages = buildIndexPromptMessages(recentText, userText, candidatesForModel, maxEntries);
@@ -6125,7 +6125,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   if (!lastText || lastText.startsWith('/')) return;
   if (lastText.includes(String(s.wiTriggerTag || 'SG_WI_TRIGGERS'))) return;
 
-  // 仅在达到指定 AI 楼层后才开始索引触发（避免前期噪声/浪费�?
+  // 浠呭湪杈惧埌鎸囧畾 AI 妤煎眰鍚庢墠寮€濮嬬储寮曡Е鍙戯紙閬垮厤鍓嶆湡鍣０/娴垂锛?
   const startAfter = clampInt(s.wiTriggerStartAfterAssistantMessages, 0, 200000, 0);
   if (startAfter > 0) {
     const assistantFloors = computeFloorCount(chat, 'assistant');
@@ -6142,14 +6142,14 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
       });
       const modalOpen = $('#sg_modal_backdrop').is(':visible');
       if (modalOpen || s.wiTriggerDebugLog) {
-        setStatus(`索引未启动：AI 回复楼层 ${assistantFloors}/${startAfter}`, 'info');
+        setStatus(`绱㈠紩鏈惎鍔細AI 鍥炲妤煎眰 ${assistantFloors}/${startAfter}`, 'info');
       }
       return;
     }
   }
 
   const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
-  // 最近正文（不含本次用户输入）；为避免“触发词注入”污染相似度，先剔除�?tag 的注入片段�?
+  // 鏈€杩戞鏂囷紙涓嶅惈鏈鐢ㄦ埛杈撳叆锛夛紱涓洪伩鍏嶁€滆Е鍙戣瘝娉ㄥ叆鈥濇薄鏌撶浉浼煎害锛屽厛鍓旈櫎鍚?tag 鐨勬敞鍏ョ墖娈点€?
   const tagForStrip = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
   lastText = stripTriggerInjection(lastText, tagForStrip);
   const recentText = buildRecentChatText(chat, lookback, true, [tagForStrip, rollTag]);
@@ -6179,12 +6179,12 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
   const kwSet = new Set();
   const pickedTitles = []; // debug display with score
-  const pickedNames = [];  // entry names (等价于将触发的绿灯条目名�?
+  const pickedNames = [];  // entry names (绛変环浜庡皢瑙﹀彂鐨勭豢鐏潯鐩悕绉?
   const pickedForLog = [];
   for (const { e, score } of picked) {
-    const name = String(e.title || '').trim() || '条目';
+    const name = String(e.title || '').trim() || '鏉＄洰';
     pickedNames.push(name);
-    pickedTitles.push(`${name}�?{score.toFixed(2)}）`);
+    pickedTitles.push(`${name}锛?{score.toFixed(2)}锛塦);
     pickedForLog.push({
       title: name,
       score: Number(score),
@@ -6228,7 +6228,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   // debug status (only when pane open or explicitly enabled)
   const modalOpen = $('#sg_modal_backdrop').is(':visible');
   if (modalOpen || s.wiTriggerDebugLog) {
-    setStatus(`已注入触发词�?{keywords.slice(0, 12).join('�?)}${keywords.length > 12 ? '�? : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('�?)}` : `｜将触发�?{pickedNames.slice(0, 4).join('�?)}${pickedNames.length > 4 ? '�? : ''}`}`, 'ok');
+    setStatus(`宸叉敞鍏ヨЕ鍙戣瘝锛?{keywords.slice(0, 12).join('銆?)}${keywords.length > 12 ? '鈥? : ''}${s.wiTriggerDebugLog ? `锝滃懡涓細${pickedTitles.join('锛?)}` : `锝滃皢瑙﹀彂锛?{pickedNames.slice(0, 4).join('锛?)}${pickedNames.length > 4 ? '鈥? : ''}`}`, 'ok');
   }
 }
 
@@ -6237,7 +6237,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
 function indentForListItem(md) {
   const s = String(md || '');
   const pad = '    '; // 4 spaces to ensure nested blocks stay inside the module card
-  if (!s) return pad + '（空�?;
+  if (!s) return pad + '锛堢┖锛?;
   return s.split('\n').map(line => pad + line).join('\n');
 }
 
@@ -6246,9 +6246,9 @@ function normalizeNumberedHints(arr) {
   for (let i = 0; i < arr.length; i++) {
     const t = String(arr[i] ?? '').trim();
     if (!t) continue;
-    // If the item already starts with 【n�? keep it; else prefix with 【i+1�?
-    if (/^【\d+�?.test(t)) out.push(t);
-    else out.push(`�?{i + 1}�?${t}`);
+    // If the item already starts with 銆恘銆? keep it; else prefix with 銆恑+1銆?
+    if (/^銆怽d+銆?.test(t)) out.push(t);
+    else out.push(`銆?{i + 1}銆?${t}`);
   }
   return out;
 }
@@ -6256,10 +6256,10 @@ function normalizeNumberedHints(arr) {
 function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
   // mode: compact|standard
   const lines = [];
-  lines.push(`**剧情指导**`);
+  lines.push(`**鍓ф儏鎸囧**`);
 
   for (const m of modules) {
-    // quick_actions 模块不在 Markdown 中渲染，而是单独渲染为可点击按钮
+    // quick_actions 妯″潡涓嶅湪 Markdown 涓覆鏌擄紝鑰屾槸鍗曠嫭娓叉煋涓哄彲鐐瑰嚮鎸夐挳
     if (m.key === 'quick_actions') continue;
 
     const hasKey = parsedJson && Object.hasOwn(parsedJson, m.key);
@@ -6269,7 +6269,7 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
     if (m.type === 'list') {
       const arr = Array.isArray(val) ? val : [];
       if (!arr.length) {
-        if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空�?)}`);
+        if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('锛堢┖锛?)}`);
         continue;
       }
 
@@ -6279,7 +6279,7 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
         lines.push(`- **${title}**
 ${indentForListItem(picked.join(' / '))}`);
       } else {
-        // 标准模式：把整个列表合并到同一个模块卡片内（以�?】等为分隔提示）
+        // 鏍囧噯妯″紡锛氭妸鏁翠釜鍒楄〃鍚堝苟鍒板悓涓€涓ā鍧楀崱鐗囧唴锛堜互銆?銆戠瓑涓哄垎闅旀彁绀猴級
         const normalized = normalizeNumberedHints(arr);
         const joined = normalized.join('\n\n');
         lines.push(`- **${title}**\n${indentForListItem(joined)}`);
@@ -6287,16 +6287,16 @@ ${indentForListItem(picked.join(' / '))}`);
     } else {
       const text = (val !== undefined && val !== null) ? String(val).trim() : '';
       if (!text) {
-        if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空�?)}`);
+        if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('锛堢┖锛?)}`);
         continue;
       }
 
       if (mode === 'compact') {
-        const short = (text.length > 140 ? text.slice(0, 140) + '�? : text);
+        const short = (text.length > 140 ? text.slice(0, 140) + '鈥? : text);
         lines.push(`- **${title}**
 ${indentForListItem(short)}`);
       } else {
-        // 标准模式：把内容缩进�?list item 内，避免内部列表/编号变成“同级卡片�?
+        // 鏍囧噯妯″紡锛氭妸鍐呭缂╄繘鍒?list item 鍐咃紝閬垮厤鍐呴儴鍒楄〃/缂栧彿鍙樻垚鈥滃悓绾у崱鐗団€?
         lines.push(`- **${title}**\n${indentForListItem(text)}`);
       }
     }
@@ -6365,7 +6365,7 @@ function attachToggleHandler(boxEl, mesKey) {
         inlineCache.set(String(mesKey), cached);
       }
 
-      // Footer button: collapse then scroll back to the message正文
+      // Footer button: collapse then scroll back to the message姝ｆ枃
       if (isFooter && next) {
         const mesEl = boxEl.closest('.mes');
         (mesEl || boxEl).scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -6383,25 +6383,25 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed, quickActions) {
   box.className = 'sg-inline-box';
   box.dataset.sgMesKey = String(mesKey);
 
-  // 只渲染AI生成的动态选项（不再使用静态配置的选项�?
+  // 鍙覆鏌揂I鐢熸垚鐨勫姩鎬侀€夐」锛堜笉鍐嶄娇鐢ㄩ潤鎬侀厤缃殑閫夐」锛?
   let quickOptionsHtml = '';
   if (Array.isArray(quickActions) && quickActions.length) {
     quickOptionsHtml = renderDynamicQuickActionsHtml(quickActions, 'inline');
   }
 
   box.innerHTML = `
-    <div class="sg-inline-head" title="点击折叠/展开（不会自动生成）">
-      <span class="sg-inline-badge">📘</span>
-      <span class="sg-inline-title">剧情指导</span>
-      <span class="sg-inline-sub">（剧情分析）</span>
-      <span class="sg-inline-chevron">�?/span>
+    <div class="sg-inline-head" title="鐐瑰嚮鎶樺彔/灞曞紑锛堜笉浼氳嚜鍔ㄧ敓鎴愶級">
+      <span class="sg-inline-badge">馃摌</span>
+      <span class="sg-inline-title">鍓ф儏鎸囧</span>
+      <span class="sg-inline-sub">锛堝墽鎯呭垎鏋愶級</span>
+      <span class="sg-inline-chevron">鈻?/span>
     </div>
     <div class="sg-inline-body">${htmlInner}</div>
     ${quickOptionsHtml}
-    <div class="sg-inline-foot" title="点击折叠并回到正�?>
-      <span class="sg-inline-foot-icon">�?/span>
-      <span class="sg-inline-foot-text">收起并回到正�?/span>
-      <span class="sg-inline-foot-icon">�?/span>
+    <div class="sg-inline-foot" title="鐐瑰嚮鎶樺彔骞跺洖鍒版鏂?>
+      <span class="sg-inline-foot-icon">鈻?/span>
+      <span class="sg-inline-foot-text">鏀惰捣骞跺洖鍒版鏂?/span>
+      <span class="sg-inline-foot-icon">鈻?/span>
     </div>`.trim();
 
   setCollapsed(box, !!collapsed);
@@ -6450,22 +6450,22 @@ function createPanelBoxElement(mesKey, htmlInner, collapsed) {
   box.className = 'sg-panel-box';
   box.dataset.sgMesKey = String(mesKey);
 
-  // panel 模式暂不显示快捷选项（只�?inline 模式显示�?
+  // panel 妯″紡鏆備笉鏄剧ず蹇嵎閫夐」锛堝彧鍦?inline 妯″紡鏄剧ず锛?
   const quickOptionsHtml = '';
 
   box.innerHTML = `
-    <div class="sg-panel-head" title="点击折叠/展开（面板分析结果）">
-      <span class="sg-inline-badge">🧭</span>
-      <span class="sg-inline-title">剧情指导</span>
-      <span class="sg-inline-sub">（面板报告）</span>
-      <span class="sg-inline-chevron">�?/span>
+    <div class="sg-panel-head" title="鐐瑰嚮鎶樺彔/灞曞紑锛堥潰鏉垮垎鏋愮粨鏋滐級">
+      <span class="sg-inline-badge">馃Л</span>
+      <span class="sg-inline-title">鍓ф儏鎸囧</span>
+      <span class="sg-inline-sub">锛堥潰鏉挎姤鍛婏級</span>
+      <span class="sg-inline-chevron">鈻?/span>
     </div>
     <div class="sg-panel-body">${htmlInner}</div>
     ${quickOptionsHtml}
-    <div class="sg-panel-foot" title="点击折叠并回到正�?>
-      <span class="sg-inline-foot-icon">�?/span>
-      <span class="sg-inline-foot-text">收起并回到正�?/span>
-      <span class="sg-inline-foot-icon">�?/span>
+    <div class="sg-panel-foot" title="鐐瑰嚮鎶樺彔骞跺洖鍒版鏂?>
+      <span class="sg-inline-foot-icon">鈻?/span>
+      <span class="sg-inline-foot-text">鏀惰捣骞跺洖鍒版鏂?/span>
+      <span class="sg-inline-foot-icon">鈻?/span>
     </div>`.trim();
 
   setCollapsed(box, !!collapsed);
@@ -6541,10 +6541,10 @@ function ensureInlineBoxPresent(mesKey) {
   if (existing) {
     setCollapsed(existing, !!cached.collapsed);
     attachToggleHandler(existing, mesKey);
-    // 更新 body（有时候被覆盖成空壳）
+    // 鏇存柊 body锛堟湁鏃跺€欒瑕嗙洊鎴愮┖澹筹級
     const body = existing.querySelector('.sg-inline-body');
     if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
-    // 更新动态选项（如果有变化�?
+    // 鏇存柊鍔ㄦ€侀€夐」锛堝鏋滄湁鍙樺寲锛?
     const optionsContainer = existing.querySelector('.sg-dynamic-options');
     if (!optionsContainer && Array.isArray(cached.quickActions) && cached.quickActions.length) {
       const newOptionsHtml = renderDynamicQuickActionsHtml(cached.quickActions, 'inline');
@@ -6586,7 +6586,7 @@ async function runInlineAppendForLastMessage(opts = {}) {
   const force = !!opts.force;
   const allow = !!opts.allowWhenDisabled;
   if (!s.enabled) return;
-  // 手动按钮允许在关闭“自动追加”时也生�?
+  // 鎵嬪姩鎸夐挳鍏佽鍦ㄥ叧闂€滆嚜鍔ㄨ拷鍔犫€濇椂涔熺敓鎴?
   if (!s.autoAppendBox && !allow) return;
 
   const ref = getLastAssistantMessageRef();
@@ -6598,7 +6598,7 @@ async function runInlineAppendForLastMessage(opts = {}) {
     inlineCache.delete(String(mesKey));
   }
 
-  // 如果已经缓存过：非强制则只补贴一次；强制则重新请�?
+  // 濡傛灉宸茬粡缂撳瓨杩囷細闈炲己鍒跺垯鍙ˉ璐翠竴娆★紱寮哄埗鍒欓噸鏂拌姹?
   if (inlineCache.has(String(mesKey)) && !force) {
     ensureInlineBoxPresent(mesKey);
     return;
@@ -6608,15 +6608,15 @@ async function runInlineAppendForLastMessage(opts = {}) {
     const { snapshotText } = buildSnapshot();
 
     const modules = getModules('append');
-    // append �?schema �?inline 模块生成；如果用户把 inline 全关了，就不生成
+    // append 閲?schema 鎸?inline 妯″潡鐢熸垚锛涘鏋滅敤鎴锋妸 inline 鍏ㄥ叧浜嗭紝灏变笉鐢熸垚
     if (!modules.length) return;
 
     await updateMapFromSnapshot(snapshotText);
 
-    // �?“compact/standard�?给一点暗示（不强制），避免用户模�?prompt 很长时没起作�?
+    // 瀵?鈥渃ompact/standard鈥?缁欎竴鐐规殫绀猴紙涓嶅己鍒讹級锛岄伩鍏嶇敤鎴锋ā鍧?prompt 寰堥暱鏃舵病璧蜂綔鐢?
     const modeHint = (s.appendMode === 'standard')
-      ? `\n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
-      : `\n【附加要求】inline 输出尽量短：每个字段尽量 1~2 �?2 条以内。\n`;
+      ? `\n銆愰檮鍔犺姹傘€慽nline 杈撳嚭鍙瘮闈㈡澘鏇寸煭锛屼絾涓嶈涓㈡帀鍏抽敭淇℃伅銆俓n`
+      : `\n銆愰檮鍔犺姹傘€慽nline 杈撳嚭灏介噺鐭細姣忎釜瀛楁灏介噺 1~2 鍙?2 鏉′互鍐呫€俓n`;
 
     const schema = buildSchemaFromModules(modules);
     const messages = buildPromptMessages(snapshotText + modeHint, s.spoilerLevel, modules, 'append');
@@ -6638,10 +6638,10 @@ async function runInlineAppendForLastMessage(opts = {}) {
 
     const parsed = safeJsonParse(jsonText);
     if (!parsed) {
-      // 解析失败：也把原文追加到聊天末尾，避免“有输出但看不到�?
+      // 瑙ｆ瀽澶辫触锛氫篃鎶婂師鏂囪拷鍔犲埌鑱婂ぉ鏈熬锛岄伩鍏嶁€滄湁杈撳嚭浣嗙湅涓嶅埌鈥?
       const raw = String(jsonText || '').trim();
-      const rawMd = raw ? ('```text\n' + raw + '\n```') : '（空�?;
-      const mdFail = `**剧情指导（解析失败）**\n\n${rawMd}`;
+      const rawMd = raw ? ('```text\n' + raw + '\n```') : '锛堢┖锛?;
+      const mdFail = `**鍓ф儏鎸囧锛堣В鏋愬け璐ワ級**\n\n${rawMd}`;
       const htmlInnerFail = renderMarkdownToHtml(mdFail);
 
       inlineCache.set(String(mesKey), { htmlInner: htmlInnerFail, collapsed: false, createdAt: Date.now() });
@@ -6653,23 +6653,23 @@ async function runInlineAppendForLastMessage(opts = {}) {
       return;
     }
 
-    // 合并静态模块缓存（使用之前缓存的静态模块值）
+    // 鍚堝苟闈欐€佹ā鍧楃紦瀛橈紙浣跨敤涔嬪墠缂撳瓨鐨勯潤鎬佹ā鍧楀€硷級
     const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
 
-    // 更新静态模块缓存（首次生成的静态模块会被缓存）
+    // 鏇存柊闈欐€佹ā鍧楃紦瀛橈紙棣栨鐢熸垚鐨勯潤鎬佹ā鍧椾細琚紦瀛橈級
     updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
 
     const md = buildInlineMarkdownFromModules(mergedParsed, modules, s.appendMode, !!s.inlineShowEmpty);
     const htmlInner = renderMarkdownToHtml(md);
 
-    // 提取 quick_actions 用于动态渲染可点击按钮
+    // 鎻愬彇 quick_actions 鐢ㄤ簬鍔ㄦ€佹覆鏌撳彲鐐瑰嚮鎸夐挳
     const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
 
     inlineCache.set(String(mesKey), { htmlInner, collapsed: false, createdAt: Date.now(), quickActions });
 
     requestAnimationFrame(() => { ensureInlineBoxPresent(mesKey); });
 
-    // 额外补贴：对付“变量更新晚到”的二次覆盖
+    // 棰濆琛ヨ创锛氬浠樷€滃彉閲忔洿鏂版櫄鍒扳€濈殑浜屾瑕嗙洊
     setTimeout(() => ensureInlineBoxPresent(mesKey), 800);
     setTimeout(() => ensureInlineBoxPresent(mesKey), 1800);
     setTimeout(() => ensureInlineBoxPresent(mesKey), 3500);
@@ -6695,7 +6695,7 @@ function fillModelSelect(modelIds, selected) {
   const $sel = $('#sg_modelSelect');
   if (!$sel.length) return;
   $sel.empty();
-  $sel.append(`<option value="">（选择模型�?/option>`);
+  $sel.append(`<option value="">锛堥€夋嫨妯″瀷锛?/option>`);
   (modelIds || []).forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
@@ -6710,7 +6710,7 @@ function fillSummaryModelSelect(modelIds, selected) {
   const $sel = $('#sg_summaryModelSelect');
   if (!$sel.length) return;
   $sel.empty();
-  $sel.append(`<option value="">（选择模型�?/option>`);
+  $sel.append(`<option value="">锛堥€夋嫨妯″瀷锛?/option>`);
   (modelIds || []).forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
@@ -6725,7 +6725,7 @@ function fillIndexModelSelect(modelIds, selected) {
   const $sel = $('#sg_wiIndexModelSelect');
   if (!$sel.length) return;
   $sel.empty();
-  $sel.append(`<option value="">(选择模型)</option>`);
+  $sel.append(`<option value="">(閫夋嫨妯″瀷)</option>`);
   (modelIds || []).forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
@@ -6740,7 +6740,7 @@ function fillRollModelSelect(modelIds, selected) {
   const $sel = $('#sg_wiRollModelSelect');
   if (!$sel.length) return;
   $sel.empty();
-  $sel.append(`<option value="">(选择模型)</option>`);
+  $sel.append(`<option value="">(閫夋嫨妯″瀷)</option>`);
   (modelIds || []).forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
@@ -6755,9 +6755,9 @@ async function refreshSummaryModels() {
   const s = ensureSettings();
   const raw = String($('#sg_summaryCustomEndpoint').val() || s.summaryCustomEndpoint || '').trim();
   const apiBase = normalizeBaseUrl(raw);
-  if (!apiBase) { setStatus('请先填写“总结独立API基础URL”再刷新模型', 'warn'); return; }
+  if (!apiBase) { setStatus('璇峰厛濉啓鈥滄€荤粨鐙珛API鍩虹URL鈥濆啀鍒锋柊妯″瀷', 'warn'); return; }
 
-  setStatus('正在刷新“总结独立API”模型列表�?, 'warn');
+  setStatus('姝ｅ湪鍒锋柊鈥滄€荤粨鐙珛API鈥濇ā鍨嬪垪琛ㄢ€?, 'warn');
 
   const apiKey = String($('#sg_summaryCustomApiKey').val() || s.summaryCustomApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -6769,14 +6769,14 @@ async function refreshSummaryModels() {
     custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : ''
   };
 
-  // prefer backend status (兼容 ST 后端代理)
+  // prefer backend status (鍏煎 ST 鍚庣浠ｇ悊)
   try {
     const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
     const res = await fetch(statusUrl, { method: 'POST', headers, body: JSON.stringify(body) });
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`鐘舵€佹鏌ュけ璐? HTTP ${res.status} ${res.statusText}\n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -6794,14 +6794,14 @@ async function refreshSummaryModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
+      setStatus('鍒锋柊鎴愬姛锛屼絾鏈В鏋愬埌妯″瀷鍒楄〃锛堣繑鍥炴牸寮忎笉鍏煎锛?, 'warn');
       return;
     }
 
     s.summaryCustomModelsCache = ids;
     saveSettings();
     fillSummaryModelSelect(ids, s.summaryCustomModel);
-    setStatus(`已刷新总结模型�?{ids.length} 个（后端代理）`, 'ok');
+    setStatus(`宸插埛鏂版€荤粨妯″瀷锛?{ids.length} 涓紙鍚庣浠ｇ悊锛塦, 'ok');
     return;
   } catch (e) {
     const status = e?.status;
@@ -6824,7 +6824,7 @@ async function refreshSummaryModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`鐩磋繛 /models 澶辫触: HTTP ${res.status} ${res.statusText}\n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -6838,14 +6838,14 @@ async function refreshSummaryModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
+    if (!ids.length) { setStatus('鐩磋繛鍒锋柊澶辫触锛氭湭瑙ｆ瀽鍒版ā鍨嬪垪琛?, 'warn'); return; }
 
     s.summaryCustomModelsCache = ids;
     saveSettings();
     fillSummaryModelSelect(ids, s.summaryCustomModel);
-    setStatus(`已刷新总结模型�?{ids.length} 个（直连 fallback）`, 'ok');
+    setStatus(`宸插埛鏂版€荤粨妯″瀷锛?{ids.length} 涓紙鐩磋繛 fallback锛塦, 'ok');
   } catch (e) {
-    setStatus(`刷新总结模型失败�?{e?.message ?? e}`, 'err');
+    setStatus(`鍒锋柊鎬荤粨妯″瀷澶辫触锛?{e?.message ?? e}`, 'err');
   }
 }
 
@@ -6854,9 +6854,9 @@ async function refreshIndexModels() {
   const s = ensureSettings();
   const raw = String($('#sg_wiIndexCustomEndpoint').val() || s.wiIndexCustomEndpoint || '').trim();
   const apiBase = normalizeBaseUrl(raw);
-  if (!apiBase) { setStatus('请先填写“索引独立API基础URL”再刷新模型', 'warn'); return; }
+  if (!apiBase) { setStatus('璇峰厛濉啓鈥滅储寮曠嫭绔婣PI鍩虹URL鈥濆啀鍒锋柊妯″瀷', 'warn'); return; }
 
-  setStatus('正在刷新“索引独立API”模型列表�?, 'warn');
+  setStatus('姝ｅ湪鍒锋柊鈥滅储寮曠嫭绔婣PI鈥濇ā鍨嬪垪琛ㄢ€?, 'warn');
 
   const apiKey = String($('#sg_wiIndexCustomApiKey').val() || s.wiIndexCustomApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -6874,7 +6874,7 @@ async function refreshIndexModels() {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`鐘舵€佹鏌ュけ璐? HTTP ${res.status} ${res.statusText}\n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -6892,14 +6892,14 @@ async function refreshIndexModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
+      setStatus('鍒锋柊鎴愬姛锛屼絾鏈В鏋愬埌妯″瀷鍒楄〃锛堣繑鍥炴牸寮忎笉鍏煎锛?, 'warn');
       return;
     }
 
     s.wiIndexCustomModelsCache = ids;
     saveSettings();
     fillIndexModelSelect(ids, s.wiIndexCustomModel);
-    setStatus(`已刷新索引模型：${ids.length} 个（后端代理）`, 'ok');
+    setStatus(`宸插埛鏂扮储寮曟ā鍨嬶細${ids.length} 涓紙鍚庣浠ｇ悊锛塦, 'ok');
     return;
   } catch (e) {
     const status = e?.status;
@@ -6921,7 +6921,7 @@ async function refreshIndexModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`鐩磋繛 /models 澶辫触: HTTP ${res.status} ${res.statusText}\n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -6935,14 +6935,14 @@ async function refreshIndexModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
+    if (!ids.length) { setStatus('鐩磋繛鍒锋柊澶辫触锛氭湭瑙ｆ瀽鍒版ā鍨嬪垪琛?, 'warn'); return; }
 
     s.wiIndexCustomModelsCache = ids;
     saveSettings();
     fillIndexModelSelect(ids, s.wiIndexCustomModel);
-    setStatus(`已刷新索引模型：${ids.length} 个（直连 fallback）`, 'ok');
+    setStatus(`宸插埛鏂扮储寮曟ā鍨嬶細${ids.length} 涓紙鐩磋繛 fallback锛塦, 'ok');
   } catch (e) {
-    setStatus(`刷新索引模型失败�?{e?.message ?? e}`, 'err');
+    setStatus(`鍒锋柊绱㈠紩妯″瀷澶辫触锛?{e?.message ?? e}`, 'err');
   }
 }
 
@@ -6952,9 +6952,9 @@ async function refreshRollModels() {
   const s = ensureSettings();
   const raw = String($('#sg_wiRollCustomEndpoint').val() || s.wiRollCustomEndpoint || '').trim();
   const apiBase = normalizeBaseUrl(raw);
-  if (!apiBase) { setStatus('请先填写"ROLL独立API基础URL"再刷新模�?, 'warn'); return; }
+  if (!apiBase) { setStatus('璇峰厛濉啓"ROLL鐙珛API鍩虹URL"鍐嶅埛鏂版ā鍨?, 'warn'); return; }
 
-  setStatus('正在刷新"ROLL独立API"模型列表�?, 'warn');
+  setStatus('姝ｅ湪鍒锋柊"ROLL鐙珛API"妯″瀷鍒楄〃鈥?, 'warn');
 
   const apiKey = String($('#sg_wiRollCustomApiKey').val() || s.wiRollCustomApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -6972,7 +6972,7 @@ async function refreshRollModels() {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`鐘舵€佹鏌ュけ璐? HTTP ${res.status} ${res.statusText}\n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -6990,14 +6990,14 @@ async function refreshRollModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
+      setStatus('鍒锋柊鎴愬姛锛屼絾鏈В鏋愬埌妯″瀷鍒楄〃锛堣繑鍥炴牸寮忎笉鍏煎锛?, 'warn');
       return;
     }
 
     s.wiRollCustomModelsCache = ids;
     saveSettings();
     fillRollModelSelect(ids, s.wiRollCustomModel);
-    setStatus(`已刷新ROLL模型�?{ids.length} 个（后端代理）`, 'ok');
+    setStatus(`宸插埛鏂癛OLL妯″瀷锛?{ids.length} 涓紙鍚庣浠ｇ悊锛塦, 'ok');
     return;
   } catch (e) {
     const status = e?.status;
@@ -7019,7 +7019,7 @@ async function refreshRollModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`鐩磋繛 /models 澶辫触: HTTP ${res.status} ${res.statusText}\n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -7033,19 +7033,19 @@ async function refreshRollModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
+    if (!ids.length) { setStatus('鐩磋繛鍒锋柊澶辫触锛氭湭瑙ｆ瀽鍒版ā鍨嬪垪琛?, 'warn'); return; }
 
     s.wiRollCustomModelsCache = ids;
     saveSettings();
     fillRollModelSelect(ids, s.wiRollCustomModel);
-    setStatus(`已刷新ROLL模型�?{ids.length} 个（直连 fallback）`, 'ok');
+    setStatus(`宸插埛鏂癛OLL妯″瀷锛?{ids.length} 涓紙鐩磋繛 fallback锛塦, 'ok');
   } catch (e) {
-    setStatus(`刷新ROLL模型失败�?{e?.message ?? e}`, 'err');
+    setStatus(`鍒锋柊ROLL妯″瀷澶辫触锛?{e?.message ?? e}`, 'err');
   }
 }
 
 
-// -------------------- 图像生成模块 --------------------
+// -------------------- 鍥惧儚鐢熸垚妯″潡 --------------------
 
 function getRecentStoryContent(count) {
   const chat = SillyTavern.getContext().chat || [];
@@ -7059,32 +7059,32 @@ function setImageGenStatus(text, kind = '') {
   $s.text(text || '');
 }
 
-// 通用 LLM 调用函数（使用图像生成模块独�?API�?
+// 閫氱敤 LLM 璋冪敤鍑芥暟锛堜娇鐢ㄥ浘鍍忕敓鎴愭ā鍧楃嫭绔?API锛?
 async function callLLM(messages, opts = {}) {
   const s = ensureSettings();
   const temperature = opts.temperature ?? 0.7;
   const maxTokens = opts.max_tokens ?? 1024;
 
-  // 使用图像生成模块独立�?API 配置
+  // 浣跨敤鍥惧儚鐢熸垚妯″潡鐙珛鐨?API 閰嶇疆
   const endpoint = s.imageGenCustomEndpoint || '';
   const apiKey = s.imageGenCustomApiKey || '';
   const model = s.imageGenCustomModel || 'gpt-4o-mini';
 
   if (!endpoint) {
-    throw new Error('请先在「图像生成」标签页配置 LLM API 基础URL');
+    throw new Error('璇峰厛鍦ㄣ€屽浘鍍忕敓鎴愩€嶆爣绛鹃〉閰嶇疆 LLM API 鍩虹URL');
   }
 
   return await callViaCustom(endpoint, apiKey, model, messages, temperature, maxTokens, 0.95, false);
 }
 
-// 刷新图像生成 LLM 模型列表
+// 鍒锋柊鍥惧儚鐢熸垚 LLM 妯″瀷鍒楄〃
 async function refreshImageGenModels() {
   const s = ensureSettings();
   const raw = String($('#sg_imageGenCustomEndpoint').val() || s.imageGenCustomEndpoint || '').trim();
   const apiBase = normalizeBaseUrl(raw);
-  if (!apiBase) { setImageGenStatus('请先填写 LLM API 基础URL', 'warn'); return; }
+  if (!apiBase) { setImageGenStatus('璇峰厛濉啓 LLM API 鍩虹URL', 'warn'); return; }
 
-  setImageGenStatus('正在刷新模型列表�?, 'warn');
+  setImageGenStatus('姝ｅ湪鍒锋柊妯″瀷鍒楄〃鈥?, 'warn');
 
   try {
     const apiKey = String($('#sg_imageGenCustomApiKey').val() || s.imageGenCustomApiKey || '').trim();
@@ -7100,7 +7100,7 @@ async function refreshImageGenModels() {
       .filter(Boolean)
       .sort();
 
-    if (!models.length) { setImageGenStatus('未找到可用模�?, 'warn'); return; }
+    if (!models.length) { setImageGenStatus('鏈壘鍒板彲鐢ㄦā鍨?, 'warn'); return; }
 
     const $sel = $('#sg_imageGenCustomModel');
     const cur = $sel.val();
@@ -7112,30 +7112,30 @@ async function refreshImageGenModels() {
     else if (models.length) $sel.val(models[0]);
 
     pullUiToSettings(); saveSettings();
-    setImageGenStatus(`�?已加�?${models.length} 个模型`, 'ok');
+    setImageGenStatus(`鉁?宸插姞杞?${models.length} 涓ā鍨媊, 'ok');
   } catch (e) {
     console.error('[ImageGen] Refresh models failed:', e);
-    setImageGenStatus(`�?刷新失败: ${e?.message || e}`, 'err');
+    setImageGenStatus(`鉂?鍒锋柊澶辫触: ${e?.message || e}`, 'err');
   }
 }
 
-// 加载图像生成用的世界书（角色标签库）
+// 鍔犺浇鍥惧儚鐢熸垚鐢ㄧ殑涓栫晫涔︼紙瑙掕壊鏍囩搴擄級
 async function loadImageGenWorldBook() {
   const s = ensureSettings();
   const fileName = String($('#sg_imageGenWorldBookFile').val() || s.imageGenWorldBookFile || '').trim();
 
   if (!fileName) {
-    $('#sg_imageGenWorldBookInfo').text('请输入世界书文件�?);
+    $('#sg_imageGenWorldBookInfo').text('璇疯緭鍏ヤ笘鐣屼功鏂囦欢鍚?);
     return;
   }
 
-  $('#sg_imageGenWorldBookInfo').text('正在加载世界书�?);
+  $('#sg_imageGenWorldBookInfo').text('姝ｅ湪鍔犺浇涓栫晫涔︹€?);
 
   try {
     const json = await fetchWorldInfoFileJsonCompat(fileName);
     const parsed = parseWorldbookJson(JSON.stringify(json || {}));
 
-    // 解析条目为角色标签格�?
+    // 瑙ｆ瀽鏉＄洰涓鸿鑹叉爣绛炬牸寮?
     const entries = parsed.filter(e => e && (e.content || e.keys?.length)).map(e => ({
       name: String(e.comment || e.title || e.keys?.[0] || '').trim(),
       keys: Array.isArray(e.keys) ? e.keys.map(k => String(k).toLowerCase().trim()).filter(Boolean) : [],
@@ -7144,24 +7144,24 @@ async function loadImageGenWorldBook() {
     })).filter(e => e.name && e.tags);
 
     if (!entries.length) {
-      $('#sg_imageGenWorldBookInfo').text('⚠️ 未找到有效条�?);
+      $('#sg_imageGenWorldBookInfo').text('鈿狅笍 鏈壘鍒版湁鏁堟潯鐩?);
       return;
     }
 
-    // 保存到设�?
+    // 淇濆瓨鍒拌缃?
     s.imageGenWorldBookFile = fileName;
     s.imageGenWorldBookCache = entries;
     saveSettings();
 
-    $('#sg_imageGenWorldBookInfo').text(`�?已加�?${entries.length} 个角�?条目`);
+    $('#sg_imageGenWorldBookInfo').text(`鉁?宸插姞杞?${entries.length} 涓鑹?鏉＄洰`);
     console.log('[ImageGen] Loaded world book:', entries);
   } catch (e) {
     console.error('[ImageGen] Load world book failed:', e);
-    $('#sg_imageGenWorldBookInfo').text(`�?加载失败: ${e?.message || e}`);
+    $('#sg_imageGenWorldBookInfo').text(`鉂?鍔犺浇澶辫触: ${e?.message || e}`);
   }
 }
 
-// 从故事内容匹配世界书中的角色标签
+// 浠庢晠浜嬪唴瀹瑰尮閰嶄笘鐣屼功涓殑瑙掕壊鏍囩
 function matchCharacterTagsFromWorldBook(storyContent) {
   const s = ensureSettings();
   if (!s.imageGenWorldBookEnabled) return '';
@@ -7174,7 +7174,7 @@ function matchCharacterTagsFromWorldBook(storyContent) {
 
   for (const entry of entries) {
     if (!entry.enabled) continue;
-    // 检查角色名或关键词是否出现在故事中
+    // 妫€鏌ヨ鑹插悕鎴栧叧閿瘝鏄惁鍑虹幇鍦ㄦ晠浜嬩腑
     const nameMatch = entry.name && text.includes(entry.name.toLowerCase());
     const keyMatch = entry.keys?.some(k => text.includes(k));
 
@@ -7185,7 +7185,7 @@ function matchCharacterTagsFromWorldBook(storyContent) {
 
   if (!matched.length) return '';
 
-  // 合并匹配到的标签
+  // 鍚堝苟鍖归厤鍒扮殑鏍囩
   const allTags = matched.map(e => e.tags).join(', ');
   console.log('[ImageGen] Matched characters:', matched.map(e => e.name));
   return allTags;
@@ -7196,19 +7196,19 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
   const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
 
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
-  let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
+  let userPrompt = `璇锋牴鎹互涓嬫晠浜嬪唴瀹圭敓鎴愬浘鍍忔彁绀鸿瘝銆俓n\n`;
   if (genType === 'character') {
-    userPrompt += `【要求】：生成角色立绘的提示词，重点描述角色外观。\n\n`;
+    userPrompt += `銆愯姹傘€戯細鐢熸垚瑙掕壊绔嬬粯鐨勬彁绀鸿瘝锛岄噸鐐规弿杩拌鑹插瑙傘€俓n\n`;
   } else if (genType === 'scene') {
-    userPrompt += `【要求】：生成场景图的提示词，重点描述环境和氛围。\n\n`;
+    userPrompt += `銆愯姹傘€戯細鐢熸垚鍦烘櫙鍥剧殑鎻愮ず璇嶏紝閲嶇偣鎻忚堪鐜鍜屾皼鍥淬€俓n\n`;
   } else {
-    userPrompt += `【要求】：自动判断应该生成角色还是场景。\n\n`;
+    userPrompt += `銆愯姹傘€戯細鑷姩鍒ゆ柇搴旇鐢熸垚瑙掕壊杩樻槸鍦烘櫙銆俓n\n`;
   }
-  userPrompt += `【故事内容】：\n${storyContent}\n\n`;
+  userPrompt += `銆愭晠浜嬪唴瀹广€戯細\n${storyContent}\n\n`;
   if (statDataJson) {
-    userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+    userPrompt += `銆愯鑹茬姸鎬佹暟鎹€戯細\n${statDataJson}\n\n`;
   }
-  userPrompt += `请输�?JSON 格式的提示词。`;
+  userPrompt += `璇疯緭鍑?JSON 鏍煎紡鐨勬彁绀鸿瘝銆俙;
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -7224,11 +7224,11 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
       if (jsonMatch) {
         parsed = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error('未找�?JSON');
+        throw new Error('鏈壘鍒?JSON');
       }
     } catch (e) {
       console.warn('[ImageGen] Failed to parse LLM response:', e, result);
-      return { type: genType || 'auto', subject: '(解析失败)', positive: result.slice(0, 500), negative: '' };
+      return { type: genType || 'auto', subject: '(瑙ｆ瀽澶辫触)', positive: result.slice(0, 500), negative: '' };
     }
 
     return { type: parsed.type || genType || 'auto', subject: parsed.subject || '', positive: parsed.positive || '', negative: parsed.negative || '' };
@@ -7236,9 +7236,9 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
     console.error('[ImageGen] LLM call failed:', e);
     const errMsg = e?.message || String(e);
     if (errMsg.includes('not found') || errMsg.includes('404')) {
-      throw new Error(`LLM 模型不存在，请点击「�?刷新模型」获取可用模型列表`);
+      throw new Error(`LLM 妯″瀷涓嶅瓨鍦紝璇风偣鍑汇€岎煍?鍒锋柊妯″瀷銆嶈幏鍙栧彲鐢ㄦā鍨嬪垪琛╜);
     }
-    throw new Error(`LLM 调用失败: ${errMsg}`);
+    throw new Error(`LLM 璋冪敤澶辫触: ${errMsg}`);
   }
 }
 
@@ -7246,7 +7246,7 @@ async function generateImageWithNovelAI(positive, negative) {
   const s = ensureSettings();
   const apiKey = s.novelaiApiKey;
 
-  if (!apiKey) throw new Error('请先填写 Novel AI API Key');
+  if (!apiKey) throw new Error('璇峰厛濉啓 Novel AI API Key');
 
   const [width, height] = (s.novelaiResolution || '832x1216').split('x').map(Number);
   const defaultNegative = s.novelaiNegativePrompt || DEFAULT_SETTINGS.novelaiNegativePrompt;
@@ -7256,11 +7256,11 @@ async function generateImageWithNovelAI(positive, negative) {
   const isV4 = model.includes('diffusion-4');
   const seed = Math.floor(Math.random() * 4294967295);
 
-  // V4/V4.5 需要完全不同的参数格式
+  // V4/V4.5 闇€瑕佸畬鍏ㄤ笉鍚岀殑鍙傛暟鏍煎紡
   let payload;
 
   if (isV4) {
-    // V4/V4.5 格式 - 基于 novelai-python SDK
+    // V4/V4.5 鏍煎紡 - 鍩轰簬 novelai-python SDK
     payload = {
       input: positive,
       model: model,
@@ -7276,7 +7276,7 @@ async function generateImageWithNovelAI(positive, negative) {
         qualityToggle: true,
         seed: seed,
         negative_prompt: finalNegative,
-        // V4/V4.5 特有参数
+        // V4/V4.5 鐗规湁鍙傛暟
         cfg_rescale: 0,
         sm: false,
         sm_dyn: false,
@@ -7304,7 +7304,7 @@ async function generateImageWithNovelAI(positive, negative) {
       }
     };
   } else {
-    // V3 格式
+    // V3 鏍煎紡
     payload = {
       input: positive,
       model: model,
@@ -7324,7 +7324,7 @@ async function generateImageWithNovelAI(positive, negative) {
     };
   }
 
-  setImageGenStatus('正在调用 Novel AI API 生成图像�?, 'warn');
+  setImageGenStatus('姝ｅ湪璋冪敤 Novel AI API 鐢熸垚鍥惧儚鈥?, 'warn');
 
   const response = await fetch('https://image.novelai.net/ai/generate-image', {
     method: 'POST',
@@ -7334,12 +7334,12 @@ async function generateImageWithNovelAI(positive, negative) {
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
-    throw new Error(`Novel AI API 错误: ${response.status} ${response.statusText}\n${errText}`);
+    throw new Error(`Novel AI API 閿欒: ${response.status} ${response.statusText}\n${errText}`);
   }
 
   const blob = await response.blob();
 
-  // 尝试�?JSZip 解压
+  // 灏濊瘯鐢?JSZip 瑙ｅ帇
   try {
     if (typeof JSZip !== 'undefined') {
       const zip = await JSZip.loadAsync(blob);
@@ -7357,18 +7357,18 @@ async function generateImageWithNovelAI(positive, negative) {
 async function runImageGeneration() {
   const s = ensureSettings();
 
-  if (!s.novelaiApiKey) { setImageGenStatus('请先填写 Novel AI API Key', 'err'); return; }
+  if (!s.novelaiApiKey) { setImageGenStatus('璇峰厛濉啓 Novel AI API Key', 'err'); return; }
 
   const genType = $('#sg_imageGenType').val() || 'auto';
   const lookback = s.imageGenLookbackMessages || 5;
 
   try {
-    setImageGenStatus('正在读取最近对话�?, 'warn');
+    setImageGenStatus('姝ｅ湪璇诲彇鏈€杩戝璇濃€?, 'warn');
     const storyContent = getRecentStoryContent(lookback);
 
-    if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
+    if (!storyContent.trim()) { setImageGenStatus('娌℃湁鎵惧埌瀵硅瘽鍐呭', 'err'); return; }
 
-    setImageGenStatus('正在使用 LLM 生成图像提示词�?, 'warn');
+    setImageGenStatus('姝ｅ湪浣跨敤 LLM 鐢熸垚鍥惧儚鎻愮ず璇嶁€?, 'warn');
     let statData = null;
     if (s.imageGenReadStatData) {
       try {
@@ -7388,7 +7388,7 @@ async function runImageGeneration() {
     }
     const promptResult = await generateImagePromptWithLLM(storyContent, genType, statData);
 
-    // 从世界书匹配角色标签
+    // 浠庝笘鐣屼功鍖归厤瑙掕壊鏍囩
     const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
     let finalPositive = promptResult.positive;
     if (worldBookTags) {
@@ -7404,15 +7404,15 @@ async function runImageGeneration() {
     $('#sg_generatedImage').attr('src', imageUrl);
     $('#sg_imageResult').show();
 
-    setImageGenStatus(`�?生成成功！类�? ${promptResult.type}，主�? ${promptResult.subject}`, 'ok');
+    setImageGenStatus(`鉁?鐢熸垚鎴愬姛锛佺被鍨? ${promptResult.type}锛屼富棰? ${promptResult.subject}`, 'ok');
 
     if (s.imageGenAutoSave && s.imageGenSavePath) {
-      try { await saveGeneratedImage(imageUrl); setImageGenStatus(`�?生成成功并已保存！`, 'ok'); }
+      try { await saveGeneratedImage(imageUrl); setImageGenStatus(`鉁?鐢熸垚鎴愬姛骞跺凡淇濆瓨锛乣, 'ok'); }
       catch (e) { console.warn('[ImageGen] Auto-save failed:', e); }
     }
   } catch (e) {
     console.error('[ImageGen] Generation failed:', e);
-    setImageGenStatus(`�?生成失败: ${e?.message || e}`, 'err');
+    setImageGenStatus(`鉂?鐢熸垚澶辫触: ${e?.message || e}`, 'err');
   }
 }
 
@@ -7432,39 +7432,39 @@ async function saveGeneratedImage(imageUrl) {
 }
 
 
-// -------------------- 在线图库功能 --------------------
+// -------------------- 鍦ㄧ嚎鍥惧簱鍔熻兘 --------------------
 
 async function loadGalleryFromGitHub() {
   const s = ensureSettings();
   const url = String($('#sg_imageGalleryUrl').val() || s.imageGalleryUrl || '').trim();
 
   if (!url) {
-    setImageGenStatus('请先填写图库索引 URL', 'err');
+    setImageGenStatus('璇峰厛濉啓鍥惧簱绱㈠紩 URL', 'err');
     return false;
   }
 
-  setImageGenStatus('正在加载图库�?, 'warn');
-  $('#sg_galleryInfo').text('(加载中�?');
+  setImageGenStatus('姝ｅ湪鍔犺浇鍥惧簱鈥?, 'warn');
+  $('#sg_galleryInfo').text('(鍔犺浇涓€?');
 
   try {
     const response = await fetch(url, { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
-    if (!data.images || !Array.isArray(data.images)) throw new Error('格式错误：缺�?images 数组');
+    if (!data.images || !Array.isArray(data.images)) throw new Error('鏍煎紡閿欒锛氱己灏?images 鏁扮粍');
 
     s.imageGalleryCache = data.images;
     s.imageGalleryCacheTime = Date.now();
     s.imageGalleryBaseUrl = data.baseUrl || url.replace(/\/[^\/]+$/, '/');
     saveSettings();
 
-    $('#sg_galleryInfo').text(`(已加�?${data.images.length} �?`);
-    setImageGenStatus(`�?图库加载成功�?{data.images.length} 张图片`, 'ok');
+    $('#sg_galleryInfo').text(`(宸插姞杞?${data.images.length} 寮?`);
+    setImageGenStatus(`鉁?鍥惧簱鍔犺浇鎴愬姛锛?{data.images.length} 寮犲浘鐗嘸, 'ok');
     return true;
   } catch (e) {
     console.error('[ImageGallery] Load failed:', e);
-    $('#sg_galleryInfo').text('(加载失败)');
-    setImageGenStatus(`�?图库加载失败: ${e?.message || e}`, 'err');
+    $('#sg_galleryInfo').text('(鍔犺浇澶辫触)');
+    setImageGenStatus(`鉂?鍥惧簱鍔犺浇澶辫触: ${e?.message || e}`, 'err');
     return false;
   }
 }
@@ -7473,14 +7473,14 @@ async function matchGalleryImage() {
   const s = ensureSettings();
 
   if (!s.imageGalleryCache || s.imageGalleryCache.length === 0) {
-    setImageGenStatus('请先加载图库', 'err');
+    setImageGenStatus('璇峰厛鍔犺浇鍥惧簱', 'err');
     return;
   }
 
   const storyContent = getRecentStoryContent(s.imageGenLookbackMessages || 5);
-  if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
+  if (!storyContent.trim()) { setImageGenStatus('娌℃湁鎵惧埌瀵硅瘽鍐呭', 'err'); return; }
 
-  setImageGenStatus('正在分析剧情并匹配图片�?, 'warn');
+  setImageGenStatus('姝ｅ湪鍒嗘瀽鍓ф儏骞跺尮閰嶅浘鐗団€?, 'warn');
 
   const galleryList = s.imageGalleryCache.map(img =>
     `- id:${img.id}, tags:[${(img.tags || []).join(',')}], desc:${img.description || ''}`
@@ -7488,29 +7488,29 @@ async function matchGalleryImage() {
 
   const messages = [
     { role: 'system', content: s.imageGalleryMatchPrompt || DEFAULT_SETTINGS.imageGalleryMatchPrompt },
-    { role: 'user', content: `【剧情】：\n${storyContent}\n\n【图库】：\n${galleryList}\n\n选择最匹配的图片。` }
+    { role: 'user', content: `銆愬墽鎯呫€戯細\n${storyContent}\n\n銆愬浘搴撱€戯細\n${galleryList}\n\n閫夋嫨鏈€鍖归厤鐨勫浘鐗囥€俙 }
   ];
 
   try {
     const result = await callLLM(messages, { temperature: 0.3, max_tokens: 256 });
     const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) { setImageGenStatus('�?匹配失败：无法解析响�?, 'err'); return; }
+    if (!jsonMatch) { setImageGenStatus('鉂?鍖归厤澶辫触锛氭棤娉曡В鏋愬搷搴?, 'err'); return; }
 
     const parsed = JSON.parse(jsonMatch[0]);
     const matchedImage = s.imageGalleryCache.find(img => img.id === parsed.matchedId);
 
-    if (!matchedImage) { setImageGenStatus(`�?未找�?ID "${parsed.matchedId}"`, 'err'); return; }
+    if (!matchedImage) { setImageGenStatus(`鉂?鏈壘鍒?ID "${parsed.matchedId}"`, 'err'); return; }
 
     const baseUrl = s.imageGalleryBaseUrl || '';
     const imageUrl = matchedImage.path.startsWith('http') ? matchedImage.path : baseUrl + matchedImage.path;
 
     $('#sg_matchedGalleryImage').attr('src', imageUrl);
-    $('#sg_galleryMatchReason').text(`🎯 ${parsed.reason || ''}`);
+    $('#sg_galleryMatchReason').text(`馃幆 ${parsed.reason || ''}`);
     $('#sg_galleryResult').show();
-    setImageGenStatus(`�?匹配�?{matchedImage.description || parsed.matchedId}`, 'ok');
+    setImageGenStatus(`鉁?鍖归厤锛?{matchedImage.description || parsed.matchedId}`, 'ok');
   } catch (e) {
     console.error('[ImageGallery] Match failed:', e);
-    setImageGenStatus(`�?匹配失败: ${e?.message || e}`, 'err');
+    setImageGenStatus(`鉂?鍖归厤澶辫触: ${e?.message || e}`, 'err');
   }
 }
 
@@ -7519,9 +7519,9 @@ async function refreshModels() {
   const s = ensureSettings();
   const raw = String($('#sg_customEndpoint').val() || s.customEndpoint || '').trim();
   const apiBase = normalizeBaseUrl(raw);
-  if (!apiBase) { setStatus('请先填写 API基础URL 再刷新模�?, 'warn'); return; }
+  if (!apiBase) { setStatus('璇峰厛濉啓 API鍩虹URL 鍐嶅埛鏂版ā鍨?, 'warn'); return; }
 
-  setStatus('正在刷新模型列表�?, 'warn');
+  setStatus('姝ｅ湪鍒锋柊妯″瀷鍒楄〃鈥?, 'warn');
 
   const apiKey = String($('#sg_customApiKey').val() || s.customApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -7540,7 +7540,7 @@ async function refreshModels() {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`鐘舵€佹鏌ュけ璐? HTTP ${res.status} ${res.statusText}\n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -7558,14 +7558,14 @@ async function refreshModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
+      setStatus('鍒锋柊鎴愬姛锛屼絾鏈В鏋愬埌妯″瀷鍒楄〃锛堣繑鍥炴牸寮忎笉鍏煎锛?, 'warn');
       return;
     }
 
     s.customModelsCache = ids;
     saveSettings();
     fillModelSelect(ids, s.customModel);
-    setStatus(`已刷新模型：${ids.length} 个（后端代理）`, 'ok');
+    setStatus(`宸插埛鏂版ā鍨嬶細${ids.length} 涓紙鍚庣浠ｇ悊锛塦, 'ok');
     return;
   } catch (e) {
     const status = e?.status;
@@ -7588,7 +7588,7 @@ async function refreshModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`鐩磋繛 /models 澶辫触: HTTP ${res.status} ${res.statusText}\n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -7602,14 +7602,14 @@ async function refreshModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
+    if (!ids.length) { setStatus('鐩磋繛鍒锋柊澶辫触锛氭湭瑙ｆ瀽鍒版ā鍨嬪垪琛?, 'warn'); return; }
 
     s.customModelsCache = ids;
     saveSettings();
     fillModelSelect(ids, s.customModel);
-    setStatus(`已刷新模型：${ids.length} 个（直连 fallback）`, 'ok');
+    setStatus(`宸插埛鏂版ā鍨嬶細${ids.length} 涓紙鐩磋繛 fallback锛塦, 'ok');
   } catch (e) {
-    setStatus(`刷新模型失败�?{e?.message ?? e}`, 'err');
+    setStatus(`鍒锋柊妯″瀷澶辫触锛?{e?.message ?? e}`, 'err');
   }
 }
 
@@ -7638,8 +7638,8 @@ function createTopbarButton() {
   btn.id = 'sg_topbar_btn';
   btn.type = 'button';
   btn.className = 'sg-topbar-btn';
-  btn.title = '剧情指导 StoryGuide';
-  btn.innerHTML = '<span class="sg-topbar-icon">📘</span>';
+  btn.title = '鍓ф儏鎸囧 StoryGuide';
+  btn.innerHTML = '<span class="sg-topbar-icon">馃摌</span>';
   btn.addEventListener('click', () => openModal());
 
   if (container) {
@@ -7743,25 +7743,25 @@ function clearFloatingPanelPos() {
 }
 
 function clampToViewport(left, top, w, h) {
-  // 放宽边界限制：允许窗口越�?50%（即至少保留 50% 或标题栏 40px 可见�?
-  const minVisibleRatio = 0.5; // 至少 50% 可见（允许另�?50% 在屏幕外�?
-  const minVisiblePx = 40;     // 或至�?40px（保证标题栏可拖回）
+  // 鏀惧杈圭晫闄愬埗锛氬厑璁哥獥鍙ｈ秺鐣?50%锛堝嵆鑷冲皯淇濈暀 50% 鎴栨爣棰樻爮 40px 鍙锛?
+  const minVisibleRatio = 0.5; // 鑷冲皯 50% 鍙锛堝厑璁稿彟澶?50% 鍦ㄥ睆骞曞锛?
+  const minVisiblePx = 40;     // 鎴栬嚦灏?40px锛堜繚璇佹爣棰樻爮鍙嫋鍥烇級
 
-  // 计算水平方向需要保持可见的最小宽�?
+  // 璁＄畻姘村钩鏂瑰悜闇€瑕佷繚鎸佸彲瑙佺殑鏈€灏忓搴?
   const minVisibleW = Math.max(minVisiblePx, w * minVisibleRatio);
-  // 计算垂直方向需要保持可见的最小高�?
+  // 璁＄畻鍨傜洿鏂瑰悜闇€瑕佷繚鎸佸彲瑙佺殑鏈€灏忛珮搴?
   const minVisibleH = Math.max(minVisiblePx, h * minVisibleRatio);
 
-  // 左边界：允许负值，但确保右侧至�?minVisibleW 在屏幕内
-  // �?left + w >= minVisibleW �?left >= minVisibleW - w
+  // 宸﹁竟鐣岋細鍏佽璐熷€硷紝浣嗙‘淇濆彸渚ц嚦灏?minVisibleW 鍦ㄥ睆骞曞唴
+  // 鍗?left + w >= minVisibleW 鈫?left >= minVisibleW - w
   const minLeft = minVisibleW - w;
-  // 右边界：确保左侧至少 minVisibleW 在屏幕内
-  // �?left + minVisibleW <= window.innerWidth �?left <= window.innerWidth - minVisibleW
+  // 鍙宠竟鐣岋細纭繚宸︿晶鑷冲皯 minVisibleW 鍦ㄥ睆骞曞唴
+  // 鍗?left + minVisibleW <= window.innerWidth 鈫?left <= window.innerWidth - minVisibleW
   const maxLeft = window.innerWidth - minVisibleW;
 
-  // 上边界：严格限制 >= 0，保证标题栏不被遮挡
+  // 涓婅竟鐣岋細涓ユ牸闄愬埗 >= 0锛屼繚璇佹爣棰樻爮涓嶈閬尅
   const minTop = 0;
-  // 下边界：确保顶部至少 minVisibleH 在屏幕内
+  // 涓嬭竟鐣岋細纭繚椤堕儴鑷冲皯 minVisibleH 鍦ㄥ睆骞曞唴
   const maxTop = window.innerHeight - minVisibleH;
 
   const L = Math.max(minLeft, Math.min(left, maxLeft));
@@ -7914,31 +7914,31 @@ function buildModalHtml() {
     <div id="sg_modal" class="sg-modal" role="dialog" aria-modal="true">
       <div class="sg-modal-head">
         <div class="sg-modal-title">
-          <span class="sg-badge">📘</span>
-          剧情指导 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
+          <span class="sg-badge">馃摌</span>
+          鍓ф儏鎸囧 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
         </div>
         <div class="sg-modal-actions">
-          <button class="menu_button sg-btn" id="sg_close">关闭</button>
+          <button class="menu_button sg-btn" id="sg_close">鍏抽棴</button>
         </div>
       </div>
 
       <div class="sg-modal-body">
         <div class="sg-left">
           <div class="sg-pagetabs">
-            <button class="sg-pgtab active" id="sg_pgtab_guide">剧情指导</button>
-            <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
-            <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
-            <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
-            <button class="sg-pgtab" id="sg_pgtab_image">图像生成</button>
+            <button class="sg-pgtab active" id="sg_pgtab_guide">鍓ф儏鎸囧</button>
+            <button class="sg-pgtab" id="sg_pgtab_summary">鎬荤粨璁剧疆</button>
+            <button class="sg-pgtab" id="sg_pgtab_index">绱㈠紩璁剧疆</button>
+            <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 璁剧疆</button>
+            <button class="sg-pgtab" id="sg_pgtab_image">鍥惧儚鐢熸垚</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
           <div class="sg-card">
-            <div class="sg-card-title">生成设置</div>
+            <div class="sg-card-title">鐢熸垚璁剧疆</div>
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>启用</label>
+                <label>鍚敤</label>
                 <label class="sg-switch">
                   <input type="checkbox" id="sg_enabled">
                   <span class="sg-slider"></span>
@@ -7946,19 +7946,19 @@ function buildModalHtml() {
               </div>
 
               <div class="sg-field">
-                <label>剧透等�?/label>
+                <label>鍓ч€忕瓑绾?/label>
                 <select id="sg_spoiler">
-                  <option value="none">不剧�?/option>
-                  <option value="mild">轻剧�?/option>
-                  <option value="full">全剧�?/option>
+                  <option value="none">涓嶅墽閫?/option>
+                  <option value="mild">杞诲墽閫?/option>
+                  <option value="full">鍏ㄥ墽閫?/option>
                 </select>
               </div>
 
               <div class="sg-field">
                 <label>Provider</label>
                 <select id="sg_provider">
-                  <option value="st">使用当前 SillyTavern API（推荐）</option>
-                  <option value="custom">独立API（走酒馆后端代理，减少跨域）</option>
+                  <option value="st">浣跨敤褰撳墠 SillyTavern API锛堟帹鑽愶級</option>
+                  <option value="custom">鐙珛API锛堣蛋閰掗鍚庣浠ｇ悊锛屽噺灏戣法鍩燂級</option>
                 </select>
               </div>
 
@@ -7970,213 +7970,213 @@ function buildModalHtml() {
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>最近消息条�?/label>
+                <label>鏈€杩戞秷鎭潯鏁?/label>
                 <input id="sg_maxMessages" type="number" min="5" max="200">
               </div>
               <div class="sg-field">
-                <label>每条最大字�?/label>
+                <label>姣忔潯鏈€澶у瓧绗?/label>
                 <input id="sg_maxChars" type="number" min="200" max="8000">
               </div>
             </div>
 
             <div class="sg-row">
-              <label class="sg-check"><input type="checkbox" id="sg_includeUser">包含用户消息</label>
-              <label class="sg-check"><input type="checkbox" id="sg_includeAssistant">包含AI消息</label>
+              <label class="sg-check"><input type="checkbox" id="sg_includeUser">鍖呭惈鐢ㄦ埛娑堟伅</label>
+              <label class="sg-check"><input type="checkbox" id="sg_includeAssistant">鍖呭惈AI娑堟伅</label>
             </div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_autoRefresh">自动刷新面板报告</label>
+              <label class="sg-check"><input type="checkbox" id="sg_autoRefresh">鑷姩鍒锋柊闈㈡澘鎶ュ憡</label>
               <select id="sg_autoRefreshOn">
-                <option value="received">AI回复�?/option>
-                <option value="sent">用户发送时</option>
-                <option value="both">两者都触发</option>
+                <option value="received">AI鍥炲鏃?/option>
+                <option value="sent">鐢ㄦ埛鍙戦€佹椂</option>
+                <option value="both">涓よ€呴兘瑙﹀彂</option>
               </select>
             </div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_autoAppendBox">启用分析框（手动生成/重Roll�?/label>
+              <label class="sg-check"><input type="checkbox" id="sg_autoAppendBox">鍚敤鍒嗘瀽妗嗭紙鎵嬪姩鐢熸垚/閲峈oll锛?/label>
               <select id="sg_appendMode">
-                <option value="compact">简�?/option>
-                <option value="standard">标准</option>
+                <option value="compact">绠€娲?/option>
+                <option value="standard">鏍囧噯</option>
               </select>
-              <select id="sg_inlineModulesSource" title="选择追加框展示的模块来源">
-                <option value="inline">�?inline=true 的模�?/option>
-                <option value="panel">跟随面板（panel=true�?/option>
-                <option value="all">显示全部模块</option>
+              <select id="sg_inlineModulesSource" title="閫夋嫨杩藉姞妗嗗睍绀虹殑妯″潡鏉ユ簮">
+                <option value="inline">浠?inline=true 鐨勬ā鍧?/option>
+                <option value="panel">璺熼殢闈㈡澘锛坧anel=true锛?/option>
+                <option value="all">鏄剧ず鍏ㄩ儴妯″潡</option>
               </select>
-              <label class="sg-check" title="即使模型没输出该字段，也显示（空）占�?>
-                <input type="checkbox" id="sg_inlineShowEmpty">显示空字�?
+              <label class="sg-check" title="鍗充娇妯″瀷娌¤緭鍑鸿瀛楁锛屼篃鏄剧ず锛堢┖锛夊崰浣?>
+                <input type="checkbox" id="sg_inlineShowEmpty">鏄剧ず绌哄瓧娈?
               </label>
-              <span class="sg-hint">（点击框标题可折叠）</span>
+              <span class="sg-hint">锛堢偣鍑绘鏍囬鍙姌鍙狅級</span>
             </div>
 
             <div id="sg_custom_block" class="sg-card sg-subcard" style="display:none;">
-              <div class="sg-card-title">独立API 设置（建议填 API基础URL�?/div>
+              <div class="sg-card-title">鐙珛API 璁剧疆锛堝缓璁～ API鍩虹URL锛?/div>
 
               <div class="sg-field">
-                <label>API基础URL（例�?https://api.openai.com/v1 �?/label>
+                <label>API鍩虹URL锛堜緥濡?https://api.openai.com/v1 锛?/label>
                 <input id="sg_customEndpoint" type="text" placeholder="https://xxx.com/v1">
-                <div class="sg-hint sg-warn">优先走酒馆后端代理接口（/api/backends/...），比浏览器直连更不容易跨域/连不上�?/div>
+                <div class="sg-hint sg-warn">浼樺厛璧伴厭棣嗗悗绔唬鐞嗘帴鍙ｏ紙/api/backends/...锛夛紝姣旀祻瑙堝櫒鐩磋繛鏇翠笉瀹规槗璺ㄥ煙/杩炰笉涓娿€?/div>
               </div>
 
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>API Key（可选）</label>
-                  <input id="sg_customApiKey" type="password" placeholder="可留�?>
+                  <label>API Key锛堝彲閫夛級</label>
+                  <input id="sg_customApiKey" type="password" placeholder="鍙暀绌?>
                 </div>
 
                 <div class="sg-field">
-                  <label>模型（可手填�?/label>
+                  <label>妯″瀷锛堝彲鎵嬪～锛?/label>
                   <input id="sg_customModel" type="text" placeholder="gpt-4o-mini">
                 </div>
               </div>
 
               <div class="sg-row sg-inline">
-                <button class="menu_button sg-btn" id="sg_refreshModels">检�?刷新模型</button>
+                <button class="menu_button sg-btn" id="sg_refreshModels">妫€鏌?鍒锋柊妯″瀷</button>
                 <select id="sg_modelSelect" class="sg-model-select">
-                  <option value="">（选择模型�?/option>
+                  <option value="">锛堥€夋嫨妯″瀷锛?/option>
                 </select>
               </div>
 
               <div class="sg-row">
                 <div class="sg-field sg-field-full">
-                  <label>最大回复token�?/label>
-                  <input id="sg_customMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如�?0000">
+                  <label>鏈€澶у洖澶峵oken鏁?/label>
+                  <input id="sg_customMaxTokens" type="number" min="256" max="200000" step="1" placeholder="渚嬪锛?0000">
                 
                   <label class="sg-check" style="margin-top:8px;">
-                    <input type="checkbox" id="sg_customStream"> 使用流式返回（stream=true�?
+                    <input type="checkbox" id="sg_customStream"> 浣跨敤娴佸紡杩斿洖锛坰tream=true锛?
                   </label>
 </div>
               </div>
             </div>
 
             <div class="sg-actions-row">
-              <button class="menu_button sg-btn-primary" id="sg_saveSettings">保存设置</button>
-              <button class="menu_button sg-btn-primary" id="sg_analyze">分析当前剧情</button>
+              <button class="menu_button sg-btn-primary" id="sg_saveSettings">淇濆瓨璁剧疆</button>
+              <button class="menu_button sg-btn-primary" id="sg_analyze">鍒嗘瀽褰撳墠鍓ф儏</button>
             </div>
             <div class="sg-actions-row" style="margin-top: 8px;">
-              <button class="menu_button sg-btn" id="sg_exportPreset">📤 导出全局预设</button>
-              <button class="menu_button sg-btn" id="sg_importPreset">📥 导入全局预设</button>
+              <button class="menu_button sg-btn" id="sg_exportPreset">馃摛 瀵煎嚭鍏ㄥ眬棰勮</button>
+              <button class="menu_button sg-btn" id="sg_importPreset">馃摜 瀵煎叆鍏ㄥ眬棰勮</button>
               <input type="file" id="sg_importPresetFile" accept=".json" style="display: none;">
             </div>
           </div>
 
           <div class="sg-card">
-            <div class="sg-card-title">快捷选项</div>
-            <div class="sg-hint">点击选项可自动将提示词输入到聊天框。可自定义选项内容�?/div>
+            <div class="sg-card-title">蹇嵎閫夐」</div>
+            <div class="sg-hint">鐐瑰嚮閫夐」鍙嚜鍔ㄥ皢鎻愮ず璇嶈緭鍏ュ埌鑱婂ぉ妗嗐€傚彲鑷畾涔夐€夐」鍐呭銆?/div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_quickOptionsEnabled">启用快捷选项</label>
+              <label class="sg-check"><input type="checkbox" id="sg_quickOptionsEnabled">鍚敤蹇嵎閫夐」</label>
               <select id="sg_quickOptionsShowIn">
-                <option value="inline">仅分析框</option>
-                <option value="panel">仅面�?/option>
-                <option value="both">两者都显示</option>
+                <option value="inline">浠呭垎鏋愭</option>
+                <option value="panel">浠呴潰鏉?/option>
+                <option value="both">涓よ€呴兘鏄剧ず</option>
               </select>
             </div>
 
             <div class="sg-field" style="margin-top:10px;">
-              <label>选项配置（JSON，格式：[{label, prompt}, ...]�?/label>
-              <textarea id="sg_quickOptionsJson" rows="6" spellcheck="false" placeholder='[{"label": "继续", "prompt": "继续当前剧情发展"}]'></textarea>
+              <label>閫夐」閰嶇疆锛圝SON锛屾牸寮忥細[{label, prompt}, ...]锛?/label>
+              <textarea id="sg_quickOptionsJson" rows="6" spellcheck="false" placeholder='[{"label": "缁х画", "prompt": "缁х画褰撳墠鍓ф儏鍙戝睍"}]'></textarea>
               <div class="sg-actions-row">
-                <button class="menu_button sg-btn" id="sg_resetQuickOptions">恢复默认选项</button>
-                <button class="menu_button sg-btn" id="sg_applyQuickOptions">应用选项</button>
+                <button class="menu_button sg-btn" id="sg_resetQuickOptions">鎭㈠榛樿閫夐」</button>
+                <button class="menu_button sg-btn" id="sg_applyQuickOptions">搴旂敤閫夐」</button>
               </div>
             </div>
           </div>
 
           <div class="sg-card">
-            <div class="sg-card-title">输出模块（JSON，可自定义字�?提示词）</div>
-            <div class="sg-hint">你可以增删模块、改 key/title/type/prompt、控�?panel/inline。保存前可点“校验”�?/div>
+            <div class="sg-card-title">杈撳嚭妯″潡锛圝SON锛屽彲鑷畾涔夊瓧娈?鎻愮ず璇嶏級</div>
+            <div class="sg-hint">浣犲彲浠ュ鍒犳ā鍧椼€佹敼 key/title/type/prompt銆佹帶鍒?panel/inline銆備繚瀛樺墠鍙偣鈥滄牎楠屸€濄€?/div>
 
             <div class="sg-field">
               <textarea id="sg_modulesJson" rows="12" spellcheck="false"></textarea>
-              <div class="sg-hint" style="margin-top:4px;">💡 模块可添�?<code>static: true</code> 表示静态模块（只在首次生成或手动刷新时更新�?/div>
+              <div class="sg-hint" style="margin-top:4px;">馃挕 妯″潡鍙坊鍔?<code>static: true</code> 琛ㄧず闈欐€佹ā鍧楋紙鍙湪棣栨鐢熸垚鎴栨墜鍔ㄥ埛鏂版椂鏇存柊锛?/div>
               <div class="sg-actions-row">
-                <button class="menu_button sg-btn" id="sg_validateModules">校验</button>
-                <button class="menu_button sg-btn" id="sg_resetModules">恢复默认</button>
-                <button class="menu_button sg-btn" id="sg_applyModules">应用到设�?/button>
-                <button class="menu_button sg-btn" id="sg_clearStaticCache">刷新静态模�?/button>
+                <button class="menu_button sg-btn" id="sg_validateModules">鏍￠獙</button>
+                <button class="menu_button sg-btn" id="sg_resetModules">鎭㈠榛樿</button>
+                <button class="menu_button sg-btn" id="sg_applyModules">搴旂敤鍒拌缃?/button>
+                <button class="menu_button sg-btn" id="sg_clearStaticCache">鍒锋柊闈欐€佹ā鍧?/button>
               </div>
             </div>
 
             <div class="sg-field">
-              <label>自定�?System 补充（可选）</label>
-              <textarea id="sg_customSystemPreamble" rows="3" placeholder="例如：更偏悬疑、强调线索、避免冗长�?></textarea>
+              <label>鑷畾涔?System 琛ュ厖锛堝彲閫夛級</label>
+              <textarea id="sg_customSystemPreamble" rows="3" placeholder="渚嬪锛氭洿鍋忔偓鐤戙€佸己璋冪嚎绱€侀伩鍏嶅啑闀库€?></textarea>
             </div>
             <div class="sg-field">
-              <label>自定�?Constraints 补充（可选）</label>
-              <textarea id="sg_customConstraints" rows="3" placeholder="例如：必须提到关键人物动机、每条不超过20字�?></textarea>
+              <label>鑷畾涔?Constraints 琛ュ厖锛堝彲閫夛級</label>
+              <textarea id="sg_customConstraints" rows="3" placeholder="渚嬪锛氬繀椤绘彁鍒板叧閿汉鐗╁姩鏈恒€佹瘡鏉′笉瓒呰繃20瀛椻€?></textarea>
             </div>
           </div>
 
           
           <div class="sg-card">
-            <div class="sg-card-title">预设与世界书</div>
+            <div class="sg-card-title">棰勮涓庝笘鐣屼功</div>
 
             <div class="sg-row sg-inline">
-              <button class="menu_button sg-btn" id="sg_exportPreset">导出预设</button>
-              <label class="sg-check"><input type="checkbox" id="sg_presetIncludeApiKey">导出包含 API Key</label>
-              <button class="menu_button sg-btn" id="sg_importPreset">导入预设</button>
+              <button class="menu_button sg-btn" id="sg_exportPreset">瀵煎嚭棰勮</button>
+              <label class="sg-check"><input type="checkbox" id="sg_presetIncludeApiKey">瀵煎嚭鍖呭惈 API Key</label>
+              <button class="menu_button sg-btn" id="sg_importPreset">瀵煎叆棰勮</button>
             </div>
 
-            <div class="sg-hint">预设会包含：生成设置 / 独立API / 输出模块 / 世界书设�?/ 自定义提示骨架。导入会覆盖当前配置�?/div>
+            <div class="sg-hint">棰勮浼氬寘鍚細鐢熸垚璁剧疆 / 鐙珛API / 杈撳嚭妯″潡 / 涓栫晫涔﹁缃?/ 鑷畾涔夋彁绀洪鏋躲€傚鍏ヤ細瑕嗙洊褰撳墠閰嶇疆銆?/div>
 
             <hr class="sg-hr">
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_worldbookEnabled">在分析输入中注入世界�?/label>
+              <label class="sg-check"><input type="checkbox" id="sg_worldbookEnabled">鍦ㄥ垎鏋愯緭鍏ヤ腑娉ㄥ叆涓栫晫涔?/label>
               <select id="sg_worldbookMode">
-                <option value="active">仅注入“可能激活”的条目（推荐）</option>
-                <option value="all">注入全部条目</option>
+                <option value="active">浠呮敞鍏モ€滃彲鑳芥縺娲烩€濈殑鏉＄洰锛堟帹鑽愶級</option>
+                <option value="all">娉ㄥ叆鍏ㄩ儴鏉＄洰</option>
               </select>
             </div>
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>世界书最大注入字�?/label>
+                <label>涓栫晫涔︽渶澶ф敞鍏ュ瓧绗?/label>
                 <input id="sg_worldbookMaxChars" type="number" min="500" max="50000">
               </div>
               <div class="sg-field">
-                <label>激活检测窗口（最近消息条数）</label>
+                <label>婵€娲绘娴嬬獥鍙ｏ紙鏈€杩戞秷鎭潯鏁帮級</label>
                 <input id="sg_worldbookWindowMessages" type="number" min="5" max="80">
               </div>
             </div>
 
             <div class="sg-row sg-inline">
-              <button class="menu_button sg-btn" id="sg_importWorldbook">导入世界书JSON</button>
-              <button class="menu_button sg-btn" id="sg_clearWorldbook">清空世界�?/button>
-              <button class="menu_button sg-btn" id="sg_saveWorldbookSettings">保存世界书设�?/button>
+              <button class="menu_button sg-btn" id="sg_importWorldbook">瀵煎叆涓栫晫涔SON</button>
+              <button class="menu_button sg-btn" id="sg_clearWorldbook">娓呯┖涓栫晫涔?/button>
+              <button class="menu_button sg-btn" id="sg_saveWorldbookSettings">淇濆瓨涓栫晫涔﹁缃?/button>
             </div>
 
-            <div class="sg-hint" id="sg_worldbookInfo">（未导入世界书）</div>
+            <div class="sg-hint" id="sg_worldbookInfo">锛堟湭瀵煎叆涓栫晫涔︼級</div>
           </div>
 
           <div class="sg-card">
-            <div class="sg-card-title">🗺�?网格地图</div>
-            <div class="sg-hint">从剧情中自动提取地点信息，生成可视化世界地图。显示主角位置和各地事件�?/div>
+            <div class="sg-card-title">馃椇锔?缃戞牸鍦板浘</div>
+            <div class="sg-hint">浠庡墽鎯呬腑鑷姩鎻愬彇鍦扮偣淇℃伅锛岀敓鎴愬彲瑙嗗寲涓栫晫鍦板浘銆傛樉绀轰富瑙掍綅缃拰鍚勫湴浜嬩欢銆?/div>
             
               <div class="sg-row sg-inline" style="margin-top: 10px;">
-                <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
+                <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">鍚敤鍦板浘鍔熻兘</label>
               </div>
 
               <div class="sg-field" style="margin-top: 10px;">
-                <label>地图提示�?/label>
-                <textarea id="sg_mapSystemPrompt" rows="6" placeholder="可自定义地图提取规则（仍需输出 JSON�?></textarea>
+                <label>鍦板浘鎻愮ず璇?/label>
+                <textarea id="sg_mapSystemPrompt" rows="6" placeholder="鍙嚜瀹氫箟鍦板浘鎻愬彇瑙勫垯锛堜粛闇€杈撳嚭 JSON锛?></textarea>
                 <div class="sg-actions-row">
-                  <button class="menu_button sg-btn" id="sg_mapResetPrompt">恢复默认提示�?/button>
+                  <button class="menu_button sg-btn" id="sg_mapResetPrompt">鎭㈠榛樿鎻愮ず璇?/button>
                 </div>
               </div>
               
               <div class="sg-field" style="margin-top: 10px;">
-                <label>地图当前状�?/label>
+                <label>鍦板浘褰撳墠鐘舵€?/label>
                 <div id="sg_mapPreview" class="sg-map-container">
-                <div class="sg-map-empty">暂无地图数据。启用后进行剧情分析将自动生成地图�?/div>
+                <div class="sg-map-empty">鏆傛棤鍦板浘鏁版嵁銆傚惎鐢ㄥ悗杩涜鍓ф儏鍒嗘瀽灏嗚嚜鍔ㄧ敓鎴愬湴鍥俱€?/div>
               </div>
             </div>
             
             <div class="sg-actions-row">
-              <button class="menu_button sg-btn" id="sg_resetMap">🗑 重置地图</button>
-              <button class="menu_button sg-btn" id="sg_refreshMapPreview">🔄 刷新预览</button>
+              <button class="menu_button sg-btn" id="sg_resetMap">馃棏 閲嶇疆鍦板浘</button>
+              <button class="menu_button sg-btn" id="sg_refreshMapPreview">馃攧 鍒锋柊棰勮</button>
             </div>
           </div>
 
@@ -8185,110 +8185,110 @@ function buildModalHtml() {
           <div class="sg-page" id="sg_page_summary">
 
           <div class="sg-card">
-            <div class="sg-card-title">自动总结（写入世界书�?/div>
+            <div class="sg-card-title">鑷姩鎬荤粨锛堝啓鍏ヤ笘鐣屼功锛?/div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryEnabled">启用自动总结</label>
-              <span>�?/span>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryEnabled">鍚敤鑷姩鎬荤粨</label>
+              <span>姣?/span>
               <input id="sg_summaryEvery" type="number" min="1" max="200" style="width:90px">
-              <span>�?/span>
+              <span>灞?/span>
               <select id="sg_summaryCountMode">
-                <option value="assistant">�?AI 回复计数</option>
-                <option value="all">按全部消息计�?/option>
+                <option value="assistant">鎸?AI 鍥炲璁℃暟</option>
+                <option value="all">鎸夊叏閮ㄦ秷鎭鏁?/option>
               </select>
             </div>
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>总结 Provider</label>
+                <label>鎬荤粨 Provider</label>
                 <select id="sg_summaryProvider">
-                  <option value="st">使用酒馆当前连接的模�?/option>
-                  <option value="custom">使用独立 OpenAI 兼容 API</option>
+                  <option value="st">浣跨敤閰掗褰撳墠杩炴帴鐨勬ā鍨?/option>
+                  <option value="custom">浣跨敤鐙珛 OpenAI 鍏煎 API</option>
                 </select>
               </div>
               <div class="sg-field">
-                <label>总结 Temperature</label>
+                <label>鎬荤粨 Temperature</label>
                 <input id="sg_summaryTemperature" type="number" min="0" max="2" step="0.1">
               </div>
             </div>
 
             <div class="sg-card sg-subcard">
               <div class="sg-field">
-                <label>自定义总结提示词（System，可选）</label>
-                <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON�?></textarea>
+                <label>鑷畾涔夋€荤粨鎻愮ず璇嶏紙System锛屽彲閫夛級</label>
+                <textarea id="sg_summarySystemPrompt" rows="6" placeholder="渚嬪锛氭洿寮鸿皟绾跨储/鍏崇郴鍙樺寲/鍥炲悎鍒惰褰曪紝鎴栬姹傝嫳鏂囪緭鍑衡€︼紙浠嶉渶杈撳嚭 JSON锛?></textarea>
               </div>
               <div class="sg-field">
-                <label>对话片段模板（User，可选）</label>
-                <textarea id="sg_summaryUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
+                <label>瀵硅瘽鐗囨妯℃澘锛圲ser锛屽彲閫夛級</label>
+                <textarea id="sg_summaryUserTemplate" rows="4" placeholder="鏀寔鍗犱綅绗︼細{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
               </div>
               <div class="sg-row sg-inline">
-                <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示�?/button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{statData}}。插件会强制要求输出 JSON：{title, summary, keywords[]}�?/div>
+                <button class="menu_button sg-btn" id="sg_summaryResetPrompt">鎭㈠榛樿鎻愮ず璇?/button>
+                <div class="sg-hint" style="margin-left:auto">鍗犱綅绗︼細{{fromFloor}} {{toFloor}} {{chunk}} {{statData}}銆傛彃浠朵細寮哄埗瑕佹眰杈撳嚭 JSON锛歿title, summary, keywords[]}銆?/div>
               </div>
               <div class="sg-row sg-inline" style="margin-top:8px">
-                <label class="sg-check"><input type="checkbox" id="sg_summaryReadStatData">读取角色状态变�?/label>
+                <label class="sg-check"><input type="checkbox" id="sg_summaryReadStatData">璇诲彇瑙掕壊鐘舵€佸彉閲?/label>
                 <div class="sg-field" style="flex:1;margin-left:8px">
                   <input id="sg_summaryStatVarName" type="text" placeholder="stat_data" style="width:120px">
                 </div>
-                <div class="sg-hint" style="margin-left:8px">AI 可看到变量中的角色属性数据（类似 ROLL 点模块）</div>
+                <div class="sg-hint" style="margin-left:8px">AI 鍙湅鍒板彉閲忎腑鐨勮鑹插睘鎬ф暟鎹紙绫讳技 ROLL 鐐规ā鍧楋級</div>
               </div>
             </div>
 
             <div class="sg-card sg-subcard">
-              <div class="sg-card-title">结构化条目（人物/装备/能力�?/div>
+              <div class="sg-card-title">缁撴瀯鍖栨潯鐩紙浜虹墿/瑁呭/鑳藉姏锛?/div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">启用结构化条�?/label>
-                <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">人物</label>
-                <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">装备</label>
-                <label class="sg-check"><input type="checkbox" id="sg_abilityEntriesEnabled">能力</label>
+                <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">鍚敤缁撴瀯鍖栨潯鐩?/label>
+                <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">浜虹墿</label>
+                <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">瑁呭</label>
+                <label class="sg-check"><input type="checkbox" id="sg_abilityEntriesEnabled">鑳藉姏</label>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>人物条目前缀</label>
-                  <input id="sg_characterEntryPrefix" type="text" placeholder="人物">
+                  <label>浜虹墿鏉＄洰鍓嶇紑</label>
+                  <input id="sg_characterEntryPrefix" type="text" placeholder="浜虹墿">
                 </div>
                 <div class="sg-field">
-                  <label>装备条目前缀</label>
-                  <input id="sg_equipmentEntryPrefix" type="text" placeholder="装备">
+                  <label>瑁呭鏉＄洰鍓嶇紑</label>
+                  <input id="sg_equipmentEntryPrefix" type="text" placeholder="瑁呭">
                 </div>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>能力条目前缀</label>
-                  <input id="sg_abilityEntryPrefix" type="text" placeholder="能力">
+                  <label>鑳藉姏鏉＄洰鍓嶇紑</label>
+                  <input id="sg_abilityEntryPrefix" type="text" placeholder="鑳藉姏">
                 </div>
               </div>
               <div class="sg-field">
-                <label>结构化提取提示词（System，可选）</label>
-                <textarea id="sg_structuredEntriesSystemPrompt" rows="5" placeholder="例如：强调客观档案式描述、避免杜撰�?></textarea>
+                <label>缁撴瀯鍖栨彁鍙栨彁绀鸿瘝锛圫ystem锛屽彲閫夛級</label>
+                <textarea id="sg_structuredEntriesSystemPrompt" rows="5" placeholder="渚嬪锛氬己璋冨瑙傛。妗堝紡鎻忚堪銆侀伩鍏嶆潨鎾扳€?></textarea>
               </div>
               <div class="sg-field">
-                <label>结构化提取模板（User，可选）</label>
-                <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}"></textarea>
+                <label>缁撴瀯鍖栨彁鍙栨ā鏉匡紙User锛屽彲閫夛級</label>
+                <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="鏀寔鍗犱綅绗︼細{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}"></textarea>
               </div>
               <div class="sg-field">
-                <label>人物条目提示词（可选）</label>
-                <textarea id="sg_structuredCharacterPrompt" rows="3" placeholder="例如：优先记录阵�?关系/关键事件�?></textarea>
+                <label>浜虹墿鏉＄洰鎻愮ず璇嶏紙鍙€夛級</label>
+                <textarea id="sg_structuredCharacterPrompt" rows="3" placeholder="渚嬪锛氫紭鍏堣褰曢樀钀?鍏崇郴/鍏抽敭浜嬩欢鈥?></textarea>
               </div>
               <div class="sg-field">
-                <label>装备条目提示词（可选）</label>
-                <textarea id="sg_structuredEquipmentPrompt" rows="3" placeholder="例如：强调来�?稀有度/当前状态�?></textarea>
+                <label>瑁呭鏉＄洰鎻愮ず璇嶏紙鍙€夛級</label>
+                <textarea id="sg_structuredEquipmentPrompt" rows="3" placeholder="渚嬪锛氬己璋冩潵婧?绋€鏈夊害/褰撳墠鐘舵€佲€?></textarea>
               </div>
               <div class="sg-field">
-                <label>能力条目提示词（可选）</label>
-                <textarea id="sg_structuredAbilityPrompt" rows="3" placeholder="例如：强调触发条�?代价/负面效果�?></textarea>
+                <label>鑳藉姏鏉＄洰鎻愮ず璇嶏紙鍙€夛級</label>
+                <textarea id="sg_structuredAbilityPrompt" rows="3" placeholder="渚嬪锛氬己璋冭Е鍙戞潯浠?浠ｄ环/璐熼潰鏁堟灉鈥?></textarea>
               </div>
               <div class="sg-row sg-inline">
-                <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
-                <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓�?/button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}�?/div>
+                <button class="menu_button sg-btn" id="sg_structuredResetPrompt">鎭㈠榛樿缁撴瀯鍖栨彁绀鸿瘝</button>
+                <button class="menu_button sg-btn" id="sg_clearStructuredCache">娓呴櫎缁撴瀯鍖栨潯鐩紦瀛?/button>
+                <div class="sg-hint" style="margin-left:auto">鍗犱綅绗︼細{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}銆?/div>
               </div>
             </div>
 
             <div class="sg-card sg-subcard" id="sg_summary_custom_block" style="display:none">
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>独立API基础URL</label>
+                  <label>鐙珛API鍩虹URL</label>
                   <input id="sg_summaryCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
                 </div>
                 <div class="sg-field">
@@ -8298,12 +8298,12 @@ function buildModalHtml() {
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>模型ID（可手填�?/label>
+                  <label>妯″瀷ID锛堝彲鎵嬪～锛?/label>
                   <input id="sg_summaryCustomModel" type="text" placeholder="gpt-4o-mini">
                   <div class="sg-row sg-inline" style="margin-top:6px;">
-                    <button class="menu_button sg-btn" id="sg_refreshSummaryModels">刷新模型</button>
+                    <button class="menu_button sg-btn" id="sg_refreshSummaryModels">鍒锋柊妯″瀷</button>
                     <select id="sg_summaryModelSelect" class="sg-model-select">
-                      <option value="">（选择模型�?/option>
+                      <option value="">锛堥€夋嫨妯″瀷锛?/option>
                     </select>
                   </div>
                 </div>
@@ -8312,39 +8312,39 @@ function buildModalHtml() {
                   <input id="sg_summaryCustomMaxTokens" type="number" min="128" max="200000">
                 </div>
               </div>
-              <label class="sg-check"><input type="checkbox" id="sg_summaryCustomStream">stream（若支持�?/label>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryCustomStream">stream锛堣嫢鏀寔锛?/label>
             </div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用�?/label>
-              <input id="sg_summaryWorldInfoFile" type="text" placeholder="世界书文件名" style="flex:1; min-width: 220px;">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">鍐欏叆涓栫晫涔︼紙缁跨伅鍚敤锛?/label>
+              <input id="sg_summaryWorldInfoFile" type="text" placeholder="涓栫晫涔︽枃浠跺悕" style="flex:1; min-width: 220px;">
             </div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo" checked>同时写入蓝灯世界书（常开索引�?/label>
-              <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo" checked>鍚屾椂鍐欏叆钃濈伅涓栫晫涔︼紙甯稿紑绱㈠紩锛?/label>
+              <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="钃濈伅涓栫晫涔︽枃浠跺悕锛堝缓璁崟鐙缓涓€涓級" style="flex:1; min-width: 260px;">
             </div>
 
             <div class="sg-card sg-subcard" style="background: var(--SmartThemeBlurTintColor); margin-top: 8px; display: none;">
               <div class="sg-row sg-inline" style="align-items: center;">
-                <label class="sg-check"><input type="checkbox" id="sg_autoBindWorldInfo">📒 自动绑定世界书（每个聊天生成专属世界书）</label>
-                <input id="sg_autoBindWorldInfoPrefix" type="text" placeholder="前缀" style="width: 80px;" title="世界书文件名前缀，默�?SG">
+                <label class="sg-check"><input type="checkbox" id="sg_autoBindWorldInfo">馃搾 鑷姩缁戝畾涓栫晫涔︼紙姣忎釜鑱婂ぉ鐢熸垚涓撳睘涓栫晫涔︼級</label>
+                <input id="sg_autoBindWorldInfoPrefix" type="text" placeholder="鍓嶇紑" style="width: 80px;" title="涓栫晫涔︽枃浠跺悕鍓嶇紑锛岄粯璁?SG">
               </div>
-              <div class="sg-hint" style="margin-top: 4px;">开启后，每个聊天会自动创建专属的绿�?蓝灯世界书，切换聊天时自动加载�?/div>
+              <div class="sg-hint" style="margin-top: 4px;">寮€鍚悗锛屾瘡涓亰澶╀細鑷姩鍒涘缓涓撳睘鐨勭豢鐏?钃濈伅涓栫晫涔︼紝鍒囨崲鑱婂ぉ鏃惰嚜鍔ㄥ姞杞姐€?/div>
               <div id="sg_autoBindInfo" class="sg-hint" style="margin-top: 6px; display: none; font-size: 12px;"></div>
             </div>
 
             <div class="sg-hint" style="margin-top: 8px; color: var(--SmartThemeQuoteColor);">
-              💡 请手动创建世界书文件，然后在上方填写文件名。绿灯选择「写入指定世界书文件名」模式�?
+              馃挕 璇锋墜鍔ㄥ垱寤轰笘鐣屼功鏂囦欢锛岀劧鍚庡湪涓婃柟濉啓鏂囦欢鍚嶃€傜豢鐏€夋嫨銆屽啓鍏ユ寚瀹氫笘鐣屼功鏂囦欢鍚嶃€嶆ā寮忋€?
             </div>
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>条目标题前缀（写�?comment，始终在最前）</label>
-                <input id="sg_summaryWorldInfoCommentPrefix" type="text" placeholder="剧情总结">
+                <label>鏉＄洰鏍囬鍓嶇紑锛堝啓鍏?comment锛屽缁堝湪鏈€鍓嶏級</label>
+                <input id="sg_summaryWorldInfoCommentPrefix" type="text" placeholder="鍓ф儏鎬荤粨">
               </div>
               <div class="sg-field">
-                <label>限制：每条消息最多字�?/ 总字�?/label>
+                <label>闄愬埗锛氭瘡鏉℃秷鎭渶澶氬瓧绗?/ 鎬诲瓧绗?/label>
                 <div class="sg-row" style="margin-top:0">
                   <input id="sg_summaryMaxChars" type="number" min="200" max="8000" style="width:110px">
                   <input id="sg_summaryMaxTotalChars" type="number" min="2000" max="80000" style="width:120px">
@@ -8354,104 +8354,104 @@ function buildModalHtml() {
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>世界书触发词写入 key</label>
+                <label>涓栫晫涔﹁Е鍙戣瘝鍐欏叆 key</label>
                 <select id="sg_summaryWorldInfoKeyMode">
-                  <option value="keywords">使用模型输出的关键词�?~14 个）</option>
-                  <option value="indexId">使用索引编号（只�?1 个，�?A-001�?/option>
+                  <option value="keywords">浣跨敤妯″瀷杈撳嚭鐨勫叧閿瘝锛?~14 涓級</option>
+                  <option value="indexId">浣跨敤绱㈠紩缂栧彿锛堝彧鍐?1 涓紝濡?A-001锛?/option>
                 </select>
-                <div class="sg-hint">想让“主要关键词”只显示 A-001，就选“索引编号”�?/div>
+                <div class="sg-hint">鎯宠鈥滀富瑕佸叧閿瘝鈥濆彧鏄剧ず A-001锛屽氨閫夆€滅储寮曠紪鍙封€濄€?/div>
               </div>
               <div class="sg-field" id="sg_summaryIndexFormat" style="display:none;">
-                <label>索引编号格式（keyMode=indexId�?/label>
+                <label>绱㈠紩缂栧彿鏍煎紡锛坘eyMode=indexId锛?/label>
                 <div class="sg-row" style="margin-top:0; gap:8px; align-items:center;">
                   <input id="sg_summaryIndexPrefix" type="text" placeholder="A-" style="width:90px">
-                  <span class="sg-hint">位数</span>
+                  <span class="sg-hint">浣嶆暟</span>
                   <input id="sg_summaryIndexPad" type="number" min="1" max="12" style="width:80px">
-                  <span class="sg-hint">起始</span>
+                  <span class="sg-hint">璧峰</span>
                   <input id="sg_summaryIndexStart" type="number" min="1" max="1000000" style="width:100px">
                 </div>
-                <label class="sg-check" style="margin-top:6px;"><input type="checkbox" id="sg_summaryIndexInComment">条目标题（comment）包含编�?/label>
+                <label class="sg-check" style="margin-top:6px;"><input type="checkbox" id="sg_summaryIndexInComment">鏉＄洰鏍囬锛坈omment锛夊寘鍚紪鍙?/label>
               </div>
             </div>
 
             <div class="sg-card sg-subcard">
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">启用“蓝灯索�?�?绿灯触发”（发送消息前自动注入触发词）</label>
+                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">鍚敤鈥滆摑鐏储寮?鈫?缁跨伅瑙﹀彂鈥濓紙鍙戦€佹秷鎭墠鑷姩娉ㄥ叆瑙﹀彂璇嶏級</label>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>读取�?N 条消息正�?/label>
+                  <label>璇诲彇鍓?N 鏉℃秷鎭鏂?/label>
                   <input id="sg_wiTriggerLookbackMessages" type="number" min="5" max="120" placeholder="20">
                 </div>
                 <div class="sg-field">
-                  <label>最多触发条目数</label>
+                  <label>鏈€澶氳Е鍙戞潯鐩暟</label>
                   <input id="sg_wiTriggerMaxEntries" type="number" min="1" max="20" placeholder="4">
                 </div>
 
               <div class="sg-grid2" style="margin-top: 8px;">
                 <div class="sg-field">
-                  <label>最多索引人物数</label>
+                  <label>鏈€澶氱储寮曚汉鐗╂暟</label>
                   <input id="sg_wiTriggerMaxCharacters" type="number" min="0" max="10" placeholder="2">
                 </div>
                 <div class="sg-field">
-                  <label>最多索引装备数</label>
+                  <label>鏈€澶氱储寮曡澶囨暟</label>
                   <input id="sg_wiTriggerMaxEquipments" type="number" min="0" max="10" placeholder="2">
                 </div>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>最多索引剧情数（优先久远）</label>
+                  <label>鏈€澶氱储寮曞墽鎯呮暟锛堜紭鍏堜箙杩滐級</label>
                   <input id="sg_wiTriggerMaxPlot" type="number" min="0" max="10" placeholder="3">
                 </div>
               </div>
 
 <div class="sg-grid2">
   <div class="sg-field">
-    <label>匹配方式</label>
+    <label>鍖归厤鏂瑰紡</label>
     <select id="sg_wiTriggerMatchMode">
-      <option value="local">本地相似度（快）</option>
-      <option value="llm">LLM 综合判断（可自定义提示词�?/option>
+      <option value="local">鏈湴鐩镐技搴︼紙蹇級</option>
+      <option value="llm">LLM 缁煎悎鍒ゆ柇锛堝彲鑷畾涔夋彁绀鸿瘝锛?/option>
     </select>
   </div>
   <div class="sg-field">
-    <label>预筛�?TopK（仅 LLM 模式�?/label>
+    <label>棰勭瓫閫?TopK锛堜粎 LLM 妯″紡锛?/label>
     <input id="sg_wiIndexPrefilterTopK" type="number" min="5" max="80" placeholder="24">
-    <div class="sg-hint">先用相似度挑 TopK，再交给模型选出最相关的几条（�?tokens）�?/div>
+    <div class="sg-hint">鍏堢敤鐩镐技搴︽寫 TopK锛屽啀浜ょ粰妯″瀷閫夊嚭鏈€鐩稿叧鐨勫嚑鏉★紙鐪?tokens锛夈€?/div>
   </div>
 </div>
 
 <div class="sg-card sg-subcard" id="sg_index_llm_block" style="display:none; margin-top:10px;">
   <div class="sg-grid2">
     <div class="sg-field">
-      <label>索引 Provider</label>
+      <label>绱㈠紩 Provider</label>
       <select id="sg_wiIndexProvider">
-        <option value="st">使用酒馆当前连接的模�?/option>
-        <option value="custom">使用独立 OpenAI 兼容 API</option>
+        <option value="st">浣跨敤閰掗褰撳墠杩炴帴鐨勬ā鍨?/option>
+        <option value="custom">浣跨敤鐙珛 OpenAI 鍏煎 API</option>
       </select>
     </div>
     <div class="sg-field">
-      <label>索引 Temperature</label>
+      <label>绱㈠紩 Temperature</label>
       <input id="sg_wiIndexTemperature" type="number" min="0" max="2" step="0.1">
     </div>
   </div>
 
   <div class="sg-field">
-    <label>自定义索引提示词（System，可选）</label>
-    <textarea id="sg_wiIndexSystemPrompt" rows="6" placeholder="例如：更强调人物关系/线索回收/当前目标；或要求更严格的筛选�?></textarea>
+    <label>鑷畾涔夌储寮曟彁绀鸿瘝锛圫ystem锛屽彲閫夛級</label>
+    <textarea id="sg_wiIndexSystemPrompt" rows="6" placeholder="渚嬪锛氭洿寮鸿皟浜虹墿鍏崇郴/绾跨储鍥炴敹/褰撳墠鐩爣锛涙垨瑕佹眰鏇翠弗鏍肩殑绛涢€夆€?></textarea>
   </div>
   <div class="sg-field">
-    <label>索引模板（User，可选）</label>
-    <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="支持占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}"></textarea>
+    <label>绱㈠紩妯℃澘锛圲ser锛屽彲閫夛級</label>
+    <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="鏀寔鍗犱綅绗︼細{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}"></textarea>
   </div>
   <div class="sg-row sg-inline">
-    <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示�?/button>
-    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}。插件会强制要求输出 JSON：{pickedIds:number[]}�?/div>
+    <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">鎭㈠榛樿绱㈠紩鎻愮ず璇?/button>
+    <div class="sg-hint" style="margin-left:auto">鍗犱綅绗︼細{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}銆傛彃浠朵細寮哄埗瑕佹眰杈撳嚭 JSON锛歿pickedIds:number[]}銆?/div>
   </div>
 
   <div class="sg-card sg-subcard" id="sg_index_custom_block" style="display:none">
     <div class="sg-grid2">
       <div class="sg-field">
-        <label>索引独立API基础URL</label>
+        <label>绱㈠紩鐙珛API鍩虹URL</label>
         <input id="sg_wiIndexCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
       </div>
       <div class="sg-field">
@@ -8461,12 +8461,12 @@ function buildModalHtml() {
     </div>
     <div class="sg-grid2">
       <div class="sg-field">
-        <label>模型ID（可手填�?/label>
+        <label>妯″瀷ID锛堝彲鎵嬪～锛?/label>
         <input id="sg_wiIndexCustomModel" type="text" placeholder="gpt-4o-mini">
         <div class="sg-row sg-inline" style="margin-top:6px;">
-          <button class="menu_button sg-btn" id="sg_refreshIndexModels">刷新模型</button>
+          <button class="menu_button sg-btn" id="sg_refreshIndexModels">鍒锋柊妯″瀷</button>
           <select id="sg_wiIndexModelSelect" class="sg-model-select">
-            <option value="">（选择模型�?/option>
+            <option value="">锛堥€夋嫨妯″瀷锛?/option>
           </select>
         </div>
       </div>
@@ -8479,196 +8479,196 @@ function buildModalHtml() {
         </div>
       </div>
     </div>
-    <label class="sg-check"><input type="checkbox" id="sg_wiIndexCustomStream">stream（若支持�?/label>
+    <label class="sg-check"><input type="checkbox" id="sg_wiIndexCustomStream">stream锛堣嫢鏀寔锛?/label>
   </div>
 </div>
 
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label class="sg-check"><input type="checkbox" id="sg_wiTriggerIncludeUserMessage">结合本次用户输入（综合判断）</label>
-                  <div class="sg-hint">开启后会综合“最�?N 条正�?+ 你这句话”来决定与当前剧情最相关的条目�?/div>
+                  <label class="sg-check"><input type="checkbox" id="sg_wiTriggerIncludeUserMessage">缁撳悎鏈鐢ㄦ埛杈撳叆锛堢患鍚堝垽鏂級</label>
+                  <div class="sg-hint">寮€鍚悗浼氱患鍚堚€滄渶杩?N 鏉℃鏂?+ 浣犺繖鍙ヨ瘽鈥濇潵鍐冲畾涓庡綋鍓嶅墽鎯呮渶鐩稿叧鐨勬潯鐩€?/div>
                 </div>
                 <div class="sg-field">
-                  <label>用户输入权重�?~10�?/label>
+                  <label>鐢ㄦ埛杈撳叆鏉冮噸锛?~10锛?/label>
                   <input id="sg_wiTriggerUserMessageWeight" type="number" min="0" max="10" step="0.1" placeholder="1.6">
-                  <div class="sg-hint">越大越看重你这句话；1=与最近正文同权重�?/div>
+                  <div class="sg-hint">瓒婂ぇ瓒婄湅閲嶄綘杩欏彞璇濓紱1=涓庢渶杩戞鏂囧悓鏉冮噸銆?/div>
                 </div>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>相关度阈值（0~1�?/label>
+                  <label>鐩稿叧搴﹂槇鍊硷紙0~1锛?/label>
                   <input id="sg_wiTriggerMinScore" type="number" min="0" max="1" step="0.01" placeholder="0.08">
                 </div>
                 <div class="sg-field">
-                  <label>最多注入触发词</label>
+                  <label>鏈€澶氭敞鍏ヨЕ鍙戣瘝</label>
                   <input id="sg_wiTriggerMaxKeywords" type="number" min="1" max="200" placeholder="24">
                 </div>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>至少已有 N �?AI 回复才开始索引（0=立即�?/label>
+                  <label>鑷冲皯宸叉湁 N 鏉?AI 鍥炲鎵嶅紑濮嬬储寮曪紙0=绔嬪嵆锛?/label>
                   <input id="sg_wiTriggerStartAfterAssistantMessages" type="number" min="0" max="200000" placeholder="0">
                 </div>
                 <div class="sg-field">
-                  <label>说明</label>
-                  <div class="sg-hint" style="padding-top:8px;">（只统计 AI 回复楼层；例如填 100 表示�?100 层之后才注入�?/div>
+                  <label>璇存槑</label>
+                  <div class="sg-hint" style="padding-top:8px;">锛堝彧缁熻 AI 鍥炲妤煎眰锛涗緥濡傚～ 100 琛ㄧず绗?100 灞備箣鍚庢墠娉ㄥ叆锛?/div>
                 </div>
               </div>
               <div class="sg-row sg-inline">
-                <label>注入方式</label>
+                <label>娉ㄥ叆鏂瑰紡</label>
                 <select id="sg_wiTriggerInjectStyle" style="min-width:200px">
-                  <option value="hidden">隐藏注释（推荐）</option>
-                  <option value="plain">普通文本（更稳�?/option>
+                  <option value="hidden">闅愯棌娉ㄩ噴锛堟帹鑽愶級</option>
+                  <option value="plain">鏅€氭枃鏈紙鏇寸ǔ锛?/option>
                 </select>
               </div>
               <div class="sg-row sg-inline">
-                <label>蓝灯索引</label>
+                <label>钃濈伅绱㈠紩</label>
                 <select id="sg_wiBlueIndexMode" style="min-width:180px">
-                  <option value="live">实时读取蓝灯世界�?/option>
-                  <option value="cache">使用导入/缓存</option>
+                  <option value="live">瀹炴椂璇诲彇钃濈伅涓栫晫涔?/option>
+                  <option value="cache">浣跨敤瀵煎叆/缂撳瓨</option>
                 </select>
-                <input id="sg_wiBlueIndexFile" type="text" placeholder="蓝灯世界书文件名（留�?使用上方蓝灯写入文件名）" style="flex:1; min-width: 260px;">
-                <button class="menu_button sg-btn" id="sg_refreshBlueIndexLive">刷新</button>
+                <input id="sg_wiBlueIndexFile" type="text" placeholder="钃濈伅涓栫晫涔︽枃浠跺悕锛堢暀绌?浣跨敤涓婃柟钃濈伅鍐欏叆鏂囦欢鍚嶏級" style="flex:1; min-width: 260px;">
+                <button class="menu_button sg-btn" id="sg_refreshBlueIndexLive">鍒锋柊</button>
               </div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerDebugLog">调试：状态栏显示命中条目/触发�?/label>
-                <button class="menu_button sg-btn" id="sg_importBlueIndex">导入蓝灯世界书JSON（备用）</button>
-                <button class="menu_button sg-btn" id="sg_clearBlueIndex">清空蓝灯索引</button>
-                <div class="sg-hint" id="sg_blueIndexInfo" style="margin-left:auto">（蓝灯索引：0 条）</div>
+                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerDebugLog">璋冭瘯锛氱姸鎬佹爮鏄剧ず鍛戒腑鏉＄洰/瑙﹀彂璇?/label>
+                <button class="menu_button sg-btn" id="sg_importBlueIndex">瀵煎叆钃濈伅涓栫晫涔SON锛堝鐢級</button>
+                <button class="menu_button sg-btn" id="sg_clearBlueIndex">娓呯┖钃濈伅绱㈠紩</button>
+                <div class="sg-hint" id="sg_blueIndexInfo" style="margin-left:auto">锛堣摑鐏储寮曪細0 鏉★級</div>
               </div>
               <div class="sg-hint">
-                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与 <b>最�?N 条正�?/b>（可选再加上 <b>本次用户输入</b>）做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注�?普通文本），从而触发“绿灯世界书”的对应条目�?
+                璇存槑锛氭湰鍔熻兘浼氱敤鈥滆摑鐏储寮曗€濋噷鐨勬瘡鏉℃€荤粨锛坱itle/summary/keywords锛変笌 <b>鏈€杩?N 鏉℃鏂?/b>锛堝彲閫夊啀鍔犱笂 <b>鏈鐢ㄦ埛杈撳叆</b>锛夊仛鐩镐技搴﹀尮閰嶏紝閫夊嚭鏈€鐩稿叧鐨勫嚑鏉★紝鎶婂畠浠殑 <b>keywords</b> 杩藉姞鍒颁綘鍒氬彂閫佺殑娑堟伅鏈熬锛堝彲閫夐殣钘忔敞閲?鏅€氭枃鏈級锛屼粠鑰岃Е鍙戔€滅豢鐏笘鐣屼功鈥濈殑瀵瑰簲鏉＄洰銆?
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-row sg-inline" style="margin-top:0;">
-                  <div class="sg-hint">ROLL 设置已移至独立的「ROLL 设置」标签页�?/div>
+                  <div class="sg-hint">ROLL 璁剧疆宸茬Щ鑷崇嫭绔嬬殑銆孯OLL 璁剧疆銆嶆爣绛鹃〉銆?/div>
                   <div class="sg-spacer"></div>
-                  <button class="menu_button sg-btn" id="sg_gotoRollPage">打开 ROLL 设置</button>
+                  <button class="menu_button sg-btn" id="sg_gotoRollPage">鎵撳紑 ROLL 璁剧疆</button>
                 </div>
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-row sg-inline" style="margin-top:0;">
-                  <div class="sg-card-title" style="margin:0;">索引日志</div>
+                  <div class="sg-card-title" style="margin:0;">绱㈠紩鏃ュ織</div>
                   <div class="sg-spacer"></div>
-                  <button class="menu_button sg-btn" id="sg_clearWiLogs">清空</button>
+                  <button class="menu_button sg-btn" id="sg_clearWiLogs">娓呯┖</button>
                 </div>
-                <div class="sg-loglist" id="sg_wiLogs" style="margin-top:8px;">(暂无)</div>
-                <div class="sg-hint" style="margin-top:8px;">提示：日志记录“这次发送消息时命中了哪些索引条目（等价于将触发的绿灯条目）”以及注入了哪些关键词�?/div>
+                <div class="sg-loglist" id="sg_wiLogs" style="margin-top:8px;">(鏆傛棤)</div>
+                <div class="sg-hint" style="margin-top:8px;">鎻愮ず锛氭棩蹇楄褰曗€滆繖娆″彂閫佹秷鎭椂鍛戒腑浜嗗摢浜涚储寮曟潯鐩紙绛変环浜庡皢瑙﹀彂鐨勭豢鐏潯鐩級鈥濅互鍙婃敞鍏ヤ簡鍝簺鍏抽敭璇嶃€?/div>
               </div>
             </div>
 
             <div class="sg-card sg-subcard" id="sg_indexMovedHint" style="margin-top:10px;">
               <div class="sg-row sg-inline" style="margin-top:0;">
-                <div class="sg-hint">索引相关设置已移至上方“索引设置”页�?/div>
+                <div class="sg-hint">绱㈠紩鐩稿叧璁剧疆宸茬Щ鑷充笂鏂光€滅储寮曡缃€濋〉銆?/div>
                 <div class="sg-spacer"></div>
-                <button class="menu_button sg-btn" id="sg_gotoIndexPage">打开索引设置</button>
+                <button class="menu_button sg-btn" id="sg_gotoIndexPage">鎵撳紑绱㈠紩璁剧疆</button>
               </div>
             </div>
 
             <div class="sg-row sg-inline">
-              <label>手动楼层范围</label>
-              <input id="sg_summaryManualFrom" type="number" min="1" style="width:110px" placeholder="起始�?>
+              <label>鎵嬪姩妤煎眰鑼冨洿</label>
+              <input id="sg_summaryManualFrom" type="number" min="1" style="width:110px" placeholder="璧峰灞?>
               <span> - </span>
-              <input id="sg_summaryManualTo" type="number" min="1" style="width:110px" placeholder="结束�?>
-              <button class="menu_button sg-btn" id="sg_summarizeRange">立即总结该范�?/button>
-              <div class="sg-hint" id="sg_summaryManualHint" style="margin-left:auto">（可选范围：1-0�?/div>
+              <input id="sg_summaryManualTo" type="number" min="1" style="width:110px" placeholder="缁撴潫灞?>
+              <button class="menu_button sg-btn" id="sg_summarizeRange">绔嬪嵆鎬荤粨璇ヨ寖鍥?/button>
+              <div class="sg-hint" id="sg_summaryManualHint" style="margin-left:auto">锛堝彲閫夎寖鍥达細1-0锛?/div>
             </div>
 
             <div class="sg-row sg-inline" style="margin-top:6px;">
-              <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_summaryManualSplit">手动范围按每 N 层拆分生成多条（N=上方“每 N 层总结一次”）</label>
-              <div class="sg-hint" style="margin-left:auto">例如 1-80 �?N=40 �?2 �?/div>
+              <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_summaryManualSplit">鎵嬪姩鑼冨洿鎸夋瘡 N 灞傛媶鍒嗙敓鎴愬鏉★紙N=涓婃柟鈥滄瘡 N 灞傛€荤粨涓€娆♀€濓級</label>
+              <div class="sg-hint" style="margin-left:auto">渚嬪 1-80 涓?N=40 鈫?2 鏉?/div>
             </div>
 
             <div class="sg-row sg-inline">
-              <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
-              <button class="menu_button sg-btn" id="sg_stopSummary" style="background: var(--SmartThemeBodyColor); color: var(--SmartThemeQuoteColor);">停止总结</button>
-              <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
-              <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成�?/div>
+              <button class="menu_button sg-btn" id="sg_summarizeNow">绔嬪嵆鎬荤粨</button>
+              <button class="menu_button sg-btn" id="sg_stopSummary" style="background: var(--SmartThemeBodyColor); color: var(--SmartThemeQuoteColor);">鍋滄鎬荤粨</button>
+              <button class="menu_button sg-btn" id="sg_resetSummaryState">閲嶇疆鏈亰澶╂€荤粨杩涘害</button>
+              <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">锛堟湭鐢熸垚锛?/div>
             </div>
 
             <div class="sg-hint">
-              自动总结会按“每 N 层”触发；每次输出会生�?<b>摘要</b> + <b>关键�?/b>，并可自动创建世界书条目（disable=0 绿灯启用，关键词写入 key 作为触发词）�?
+              鑷姩鎬荤粨浼氭寜鈥滄瘡 N 灞傗€濊Е鍙戯紱姣忔杈撳嚭浼氱敓鎴?<b>鎽樿</b> + <b>鍏抽敭璇?/b>锛屽苟鍙嚜鍔ㄥ垱寤轰笘鐣屼功鏉＄洰锛坉isable=0 缁跨伅鍚敤锛屽叧閿瘝鍐欏叆 key 浣滀负瑙﹀彂璇嶏級銆?
             </div>
           </div>
           </div> <!-- sg_page_summary -->
 
           <div class="sg-page" id="sg_page_index">
             <div class="sg-card">
-              <div class="sg-card-title">索引设置（蓝灯索�?�?绿灯触发�?/div>
-              <div class="sg-hint" style="margin-bottom:10px;">索引会从“蓝灯世界书”里挑选与当前剧情最相关的总结条目，并把对应触发词注入到你发送的消息末尾，以触发绿灯世界书条目�?/div>
+              <div class="sg-card-title">绱㈠紩璁剧疆锛堣摑鐏储寮?鈫?缁跨伅瑙﹀彂锛?/div>
+              <div class="sg-hint" style="margin-bottom:10px;">绱㈠紩浼氫粠鈥滆摑鐏笘鐣屼功鈥濋噷鎸戦€変笌褰撳墠鍓ф儏鏈€鐩稿叧鐨勬€荤粨鏉＄洰锛屽苟鎶婂搴旇Е鍙戣瘝娉ㄥ叆鍒颁綘鍙戦€佺殑娑堟伅鏈熬锛屼互瑙﹀彂缁跨伅涓栫晫涔︽潯鐩€?/div>
               <div id="sg_index_mount"></div>
             </div>
           </div> <!-- sg_page_index -->
 
           <div class="sg-page" id="sg_page_roll">
             <div class="sg-card">
-              <div class="sg-card-title">ROLL 设置（判定）</div>
-              <div class="sg-hint" style="margin-bottom:10px;">用于行动判定�?ROLL 注入与计算规则。ROLL 模块独立运行，不依赖总结或索引功能�?/div>
+              <div class="sg-card-title">ROLL 璁剧疆锛堝垽瀹氾級</div>
+              <div class="sg-hint" style="margin-bottom:10px;">鐢ㄤ簬琛屽姩鍒ゅ畾鐨?ROLL 娉ㄥ叆涓庤绠楄鍒欍€俁OLL 妯″潡鐙珛杩愯锛屼笉渚濊禆鎬荤粨鎴栫储寮曞姛鑳姐€?/div>
               
-              <label class="sg-check"><input type="checkbox" id="sg_wiRollEnabled">启用 ROLL 点（战斗/劝说/学习等判定；与用户输入一起注入）</label>
+              <label class="sg-check"><input type="checkbox" id="sg_wiRollEnabled">鍚敤 ROLL 鐐癸紙鎴樻枟/鍔濊/瀛︿範绛夊垽瀹氾紱涓庣敤鎴疯緭鍏ヤ竴璧锋敞鍏ワ級</label>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>随机权重�?~1�?/label>
+                  <label>闅忔満鏉冮噸锛?~1锛?/label>
                   <input id="sg_wiRollRandomWeight" type="number" min="0" max="1" step="0.01" placeholder="0.3">
                 </div>
                 <div class="sg-field">
-                  <label>难度模式</label>
+                  <label>闅惧害妯″紡</label>
                   <select id="sg_wiRollDifficulty">
-                    <option value="simple">简�?/option>
-                    <option value="normal">普�?/option>
-                    <option value="hard">困难</option>
-                    <option value="hell">地狱</option>
+                    <option value="simple">绠€鍗?/option>
+                    <option value="normal">鏅€?/option>
+                    <option value="hard">鍥伴毦</option>
+                    <option value="hell">鍦扮嫳</option>
                   </select>
                 </div>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>变量来源</label>
+                  <label>鍙橀噺鏉ユ簮</label>
                   <select id="sg_wiRollStatSource">
-                    <option value="variable">综合多来源（最稳定，推荐）</option>
-                    <option value="template">模板渲染（stat_data�?/option>
-                    <option value="latest">最新正文末�?/option>
+                    <option value="variable">缁煎悎澶氭潵婧愶紙鏈€绋冲畾锛屾帹鑽愶級</option>
+                    <option value="template">妯℃澘娓叉煋锛坰tat_data锛?/option>
+                    <option value="latest">鏈€鏂版鏂囨湯灏?/option>
                   </select>
-                  <div class="sg-hint">综合模式按优先级尝试�?getvar命令 �?变量存储 �?模板渲染 �?DOM读取 �?最新AI回复</div>
+                  <div class="sg-hint">缁煎悎妯″紡鎸変紭鍏堢骇灏濊瘯锛?getvar鍛戒护 鈫?鍙橀噺瀛樺偍 鈫?妯℃澘娓叉煋 鈫?DOM璇诲彇 鈫?鏈€鏂癆I鍥炲</div>
                 </div>
                 <div class="sg-field">
-                  <label>变量解析模式</label>
+                  <label>鍙橀噺瑙ｆ瀽妯″紡</label>
                   <select id="sg_wiRollStatParseMode">
                     <option value="json">JSON</option>
-                    <option value="kv">键值行（pc.atk=10�?/option>
+                    <option value="kv">閿€艰锛坧c.atk=10锛?/option>
                   </select>
                 </div>
               </div>
               <div class="sg-field">
-                <label>变量名（用于"变量存储"来源�?/label>
+                <label>鍙橀噺鍚嶏紙鐢ㄤ簬"鍙橀噺瀛樺偍"鏉ユ簮锛?/label>
                 <input id="sg_wiRollStatVarName" type="text" placeholder="stat_data">
               </div>
               <div class="sg-row sg-inline">
-                <label>注入方式</label>
+                <label>娉ㄥ叆鏂瑰紡</label>
                 <select id="sg_wiRollInjectStyle">
-                  <option value="hidden">隐藏注释</option>
-                  <option value="plain">普通文�?/option>
+                  <option value="hidden">闅愯棌娉ㄩ噴</option>
+                  <option value="plain">鏅€氭枃鏈?/option>
                 </select>
               </div>
               <div class="sg-row sg-inline">
-                <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_wiRollDebugLog">调试：状态栏显示判定细节/未触发原�?/label>
+                <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_wiRollDebugLog">璋冭瘯锛氱姸鎬佹爮鏄剧ず鍒ゅ畾缁嗚妭/鏈Е鍙戝師鍥?/label>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label>ROLL Provider</label>
                   <select id="sg_wiRollProvider">
-                    <option value="custom">独立 API</option>
-                    <option value="local">本地计算</option>
+                    <option value="custom">鐙珛 API</option>
+                    <option value="local">鏈湴璁＄畻</option>
                   </select>
                 </div>
               </div>
               <div class="sg-card sg-subcard" id="sg_roll_custom_block" style="display:none; margin-top:8px;">
                 <div class="sg-grid2">
                   <div class="sg-field">
-                    <label>ROLL 独立 API 基础URL</label>
+                    <label>ROLL 鐙珛 API 鍩虹URL</label>
                     <input id="sg_wiRollCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
                   </div>
                   <div class="sg-field">
@@ -8678,12 +8678,12 @@ function buildModalHtml() {
                 </div>
                 <div class="sg-grid2">
                   <div class="sg-field">
-                    <label>模型ID</label>
+                    <label>妯″瀷ID</label>
                     <input id="sg_wiRollCustomModel" type="text" placeholder="gpt-4o-mini">
                     <div class="sg-row sg-inline" style="margin-top:6px;">
-                      <button class="menu_button sg-btn" id="sg_refreshRollModels">刷新模型</button>
+                      <button class="menu_button sg-btn" id="sg_refreshRollModels">鍒锋柊妯″瀷</button>
                       <select id="sg_wiRollModelSelect" class="sg-model-select">
-                        <option value="">（选择模型�?/option>
+                        <option value="">锛堥€夋嫨妯″瀷锛?/option>
                       </select>
                     </div>
                   </div>
@@ -8702,40 +8702,40 @@ function buildModalHtml() {
                     <input id="sg_wiRollCustomTopP" type="number" min="0" max="1" step="0.01">
                   </div>
                 </div>
-                <label class="sg-check"><input type="checkbox" id="sg_wiRollCustomStream">stream（若支持�?/label>
+                <label class="sg-check"><input type="checkbox" id="sg_wiRollCustomStream">stream锛堣嫢鏀寔锛?/label>
                 <div class="sg-field" style="margin-top:8px;">
-                  <label>ROLL 系统提示�?/label>
+                  <label>ROLL 绯荤粺鎻愮ず璇?/label>
                   <textarea id="sg_wiRollSystemPrompt" rows="5"></textarea>
                 </div>
               </div>
-              <div class="sg-hint">AI 会先判断是否需要判定，再计算并注入结果�?综合多来�?模式会尝试多种方式读取变量，确保最大兼容性�?/div>
+              <div class="sg-hint">AI 浼氬厛鍒ゆ柇鏄惁闇€瑕佸垽瀹氾紝鍐嶈绠楀苟娉ㄥ叆缁撴灉銆?缁煎悎澶氭潵婧?妯″紡浼氬皾璇曞绉嶆柟寮忚鍙栧彉閲忥紝纭繚鏈€澶у吋瀹规€с€?/div>
             </div>
             <div class="sg-card sg-subcard" style="margin-top:10px;">
               <div class="sg-row sg-inline" style="margin-top:0;">
-                <div class="sg-card-title" style="margin:0;">ROLL 日志</div>
+                <div class="sg-card-title" style="margin:0;">ROLL 鏃ュ織</div>
                 <div class="sg-spacer"></div>
-                <button class="menu_button sg-btn" id="sg_clearRollLogs">清空</button>
+                <button class="menu_button sg-btn" id="sg_clearRollLogs">娓呯┖</button>
               </div>
-              <div class="sg-loglist" id="sg_rollLogs" style="margin-top:8px;">(暂无)</div>
-              <div class="sg-hint" style="margin-top:8px;">提示：仅记录�?ROLL API 返回的简要计算摘要�?/div>
+              <div class="sg-loglist" id="sg_rollLogs" style="margin-top:8px;">(鏆傛棤)</div>
+              <div class="sg-hint" style="margin-top:8px;">鎻愮ず锛氫粎璁板綍鐢?ROLL API 杩斿洖鐨勭畝瑕佽绠楁憳瑕併€?/div>
             </div>
           </div> <!-- sg_page_roll -->
 
           <div class="sg-page" id="sg_page_image">
             <div class="sg-card">
-              <div class="sg-card-title">🎨 图像生成设置</div>
-              <div class="sg-hint" style="margin-bottom:10px;">读取最新剧情内容，使用 LLM 生成标签，调�?Novel AI API 生成角色/场景图像�?/div>
+              <div class="sg-card-title">馃帹 鍥惧儚鐢熸垚璁剧疆</div>
+              <div class="sg-hint" style="margin-bottom:10px;">璇诲彇鏈€鏂板墽鎯呭唴瀹癸紝浣跨敤 LLM 鐢熸垚鏍囩锛岃皟鐢?Novel AI API 鐢熸垚瑙掕壊/鍦烘櫙鍥惧儚銆?/div>
 
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_imageGenEnabled">启用图像生成模块</label>
+                <label class="sg-check"><input type="checkbox" id="sg_imageGenEnabled">鍚敤鍥惧儚鐢熸垚妯″潡</label>
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">LLM 提示词生�?API</div>
-                <div class="sg-hint">用于将剧情内容转换为图像生成标签（Tag�?/div>
+                <div class="sg-card-title" style="font-size:0.95em;">LLM 鎻愮ず璇嶇敓鎴?API</div>
+                <div class="sg-hint">鐢ㄤ簬灏嗗墽鎯呭唴瀹硅浆鎹负鍥惧儚鐢熸垚鏍囩锛圱ag锛?/div>
                 <div class="sg-grid2" style="margin-top:8px;">
                   <div class="sg-field">
-                    <label>API 基础URL</label>
+                    <label>API 鍩虹URL</label>
                     <input id="sg_imageGenCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
                   </div>
                   <div class="sg-field">
@@ -8745,47 +8745,47 @@ function buildModalHtml() {
                 </div>
                 <div class="sg-grid2">
                   <div class="sg-field">
-                    <label>模型</label>
+                    <label>妯″瀷</label>
                     <select id="sg_imageGenCustomModel">
                       <option value="gpt-4o-mini">gpt-4o-mini</option>
                       <option value="gpt-4o">gpt-4o</option>
                     </select>
                   </div>
                   <div class="sg-field" style="display:flex; align-items:flex-end;">
-                    <button class="menu_button sg-btn" id="sg_imageGenRefreshModels">🔄 刷新模型</button>
+                    <button class="menu_button sg-btn" id="sg_imageGenRefreshModels">馃攧 鍒锋柊妯″瀷</button>
                   </div>
                 </div>
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">📚 角色标签世界�?/div>
-                <div class="sg-hint">导入包含角色 NAI 标签的世界书，自动匹配剧情中的角�?/div>
+                <div class="sg-card-title" style="font-size:0.95em;">馃摎 瑙掕壊鏍囩涓栫晫涔?/div>
+                <div class="sg-hint">瀵煎叆鍖呭惈瑙掕壊 NAI 鏍囩鐨勪笘鐣屼功锛岃嚜鍔ㄥ尮閰嶅墽鎯呬腑鐨勮鑹?/div>
                 <div class="sg-row sg-inline" style="margin-top:8px;">
-                  <label class="sg-check"><input type="checkbox" id="sg_imageGenWorldBookEnabled">启用角色标签匹配</label>
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenWorldBookEnabled">鍚敤瑙掕壊鏍囩鍖归厤</label>
                 </div>
                 <div class="sg-grid2" style="margin-top:8px;">
                   <div class="sg-field">
-                    <label>世界书文件名</label>
-                    <input id="sg_imageGenWorldBookFile" type="text" placeholder="nai4 变量分角�?json">
+                    <label>涓栫晫涔︽枃浠跺悕</label>
+                    <input id="sg_imageGenWorldBookFile" type="text" placeholder="nai4 鍙橀噺鍒嗚鑹?json">
                   </div>
                   <div class="sg-field" style="display:flex; align-items:flex-end;">
-                    <button class="menu_button sg-btn" id="sg_loadImageGenWorldBook">📖 加载世界�?/button>
+                    <button class="menu_button sg-btn" id="sg_loadImageGenWorldBook">馃摉 鍔犺浇涓栫晫涔?/button>
                   </div>
                 </div>
                 <div id="sg_imageGenWorldBookInfo" class="sg-hint" style="margin-top:5px;"></div>
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">Novel AI 图像 API</div>
+                <div class="sg-card-title" style="font-size:0.95em;">Novel AI 鍥惧儚 API</div>
                 <div class="sg-field">
                   <label>Novel AI API Key</label>
                   <input id="sg_novelaiApiKey" type="password" placeholder="pst-...">
-                  <div class="sg-hint">需�?Novel AI 订阅才能使用 API</div>
+                  <div class="sg-hint">闇€瑕?Novel AI 璁㈤槄鎵嶈兘浣跨敤 API</div>
                 </div>
 
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>模型</label>
+                  <label>妯″瀷</label>
                   <select id="sg_novelaiModel">
                     <option value="nai-diffusion-4-5-full">NAI Diffusion V4.5 Full</option>
                     <option value="nai-diffusion-4-full">NAI Diffusion V4 Full</option>
@@ -8794,12 +8794,12 @@ function buildModalHtml() {
                   </select>
                 </div>
                 <div class="sg-field">
-                  <label>分辨�?/label>
+                  <label>鍒嗚鲸鐜?/label>
                   <select id="sg_novelaiResolution">
-                    <option value="832x1216">832×1216 (立绘)</option>
-                    <option value="1216x832">1216×832 (横向)</option>
-                    <option value="1024x1024">1024×1024 (方形)</option>
-                    <option value="640x640">640×640 (�?</option>
+                    <option value="832x1216">832脳1216 (绔嬬粯)</option>
+                    <option value="1216x832">1216脳832 (妯悜)</option>
+                    <option value="1024x1024">1024脳1024 (鏂瑰舰)</option>
+                    <option value="640x640">640脳640 (灏?</option>
                   </select>
                 </div>
               </div>
@@ -8816,67 +8816,67 @@ function buildModalHtml() {
               </div>
 
               <div class="sg-field">
-                <label>默认负面提示�?/label>
+                <label>榛樿璐熼潰鎻愮ず璇?/label>
                 <textarea id="sg_novelaiNegativePrompt" rows="2" placeholder="lowres, bad anatomy, ..."></textarea>
               </div>
 
               <hr class="sg-hr">
 
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_imageGenAutoSave">自动保存生成的图�?/label>
+                <label class="sg-check"><input type="checkbox" id="sg_imageGenAutoSave">鑷姩淇濆瓨鐢熸垚鐨勫浘鍍?/label>
               </div>
               <div class="sg-field">
-                <label>保存路径（留空则仅显示不保存�?/label>
-                <input id="sg_imageGenSavePath" type="text" placeholder="例如：C:/Images/Generated">
-                <div class="sg-hint">图像会以时间戳命名保存到此目�?/div>
+                <label>淇濆瓨璺緞锛堢暀绌哄垯浠呮樉绀轰笉淇濆瓨锛?/label>
+                <input id="sg_imageGenSavePath" type="text" placeholder="渚嬪锛欳:/Images/Generated">
+                <div class="sg-hint">鍥惧儚浼氫互鏃堕棿鎴冲懡鍚嶄繚瀛樺埌姝ょ洰褰?/div>
               </div>
 
               <hr class="sg-hr">
 
               <div class="sg-field">
-                <label>读取最近消息数</label>
+                <label>璇诲彇鏈€杩戞秷鎭暟</label>
                 <input id="sg_imageGenLookbackMessages" type="number" min="1" max="30">
               </div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_imageGenReadStatData">读取角色状态变�?/label>
+                <label class="sg-check"><input type="checkbox" id="sg_imageGenReadStatData">璇诲彇瑙掕壊鐘舵€佸彉閲?/label>
                 <input id="sg_imageGenStatVarName" type="text" placeholder="stat_data" style="width:120px">
               </div>
 
               <div class="sg-field">
-                <label>标签生成提示�?(System)</label>
-                <textarea id="sg_imageGenSystemPrompt" rows="8" placeholder="用于�?LLM 生成 Danbooru 风格标签的提示词"></textarea>
+                <label>鏍囩鐢熸垚鎻愮ず璇?(System)</label>
+                <textarea id="sg_imageGenSystemPrompt" rows="8" placeholder="鐢ㄤ簬璁?LLM 鐢熸垚 Danbooru 椋庢牸鏍囩鐨勬彁绀鸿瘝"></textarea>
                 <div class="sg-actions-row">
-                  <button class="menu_button sg-btn" id="sg_imageGenResetPrompt">恢复默认提示�?/button>
+                  <button class="menu_button sg-btn" id="sg_imageGenResetPrompt">鎭㈠榛樿鎻愮ず璇?/button>
                 </div>
               </div>
             </div>
 
             <div class="sg-card">
-              <div class="sg-card-title">生成图像</div>
+              <div class="sg-card-title">鐢熸垚鍥惧儚</div>
 
               <div class="sg-row sg-inline">
-                <label>生成类型</label>
+                <label>鐢熸垚绫诲瀷</label>
                 <select id="sg_imageGenType">
-                  <option value="auto">自动识别</option>
-                  <option value="character">角色立绘</option>
-                  <option value="scene">场景�?/option>
+                  <option value="auto">鑷姩璇嗗埆</option>
+                  <option value="character">瑙掕壊绔嬬粯</option>
+                  <option value="scene">鍦烘櫙鍥?/option>
                 </select>
-                <button class="menu_button sg-btn-primary" id="sg_generateImage">🎨 根据剧情生成图像</button>
+                <button class="menu_button sg-btn-primary" id="sg_generateImage">馃帹 鏍规嵁鍓ф儏鐢熸垚鍥惧儚</button>
               </div>
 
               <div class="sg-field" id="sg_imagePromptPreview" style="display:none; margin-top:10px;">
-                <label>生成的提示词</label>
+                <label>鐢熸垚鐨勬彁绀鸿瘝</label>
                 <textarea id="sg_imagePositivePrompt" rows="3" readonly style="background: var(--SmartThemeBlurTintColor);"></textarea>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
-                  <button class="menu_button sg-btn" id="sg_editPromptAndGenerate">编辑并重新生�?/button>
-                  <button class="menu_button sg-btn" id="sg_copyImagePrompt">📋 复制提示�?/button>
+                  <button class="menu_button sg-btn" id="sg_editPromptAndGenerate">缂栬緫骞堕噸鏂扮敓鎴?/button>
+                  <button class="menu_button sg-btn" id="sg_copyImagePrompt">馃搵 澶嶅埗鎻愮ず璇?/button>
                 </div>
               </div>
 
               <div id="sg_imageResult" class="sg-image-result" style="display:none; margin-top:12px;">
                 <img id="sg_generatedImage" src="" alt="Generated Image" style="max-width:100%; max-height:500px; border-radius:6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 <div class="sg-row sg-inline" style="margin-top:8px; justify-content:center;">
-                  <button class="menu_button sg-btn" id="sg_downloadImage">💾 保存图像</button>
+                  <button class="menu_button sg-btn" id="sg_downloadImage">馃捑 淇濆瓨鍥惧儚</button>
                 </div>
               </div>
 
@@ -8884,26 +8884,26 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card">
-              <div class="sg-card-title">📚 在线图库（作者预设图片）</div>
-              <div class="sg-hint" style="margin-bottom:10px;">�?GitHub 加载作者预先生成的图片库，AI 会根据剧情自动选择最匹配的图片�?/div>
+              <div class="sg-card-title">馃摎 鍦ㄧ嚎鍥惧簱锛堜綔鑰呴璁惧浘鐗囷級</div>
+              <div class="sg-hint" style="margin-bottom:10px;">浠?GitHub 鍔犺浇浣滆€呴鍏堢敓鎴愮殑鍥剧墖搴擄紝AI 浼氭牴鎹墽鎯呰嚜鍔ㄩ€夋嫨鏈€鍖归厤鐨勫浘鐗囥€?/div>
               
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_imageGalleryEnabled">启用在线图库</label>
+                <label class="sg-check"><input type="checkbox" id="sg_imageGalleryEnabled">鍚敤鍦ㄧ嚎鍥惧簱</label>
               </div>
 
               <div class="sg-field">
-                <label>图库索引 URL</label>
-                <input id="sg_imageGalleryUrl" type="text" placeholder="https://raw.githubusercontent.com/用户�?仓库/main/index.json">
-                <div class="sg-hint">填入 GitHub Raw URL 指向图库�?index.json 文件</div>
+                <label>鍥惧簱绱㈠紩 URL</label>
+                <input id="sg_imageGalleryUrl" type="text" placeholder="https://raw.githubusercontent.com/鐢ㄦ埛鍚?浠撳簱/main/index.json">
+                <div class="sg-hint">濉叆 GitHub Raw URL 鎸囧悜鍥惧簱鐨?index.json 鏂囦欢</div>
               </div>
 
               <div class="sg-row sg-inline">
-                <button class="menu_button sg-btn" id="sg_loadGallery">📥 加载/刷新图库</button>
-                <span class="sg-hint" id="sg_galleryInfo" style="margin-left:10px;">(未加�?</span>
+                <button class="menu_button sg-btn" id="sg_loadGallery">馃摜 鍔犺浇/鍒锋柊鍥惧簱</button>
+                <span class="sg-hint" id="sg_galleryInfo" style="margin-left:10px;">(鏈姞杞?</span>
               </div>
 
               <div class="sg-row sg-inline" style="margin-top:10px;">
-                <button class="menu_button sg-btn-primary" id="sg_matchGalleryImage">🔍 根据剧情匹配图片</button>
+                <button class="menu_button sg-btn-primary" id="sg_matchGalleryImage">馃攳 鏍规嵁鍓ф儏鍖归厤鍥剧墖</button>
               </div>
 
               <div id="sg_galleryResult" class="sg-image-result" style="display:none; margin-top:12px;">
@@ -8918,24 +8918,24 @@ function buildModalHtml() {
 
         <div class="sg-right">
           <div class="sg-card">
-            <div class="sg-card-title">输出</div>
+            <div class="sg-card-title">杈撳嚭</div>
 
             <div class="sg-tabs">
-              <button class="sg-tab active" id="sg_tab_md">报告</button>
+              <button class="sg-tab active" id="sg_tab_md">鎶ュ憡</button>
               <button class="sg-tab" id="sg_tab_json">JSON</button>
-              <button class="sg-tab" id="sg_tab_src">来源</button>
-              <button class="sg-tab" id="sg_tab_sum">总结</button>
+              <button class="sg-tab" id="sg_tab_src">鏉ユ簮</button>
+              <button class="sg-tab" id="sg_tab_sum">鎬荤粨</button>
               <div class="sg-spacer"></div>
-              <button class="menu_button sg-btn" id="sg_copyMd" disabled>复制MD</button>
-              <button class="menu_button sg-btn" id="sg_copyJson" disabled>复制JSON</button>
-              <button class="menu_button sg-btn" id="sg_copySum" disabled>复制总结</button>
-              <button class="menu_button sg-btn" id="sg_injectTips" disabled>注入提示</button>
+              <button class="menu_button sg-btn" id="sg_copyMd" disabled>澶嶅埗MD</button>
+              <button class="menu_button sg-btn" id="sg_copyJson" disabled>澶嶅埗JSON</button>
+              <button class="menu_button sg-btn" id="sg_copySum" disabled>澶嶅埗鎬荤粨</button>
+              <button class="menu_button sg-btn" id="sg_injectTips" disabled>娉ㄥ叆鎻愮ず</button>
             </div>
 
-            <div class="sg-pane active" id="sg_pane_md"><div class="sg-md" id="sg_md">(尚未生成)</div></div>
+            <div class="sg-pane active" id="sg_pane_md"><div class="sg-md" id="sg_md">(灏氭湭鐢熸垚)</div></div>
             <div class="sg-pane" id="sg_pane_json"><pre class="sg-pre" id="sg_json"></pre></div>
             <div class="sg-pane" id="sg_pane_src"><pre class="sg-pre" id="sg_src"></pre></div>
-            <div class="sg-pane" id="sg_pane_sum"><div class="sg-md" id="sg_sum">(尚未生成)</div></div>
+            <div class="sg-pane" id="sg_pane_sum"><div class="sg-md" id="sg_sum">(灏氭湭鐢熸垚)</div></div>
           </div>
         </div>
       </div>
@@ -8948,7 +8948,7 @@ function ensureModal() {
   if (document.getElementById('sg_modal_backdrop')) return;
   document.body.insertAdjacentHTML('beforeend', buildModalHtml());
 
-  // --- settings pages (剧情指导 / 总结设置 / 索引设置 / ROLL 设置) ---
+  // --- settings pages (鍓ф儏鎸囧 / 鎬荤粨璁剧疆 / 绱㈠紩璁剧疆 / ROLL 璁剧疆) ---
   setupSettingsPages();
 
   $('#sg_modal_backdrop').on('click', (e) => { if (e.target && e.target.id === 'sg_modal_backdrop') closeModal(); });
@@ -8962,7 +8962,7 @@ function ensureModal() {
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
     saveSettings();
-    setStatus('已保存设�?, 'ok');
+    setStatus('宸蹭繚瀛樿缃?, 'ok');
   });
 
   $('#sg_analyze').on('click', async () => {
@@ -8972,40 +8972,40 @@ function ensureModal() {
   });
 
   $('#sg_saveWorld').on('click', async () => {
-    try { await setChatMetaValue(META_KEYS.world, String($('#sg_worldText').val() || '')); setStatus('已保存：世界�?设定补充（本聊天�?, 'ok'); }
-    catch (e) { setStatus(`保存失败�?{e?.message ?? e}`, 'err'); }
+    try { await setChatMetaValue(META_KEYS.world, String($('#sg_worldText').val() || '')); setStatus('宸蹭繚瀛橈細涓栫晫瑙?璁惧畾琛ュ厖锛堟湰鑱婂ぉ锛?, 'ok'); }
+    catch (e) { setStatus(`淇濆瓨澶辫触锛?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_saveCanon').on('click', async () => {
-    try { await setChatMetaValue(META_KEYS.canon, String($('#sg_canonText').val() || '')); setStatus('已保存：原著后续/大纲（本聊天�?, 'ok'); }
-    catch (e) { setStatus(`保存失败�?{e?.message ?? e}`, 'err'); }
+    try { await setChatMetaValue(META_KEYS.canon, String($('#sg_canonText').val() || '')); setStatus('宸蹭繚瀛橈細鍘熻憲鍚庣画/澶х翰锛堟湰鑱婂ぉ锛?, 'ok'); }
+    catch (e) { setStatus(`淇濆瓨澶辫触锛?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_copyMd').on('click', async () => {
-    try { await navigator.clipboard.writeText(lastReport?.markdown ?? ''); setStatus('已复制：Markdown 报告', 'ok'); }
-    catch (e) { setStatus(`复制失败�?{e?.message ?? e}`, 'err'); }
+    try { await navigator.clipboard.writeText(lastReport?.markdown ?? ''); setStatus('宸插鍒讹細Markdown 鎶ュ憡', 'ok'); }
+    catch (e) { setStatus(`澶嶅埗澶辫触锛?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_copyJson').on('click', async () => {
-    try { await navigator.clipboard.writeText(lastJsonText || ''); setStatus('已复制：JSON', 'ok'); }
-    catch (e) { setStatus(`复制失败�?{e?.message ?? e}`, 'err'); }
+    try { await navigator.clipboard.writeText(lastJsonText || ''); setStatus('宸插鍒讹細JSON', 'ok'); }
+    catch (e) { setStatus(`澶嶅埗澶辫触锛?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_copySum').on('click', async () => {
-    try { await navigator.clipboard.writeText(lastSummaryText || ''); setStatus('已复制：总结', 'ok'); }
-    catch (e) { setStatus(`复制失败�?{e?.message ?? e}`, 'err'); }
+    try { await navigator.clipboard.writeText(lastSummaryText || ''); setStatus('宸插鍒讹細鎬荤粨', 'ok'); }
+    catch (e) { setStatus(`澶嶅埗澶辫触锛?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_injectTips').on('click', () => {
     const tips = Array.isArray(lastReport?.json?.tips) ? lastReport.json.tips : [];
     const spoiler = ensureSettings().spoilerLevel;
     const text = tips.length
-      ? `/sys 【剧情指导提示｜${spoiler}】\n` + tips.map((t, i) => `${i + 1}. ${t}`).join('\n')
+      ? `/sys 銆愬墽鎯呮寚瀵兼彁绀猴綔${spoiler}銆慭n` + tips.map((t, i) => `${i + 1}. ${t}`).join('\n')
       : (lastReport?.markdown ?? '');
 
     const $ta = $('#send_textarea');
-    if ($ta.length) { $ta.val(text).trigger('input'); setStatus('已把提示放入输入框（你可以手动发送）', 'ok'); }
-    else setStatus('找不到输入框 #send_textarea，无法注�?, 'err');
+    if ($ta.length) { $ta.val(text).trigger('input'); setStatus('宸叉妸鎻愮ず鏀惧叆杈撳叆妗嗭紙浣犲彲浠ユ墜鍔ㄥ彂閫侊級', 'ok'); }
+    else setStatus('鎵句笉鍒拌緭鍏ユ #send_textarea锛屾棤娉曟敞鍏?, 'err');
   });
 
   $('#sg_provider').on('change', () => {
@@ -9051,7 +9051,7 @@ function ensureModal() {
     $('#sg_wiIndexUserTemplate').val(DEFAULT_INDEX_USER_TEMPLATE);
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认索引提示词 �?, 'ok');
+    setStatus('宸叉仮澶嶉粯璁ょ储寮曟彁绀鸿瘝 鉁?, 'ok');
   });
 
 
@@ -9077,7 +9077,7 @@ function ensureModal() {
     $('#sg_summaryUserTemplate').val(DEFAULT_SUMMARY_USER_TEMPLATE);
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认总结提示�?�?, 'ok');
+    setStatus('宸叉仮澶嶉粯璁ゆ€荤粨鎻愮ず璇?鉁?, 'ok');
   });
 
   // structured entries prompt reset + cache clear
@@ -9089,15 +9089,15 @@ function ensureModal() {
     $('#sg_structuredAbilityPrompt').val(DEFAULT_STRUCTURED_ABILITY_PROMPT);
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认结构化提示�?�?, 'ok');
+    setStatus('宸叉仮澶嶉粯璁ょ粨鏋勫寲鎻愮ず璇?鉁?, 'ok');
   });
 
   $('#sg_clearStructuredCache').on('click', async () => {
     try {
       await clearStructuredEntriesCache();
-      setStatus('已清除结构化条目缓存 �?, 'ok');
+      setStatus('宸叉竻闄ょ粨鏋勫寲鏉＄洰缂撳瓨 鉁?, 'ok');
     } catch (e) {
-      setStatus(`清除结构化条目缓存失败：${e?.message ?? e}`, 'err');
+      setStatus(`娓呴櫎缁撴瀯鍖栨潯鐩紦瀛樺け璐ワ細${e?.message ?? e}`, 'err');
     }
   });
 
@@ -9119,13 +9119,13 @@ function ensureModal() {
       saveSettings();
       await runSummary({ reason: 'manual' });
     } catch (e) {
-      setStatus(`总结失败�?{e?.message ?? e}`, 'err');
+      setStatus(`鎬荤粨澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
   $('#sg_stopSummary').on('click', () => {
     stopSummary();
-    setStatus('正在停止总结�?, 'warn');
+    setStatus('姝ｅ湪鍋滄鎬荤粨鈥?, 'warn');
   });
 
   $('#sg_summarizeRange').on('click', async () => {
@@ -9136,7 +9136,7 @@ function ensureModal() {
       const to = clampInt($('#sg_summaryManualTo').val(), 1, 200000, 1);
       await runSummary({ reason: 'manual_range', manualFromFloor: from, manualToFloor: to });
     } catch (e) {
-      setStatus(`手动范围总结失败�?{e?.message ?? e}`, 'err');
+      setStatus(`鎵嬪姩鑼冨洿鎬荤粨澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -9146,9 +9146,9 @@ function ensureModal() {
       await setSummaryMeta(meta);
       updateSummaryInfoLabel();
       renderSummaryPaneFromMeta();
-      setStatus('已重置本聊天总结进度 �?, 'ok');
+      setStatus('宸查噸缃湰鑱婂ぉ鎬荤粨杩涘害 鉁?, 'ok');
     } catch (e) {
-      setStatus(`重置失败�?{e?.message ?? e}`, 'err');
+      setStatus(`閲嶇疆澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -9176,12 +9176,12 @@ function ensureModal() {
     await loadImageGenWorldBook();
   });
 
-  // 导出/导入全局预设
+  // 瀵煎嚭/瀵煎叆鍏ㄥ眬棰勮
   $('#sg_exportPreset').on('click', () => {
     try {
       exportPreset();
     } catch (e) {
-      showToast(`导出失败: ${e.message}`, { kind: 'err' });
+      showToast(`瀵煎嚭澶辫触: ${e.message}`, { kind: 'err' });
     }
   });
 
@@ -9193,7 +9193,7 @@ function ensureModal() {
     const file = e.target.files?.[0];
     if (file) {
       await importPreset(file);
-      // 清空 input 以便再次选择同一文件
+      // 娓呯┖ input 浠ヤ究鍐嶆閫夋嫨鍚屼竴鏂囦欢
       e.target.value = '';
     }
   });
@@ -9235,7 +9235,7 @@ function ensureModal() {
     if (id) $('#sg_wiRollCustomModel').val(id);
   });
 
-  // 蓝灯索引导入/清空
+  // 钃濈伅绱㈠紩瀵煎叆/娓呯┖
   $('#sg_refreshBlueIndexLive').on('click', async () => {
     try {
       pullUiToSettings();
@@ -9243,18 +9243,18 @@ function ensureModal() {
       const s = ensureSettings();
       const mode = String(s.wiBlueIndexMode || 'live');
       if (mode !== 'live') {
-        setStatus('当前为“缓存”模式：不会实时读取（可切换为“实时读取蓝灯世界书”）', 'warn');
+        setStatus('褰撳墠涓衡€滅紦瀛樷€濇ā寮忥細涓嶄細瀹炴椂璇诲彇锛堝彲鍒囨崲涓衡€滃疄鏃惰鍙栬摑鐏笘鐣屼功鈥濓級', 'warn');
         return;
       }
       const file = pickBlueIndexFileName();
       if (!file) {
-        setStatus('蓝灯世界书文件名为空：请在“蓝灯索引”里填写文件名，或在“同时写入蓝灯世界书”里填写文件�?, 'err');
+        setStatus('钃濈伅涓栫晫涔︽枃浠跺悕涓虹┖锛氳鍦ㄢ€滆摑鐏储寮曗€濋噷濉啓鏂囦欢鍚嶏紝鎴栧湪鈥滃悓鏃跺啓鍏ヨ摑鐏笘鐣屼功鈥濋噷濉啓鏂囦欢鍚?, 'err');
         return;
       }
       const entries = await ensureBlueIndexLive(true);
-      setStatus(`已实时读取蓝灯世界书 ✅（${entries.length} 条）`, entries.length ? 'ok' : 'warn');
+      setStatus(`宸插疄鏃惰鍙栬摑鐏笘鐣屼功 鉁咃紙${entries.length} 鏉★級`, entries.length ? 'ok' : 'warn');
     } catch (e) {
-      setStatus(`实时读取蓝灯世界书失败：${e?.message ?? e}`, 'err');
+      setStatus(`瀹炴椂璇诲彇钃濈伅涓栫晫涔﹀け璐ワ細${e?.message ?? e}`, 'err');
     }
   });
 
@@ -9265,18 +9265,18 @@ function ensureModal() {
       const txt = await readFileText(file);
       const entries = parseWorldbookJson(txt);
       const s = ensureSettings();
-      // 仅保留必要字�?
+      // 浠呬繚鐣欏繀瑕佸瓧娈?
       s.summaryBlueIndex = entries.map(e => ({
-        title: String(e.title || '').trim() || (e.keys?.[0] ? `条目�?{e.keys[0]}` : '条目'),
+        title: String(e.title || '').trim() || (e.keys?.[0] ? `鏉＄洰锛?{e.keys[0]}` : '鏉＄洰'),
         summary: String(e.content || '').trim(),
         keywords: Array.isArray(e.keys) ? e.keys.slice(0, 80) : [],
         importedAt: Date.now(),
       })).filter(x => x.summary);
       saveSettings();
       updateBlueIndexInfoLabel();
-      setStatus(`蓝灯索引已导�?✅（${s.summaryBlueIndex.length} 条）`, s.summaryBlueIndex.length ? 'ok' : 'warn');
+      setStatus(`钃濈伅绱㈠紩宸插鍏?鉁咃紙${s.summaryBlueIndex.length} 鏉★級`, s.summaryBlueIndex.length ? 'ok' : 'warn');
     } catch (e) {
-      setStatus(`导入蓝灯索引失败�?{e?.message ?? e}`, 'err');
+      setStatus(`瀵煎叆钃濈伅绱㈠紩澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -9285,7 +9285,7 @@ function ensureModal() {
     s.summaryBlueIndex = [];
     saveSettings();
     updateBlueIndexInfoLabel();
-    setStatus('已清空蓝灯索�?, 'ok');
+    setStatus('宸叉竻绌鸿摑鐏储寮?, 'ok');
   });
 
   $('#sg_clearWiLogs').on('click', async () => {
@@ -9294,9 +9294,9 @@ function ensureModal() {
       meta.wiTriggerLogs = [];
       await setSummaryMeta(meta);
       renderWiTriggerLogs(meta);
-      setStatus('已清空索引日�?, 'ok');
+      setStatus('宸叉竻绌虹储寮曟棩蹇?, 'ok');
     } catch (e) {
-      setStatus(`清空索引日志失败�?{e?.message ?? e}`, 'err');
+      setStatus(`娓呯┖绱㈠紩鏃ュ織澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -9306,9 +9306,9 @@ function ensureModal() {
       meta.rollLogs = [];
       await setSummaryMeta(meta);
       renderRollLogs(meta);
-      setStatus('已清�?ROLL 日志', 'ok');
+      setStatus('宸叉竻绌?ROLL 鏃ュ織', 'ok');
     } catch (e) {
-      setStatus(`清空 ROLL 日志失败�?{e?.message ?? e}`, 'err');
+      setStatus(`娓呯┖ ROLL 鏃ュ織澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -9325,9 +9325,9 @@ function ensureModal() {
 
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       downloadTextFile(`storyguide-preset-${stamp}.json`, JSON.stringify(out, null, 2));
-      setStatus('已导出预�?�?, 'ok');
+      setStatus('宸插鍑洪璁?鉁?, 'ok');
     } catch (e) {
-      setStatus(`导出失败�?{e?.message ?? e}`, 'err');
+      setStatus(`瀵煎嚭澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -9339,7 +9339,7 @@ function ensureModal() {
       const data = JSON.parse(txt);
 
       if (!data || typeof data !== 'object') {
-        setStatus('导入失败：预设文件格式不�?, 'err');
+        setStatus('瀵煎叆澶辫触锛氶璁炬枃浠舵牸寮忎笉瀵?, 'err');
         return;
       }
 
@@ -9352,11 +9352,11 @@ function ensureModal() {
 
       saveSettings();
       pullSettingsToUi();
-      setStatus('已导入预设并应用 ✅（建议刷新一次页面）', 'ok');
+      setStatus('宸插鍏ラ璁惧苟搴旂敤 鉁咃紙寤鸿鍒锋柊涓€娆￠〉闈級', 'ok');
 
       scheduleReapplyAll('import_preset');
     } catch (e) {
-      setStatus(`导入失败�?{e?.message ?? e}`, 'err');
+      setStatus(`瀵煎叆澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -9373,9 +9373,9 @@ function ensureModal() {
       saveSettings();
 
       updateWorldbookInfoLabel();
-      setStatus('世界书已导入 �?, entries.length ? 'ok' : 'warn');
+      setStatus('涓栫晫涔﹀凡瀵煎叆 鉁?, entries.length ? 'ok' : 'warn');
     } catch (e) {
-      setStatus(`导入世界书失败：${e?.message ?? e}`, 'err');
+      setStatus(`瀵煎叆涓栫晫涔﹀け璐ワ細${e?.message ?? e}`, 'err');
     }
   });
 
@@ -9384,7 +9384,7 @@ function ensureModal() {
     s.worldbookJson = '';
     saveSettings();
     updateWorldbookInfoLabel();
-    setStatus('已清空世界书', 'ok');
+    setStatus('宸叉竻绌轰笘鐣屼功', 'ok');
   });
 
   $('#sg_saveWorldbookSettings').on('click', () => {
@@ -9392,20 +9392,20 @@ function ensureModal() {
       pullUiToSettings();
       saveSettings();
       updateWorldbookInfoLabel();
-      setStatus('世界书设置已保存 �?, 'ok');
+      setStatus('涓栫晫涔﹁缃凡淇濆瓨 鉁?, 'ok');
     } catch (e) {
-      setStatus(`保存世界书设置失败：${e?.message ?? e}`, 'err');
+      setStatus(`淇濆瓨涓栫晫涔﹁缃け璐ワ細${e?.message ?? e}`, 'err');
     }
   });
 
-  // 自动保存：世界书相关设置变更时立刻写�?
+  // 鑷姩淇濆瓨锛氫笘鐣屼功鐩稿叧璁剧疆鍙樻洿鏃剁珛鍒诲啓鍏?
   $('#sg_worldbookEnabled, #sg_worldbookMode').on('change', () => {
     pullUiToSettings();
     saveSettings();
     updateWorldbookInfoLabel();
   });
 
-  // 地图功能事件处理
+  // 鍦板浘鍔熻兘浜嬩欢澶勭悊
   $('#sg_mapEnabled').on('change', () => {
     pullUiToSettings();
     saveSettings();
@@ -9420,7 +9420,7 @@ function ensureModal() {
     $('#sg_mapSystemPrompt').val(String(DEFAULT_SETTINGS.mapSystemPrompt || ''));
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认地图提示词 �?, 'ok');
+    setStatus('宸叉仮澶嶉粯璁ゅ湴鍥炬彁绀鸿瘝 鉁?, 'ok');
   });
 
   bindMapEventPanelHandler();
@@ -9435,15 +9435,15 @@ function ensureModal() {
     try {
       await setMapData(getDefaultMapData());
       updateMapPreview();
-      setStatus('地图已重�?�?, 'ok');
+      setStatus('鍦板浘宸查噸缃?鉁?, 'ok');
     } catch (e) {
-      setStatus(`重置地图失败�?{e?.message ?? e}`, 'err');
+      setStatus(`閲嶇疆鍦板浘澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 
   $('#sg_refreshMapPreview').on('click', () => {
     updateMapPreview();
-    setStatus('地图预览已刷�?, 'ok');
+    setStatus('鍦板浘棰勮宸插埛鏂?, 'ok');
   });
   $('#sg_worldbookMaxChars, #sg_worldbookWindowMessages').on('input', () => {
     pullUiToSettings();
@@ -9456,50 +9456,50 @@ function ensureModal() {
     const txt = String($('#sg_modulesJson').val() || '').trim();
     let parsed = null;
     try { parsed = JSON.parse(txt); } catch (e) {
-      setStatus(`模块 JSON 解析失败�?{e?.message ?? e}`, 'err');
+      setStatus(`妯″潡 JSON 瑙ｆ瀽澶辫触锛?{e?.message ?? e}`, 'err');
       return;
     }
     const v = validateAndNormalizeModules(parsed);
     if (!v.ok) {
-      setStatus(`模块校验失败�?{v.error}`, 'err');
+      setStatus(`妯″潡鏍￠獙澶辫触锛?{v.error}`, 'err');
       return;
     }
-    setStatus(`模块校验通过 ✅（${v.modules.length} 个模块）`, 'ok');
+    setStatus(`妯″潡鏍￠獙閫氳繃 鉁咃紙${v.modules.length} 涓ā鍧楋級`, 'ok');
   });
 
   $('#sg_resetModules').on('click', () => {
     $('#sg_modulesJson').val(JSON.stringify(DEFAULT_MODULES, null, 2));
-    setStatus('已恢复默认模块（尚未保存，点“应用到设置”）', 'warn');
+    setStatus('宸叉仮澶嶉粯璁ゆā鍧楋紙灏氭湭淇濆瓨锛岀偣鈥滃簲鐢ㄥ埌璁剧疆鈥濓級', 'warn');
   });
 
   $('#sg_applyModules').on('click', () => {
     const txt = String($('#sg_modulesJson').val() || '').trim();
     let parsed = null;
     try { parsed = JSON.parse(txt); } catch (e) {
-      setStatus(`模块 JSON 解析失败�?{e?.message ?? e}`, 'err');
+      setStatus(`妯″潡 JSON 瑙ｆ瀽澶辫触锛?{e?.message ?? e}`, 'err');
       return;
     }
     const v = validateAndNormalizeModules(parsed);
-    if (!v.ok) { setStatus(`模块校验失败�?{v.error}`, 'err'); return; }
+    if (!v.ok) { setStatus(`妯″潡鏍￠獙澶辫触锛?{v.error}`, 'err'); return; }
 
     const s = ensureSettings();
     s.modulesJson = JSON.stringify(v.modules, null, 2);
     saveSettings();
     $('#sg_modulesJson').val(s.modulesJson);
-    setStatus('模块已应用并保存 ✅（注意：追加框展示的模块由“追加框展示模块”控制）', 'ok');
+    setStatus('妯″潡宸插簲鐢ㄥ苟淇濆瓨 鉁咃紙娉ㄦ剰锛氳拷鍔犳灞曠ず鐨勬ā鍧楃敱鈥滆拷鍔犳灞曠ず妯″潡鈥濇帶鍒讹級', 'ok');
   });
 
-  // 刷新静态模块缓�?
+  // 鍒锋柊闈欐€佹ā鍧楃紦瀛?
   $('#sg_clearStaticCache').on('click', async () => {
     try {
       await clearStaticModulesCache();
-      setStatus('已清除静态模块缓�?�?下次分析会重新生成静态模块（�?世界简�?�?, 'ok');
+      setStatus('宸叉竻闄ら潤鎬佹ā鍧楃紦瀛?鉁?涓嬫鍒嗘瀽浼氶噸鏂扮敓鎴愰潤鎬佹ā鍧楋紙濡?涓栫晫绠€浠?锛?, 'ok');
     } catch (e) {
-      setStatus(`清除静态模块缓存失败：${e?.message ?? e}`, 'err');
+      setStatus(`娓呴櫎闈欐€佹ā鍧楃紦瀛樺け璐ワ細${e?.message ?? e}`, 'err');
     }
   });
 
-  // 自动绑定世界书事�?
+  // 鑷姩缁戝畾涓栫晫涔︿簨浠?
   $('#sg_autoBindWorldInfo').on('change', async () => {
     pullUiToSettings();
     saveSettings();
@@ -9515,19 +9515,19 @@ function ensureModal() {
     saveSettings();
   });
 
-  // 快捷选项按钮事件
+  // 蹇嵎閫夐」鎸夐挳浜嬩欢
   $('#sg_resetQuickOptions').on('click', () => {
     const defaultOptions = JSON.stringify([
-      { label: '继续', prompt: '继续当前剧情发展' },
-      { label: '详述', prompt: '请更详细地描述当前场�? },
-      { label: '对话', prompt: '让角色之间展开更多对话' },
-      { label: '行动', prompt: '描述接下来的具体行动' },
+      { label: '缁х画', prompt: '缁х画褰撳墠鍓ф儏鍙戝睍' },
+      { label: '璇﹁堪', prompt: '璇锋洿璇︾粏鍦版弿杩板綋鍓嶅満鏅? },
+      { label: '瀵硅瘽', prompt: '璁╄鑹蹭箣闂村睍寮€鏇村瀵硅瘽' },
+      { label: '琛屽姩', prompt: '鎻忚堪鎺ヤ笅鏉ョ殑鍏蜂綋琛屽姩' },
     ], null, 2);
     $('#sg_quickOptionsJson').val(defaultOptions);
     const s = ensureSettings();
     s.quickOptionsJson = defaultOptions;
     saveSettings();
-    setStatus('已恢复默认快捷选项 �?, 'ok');
+    setStatus('宸叉仮澶嶉粯璁ゅ揩鎹烽€夐」 鉁?, 'ok');
   });
 
   $('#sg_applyQuickOptions').on('click', () => {
@@ -9535,16 +9535,16 @@ function ensureModal() {
     try {
       const arr = JSON.parse(txt || '[]');
       if (!Array.isArray(arr)) {
-        setStatus('快捷选项格式错误：必须是 JSON 数组', 'err');
+        setStatus('蹇嵎閫夐」鏍煎紡閿欒锛氬繀椤绘槸 JSON 鏁扮粍', 'err');
         return;
       }
       const s = ensureSettings();
       s.quickOptionsJson = JSON.stringify(arr, null, 2);
       saveSettings();
       $('#sg_quickOptionsJson').val(s.quickOptionsJson);
-      setStatus('快捷选项已应用并保存 �?, 'ok');
+      setStatus('蹇嵎閫夐」宸插簲鐢ㄥ苟淇濆瓨 鉁?, 'ok');
     } catch (e) {
-      setStatus(`快捷选项 JSON 解析失败�?{e?.message ?? e}`, 'err');
+      setStatus(`蹇嵎閫夐」 JSON 瑙ｆ瀽澶辫触锛?{e?.message ?? e}`, 'err');
     }
   });
 }
@@ -9571,12 +9571,12 @@ function showSettingsPage(page) {
     $('#sg_page_guide').addClass('active');
   }
 
-  // 切页后回到顶部，避免“看不到设置项�?
+  // 鍒囬〉鍚庡洖鍒伴《閮紝閬垮厤鈥滅湅涓嶅埌璁剧疆椤光€?
   try { $('.sg-left').scrollTop(0); } catch { }
 }
 
 function setupSettingsPages() {
-  // 把“索引设置块”从总结页移到索引页（保留内部所有控�?id，不影响事件绑定�?
+  // 鎶娾€滅储寮曡缃潡鈥濅粠鎬荤粨椤电Щ鍒扮储寮曢〉锛堜繚鐣欏唴閮ㄦ墍鏈夋帶浠?id锛屼笉褰卞搷浜嬩欢缁戝畾锛?
   try {
     const $mount = $('#sg_index_mount');
     const $idxWrapper = $('#sg_wiTriggerEnabled').closest('.sg-card.sg-subcard');
@@ -9586,7 +9586,7 @@ function setupSettingsPages() {
     }
   } catch { /* ignore */ }
 
-  // ROLL 设置已直接内嵌在 sg_page_roll 中，无需移动
+  // ROLL 璁剧疆宸茬洿鎺ュ唴宓屽湪 sg_page_roll 涓紝鏃犻渶绉诲姩
 
   // tabs
   $('#sg_pgtab_guide').on('click', () => showSettingsPage('guide'));
@@ -9599,7 +9599,7 @@ function setupSettingsPages() {
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
   $('#sg_gotoRollPage').on('click', () => showSettingsPage('roll'));
 
-  // 图像生成事件
+  // 鍥惧儚鐢熸垚浜嬩欢
   $('#sg_generateImage').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await runImageGeneration();
@@ -9614,39 +9614,39 @@ function setupSettingsPages() {
     const prompt = $('#sg_imagePositivePrompt').val();
     if (prompt) {
       navigator.clipboard.writeText(prompt);
-      setImageGenStatus('提示词已复制到剪贴板', 'ok');
+      setImageGenStatus('鎻愮ず璇嶅凡澶嶅埗鍒板壀璐存澘', 'ok');
     }
   });
 
   $('#sg_imageGenResetPrompt').on('click', () => {
     $('#sg_imageGenSystemPrompt').val(DEFAULT_SETTINGS.imageGenSystemPrompt);
     pullUiToSettings(); saveSettings();
-    setImageGenStatus('已恢复默认提示词', 'ok');
+    setImageGenStatus('宸叉仮澶嶉粯璁ゆ彁绀鸿瘝', 'ok');
   });
 
   $('#sg_editPromptAndGenerate').on('click', async () => {
     const $textarea = $('#sg_imagePositivePrompt');
     if ($textarea.prop('readonly')) {
       $textarea.prop('readonly', false);
-      $('#sg_editPromptAndGenerate').text('使用编辑后的提示词生�?);
+      $('#sg_editPromptAndGenerate').text('浣跨敤缂栬緫鍚庣殑鎻愮ず璇嶇敓鎴?);
     } else {
       const positive = $textarea.val();
       if (positive) {
         const s = ensureSettings();
-        setImageGenStatus('正在使用编辑后的提示词生成�?, 'warn');
+        setImageGenStatus('姝ｅ湪浣跨敤缂栬緫鍚庣殑鎻愮ず璇嶇敓鎴愨€?, 'warn');
         try {
           const imageUrl = await generateImageWithNovelAI(positive, '');
           $('#sg_generatedImage').attr('src', imageUrl);
           $('#sg_imageResult').show();
-          setImageGenStatus('�?生成成功�?, 'ok');
+          setImageGenStatus('鉁?鐢熸垚鎴愬姛锛?, 'ok');
         } catch (e) {
-          setImageGenStatus(`�?生成失败: ${e?.message || e}`, 'err');
+          setImageGenStatus(`鉂?鐢熸垚澶辫触: ${e?.message || e}`, 'err');
         }
       }
     }
   });
 
-  // 在线图库事件
+  // 鍦ㄧ嚎鍥惧簱浜嬩欢
   $('#sg_loadGallery').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await loadGalleryFromGitHub();
@@ -9694,7 +9694,7 @@ function pullSettingsToUi() {
   $('#sg_customSystemPreamble').val(String(s.customSystemPreamble || ''));
   $('#sg_customConstraints').val(String(s.customConstraints || ''));
 
-  // 快捷选项
+  // 蹇嵎閫夐」
   $('#sg_quickOptionsEnabled').prop('checked', !!s.quickOptionsEnabled);
   $('#sg_quickOptionsShowIn').val(String(s.quickOptionsShowIn || 'inline'));
   $('#sg_quickOptionsJson').val(String(s.quickOptionsJson || '[]'));
@@ -9710,9 +9710,9 @@ function pullSettingsToUi() {
 
   try {
     const count = parseWorldbookJson(String(s.worldbookJson || '')).length;
-    $('#sg_worldbookInfo').text(count ? `已导入世界书�?{count} 条` : '（未导入世界书）');
+    $('#sg_worldbookInfo').text(count ? `宸插鍏ヤ笘鐣屼功锛?{count} 鏉 : '锛堟湭瀵煎叆涓栫晫涔︼級');
   } catch {
-    $('#sg_worldbookInfo').text('（未导入世界书）');
+    $('#sg_worldbookInfo').text('锛堟湭瀵煎叆涓栫晫涔︼級');
   }
 
   $('#sg_custom_block').toggle(s.provider === 'custom');
@@ -9732,9 +9732,9 @@ function pullSettingsToUi() {
   $('#sg_characterEntriesEnabled').prop('checked', !!s.characterEntriesEnabled);
   $('#sg_equipmentEntriesEnabled').prop('checked', !!s.equipmentEntriesEnabled);
   $('#sg_abilityEntriesEnabled').prop('checked', !!s.abilityEntriesEnabled);
-  $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '人物'));
-  $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '装备'));
-  $('#sg_abilityEntryPrefix').val(String(s.abilityEntryPrefix || '能力'));
+  $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '浜虹墿'));
+  $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '瑁呭'));
+  $('#sg_abilityEntryPrefix').val(String(s.abilityEntryPrefix || '鑳藉姏'));
   $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
   $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
@@ -9749,7 +9749,7 @@ function pullSettingsToUi() {
   $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
   $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
-  $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
+  $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '鍓ф儏鎬荤粨'));
   $('#sg_summaryWorldInfoKeyMode').val(String(s.summaryWorldInfoKeyMode || 'keywords'));
   $('#sg_summaryIndexPrefix').val(String(s.summaryIndexPrefix || 'A-'));
   $('#sg_summaryIndexPad').val(s.summaryIndexPad ?? 3);
@@ -9758,12 +9758,12 @@ function pullSettingsToUi() {
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
 
-  // 自动绑定世界�?
+  // 鑷姩缁戝畾涓栫晫涔?
   $('#sg_autoBindWorldInfo').prop('checked', !!s.autoBindWorldInfo);
   $('#sg_autoBindWorldInfoPrefix').val(String(s.autoBindWorldInfoPrefix || 'SG'));
   updateAutoBindUI();
 
-  // 地图功能
+  // 鍦板浘鍔熻兘
   $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
   $('#sg_mapSystemPrompt').val(String(s.mapSystemPrompt || DEFAULT_SETTINGS.mapSystemPrompt || ''));
   setTimeout(() => updateMapPreview(), 100);
@@ -9802,7 +9802,7 @@ function pullSettingsToUi() {
   $('#sg_roll_custom_block').toggle(String(s.wiRollProvider || 'custom') === 'custom');
   fillRollModelSelect(Array.isArray(s.wiRollCustomModelsCache) ? s.wiRollCustomModelsCache : [], s.wiRollCustomModel);
 
-  // 图像生成设置
+  // 鍥惧儚鐢熸垚璁剧疆
   $('#sg_imageGenEnabled').prop('checked', !!s.imageGenEnabled);
   $('#sg_novelaiApiKey').val(String(s.novelaiApiKey || ''));
   $('#sg_novelaiModel').val(String(s.novelaiModel || 'nai-diffusion-3'));
@@ -9820,18 +9820,18 @@ function pullSettingsToUi() {
   $('#sg_imageGenCustomModel').val(String(s.imageGenCustomModel || 'gpt-4o-mini'));
   $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt));
 
-  // 在线图库设置
+  // 鍦ㄧ嚎鍥惧簱璁剧疆
   $('#sg_imageGalleryEnabled').prop('checked', !!s.imageGalleryEnabled);
   $('#sg_imageGalleryUrl').val(String(s.imageGalleryUrl || ''));
   if (s.imageGalleryCache && s.imageGalleryCache.length > 0) {
-    $('#sg_galleryInfo').text(`(已缓�?${s.imageGalleryCache.length} �?`);
+    $('#sg_galleryInfo').text(`(宸茬紦瀛?${s.imageGalleryCache.length} 寮?`);
   }
 
-  // 角色标签世界书设�?
+  // 瑙掕壊鏍囩涓栫晫涔﹁缃?
   $('#sg_imageGenWorldBookEnabled').prop('checked', !!s.imageGenWorldBookEnabled);
   $('#sg_imageGenWorldBookFile').val(String(s.imageGenWorldBookFile || ''));
   if (s.imageGenWorldBookCache && s.imageGenWorldBookCache.length > 0) {
-    $('#sg_imageGenWorldBookInfo').text(`(已缓�?${s.imageGenWorldBookCache.length} 个条�?`);
+    $('#sg_imageGenWorldBookInfo').text(`(宸茬紦瀛?${s.imageGenWorldBookCache.length} 涓潯鐩?`);
   }
 
   $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
@@ -9882,10 +9882,10 @@ function updateBlueIndexInfoLabel() {
     const file = pickBlueIndexFileName();
     const ts = blueIndexLiveCache?.loadedAt ? new Date(Number(blueIndexLiveCache.loadedAt)).toLocaleTimeString() : '';
     const err = String(blueIndexLiveCache?.lastError || '').trim();
-    const errShort = err ? err.replace(/\s+/g, ' ').slice(0, 60) + (err.length > 60 ? '�? : '') : '';
-    $info.text(`（蓝灯索引：${count} 条｜实时�?{file || '未设�?}${ts ? `｜更新：${ts}` : ''}${errShort ? `｜读取失败：${errShort}` : ''}）`);
+    const errShort = err ? err.replace(/\s+/g, ' ').slice(0, 60) + (err.length > 60 ? '鈥? : '') : '';
+    $info.text(`锛堣摑鐏储寮曪細${count} 鏉★綔瀹炴椂锛?{file || '鏈缃?}${ts ? `锝滄洿鏂帮細${ts}` : ''}${errShort ? `锝滆鍙栧け璐ワ細${errShort}` : ''}锛塦);
   } else {
-    $info.text(`（蓝灯索引：${count} 条｜缓存）`);
+    $info.text(`锛堣摑鐏储寮曪細${count} 鏉★綔缂撳瓨锛塦);
   }
 }
 
@@ -9906,7 +9906,7 @@ function renderWiTriggerLogs(metaOverride = null) {
   const meta = metaOverride || getSummaryMeta();
   const logs = Array.isArray(meta?.wiTriggerLogs) ? meta.wiTriggerLogs : [];
   if (!logs.length) {
-    $box.html('<div class="sg-hint">(暂无)</div>');
+    $box.html('<div class="sg-hint">(鏆傛棤)</div>');
     return;
   }
 
@@ -9917,42 +9917,42 @@ function renderWiTriggerLogs(metaOverride = null) {
     const picked = Array.isArray(l.picked) ? l.picked : [];
     const titles = picked.map(x => String(x?.title || '').trim()).filter(Boolean);
     const titleShort = titles.length
-      ? (titles.slice(0, 4).join('�?) + (titles.length > 4 ? '�? : ''))
-      : '（无命中条目�?;
+      ? (titles.slice(0, 4).join('锛?) + (titles.length > 4 ? '鈥? : ''))
+      : '锛堟棤鍛戒腑鏉＄洰锛?;
     const user = String(l.userText || '').replace(/\s+/g, ' ').trim();
-    const userShort = user ? (user.slice(0, 120) + (user.length > 120 ? '�? : '')) : '';
+    const userShort = user ? (user.slice(0, 120) + (user.length > 120 ? '鈥? : '')) : '';
     const kws = Array.isArray(l.injectedKeywords) ? l.injectedKeywords : [];
-    const kwsShort = kws.length ? (kws.slice(0, 20).join('�?) + (kws.length > 20 ? '�? : '')) : '';
+    const kwsShort = kws.length ? (kws.slice(0, 20).join('銆?) + (kws.length > 20 ? '鈥? : '')) : '';
 
     if (skipped) {
       const assistantFloors = Number(l.assistantFloors || 0);
       const startAfter = Number(l.startAfter || 0);
       const reasonKey = String(l.skippedReason || '').trim();
       const reasonText = reasonKey === 'minAssistantFloors'
-        ? `AI 回复楼层不足�?{assistantFloors}/${startAfter}）`
-        : (reasonKey || '跳过');
+        ? `AI 鍥炲妤煎眰涓嶈冻锛?{assistantFloors}/${startAfter}锛塦
+        : (reasonKey || '璺宠繃');
       const detailsLines = [];
-      if (userShort) detailsLines.push(`<div><b>用户输入</b>�?{escapeHtml(userShort)}</div>`);
-      detailsLines.push(`<div><b>未触�?/b>�?{escapeHtml(reasonText)}</div>`);
+      if (userShort) detailsLines.push(`<div><b>鐢ㄦ埛杈撳叆</b>锛?{escapeHtml(userShort)}</div>`);
+      detailsLines.push(`<div><b>鏈Е鍙?/b>锛?{escapeHtml(reasonText)}</div>`);
       return `
       <details>
-        <summary>${escapeHtml(`${ts}｜未触发�?{reasonText}`)}</summary>
+        <summary>${escapeHtml(`${ts}锝滄湭瑙﹀彂锛?{reasonText}`)}</summary>
         <div class="sg-log-body">${detailsLines.join('')}</div>
       </details>
     `;
     }
 
     const detailsLines = [];
-    if (userShort) detailsLines.push(`<div><b>用户输入</b>�?{escapeHtml(userShort)}</div>`);
-    detailsLines.push(`<div><b>将触发绿灯条�?/b>�?{escapeHtml(titles.join('�?) || '（无�?)}</div>`);
-    detailsLines.push(`<div><b>注入触发�?/b>�?{escapeHtml(kwsShort || '（无�?)}</div>`);
+    if (userShort) detailsLines.push(`<div><b>鐢ㄦ埛杈撳叆</b>锛?{escapeHtml(userShort)}</div>`);
+    detailsLines.push(`<div><b>灏嗚Е鍙戠豢鐏潯鐩?/b>锛?{escapeHtml(titles.join('锛?) || '锛堟棤锛?)}</div>`);
+    detailsLines.push(`<div><b>娉ㄥ叆瑙﹀彂璇?/b>锛?{escapeHtml(kwsShort || '锛堟棤锛?)}</div>`);
     if (picked.length) {
-      const scored = picked.map(x => `${String(x.title || '').trim()}�?{Number(x.score || 0).toFixed(2)}）`).join('�?);
-      detailsLines.push(`<div class="sg-hint">相似度：${escapeHtml(scored)}</div>`);
+      const scored = picked.map(x => `${String(x.title || '').trim()}锛?{Number(x.score || 0).toFixed(2)}锛塦).join('锛?);
+      detailsLines.push(`<div class="sg-hint">鐩镐技搴︼細${escapeHtml(scored)}</div>`);
     }
     return `
       <details>
-        <summary>${escapeHtml(`${ts}｜命�?{titles.length}条：${titleShort}`)}</summary>
+        <summary>${escapeHtml(`${ts}锝滃懡涓?{titles.length}鏉★細${titleShort}`)}</summary>
         <div class="sg-log-body">${detailsLines.join('')}</div>
       </details>
     `;
@@ -9967,7 +9967,7 @@ function appendWiTriggerLog(log) {
     const arr = Array.isArray(meta.wiTriggerLogs) ? meta.wiTriggerLogs : [];
     arr.unshift(log);
     meta.wiTriggerLogs = arr.slice(0, 50);
-    // �?await：避免阻�?MESSAGE_SENT
+    // 涓?await锛氶伩鍏嶉樆濉?MESSAGE_SENT
     setSummaryMeta(meta).catch(() => void 0);
     if ($('#sg_modal_backdrop').is(':visible')) renderWiTriggerLogs(meta);
   } catch { /* ignore */ }
@@ -9979,7 +9979,7 @@ function renderRollLogs(metaOverride = null) {
   const meta = metaOverride || getSummaryMeta();
   const logs = Array.isArray(meta?.rollLogs) ? meta.rollLogs : [];
   if (!logs.length) {
-    $box.html('(暂无)');
+    $box.html('(鏆傛棤)');
     return;
   }
   const shown = logs.slice(0, 30);
@@ -9987,7 +9987,7 @@ function renderRollLogs(metaOverride = null) {
     const ts = l?.ts ? new Date(l.ts).toLocaleString() : '';
     const action = String(l?.action || '').trim();
     const outcome = String(l?.outcomeTier || '').trim()
-      || (l?.success == null ? 'N/A' : (l.success ? '成功' : '失败'));
+      || (l?.success == null ? 'N/A' : (l.success ? '鎴愬姛' : '澶辫触'));
     const finalVal = Number.isFinite(Number(l?.final)) ? Number(l.final).toFixed(2) : '';
     let summary = '';
     if (l?.summary && typeof l.summary === 'object') {
@@ -10002,11 +10002,11 @@ function renderRollLogs(metaOverride = null) {
     const userShort = String(l?.userText || '').trim().slice(0, 160);
 
     const detailsLines = [];
-    if (userShort) detailsLines.push(`<div><b>用户输入</b>�?{escapeHtml(userShort)}</div>`);
-    if (summary) detailsLines.push(`<div><b>摘要</b>�?{escapeHtml(summary)}</div>`);
+    if (userShort) detailsLines.push(`<div><b>鐢ㄦ埛杈撳叆</b>锛?{escapeHtml(userShort)}</div>`);
+    if (summary) detailsLines.push(`<div><b>鎽樿</b>锛?{escapeHtml(summary)}</div>`);
     return `
       <details>
-        <summary>${escapeHtml(`${ts}�?{action || 'ROLL'}�?{outcome}${finalVal ? `｜最�?${finalVal}` : ''}`)}</summary>
+        <summary>${escapeHtml(`${ts}锝?{action || 'ROLL'}锝?{outcome}${finalVal ? `锝滄渶缁?${finalVal}` : ''}`)}</summary>
         <div class="sg-log-body">${detailsLines.join('')}</div>
       </details>
     `;
@@ -10032,30 +10032,30 @@ function updateWorldbookInfoLabel() {
 
   try {
     if (!s.worldbookJson) {
-      $info.text('（未导入世界书）');
+      $info.text('锛堟湭瀵煎叆涓栫晫涔︼級');
       return;
     }
     const stats = computeWorldbookInjection();
-    const base = `已导入世界书�?{stats.importedEntries} 条`;
+    const base = `宸插鍏ヤ笘鐣屼功锛?{stats.importedEntries} 鏉;
     if (!s.worldbookEnabled) {
-      $info.text(`${base}（未启用注入）`);
+      $info.text(`${base}锛堟湭鍚敤娉ㄥ叆锛塦);
       return;
     }
     if (stats.mode === 'active' && stats.selectedEntries === 0) {
-      $info.text(`${base}｜模式：active｜本次无条目命中�? 条）`);
+      $info.text(`${base}锝滄ā寮忥細active锝滄湰娆℃棤鏉＄洰鍛戒腑锛? 鏉★級`);
       return;
     }
-    $info.text(`${base}｜模式：${stats.mode}｜本次注入：${stats.injectedEntries} 条｜字符�?{stats.injectedChars}｜约 tokens�?{stats.injectedTokens}`);
+    $info.text(`${base}锝滄ā寮忥細${stats.mode}锝滄湰娆℃敞鍏ワ細${stats.injectedEntries} 鏉★綔瀛楃锛?{stats.injectedChars}锝滅害 tokens锛?{stats.injectedTokens}`);
   } catch {
-    $info.text('（世界书信息解析失败�?);
+    $info.text('锛堜笘鐣屼功淇℃伅瑙ｆ瀽澶辫触锛?);
   }
 }
 
 function formatSummaryMetaHint(meta) {
   const last = Number(meta?.lastFloor || 0);
   const count = Array.isArray(meta?.history) ? meta.history.length : 0;
-  if (!last && !count) return '（未生成�?;
-  return `已生�?${count} 次｜上次触发层：${last}`;
+  if (!last && !count) return '锛堟湭鐢熸垚锛?;
+  return `宸茬敓鎴?${count} 娆★綔涓婃瑙﹀彂灞傦細${last}`;
 }
 
 function updateSummaryInfoLabel() {
@@ -10065,7 +10065,7 @@ function updateSummaryInfoLabel() {
     const meta = getSummaryMeta();
     $info.text(formatSummaryMetaHint(meta));
   } catch {
-    $info.text('（总结状态解析失败）');
+    $info.text('锛堟€荤粨鐘舵€佽В鏋愬け璐ワ級');
   }
 }
 
@@ -10096,13 +10096,13 @@ function updateSummaryManualRangeHint(setDefaults = false) {
         const b = clampInt(toN, 1, floorNow, floorNow);
         const len = Math.abs(b - a) + 1;
         const pieces = Math.max(1, Math.ceil(len / every));
-        extra = `｜分段：${pieces} 条（�?{every}层）`;
+        extra = `锝滃垎娈碉細${pieces} 鏉★紙姣?{every}灞傦級`;
       } else {
-        extra = `｜分段：�?{every}层一条`;
+        extra = `锝滃垎娈碉細姣?{every}灞備竴鏉;
       }
     }
 
-    $hint.text(`（可选范围：1-${floorNow || 0}${extra}）`);
+    $hint.text(`锛堝彲閫夎寖鍥达細1-${floorNow || 0}${extra}锛塦);
     if (!$from.length || !$to.length) return;
 
     const fromVal = String($from.val() ?? '').trim();
@@ -10114,7 +10114,7 @@ function updateSummaryManualRangeHint(setDefaults = false) {
       $to.val(floorNow);
     }
   } catch {
-    $hint.text('（可选范围：?�?);
+    $hint.text('锛堝彲閫夎寖鍥达細?锛?);
   }
 }
 
@@ -10128,7 +10128,7 @@ function renderSummaryPaneFromMeta() {
   if (!hist.length) {
     lastSummary = null;
     lastSummaryText = '';
-    $el.html('(尚未生成)');
+    $el.html('(灏氭湭鐢熸垚)');
     updateButtonsEnabled();
     return;
   }
@@ -10138,11 +10138,11 @@ function renderSummaryPaneFromMeta() {
   lastSummaryText = String(last?.summary || '');
 
   const md = hist.slice(-12).reverse().map((h, idx) => {
-    const title = String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '剧情总结'} #${hist.length - idx}`);
+    const title = String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '鍓ф儏鎬荤粨'} #${hist.length - idx}`);
     const kws = Array.isArray(h.keywords) ? h.keywords : [];
     const when = h.createdAt ? new Date(h.createdAt).toLocaleString() : '';
-    const range = h?.range ? `�?{h.range.fromFloor}-${h.range.toFloor}）` : '';
-    return `### ${title} ${range}\n\n- 时间�?{when}\n- 关键词：${kws.join('�?) || '（无�?}\n\n${h.summary || ''}`;
+    const range = h?.range ? `锛?{h.range.fromFloor}-${h.range.toFloor}锛塦 : '';
+    return `### ${title} ${range}\n\n- 鏃堕棿锛?{when}\n- 鍏抽敭璇嶏細${kws.join('銆?) || '锛堟棤锛?}\n\n${h.summary || ''}`;
   }).join('\n\n---\n\n');
 
   renderMarkdownInto($el, md);
@@ -10179,13 +10179,13 @@ function pullUiToSettings() {
   s.customMaxTokens = clampInt($('#sg_customMaxTokens').val(), 256, 200000, s.customMaxTokens || 8192);
   s.customStream = $('#sg_customStream').is(':checked');
 
-  // modulesJson：先不强行校验（用户可先保存再校验），但会在分析前用默认兜底
+  // modulesJson锛氬厛涓嶅己琛屾牎楠岋紙鐢ㄦ埛鍙厛淇濆瓨鍐嶆牎楠岋級锛屼絾浼氬湪鍒嗘瀽鍓嶇敤榛樿鍏滃簳
   s.modulesJson = String($('#sg_modulesJson').val() || '').trim() || JSON.stringify(DEFAULT_MODULES, null, 2);
 
   s.customSystemPreamble = String($('#sg_customSystemPreamble').val() || '');
   s.customConstraints = String($('#sg_customConstraints').val() || '');
 
-  // 快捷选项写入
+  // 蹇嵎閫夐」鍐欏叆
   s.quickOptionsEnabled = $('#sg_quickOptionsEnabled').is(':checked');
   s.quickOptionsShowIn = String($('#sg_quickOptionsShowIn').val() || 'inline');
   s.quickOptionsJson = String($('#sg_quickOptionsJson').val() || '[]');
@@ -10212,9 +10212,9 @@ function pullUiToSettings() {
   s.characterEntriesEnabled = $('#sg_characterEntriesEnabled').is(':checked');
   s.equipmentEntriesEnabled = $('#sg_equipmentEntriesEnabled').is(':checked');
   s.abilityEntriesEnabled = $('#sg_abilityEntriesEnabled').is(':checked');
-  s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '人物').trim() || '人物';
-  s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '装备').trim() || '装备';
-  s.abilityEntryPrefix = String($('#sg_abilityEntryPrefix').val() || '能力').trim() || '能力';
+  s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '浜虹墿').trim() || '浜虹墿';
+  s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '瑁呭').trim() || '瑁呭';
+  s.abilityEntryPrefix = String($('#sg_abilityEntryPrefix').val() || '鑳藉姏').trim() || '鑳藉姏';
   s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
   s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
@@ -10228,7 +10228,7 @@ function pullUiToSettings() {
   s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
   s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
   s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
-  s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
+  s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '鍓ф儏鎬荤粨').trim() || '鍓ф儏鎬荤粨';
   s.summaryWorldInfoKeyMode = String($('#sg_summaryWorldInfoKeyMode').val() || 'keywords');
   s.summaryIndexPrefix = String($('#sg_summaryIndexPrefix').val() || 'A-').trim() || 'A-';
   s.summaryIndexPad = clampInt($('#sg_summaryIndexPad').val(), 1, 12, s.summaryIndexPad ?? 3);
@@ -10237,11 +10237,11 @@ function pullUiToSettings() {
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
   s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
 
-  // 自动绑定世界�?
+  // 鑷姩缁戝畾涓栫晫涔?
   s.autoBindWorldInfo = $('#sg_autoBindWorldInfo').is(':checked');
   s.autoBindWorldInfoPrefix = String($('#sg_autoBindWorldInfoPrefix').val() || 'SG').trim() || 'SG';
 
-  // 地图功能
+  // 鍦板浘鍔熻兘
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
   s.mapSystemPrompt = String($('#sg_mapSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.mapSystemPrompt;
 
@@ -10277,7 +10277,7 @@ function pullUiToSettings() {
   s.wiRollCustomStream = $('#sg_wiRollCustomStream').is(':checked');
   s.wiRollSystemPrompt = String($('#sg_wiRollSystemPrompt').val() || '').trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
 
-  // 图像生成设置
+  // 鍥惧儚鐢熸垚璁剧疆
   s.imageGenEnabled = $('#sg_imageGenEnabled').is(':checked');
   s.novelaiApiKey = String($('#sg_novelaiApiKey').val() || '').trim();
   s.novelaiModel = String($('#sg_novelaiModel').val() || 'nai-diffusion-3');
@@ -10295,11 +10295,11 @@ function pullUiToSettings() {
   s.imageGenCustomModel = String($('#sg_imageGenCustomModel').val() || 'gpt-4o-mini');
   s.imageGenSystemPrompt = String($('#sg_imageGenSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.imageGenSystemPrompt;
 
-  // 在线图库设置
+  // 鍦ㄧ嚎鍥惧簱璁剧疆
   s.imageGalleryEnabled = $('#sg_imageGalleryEnabled').is(':checked');
   s.imageGalleryUrl = String($('#sg_imageGalleryUrl').val() || '').trim();
 
-  // 角色标签世界书设�?
+  // 瑙掕壊鏍囩涓栫晫涔﹁缃?
   s.imageGenWorldBookEnabled = $('#sg_imageGenWorldBookEnabled').is(':checked');
   s.imageGenWorldBookFile = String($('#sg_imageGenWorldBookFile').val() || '').trim();
 
@@ -10327,7 +10327,7 @@ function openModal() {
   pullSettingsToUi();
   updateWorldbookInfoLabel();
   updateSummaryManualRangeHint(true);
-  // 打开面板时尝试刷新一次蓝灯索引（不阻�?UI�?
+  // 鎵撳紑闈㈡澘鏃跺皾璇曞埛鏂颁竴娆¤摑鐏储寮曪紙涓嶉樆濉?UI锛?
   ensureBlueIndexLive(false).catch(() => void 0);
   setStatus('', '');
   $('#sg_modal_backdrop').show();
@@ -10343,10 +10343,10 @@ function injectMinimalSettingsPanel() {
   $root.append(`
     <div class="sg-panel-min" id="sg_settings_panel_min">
       <div class="sg-min-row">
-        <div class="sg-min-title">剧情指导 StoryGuide <span class="sg-sub">v${SG_VERSION}</span></div>
-        <button class="menu_button sg-btn" id="sg_open_from_settings">打开面板</button>
+        <div class="sg-min-title">鍓ф儏鎸囧 StoryGuide <span class="sg-sub">v${SG_VERSION}</span></div>
+        <button class="menu_button sg-btn" id="sg_open_from_settings">鎵撳紑闈㈡澘</button>
       </div>
-      <div class="sg-min-hint">支持自定义输出模块（JSON），并且自动追加框会缓存+监听重渲染，尽量不被变量更新覆盖�?/div>
+      <div class="sg-min-hint">鏀寔鑷畾涔夎緭鍑烘ā鍧楋紙JSON锛夛紝骞朵笖鑷姩杩藉姞妗嗕細缂撳瓨+鐩戝惉閲嶆覆鏌擄紝灏介噺涓嶈鍙橀噺鏇存柊瑕嗙洊銆?/div>
     </div>
   `);
   $('#sg_open_from_settings').on('click', () => openModal());
@@ -10429,7 +10429,7 @@ function setupEventListeners() {
   eventSource.on(event_types.APP_READY, () => {
     startObservers();
 
-    // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
+    // 棰勭儹钃濈伅绱㈠紩锛堝疄鏃惰鍙栨ā寮忎笅锛夛紝灏介噺閬垮厤绗竴娆″彂閫佹秷鎭椂杩樻病绱㈠紩
     ensureBlueIndexLive(true).catch(() => void 0);
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
@@ -10439,29 +10439,29 @@ function setupEventListeners() {
       ensureBlueIndexLive(true).catch(() => void 0);
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
-        setStatus('已切换聊天：已同步本聊天字段', 'ok');
+        setStatus('宸插垏鎹㈣亰澶╋細宸插悓姝ユ湰鑱婂ぉ瀛楁', 'ok');
       }
     });
 
     eventSource.on(event_types.MESSAGE_RECEIVED, () => {
-      // 禁止自动生成：不在收到消息时自动分析/追加
+      // 绂佹鑷姩鐢熸垚锛氫笉鍦ㄦ敹鍒版秷鎭椂鑷姩鍒嗘瀽/杩藉姞
       scheduleReapplyAll('msg_received');
-      // 自动总结（独立功能）
+      // 鑷姩鎬荤粨锛堢嫭绔嬪姛鑳斤級
       scheduleAutoSummary('msg_received');
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
-      // 禁止自动生成：不在发送消息时自动刷新面板
-      // ROLL 判定（尽量在生成前完成）
+      // 绂佹鑷姩鐢熸垚锛氫笉鍦ㄥ彂閫佹秷鎭椂鑷姩鍒锋柊闈㈡澘
+      // ROLL 鍒ゅ畾锛堝敖閲忓湪鐢熸垚鍓嶅畬鎴愶級
       maybeInjectRollResult('msg_sent').catch(() => void 0);
-      // 蓝灯索引 �?绿灯触发（尽量在生成前完成）
+      // 钃濈伅绱㈠紩 鈫?缁跨伅瑙﹀彂锛堝敖閲忓湪鐢熸垚鍓嶅畬鎴愶級
       maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
       scheduleAutoSummary('msg_sent');
     });
   });
 }
 
-// -------------------- 悬浮按钮和面�?--------------------
+// -------------------- 鎮诞鎸夐挳鍜岄潰鏉?--------------------
 
 let floatingPanelVisible = false;
 let lastFloatingContent = null;
@@ -10499,8 +10499,8 @@ window.addEventListener('resize', updateSgVh);
 window.addEventListener('orientationchange', updateSgVh);
 window.visualViewport?.addEventListener('resize', updateSgVh);
 
-// 检测移动端/平板竖屏模式（禁用自定义定位，使�?CSS 底部弹出样式�?
-// 匹配 CSS 媒体查询: (max-width: 768px), (max-aspect-ratio: 1/1)
+// 妫€娴嬬Щ鍔ㄧ/骞虫澘绔栧睆妯″紡锛堢鐢ㄨ嚜瀹氫箟瀹氫綅锛屼娇鐢?CSS 搴曢儴寮瑰嚭鏍峰紡锛?
+// 鍖归厤 CSS 濯掍綋鏌ヨ: (max-width: 768px), (max-aspect-ratio: 1/1)
 function isMobilePortrait() {
   if (window.matchMedia) {
     return window.matchMedia('(max-width: 768px), (max-aspect-ratio: 1/1)').matches;
@@ -10514,8 +10514,8 @@ function createFloatingButton() {
   const btn = document.createElement('div');
   btn.id = 'sg_floating_btn';
   btn.className = 'sg-floating-btn';
-  btn.innerHTML = '📘';
-  btn.title = '剧情指导';
+  btn.innerHTML = '馃摌';
+  btn.title = '鍓ф儏鎸囧';
   // Allow dragging but also clicking. We need to distinguish click from drag.
   btn.style.touchAction = 'none';
 
@@ -10640,18 +10640,18 @@ function createFloatingPanel() {
   panel.className = 'sg-floating-panel';
   panel.innerHTML = `
     <div class="sg-floating-header" style="cursor: move; touch-action: none;">
-      <span class="sg-floating-title">📘 剧情指导</span>
+      <span class="sg-floating-title">馃摌 鍓ф儏鎸囧</span>
         <div class="sg-floating-actions">
-          <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
-          <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺�?/button>
-          <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
-          <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
-          <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">�?/button>
+          <button class="sg-floating-action-btn" id="sg_floating_show_report" title="鏌ョ湅鍒嗘瀽">馃摉</button>
+          <button class="sg-floating-action-btn" id="sg_floating_show_map" title="鏌ョ湅鍦板浘">馃椇锔?/button>
+          <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL鏃ュ織">馃幉</button>
+          <button class="sg-floating-action-btn" id="sg_floating_settings" title="鎵撳紑璁剧疆">鈿欙笍</button>
+          <button class="sg-floating-action-btn" id="sg_floating_close" title="鍏抽棴">鉁?/button>
         </div>
     </div>
     <div class="sg-floating-body" id="sg_floating_body">
       <div style="padding:20px; text-align:center; color:#aaa;">
-        点击 <button class="sg-inner-refresh-btn" style="background:none; border:none; cursor:pointer; font-size:1.2em;">🔄</button> 生成
+        鐐瑰嚮 <button class="sg-inner-refresh-btn" style="background:none; border:none; cursor:pointer; font-size:1.2em;">馃攧</button> 鐢熸垚
       </div>
     </div>
   `;
@@ -10674,7 +10674,7 @@ function createFloatingPanel() {
     }
   }
 
-  // 事件绑定
+  // 浜嬩欢缁戝畾
   $('#sg_floating_close').on('click', () => {
     hideFloatingPanel();
   });
@@ -10729,7 +10729,7 @@ function createFloatingPanel() {
 
   const onDown = (ev) => {
     if (ev.target.closest('button')) return; // ignore buttons
-    if (isMobilePortrait()) return; // 移动端竖屏禁用拖拽，使用 CSS 底部弹出
+    if (isMobilePortrait()) return; // 绉诲姩绔珫灞忕鐢ㄦ嫋鎷斤紝浣跨敤 CSS 搴曢儴寮瑰嚭
 
     dragging = true;
     startX = ev.clientX;
@@ -10817,13 +10817,13 @@ function ensureFloatingPanelInViewport(panel) {
   try {
     if (!panel || !panel.getBoundingClientRect) return;
 
-    // 移动端竖屏使�?CSS 底部弹出，不需�?JS 定位
+    // 绉诲姩绔珫灞忎娇鐢?CSS 搴曢儴寮瑰嚭锛屼笉闇€瑕?JS 瀹氫綅
     if (isMobilePortrait()) return;
 
     // Remove viewport size guard to ensure panel is always kept reachable
     // if (!shouldGuardFloatingPanelViewport()) return;
 
-    // �?clampToViewport 保持一致的边界逻辑（允�?50% 越界�?
+    // 涓?clampToViewport 淇濇寔涓€鑷寸殑杈圭晫閫昏緫锛堝厑璁?50% 瓒婄晫锛?
     const minVisibleRatio = 0.5;
     const minVisiblePx = 40;
 
@@ -10841,8 +10841,8 @@ function ensureFloatingPanelInViewport(panel) {
     // Clamp current on-screen position into viewport.
     const clamped = clampToViewport(rect.left, rect.top, w, h);
 
-    // 检查是否需要调整位置（使用放宽的边界逻辑�?
-    // 如果可见部分少于 minVisible，则需要调�?
+    // 妫€鏌ユ槸鍚﹂渶瑕佽皟鏁翠綅缃紙浣跨敤鏀惧鐨勮竟鐣岄€昏緫锛?
+    // 濡傛灉鍙閮ㄥ垎灏戜簬 minVisible锛屽垯闇€瑕佽皟鏁?
     const visibleLeft = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(0, rect.left));
     const visibleTop = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(0, rect.top));
 
@@ -10871,7 +10871,7 @@ function showFloatingPanel() {
   createFloatingPanel();
   const panel = document.getElementById('sg_floating_panel');
   if (panel) {
-    // 移动�?平板：强制使用底部弹出样�?
+    // 绉诲姩绔?骞虫澘锛氬己鍒朵娇鐢ㄥ簳閮ㄥ脊鍑烘牱寮?
     if (isMobilePortrait()) {
       panel.style.position = 'fixed';
       panel.style.top = '0';
@@ -10890,7 +10890,7 @@ function showFloatingPanel() {
       panel.style.visibility = 'visible';
       panel.style.display = 'flex';
     } else if (window.innerWidth < 1200) {
-      // 桌面端小窗口：清除可能的内联样式，使�?CSS
+      // 妗岄潰绔皬绐楀彛锛氭竻闄ゅ彲鑳界殑鍐呰仈鏍峰紡锛屼娇鐢?CSS
       panel.style.left = '';
       panel.style.top = '';
       panel.style.bottom = '';
@@ -10910,12 +10910,12 @@ function showFloatingPanel() {
 
     panel.classList.add('visible');
     floatingPanelVisible = true;
-    // 如果有缓存内容则显示
+    // 濡傛灉鏈夌紦瀛樺唴瀹瑰垯鏄剧ず
     if (lastFloatingContent) {
       updateFloatingPanelBody(lastFloatingContent);
     }
 
-    // 非移动端才运行视口检�?
+    // 闈炵Щ鍔ㄧ鎵嶈繍琛岃鍙ｆ娴?
     if (!isMobilePortrait()) {
       bindFloatingPanelResizeGuard();
       requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
@@ -10938,7 +10938,7 @@ async function refreshFloatingPanelContent() {
   const $body = $('#sg_floating_body');
   if (!$body.length) return;
 
-  $body.html('<div class="sg-floating-loading">正在分析剧情...</div>');
+  $body.html('<div class="sg-floating-loading">姝ｅ湪鍒嗘瀽鍓ф儏...</div>');
 
   try {
     const s = ensureSettings();
@@ -10946,7 +10946,7 @@ async function refreshFloatingPanelContent() {
     const modules = getModules('panel');
 
     if (!modules.length) {
-      $body.html('<div class="sg-floating-loading">没有配置模块</div>');
+      $body.html('<div class="sg-floating-loading">娌℃湁閰嶇疆妯″潡</div>');
       return;
     }
 
@@ -10963,15 +10963,15 @@ async function refreshFloatingPanelContent() {
 
     const parsed = safeJsonParse(jsonText);
     if (!parsed) {
-      $body.html('<div class="sg-floating-loading">解析失败</div>');
+      $body.html('<div class="sg-floating-loading">瑙ｆ瀽澶辫触</div>');
       return;
     }
 
-    // 合并静态模�?
+    // 鍚堝苟闈欐€佹ā鍧?
     const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
     updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
 
-    // 渲染内容
+    // 娓叉煋鍐呭
     // Filter out quick_actions from main Markdown body to avoid duplication
     const bodyModules = modules.filter(m => m.key !== 'quick_actions');
     const md = renderReportMarkdownFromModules(mergedParsed, bodyModules);
@@ -10979,13 +10979,13 @@ async function refreshFloatingPanelContent() {
 
     await updateMapFromSnapshot(snapshotText);
 
-    // 添加快捷选项
+    // 娣诲姞蹇嵎閫夐」
     const quickActions = Array.isArray(mergedParsed.quick_actions) ? mergedParsed.quick_actions : [];
     const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
 
     const refreshBtnHtml = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
-        <button class="sg-inner-refresh-btn" title="重新生成分析" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🔄</button>
+        <button class="sg-inner-refresh-btn" title="閲嶆柊鐢熸垚鍒嗘瀽" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">馃攧</button>
       </div>
     `;
 
@@ -10995,7 +10995,7 @@ async function refreshFloatingPanelContent() {
 
   } catch (e) {
     console.warn('[StoryGuide] floating panel refresh failed:', e);
-    $body.html(`<div class="sg-floating-loading">分析失败: ${e?.message ?? e}</div>`);
+    $body.html(`<div class="sg-floating-loading">鍒嗘瀽澶辫触: ${e?.message ?? e}</div>`);
   }
 }
 
@@ -11014,7 +11014,7 @@ function showFloatingRollLogs() {
   const logs = Array.isArray(meta?.rollLogs) ? meta.rollLogs : [];
 
   if (!logs.length) {
-    $body.html('<div class="sg-floating-loading">暂无 ROLL 日志</div>');
+    $body.html('<div class="sg-floating-loading">鏆傛棤 ROLL 鏃ュ織</div>');
     return;
   }
 
@@ -11022,7 +11022,7 @@ function showFloatingRollLogs() {
     const ts = l?.ts ? new Date(l.ts).toLocaleString() : '';
     const action = String(l?.action || '').trim();
     const outcome = String(l?.outcomeTier || '').trim()
-      || (l?.success == null ? 'N/A' : (l.success ? '成功' : '失败'));
+      || (l?.success == null ? 'N/A' : (l.success ? '鎴愬姛' : '澶辫触'));
     const finalVal = Number.isFinite(Number(l?.final)) ? Number(l.final).toFixed(2) : '';
     let summary = '';
     if (l?.summary && typeof l.summary === 'object') {
@@ -11037,11 +11037,11 @@ function showFloatingRollLogs() {
     const userShort = String(l?.userText || '').trim().slice(0, 160);
 
     const detailsLines = [];
-    if (userShort) detailsLines.push(`<div><b>用户输入</b>�?{escapeHtml(userShort)}</div>`);
-    if (summary) detailsLines.push(`<div><b>摘要</b>�?{escapeHtml(summary)}</div>`);
+    if (userShort) detailsLines.push(`<div><b>鐢ㄦ埛杈撳叆</b>锛?{escapeHtml(userShort)}</div>`);
+    if (summary) detailsLines.push(`<div><b>鎽樿</b>锛?{escapeHtml(summary)}</div>`);
     return `
       <details style="margin-bottom:4px; padding:4px; border-bottom:1px solid rgba(128,128,128,0.3);">
-        <summary style="font-size:0.9em; cursor:pointer; outline:none;">${escapeHtml(`${ts}�?{action || 'ROLL'}�?{outcome}${finalVal ? `｜最�?${finalVal}` : ''}`)}</summary>
+        <summary style="font-size:0.9em; cursor:pointer; outline:none;">${escapeHtml(`${ts}锝?{action || 'ROLL'}锝?{outcome}${finalVal ? `锝滄渶缁?${finalVal}` : ''}`)}</summary>
         <div class="sg-log-body" style="padding-left:1em; opacity:0.9; font-size:0.85em; margin-top:4px;">${detailsLines.join('')}</div>
       </details>
     `;
@@ -11055,16 +11055,16 @@ function showFloatingMap() {
   if (!$body.length) return;
   const s = ensureSettings();
   if (!s.mapEnabled) {
-    $body.html('<div class="sg-floating-loading">地图功能未启�?/div>');
+    $body.html('<div class="sg-floating-loading">鍦板浘鍔熻兘鏈惎鐢?/div>');
     return;
   }
   const mapData = getMapData();
   const html = renderGridMap(mapData);
-  const autoLabel = isMapAutoUpdateEnabled(s) ? '自动更新：开' : '自动更新：关';
+  const autoLabel = isMapAutoUpdateEnabled(s) ? '鑷姩鏇存柊锛氬紑' : '鑷姩鏇存柊锛氬叧';
   const tools = `
       <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
-        <button class="sg-inner-map-toggle-btn" title="切换自动更新" style="background:none; border:none; cursor:pointer; font-size:0.95em; opacity:0.85; margin-right:6px;">${autoLabel}</button>
-        <button class="sg-inner-map-reset-btn" title="重置地图" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🗑</button>
+        <button class="sg-inner-map-toggle-btn" title="鍒囨崲鑷姩鏇存柊" style="background:none; border:none; cursor:pointer; font-size:0.95em; opacity:0.85; margin-right:6px;">${autoLabel}</button>
+        <button class="sg-inner-map-reset-btn" title="閲嶇疆鍦板浘" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">馃棏</button>
       </div>
     `;
   $body.html(`${tools}<div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">${html}</div>`);
@@ -11080,7 +11080,7 @@ function showFloatingReport() {
   } else {
     $body.html(`
       <div style="padding:20px; text-align:center; color:#aaa;">
-        点击 <button class="sg-inner-refresh-btn" style="background:none; border:none; cursor:pointer; font-size:1.2em;">🔄</button> 生成
+        鐐瑰嚮 <button class="sg-inner-refresh-btn" style="background:none; border:none; cursor:pointer; font-size:1.2em;">馃攧</button> 鐢熸垚
       </div>
     `);
   }
@@ -11125,8 +11125,8 @@ function injectFixedInputButton() {
     btn.style.marginRight = '5px';
     btn.style.padding = '5px 10px';
     btn.style.userSelect = 'none';
-    btn.innerHTML = '📘 剧情';
-    btn.title = '打开剧情指导悬浮�?;
+    btn.innerHTML = '馃摌 鍓ф儏';
+    btn.title = '鎵撳紑鍓ф儏鎸囧鎮诞绐?;
     // Ensure height consistency
     btn.style.height = 'var(--input-height, auto)';
 
@@ -11183,7 +11183,7 @@ function init() {
   const { eventSource, event_types } = ctx;
 
   eventSource.on(event_types.APP_READY, () => {
-    // 不再在顶栏显示📘按钮（避免占位/重复入口�?
+    // 涓嶅啀鍦ㄩ《鏍忔樉绀吼煋樻寜閽紙閬垮厤鍗犱綅/閲嶅鍏ュ彛锛?
     const oldBtn = document.getElementById('sg_topbar_btn');
     if (oldBtn) oldBtn.remove();
 
@@ -11196,26 +11196,26 @@ function init() {
     installRollPreSendHook();
   });
 
-  // 聊天切换时自动绑定世界书
+  // 鑱婂ぉ鍒囨崲鏃惰嚜鍔ㄧ粦瀹氫笘鐣屼功
   eventSource.on(event_types.CHAT_CHANGED, async () => {
-    console.log('[StoryGuide] CHAT_CHANGED 事件触发');
+    console.log('[StoryGuide] CHAT_CHANGED 浜嬩欢瑙﹀彂');
 
     const ctx = SillyTavern.getContext();
     const hasChat = ctx.chat && Array.isArray(ctx.chat);
     const chatLength = hasChat ? ctx.chat.length : 0;
 
-    console.log('[StoryGuide] 聊天状�?', { hasChat, chatLength, chatMetadata: !!ctx.chatMetadata });
+    console.log('[StoryGuide] 鑱婂ぉ鐘舵€?', { hasChat, chatLength, chatMetadata: !!ctx.chatMetadata });
 
-    // 放宽检查：只要�?chatMetadata 就尝试运�?
+    // 鏀惧妫€鏌ワ細鍙鏈?chatMetadata 灏卞皾璇曡繍琛?
     if (!ctx.chatMetadata) {
-      console.log('[StoryGuide] 没有 chatMetadata，跳过自动绑�?);
+      console.log('[StoryGuide] 娌℃湁 chatMetadata锛岃烦杩囪嚜鍔ㄧ粦瀹?);
       return;
     }
 
     try {
       await onChatSwitched();
     } catch (e) {
-      console.warn('[StoryGuide] 自动绑定世界书失�?', e);
+      console.warn('[StoryGuide] 鑷姩缁戝畾涓栫晫涔﹀け璐?', e);
     }
   });
 
@@ -11234,5 +11234,6 @@ function init() {
 }
 
 init();
+
 
 
