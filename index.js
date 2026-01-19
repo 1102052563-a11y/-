@@ -7525,6 +7525,7 @@ function renderImageGenBatchPreview() {
   const steps = s.novelaiSteps || 28;
   const scale = s.novelaiScale || 5;
   const sampler = String(s.novelaiSampler || (model.includes('diffusion-4') ? 'k_euler_ancestral' : 'k_euler'));
+  const legacy = model.includes('diffusion-4') ? (s.novelaiLegacy !== false) : true;
   const seedLabel = s.novelaiFixedSeedEnabled ? `固定:${clampInt(s.novelaiFixedSeed, 0, 4294967295, 0)}` : '随机';
   const negative = String((s.novelaiNegativePrompt || '').trim());
   const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '…' : ''}` : '（空）';
