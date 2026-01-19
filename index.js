@@ -28,6 +28,12 @@
 const SG_VERSION = '0.10.0';
 
 const MODULE_NAME = 'storyguide';
+const EXT_BASE_URL = (() => {
+  const src = document.currentScript?.src || '';
+  if (!src) return '';
+  return src.slice(0, src.lastIndexOf('/') + 1);
+})();
+
 
 /**
  * 模块配置格式（JSON 数组）示例：
@@ -632,6 +638,10 @@ let imageGenPreviewIndex = 0;
 let imageGenBatchStatus = '';
 let imageGenBatchBusy = false;
 let lastNovelaiPayload = null;
+let tagDictSet = null;
+let tagDictBuckets = null;
+let tagDictCount = 0;
+let tagDictLoadingPromise = null;
 
 
 
@@ -2352,14 +2362,15 @@ function getImageGenPresetSnapshot() {
     imageGenPromptRulesEnabled: s.imageGenPromptRulesEnabled,
     imageGenPromptRules: s.imageGenPromptRules,
     imageGenBatchEnabled: s.imageGenBatchEnabled,
-  imageGenBatchPatterns: s.imageGenBatchPatterns,
-  imageGenCustomMaxTokens: s.imageGenCustomMaxTokens,
-  imageGenCharacterProfilesEnabled: s.imageGenCharacterProfilesEnabled,
-  imageGenCharacterProfiles: s.imageGenCharacterProfiles,
-  imageGenCustomFemalePrompt1: s.imageGenCustomFemalePrompt1,
-  imageGenCustomFemalePrompt2: s.imageGenCustomFemalePrompt2,
-  imageGenProfilesExpanded: s.imageGenProfilesExpanded
-
+    imageGenBatchPatterns: s.imageGenBatchPatterns,
+    imageGenCustomMaxTokens: s.imageGenCustomMaxTokens,
+    imageGenCharacterProfilesEnabled: s.imageGenCharacterProfilesEnabled,
+    imageGenCharacterProfiles: s.imageGenCharacterProfiles,
+    imageGenCustomFemalePrompt1: s.imageGenCustomFemalePrompt1,
+    imageGenCustomFemalePrompt2: s.imageGenCustomFemalePrompt2,
+    imageGenProfilesExpanded: s.imageGenProfilesExpanded,
+    imageGenTagDictEnabled: s.imageGenTagDictEnabled,
+    imageGenTagDictMaxDistance: s.imageGenTagDictMaxDistance
 
   };
 }
@@ -7555,6 +7566,116 @@ function splitStoryIntoParts(text, count) {
   return parts;
 }
 
+async function loadTagDictionary(force = false) {
+  if (!force && tagDictSet && tagDictBuckets) return { count: tagDictCount, loaded: true };
+  if (tagDictLoadingPromise) return tagDictLoadingPromise;
+
+  tagDictLoadingPromise = (async () => {
+    const base = EXT_BASE_URL || '';
+    const url = `${base}all_tags.csv`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`无法加载词典: ${res.status}`);
+    const text = await res.text();
+    const lines = text.split(/\r?\n/);
+    const set = new Set();
+    const buckets = new Map();
+    let count = 0;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = String(lines[i] || '').trim();
+      if (!line) continue;
+      const firstCol = line.split(',')[0].trim();
+      if (!firstCol || firstCol.toLowerCase() === 'tag') continue;
+      const tag = firstCol.toLowerCase();
+      if (set.has(tag)) continue;
+      set.add(tag);
+      count += 1;
+      const key = tag.slice(0, 2);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(tag);
+    }
+
+    tagDictSet = set;
+    tagDictBuckets = buckets;
+    tagDictCount = count;
+    return { count, loaded: true };
+  })();
+
+  try {
+    const result = await tagDictLoadingPromise;
+    return result;
+  } finally {
+    tagDictLoadingPromise = null;
+  }
+}
+
+function limitedDistance(a, b, max) {
+  const alen = a.length;
+  const blen = b.length;
+  if (Math.abs(alen - blen) > max) return max + 1;
+  const dp = new Array(blen + 1);
+  for (let j = 0; j <= blen; j += 1) dp[j] = j;
+  for (let i = 1; i <= alen; i += 1) {
+    let prev = dp[0];
+    dp[0] = i;
+    let minRow = dp[0];
+    for (let j = 1; j <= blen; j += 1) {
+      const temp = dp[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+      prev = temp;
+      if (dp[j] < minRow) minRow = dp[j];
+    }
+    if (minRow > max) return max + 1;
+  }
+  return dp[blen];
+}
+
+function findClosestTag(tag, maxDist) {
+  if (!tagDictSet || !tagDictBuckets) return tag;
+  if (tagDictSet.has(tag)) return tag;
+  const key2 = tag.slice(0, 2);
+  const key1 = tag.slice(0, 1);
+  const candidates = (tagDictBuckets.get(key2) || []).concat(tagDictBuckets.get(key1) || []);
+  if (!candidates.length) return tag;
+  let best = tag;
+  let bestDist = maxDist + 1;
+  for (const cand of candidates) {
+    const dist = limitedDistance(tag, cand, maxDist);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = cand;
+      if (bestDist === 1) break;
+    }
+  }
+  return bestDist <= maxDist ? best : tag;
+}
+
+async function applyTagDictionaryCorrections(text, options = {}) {
+  const s = ensureSettings();
+  if (!s.imageGenTagDictEnabled) return { text, corrections: [] };
+  await loadTagDictionary();
+  if (!tagDictSet) return { text, corrections: [] };
+
+  const maxDist = clampInt(s.imageGenTagDictMaxDistance, 1, 3, 2);
+  const raw = String(text || '');
+  const parts = raw.split(',');
+  const corrections = [];
+  const fixed = parts.map((part) => {
+    const token = String(part || '').trim();
+    if (!token) return '';
+    if (token.includes('::')) return token;
+    if (token.includes(' ')) return token;
+    const lower = token.toLowerCase();
+    if (tagDictSet.has(lower)) return token;
+    const corrected = findClosestTag(lower, maxDist);
+    if (corrected !== lower) corrections.push({ from: token, to: corrected });
+    return corrected;
+  }).filter(Boolean).join(', ');
+
+  return { text: fixed, corrections };
+}
+
 
 function getBatchDistinctHint(index, total) {
   if (!Number.isFinite(index)) return '';
@@ -7755,10 +7876,15 @@ async function generateImagePromptBatch() {
       if (artist) finalPositive = `${artist}, ${finalPositive}`;
     }
 
+    const corrected = await applyTagDictionaryCorrections(finalPositive);
+    if (corrected.corrections.length) {
+      console.log('[ImageGen] Tag corrections:', corrected.corrections.slice(0, 8));
+    }
+
     results.push({
       label: parsed?.label || pattern.label,
       type: parsed?.type || pattern.type,
-      positive: finalPositive || positive || '',
+      positive: corrected.text || finalPositive || positive || '',
       negative: negative || '',
       subject: parsed?.subject || ''
     });
@@ -8067,7 +8193,14 @@ async function runImageGeneration() {
       }
     }
 
+    const corrected = await applyTagDictionaryCorrections(finalPositive);
+    if (corrected.corrections.length) {
+      console.log('[ImageGen] Tag corrections:', corrected.corrections.slice(0, 8));
+    }
+
+    finalPositive = corrected.text;
     $('#sg_imagePositivePrompt').val(finalPositive);
+
 
     $('#sg_imagePromptPreview').show();
 
@@ -9618,6 +9751,19 @@ function buildModalHtml() {
                     <textarea id="sg_imageGenCustomFemalePrompt2" rows="3" placeholder="例如：1girl, full body, dynamic pose, ..."></textarea>
                   </div>
                 </div>
+                <div class="sg-card sg-subcard" style="margin-top:8px;">
+                  <div class="sg-card-title" style="font-size:0.9em;">离线标签词典</div>
+                  <div class="sg-hint">使用 all_tags.csv 自动纠错生成标签（仅用于提示词生成后的修正）。</div>
+                  <div class="sg-row sg-inline sg-tag-dict-controls" style="margin-top:6px; gap:10px;">
+                    <label class="sg-check"><input type="checkbox" id="sg_imageGenTagDictEnabled">启用自动纠错</label>
+                    <label class="sg-check" style="display:flex; align-items:center; gap:6px;">
+                      最大纠错距离
+                      <input id="sg_imageGenTagDictMaxDistance" type="number" min="1" max="3" step="1" style="width:60px;">
+                    </label>
+                    <button class="menu_button sg-btn" id="sg_imageGenTagDictLoad">加载词典</button>
+                    <span class="sg-hint" id="sg_imageGenTagDictInfo">(未加载)</span>
+                  </div>
+                </div>
                 <div class="sg-field" style="margin-top:6px;">
                   <textarea id="sg_imageGenBatchPatterns" rows="8" placeholder='[{"label":"剧情-1","type":"story","detail":"..."}]'></textarea>
                 </div>
@@ -9971,7 +10117,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_imageGenProfilesEnabled, #sg_imageGenCustomFemalePrompt1, #sg_imageGenCustomFemalePrompt2, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt, #sg_imageGenProfiles').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_imageGenProfilesEnabled, #sg_imageGenCustomFemalePrompt1, #sg_imageGenCustomFemalePrompt2, #sg_imageGenTagDictEnabled, #sg_imageGenTagDictMaxDistance, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt, #sg_imageGenProfiles').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -9986,6 +10132,17 @@ function ensureModal() {
   $('#sg_imageGenRefreshModels').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await refreshImageGenModels();
+  });
+
+  $('#sg_imageGenTagDictLoad').on('click', async () => {
+    try {
+      $('#sg_imageGenTagDictInfo').text('加载中…');
+      const result = await loadTagDictionary(true);
+      $('#sg_imageGenTagDictInfo').text(`已加载 ${result.count} 条`);
+      saveSettings();
+    } catch (e) {
+      $('#sg_imageGenTagDictInfo').text(`加载失败: ${e?.message || e}`);
+    }
   });
 
   $(document).on('click', '#sg_imageGenProfileAdd', () => {
@@ -10844,6 +11001,11 @@ function pullSettingsToUi() {
   $('#sg_imageGenProfilesEnabled').trigger('change');
   $('#sg_imageGenCustomFemalePrompt1').val(String(s.imageGenCustomFemalePrompt1 || ''));
   $('#sg_imageGenCustomFemalePrompt2').val(String(s.imageGenCustomFemalePrompt2 || ''));
+  $('#sg_imageGenTagDictEnabled').prop('checked', !!s.imageGenTagDictEnabled);
+  $('#sg_imageGenTagDictMaxDistance').val(clampInt(s.imageGenTagDictMaxDistance, 1, 3, 2));
+  if (tagDictSet) {
+    $('#sg_imageGenTagDictInfo').text(`已加载 ${tagDictCount} 条`);
+  }
 
 
   $('#sg_wiTriggerMatchMode').val(String(s.wiTriggerMatchMode || 'local'));
@@ -11334,6 +11496,13 @@ function pullUiToSettings() {
   s.imageGenCharacterProfiles = s.imageGenCharacterProfiles || [];
   s.imageGenCustomFemalePrompt1 = String($('#sg_imageGenCustomFemalePrompt1').val() || '').trim();
   s.imageGenCustomFemalePrompt2 = String($('#sg_imageGenCustomFemalePrompt2').val() || '').trim();
+  s.imageGenTagDictEnabled = $('#sg_imageGenTagDictEnabled').is(':checked');
+  s.imageGenTagDictMaxDistance = clampInt($('#sg_imageGenTagDictMaxDistance').val(), 1, 3, s.imageGenTagDictMaxDistance ?? 2);
+  if (s.imageGenTagDictEnabled && !tagDictSet) {
+    loadTagDictionary().then((result) => {
+      if (result?.count != null) $('#sg_imageGenTagDictInfo').text(`已加载 ${result.count} 条`);
+    }).catch(() => void 0);
+  }
 
 
   s.wiTriggerMatchMode = String($('#sg_wiTriggerMatchMode').val() || s.wiTriggerMatchMode || 'local');
