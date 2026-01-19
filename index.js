@@ -2335,7 +2335,8 @@ function getImageGenPresetSnapshot() {
     imageGenBatchEnabled: s.imageGenBatchEnabled,
     imageGenBatchPatterns: s.imageGenBatchPatterns,
     imageGenReadStatData: s.imageGenReadStatData,
-    imageGenStatVarName: s.imageGenStatVarName
+    imageGenStatVarName: s.imageGenStatVarName,
+    imageGenCustomMaxTokens: s.imageGenCustomMaxTokens
   };
 }
 
@@ -2344,7 +2345,12 @@ function applyImageGenPresetSnapshot(snapshot) {
   const s = ensureSettings();
   const keys = Object.keys(getImageGenPresetSnapshot());
   for (const k of keys) {
-    if (Object.hasOwn(snapshot, k)) s[k] = snapshot[k];
+    if (!Object.hasOwn(snapshot, k)) continue;
+    if (k === 'imageGenCustomMaxTokens') {
+      s[k] = clampInt(snapshot[k], 128, 200000, s[k] || DEFAULT_SETTINGS.imageGenCustomMaxTokens || 1024);
+      continue;
+    }
+    s[k] = snapshot[k];
   }
   saveSettings();
   pullSettingsToUi();
@@ -2387,6 +2393,94 @@ function readFileText(file) {
     r.readAsText(file);
   });
 }
+
+function normalizeJsonPresetText(rawText) {
+  if (!rawText) return '';
+  let data = null;
+  try { data = JSON.parse(rawText); } catch { return ''; }
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { return ''; }
+  }
+  for (let i = 0; i < 4; i += 1) {
+    if (!data || typeof data !== 'object') break;
+    const wrappers = ['data', 'payload', 'preset', 'result', 'settings'];
+    let changed = false;
+    for (const k of wrappers) {
+      const v = data?.[k];
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (t && (t.startsWith('{') || t.startsWith('['))) {
+          try { data = JSON.parse(t); changed = true; break; } catch { /* ignore */ }
+        }
+      } else if (v && typeof v === 'object') {
+        data = v;
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) break;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch { break; }
+    }
+  }
+  if (!data || typeof data !== 'object') return '';
+  return JSON.stringify(data);
+}
+
+function findPromptPresetValue(data) {
+  if (!data || typeof data !== 'object') return null;
+  const directKeys = ['prompts', 'prompt', 'prompt_array', 'promptArray'];
+  for (const key of directKeys) {
+    if (!Object.hasOwn(data, key)) continue;
+    const v = data[key];
+    if (Array.isArray(v)) return v;
+  }
+  if (data.prompts && typeof data.prompts === 'object') {
+    const arr = Object.values(data.prompts).filter(item => item && typeof item === 'object');
+    if (arr.length) return arr;
+  }
+  return null;
+}
+
+function resolveImageGenPresetFromSillyPreset(rawText, nameFallback) {
+  const normalizedText = normalizeJsonPresetText(rawText);
+  if (!normalizedText) return null;
+  let data = null;
+  try { data = JSON.parse(normalizedText); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+
+  const name = normalizeImageGenPresetName(
+    data.name || data.preset_name || data.title || data.presetTitle || nameFallback || '对话预设'
+  );
+  const snapshot = {
+    imageGenCustomMaxTokens: clampInt(
+      data.openai_max_tokens ?? data.max_tokens ?? data.maxTokens,
+      128,
+      200000,
+      DEFAULT_SETTINGS.imageGenCustomMaxTokens || 1024
+    )
+  };
+
+  if (data.temperature !== undefined && data.temperature !== null) {
+    snapshot.imageGenSystemPrompt = DEFAULT_SETTINGS.imageGenSystemPrompt;
+    snapshot.imageGenPromptRulesEnabled = false;
+    snapshot.imageGenPromptRules = '';
+  }
+
+  const prompts = findPromptPresetValue(data);
+  if (Array.isArray(prompts)) {
+    const systemParts = prompts
+      .filter(p => p && typeof p === 'object' && String(p.role || '').toLowerCase() === 'system')
+      .map(p => String(p.content || '').trim())
+      .filter(Boolean);
+    if (systemParts.length) {
+      snapshot.imageGenSystemPrompt = systemParts.join('\n\n');
+    }
+  }
+
+  return { name, snapshot };
+}
+
 
 // 尝试解析 SillyTavern 世界书导出 JSON（不同版本结构可能不同）
 // 返回：[{ title, keys: string[], content: string }]
@@ -9245,7 +9339,7 @@ function buildModalHtml() {
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-card-title" style="font-size:0.95em;">图像生成预设</div>
-                <div class="sg-hint">保存/导入用于“正文→标签”的预设配置。</div>
+                <div class="sg-hint">保存/导入用于“正文→标签”的预设配置（支持导入 SillyTavern 对话预设 JSON）。</div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
                   <select id="sg_imageGenPresetSelect" style="min-width:160px;"></select>
                   <button class="menu_button sg-btn" id="sg_imageGenApplyPreset">应用</button>
@@ -9659,19 +9753,28 @@ function ensureModal() {
     try {
       const txt = await readFileText(file);
       const data = JSON.parse(txt);
-      if (!data || data._type !== 'StoryGuide_ImageGenPreset') {
+      let preset = null;
+
+      if (data && data._type === 'StoryGuide_ImageGenPreset') {
+        const name = normalizeImageGenPresetName(data.name || '未命名');
+        if (!name) return;
+        preset = { name, snapshot: data.snapshot || {} };
+      } else {
+        preset = resolveImageGenPresetFromSillyPreset(txt, file?.name || '对话预设');
+      }
+
+      if (!preset || !preset.name) {
         setStatus('预设文件格式不正确', 'err');
         return;
       }
-      const name = normalizeImageGenPresetName(data.name || '未命名');
-      if (!name) return;
+
       const list = getImageGenPresetList();
-      const idx = list.findIndex(p => p?.name === name);
-      if (idx >= 0) list[idx] = { name, snapshot: data.snapshot || {} };
-      else list.push({ name, snapshot: data.snapshot || {} });
+      const idx = list.findIndex(p => p?.name === preset.name);
+      if (idx >= 0) list[idx] = preset;
+      else list.push(preset);
       setImageGenPresetList(list);
       const s = ensureSettings();
-      s.imageGenPresetActive = name;
+      s.imageGenPresetActive = preset.name;
       saveSettings();
       pullSettingsToUi();
       setStatus('预设已导入 ✅', 'ok');
