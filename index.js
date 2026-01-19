@@ -557,6 +557,14 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenArtistPrompt: '5::masterpiece, best quality ::, 3.65::3D, realistic, photorealistic ::,2.25::Artist:bm94199 ::,1.85::Artist:yueko (jiayue wu) ::,1.35::Artist:ruanjia ::,1.35::Artist:wo_jiushi_kanbudong ::,1.05::artist:seven_(sixplusone) ::,1.05::Artist:slash (slash-soft) ::,0.85::Artist:shal.e ::,0.75::Artist:nixeu ::,0.55::Artist:billyhhyb ::,-5::2D ::,-1::vivid::, year2025, cinematic , 0.9::lighting, volumetric lighting, no text, realistic, photo, real, artbook ::, 0.2::monochrome ::, 1.2::small eyes ::, 0.8::clean, normal ::,',
   imageGenPromptRulesEnabled: false,
   imageGenPromptRules: '',
+  imageGenBatchEnabled: true,
+  imageGenBatchPatterns: JSON.stringify([
+    { label: '单人-1', type: 'character', detail: '单人角色立绘，突出外观与动作' },
+    { label: '单人-2', type: 'character', detail: '单人角色立绘，强调服装与表情' },
+    { label: '双人', type: 'duo', detail: '两人同框互动' },
+    { label: '场景', type: 'scene', detail: '纯场景氛围图' },
+    { label: '彩蛋', type: 'bonus', detail: '当前角色/场景做与剧情无关的轻松行为' }
+  ], null, 2),
 
 
   // 在线图库设置
@@ -593,6 +601,15 @@ let summaryTimer = null;
 let isSummarizing = false;
 let summaryCancelled = false;
 let sgToastTimer = null;
+
+// 图像生成批次状态（悬浮面板）
+let imageGenBatchPrompts = [];
+let imageGenBatchIndex = 0;
+let imageGenImageUrls = [];
+let imageGenPreviewIndex = 0;
+let imageGenBatchStatus = '';
+let imageGenBatchBusy = false;
+
 
 // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
 let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
@@ -7246,6 +7263,153 @@ function matchCharacterTagsFromWorldBook(storyContent) {
   return allTags;
 }
 
+function getImageGenBatchPatterns() {
+  const s = ensureSettings();
+  const raw = String(s.imageGenBatchPatterns || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item, i) => ({
+      label: String(item?.label || `组${i + 1}`),
+      type: String(item?.type || 'character'),
+      detail: String(item?.detail || '').trim()
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function renderImageGenBatchPreview() {
+  const $wrap = $('#sg_imagegen_batch');
+  if (!$wrap.length) return;
+  if (!imageGenBatchPrompts.length) {
+    $wrap.html('<div class="sg-floating-empty">尚未生成提示词</div>');
+    return;
+  }
+  const current = imageGenBatchPrompts[imageGenPreviewIndex] || imageGenBatchPrompts[0];
+  const counter = `${imageGenPreviewIndex + 1}/${imageGenBatchPrompts.length}`;
+  const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '就绪');
+  const imgUrl = imageGenImageUrls[imageGenPreviewIndex] || '';
+  const imgHtml = imgUrl ? `<img class="sg-floating-image" src="${escapeHtml(imgUrl)}" alt="Generated" />` : '<div class="sg-floating-empty">暂无图像</div>';
+  $wrap.html(`
+    <div class="sg-floating-row">
+      <div class="sg-floating-title-sm">提示词预览（${escapeHtml(counter)}）</div>
+      <div class="sg-floating-status">${escapeHtml(status)}</div>
+    </div>
+    <div class="sg-floating-prompt">${escapeHtml(String(current.positive || ''))}</div>
+    <div class="sg-floating-row sg-floating-row-actions">
+      <button class="sg-floating-mini-btn" id="sg_imagegen_prev">◀</button>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_next">▶</button>
+      <div class="sg-floating-spacer"></div>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_clear">清空</button>
+    </div>
+    <div class="sg-floating-image-wrap">${imgHtml}</div>
+  `);
+}
+
+async function generateImagePromptBatch() {
+  const s = ensureSettings();
+  if (!s.imageGenBatchEnabled) return [];
+
+  const lookback = s.imageGenLookbackMessages || 5;
+  let storyContent = getRecentStoryContent(lookback);
+  if (s.imageGenPromptRulesEnabled && s.imageGenPromptRules) {
+    storyContent = applyPromptRules(storyContent, s.imageGenPromptRules);
+  }
+  if (!storyContent.trim()) throw new Error('没有找到对话内容');
+
+  const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
+  const patterns = getImageGenBatchPatterns();
+  if (!patterns.length) throw new Error('未配置批次模板');
+
+  const results = [];
+  for (const pattern of patterns) {
+    let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
+    if (pattern.type === 'character') {
+      userPrompt += `【要求】：生成单人角色立绘提示词，重点描述角色外观。\n`;
+    } else if (pattern.type === 'duo') {
+      userPrompt += `【要求】：生成双人同框提示词，突出两人互动和构图。\n`;
+    } else if (pattern.type === 'scene') {
+      userPrompt += `【要求】：生成场景图提示词，重点描述环境和氛围。\n`;
+    } else {
+      userPrompt += `【要求】：生成彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。\n`;
+    }
+    if (pattern.detail) userPrompt += `【细化】：${pattern.detail}\n`;
+    userPrompt += `\n【故事内容】：\n${storyContent}\n\n请输出 JSON 格式的提示词。`;
+
+    const messages = [
+      { role: 'system', content: s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    const result = await callLLM(messages, { temperature: 0.7, max_tokens: 1024 });
+    let parsed;
+    try {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      parsed = null;
+    }
+
+    const positive = parsed?.positive || result.slice(0, 500);
+    const negative = parsed?.negative || '';
+    let finalPositive = positive;
+    if (worldBookTags) finalPositive = `${worldBookTags}, ${finalPositive}`;
+    if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
+      const artist = String(s.imageGenArtistPrompt || '').trim();
+      if (artist) finalPositive = `${artist}, ${finalPositive}`;
+    }
+
+    results.push({
+      label: pattern.label,
+      type: pattern.type,
+      positive: finalPositive,
+      negative: negative,
+      subject: parsed?.subject || ''
+    });
+  }
+  return results;
+}
+
+async function generateImageFromBatch() {
+  const s = ensureSettings();
+  if (!imageGenBatchPrompts.length) {
+    imageGenBatchStatus = '未生成提示词';
+    renderImageGenBatchPreview();
+    return;
+  }
+  if (imageGenBatchIndex >= imageGenBatchPrompts.length) imageGenBatchIndex = 0;
+
+  const item = imageGenBatchPrompts[imageGenBatchIndex];
+  imageGenBatchBusy = true;
+  imageGenBatchStatus = `生成中：${item.label}`;
+  renderImageGenBatchPreview();
+
+  try {
+    const url = await generateImageWithNovelAI(item.positive, item.negative);
+    imageGenImageUrls[imageGenBatchIndex] = url;
+    imageGenPreviewIndex = imageGenBatchIndex;
+    imageGenBatchStatus = `已生成：${item.label}`;
+    imageGenBatchIndex = (imageGenBatchIndex + 1) % imageGenBatchPrompts.length;
+  } catch (e) {
+    imageGenBatchStatus = `生成失败：${e?.message || e}`;
+  } finally {
+    imageGenBatchBusy = false;
+    renderImageGenBatchPreview();
+  }
+}
+
+function clearImageGenBatch() {
+  imageGenBatchPrompts = [];
+  imageGenImageUrls = [];
+  imageGenBatchIndex = 0;
+  imageGenPreviewIndex = 0;
+  imageGenBatchStatus = '已清空';
+  renderImageGenBatchPreview();
+}
+
+
 async function generateImagePromptWithLLM(storyContent, genType, statData = null) {
   const s = ensureSettings();
   const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
@@ -9260,7 +9424,13 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
+  $('#sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules').on('input change', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
+
   $('#sg_refreshModels').on('click', async () => {
+
     pullUiToSettings(); saveSettings();
     await refreshModels();
   });
@@ -9922,6 +10092,9 @@ function pullSettingsToUi() {
   $('#sg_imageGenArtistPrompt').val(String(s.imageGenArtistPrompt || ''));
   $('#sg_imageGenPromptRulesEnabled').prop('checked', !!s.imageGenPromptRulesEnabled);
   $('#sg_imageGenPromptRules').val(String(s.imageGenPromptRules || ''));
+  if (s.imageGenBatchPatterns && typeof s.imageGenBatchPatterns === 'string') {
+    // no-op: reserved for future UI
+  }
 
 
   // 在线图库设置
@@ -10753,6 +10926,7 @@ function createFloatingPanel() {
         <div class="sg-floating-actions">
           <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺️</button>
+          <button class="sg-floating-action-btn" id="sg_floating_show_image" title="图像生成">🖼️</button>
           <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
           <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
           <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
@@ -10763,6 +10937,7 @@ function createFloatingPanel() {
         点击 <button class="sg-inner-refresh-btn" style="background:none; border:none; cursor:pointer; font-size:1.2em;">🔄</button> 生成
       </div>
     </div>
+
   `;
 
   document.body.appendChild(panel);
@@ -10796,6 +10971,11 @@ function createFloatingPanel() {
     showFloatingMap();
   });
 
+  $('#sg_floating_show_image').on('click', () => {
+    showFloatingImageGen();
+  });
+
+
   // Delegate inner refresh click
   $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
     // Only handle if inside our panel
@@ -10820,6 +11000,51 @@ function createFloatingPanel() {
     saveSettings();
     showFloatingMap();
   });
+
+  $(document).on('click', '#sg_imagegen_generate', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    if (imageGenBatchBusy) return;
+    await generateImageFromBatch();
+  });
+
+  $(document).on('click', '#sg_imagegen_build_batch', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    if (imageGenBatchBusy) return;
+    imageGenBatchBusy = true;
+    imageGenBatchStatus = '正在生成提示词…';
+    renderImageGenBatchPreview();
+    try {
+      imageGenBatchPrompts = await generateImagePromptBatch();
+      imageGenBatchIndex = 0;
+      imageGenPreviewIndex = 0;
+      imageGenBatchStatus = '提示词已生成';
+    } catch (err) {
+      imageGenBatchStatus = `生成失败：${err?.message || err}`;
+    } finally {
+      imageGenBatchBusy = false;
+      renderImageGenBatchPreview();
+    }
+  });
+
+  $(document).on('click', '#sg_imagegen_clear', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    clearImageGenBatch();
+  });
+
+  $(document).on('click', '#sg_imagegen_prev', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    if (!imageGenBatchPrompts.length) return;
+    imageGenPreviewIndex = (imageGenPreviewIndex - 1 + imageGenBatchPrompts.length) % imageGenBatchPrompts.length;
+    renderImageGenBatchPreview();
+  });
+
+  $(document).on('click', '#sg_imagegen_next', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    if (!imageGenBatchPrompts.length) return;
+    imageGenPreviewIndex = (imageGenPreviewIndex + 1) % imageGenBatchPrompts.length;
+    renderImageGenBatchPreview();
+  });
+
 
   $('#sg_floating_roll_logs').on('click', () => {
     showFloatingRollLogs();
@@ -11115,7 +11340,31 @@ function updateFloatingPanelBody(html) {
   }
 }
 
+function showFloatingImageGen() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+  const s = ensureSettings();
+  if (!s.imageGenEnabled) {
+    $body.html('<div class="sg-floating-loading">图像生成功能未启用</div>');
+    return;
+  }
+
+  const header = `
+    <div class="sg-floating-row">
+      <div class="sg-floating-title-sm">图像生成</div>
+      <div class="sg-floating-actions-mini">
+        <button class="sg-floating-mini-btn" id="sg_imagegen_build_batch">生成五组提示词</button>
+        <button class="sg-floating-mini-btn" id="sg_imagegen_generate">生成图像</button>
+      </div>
+    </div>
+  `;
+
+  $body.html(`${header}<div id="sg_imagegen_batch" class="sg-floating-section"></div>`);
+  renderImageGenBatchPreview();
+}
+
 function showFloatingRollLogs() {
+
   const $body = $('#sg_floating_body');
   if (!$body.length) return;
 
