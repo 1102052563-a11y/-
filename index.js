@@ -7501,10 +7501,17 @@ function renderImageGenBatchPreview() {
   const $wrap = $('#sg_imagegen_batch');
   if (!$wrap.length) return;
   if (!imageGenBatchPrompts.length) {
-
-    $wrap.html('<div class="sg-floating-empty">尚未生成提示词</div>');
+    const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '尚未生成提示词');
+    $wrap.html(`
+      <div class="sg-floating-row">
+        <div class="sg-floating-title-sm">提示词预览</div>
+        <div class="sg-floating-status">${escapeHtml(status)}</div>
+      </div>
+      <div class="sg-floating-empty">尚未生成提示词</div>
+    `);
     return;
   }
+
   const current = imageGenBatchPrompts[imageGenPreviewIndex] || imageGenBatchPrompts[0];
   const counter = `${imageGenPreviewIndex + 1}/${imageGenBatchPrompts.length}`;
   const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '就绪');
