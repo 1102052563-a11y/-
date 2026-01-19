@@ -7280,6 +7280,18 @@ function getImageGenBatchPatterns() {
   }
 }
 
+function getBatchDistinctHint(index, total) {
+  if (!Number.isFinite(index)) return '';
+  const hints = [
+    '使用近景构图，强调面部表情',
+    '使用中景构图，强调姿态与动作',
+    '使用互动构图，强调人物关系',
+    '使用远景构图，强调环境与气氛',
+    '使用趣味构图，强调轻松彩蛋动作'
+  ];
+  return hints[index % hints.length];
+}
+
 function renderImageGenBatchPreview() {
   const $wrap = $('#sg_imagegen_batch');
   if (!$wrap.length) return;
@@ -7324,7 +7336,8 @@ async function generateImagePromptBatch() {
   if (!patterns.length) throw new Error('未配置批次模板');
 
   const results = [];
-  for (const pattern of patterns) {
+  for (let i = 0; i < patterns.length; i += 1) {
+    const pattern = patterns[i];
     let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
     if (pattern.type === 'character') {
       userPrompt += `【要求】：生成单人角色立绘提示词，重点描述角色外观。\n`;
@@ -7335,6 +7348,9 @@ async function generateImagePromptBatch() {
     } else {
       userPrompt += `【要求】：生成彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。\n`;
     }
+    userPrompt += `【差异要求】：本组必须与其他组明显不同，不要重复上一组的构图与动作。\n`;
+    const distinctHint = getBatchDistinctHint(i, patterns.length);
+    if (distinctHint) userPrompt += `【构图提示】：${distinctHint}\n`;
     if (pattern.detail) userPrompt += `【细化】：${pattern.detail}\n`;
     userPrompt += `\n【故事内容】：\n${storyContent}\n\n请输出 JSON 格式的提示词。`;
 
@@ -9112,6 +9128,17 @@ function buildModalHtml() {
                 </div>
               </div>
 
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title" style="font-size:0.95em;">批量提示词模板</div>
+                <div class="sg-hint">用于生成五组提示词的模板（JSON 数组）。</div>
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenBatchEnabled">启用批量提示词</label>
+                </div>
+                <div class="sg-field" style="margin-top:6px;">
+                  <textarea id="sg_imageGenBatchPatterns" rows="8" placeholder='[{"label":"单人-1","type":"character","detail":"..."},{"label":"双人","type":"duo","detail":"..."}]'></textarea>
+                </div>
+              </div>
+
             </div>
 
             <div class="sg-card">
@@ -9424,7 +9451,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules').on('input change', () => {
+  $('#sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -10092,9 +10119,8 @@ function pullSettingsToUi() {
   $('#sg_imageGenArtistPrompt').val(String(s.imageGenArtistPrompt || ''));
   $('#sg_imageGenPromptRulesEnabled').prop('checked', !!s.imageGenPromptRulesEnabled);
   $('#sg_imageGenPromptRules').val(String(s.imageGenPromptRules || ''));
-  if (s.imageGenBatchPatterns && typeof s.imageGenBatchPatterns === 'string') {
-    // no-op: reserved for future UI
-  }
+  $('#sg_imageGenBatchEnabled').prop('checked', !!s.imageGenBatchEnabled);
+  $('#sg_imageGenBatchPatterns').val(String(s.imageGenBatchPatterns || ''));
 
 
   // 在线图库设置
@@ -10575,6 +10601,8 @@ function pullUiToSettings() {
   s.imageGenArtistPrompt = String($('#sg_imageGenArtistPrompt').val() || '').trim();
   s.imageGenPromptRulesEnabled = $('#sg_imageGenPromptRulesEnabled').is(':checked');
   s.imageGenPromptRules = String($('#sg_imageGenPromptRules').val() || '').trim();
+  s.imageGenBatchEnabled = $('#sg_imageGenBatchEnabled').is(':checked');
+  s.imageGenBatchPatterns = String($('#sg_imageGenBatchPatterns').val() || '').trim();
 
   // 在线图库设置
 
