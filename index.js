@@ -541,28 +541,14 @@ const DEFAULT_SETTINGS = Object.freeze({
   "subject": "简短中文描述生成对象（如：黑发少女战斗姿态）",
   "positive": "1girl, long black hair, red eyes, ...",
   "negative": "额外的负面标签（可选，留空则使用默认）"
-}\`,
+}`,
 
   // 在线图库设置
   imageGalleryEnabled: false,
-  imageGalleryUrl: '', // GitHub raw URL to index.json
-  imageGalleryCache: [], // cached gallery data
-  imageGalleryCacheTime: 0, // cache timestamp
-  imageGalleryMatchPrompt: \`你是图片选择助手。根据故事内容，从图库中选择最合适的图片。
-
-输入：故事内容 + 图库列表
-输出：最匹配图片的 id
-
-规则：
-1. 优先匹配角色名称
-2. 其次匹配场景类型（室内/室外/战斗等）
-3. 再匹配情绪/氛围
-
-输出纯 JSON：
-{
-  "matchedId": "图片id",
-  "reason": "匹配原因（一句话）"
-}\`,
+  imageGalleryUrl: '',
+  imageGalleryCache: [],
+  imageGalleryCacheTime: 0,
+  imageGalleryMatchPrompt: '你是图片选择助手。根据故事内容，从图库中选择最合适的图片。规则：1.优先匹配角色名称 2.其次匹配场景类型 3.再匹配情绪/氛围。输出JSON：{"matchedId":"图片id","reason":"匹配原因"}',
 });
 
 const META_KEYS = Object.freeze({
@@ -704,7 +690,7 @@ function exportPreset() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `StoryGuide_Preset_${ new Date().toISOString().slice(0, 10) }.json`;
+  a.download = `StoryGuide_Preset_${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -755,10 +741,10 @@ async function importPreset(file) {
     // 刷新 UI
     pullSettingsToUi();
 
-    showToast(`预设已导入 ✅\n版本: ${ preset._version || '未知' }\n导出时间: ${ preset._exportedAt || '未知' }`, { kind: 'ok', duration: 3000 });
+    showToast(`预设已导入 ✅\n版本: ${preset._version || '未知'}\n导出时间: ${preset._exportedAt || '未知'}`, { kind: 'ok', duration: 3000 });
   } catch (e) {
     console.error('[StoryGuide] Import preset failed:', e);
-    showToast(`导入失败: ${ e.message }`, { kind: 'err' });
+    showToast(`导入失败: ${e.message}`, { kind: 'err' });
   }
 }
 
@@ -947,11 +933,11 @@ function bindMapEventPanelHandler() {
     const events = parseJsonArrayAttr($cell.attr('data-events'));
 
     const headerBits = [];
-    if (name) headerBits.push(`< span class= "sg-map-event-title" > ${ escapeHtml(name) }</span > `);
-    if (layer) headerBits.push(`< span class= "sg-map-event-chip" > ${ escapeHtml(layer) }</span > `);
-    if (group) headerBits.push(`< span class= "sg-map-event-chip" > ${ escapeHtml(group) }</span > `);
-    const header = headerBits.length ? `< div class= "sg-map-event-header" > ${ headerBits.join('') }</div > ` : '';
-    const descHtml = desc ? `< div class= "sg-map-event-desc" > ${ escapeHtml(desc) }</div > ` : '';
+    if (name) headerBits.push(`< span class= "sg-map-event-title" > ${escapeHtml(name)}</span > `);
+    if (layer) headerBits.push(`< span class= "sg-map-event-chip" > ${escapeHtml(layer)}</span > `);
+    if (group) headerBits.push(`< span class= "sg-map-event-chip" > ${escapeHtml(group)}</span > `);
+    const header = headerBits.length ? `< div class= "sg-map-event-header" > ${headerBits.join('')}</div > ` : '';
+    const descHtml = desc ? `< div class= "sg-map-event-desc" > ${escapeHtml(desc)}</div > ` : '';
 
     let listHtml = '';
     if (events.length) {
@@ -959,11 +945,11 @@ function bindMapEventPanelHandler() {
         const text = escapeHtml(String(ev?.text || ev?.event || ev || '').trim());
         const tags = Array.isArray(ev?.tags) ? ev.tags : [];
         const tagsHtml = tags.length
-          ? `< span class= "sg-map-event-tags" > ${ tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('') }</span > `
+          ? `< span class= "sg-map-event-tags" > ${tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('')}</span > `
           : '';
-        return `< li > <span class="sg-map-event-text">${text || '（无内容）'}</span>${ tagsHtml }</li > `;
+        return `< li > <span class="sg-map-event-text">${text || '（无内容）'}</span>${tagsHtml}</li > `;
       }).join('');
-      listHtml = `< ul class= "sg-map-event-list" > ${ items }</ul > `;
+      listHtml = `< ul class= "sg-map-event-list" > ${items}</ul > `;
     } else {
       listHtml = '<div class="sg-map-event-empty">暂无事件</div>';
     }
@@ -971,7 +957,7 @@ function bindMapEventPanelHandler() {
     const deleteBtn = name
       ? `< button class= "sg-map-event-delete" data - name="${escapeHtml(name)}" > 删除地点</button > `
       : '';
-    $panel.html(`${ header }${ descHtml }${ listHtml }${ deleteBtn }`);
+    $panel.html(`${header}${descHtml}${listHtml}${deleteBtn}`);
     $panel.addClass('sg-map-event-panel--floating');
   });
 
@@ -1013,10 +999,10 @@ function showMapPopover($cell) {
   const events = parseJsonArrayAttr($cell.attr('data-events'));
 
   const parts = [];
-  if (name) parts.push(`< div class= "sg-map-popover-title" > ${ escapeHtml(name) }</div > `);
-  if (desc) parts.push(`< div class= "sg-map-popover-desc" > ${ escapeHtml(desc) }</div > `);
+  if (name) parts.push(`< div class= "sg-map-popover-title" > ${escapeHtml(name)}</div > `);
+  if (desc) parts.push(`< div class= "sg-map-popover-desc" > ${escapeHtml(desc)}</div > `);
   if (events.length) {
-    const items = events.map(e => `< li > ${ escapeHtml(String(e || ''))}</li > `).join('');
+    const items = events.map(e => `< li > ${escapeHtml(String(e || ''))}</li > `).join('');
     parts.push(`< div class="sg-map-popover-events" ><div class="sg-map-popover-label">事件</div><ul>${items}</ul></div > `);
   } else {
     parts.push('<div class="sg-map-popover-empty">暂无事件</div>');
@@ -1057,16 +1043,16 @@ function showMapPopover($cell) {
     if (left > maxLeft) left = maxLeft;
     if (top < 8) top = 8;
     if (top > maxTop) top = maxTop;
-    pop.style.left = `${ Math.round(left) } px`;
-    pop.style.top = `${ Math.round(top) } px`;
+    pop.style.left = `${Math.round(left)} px`;
+    pop.style.top = `${Math.round(top)} px`;
   } else {
     let left = rect.left + rect.width / 2 - popRect.width / 2;
     let top = rect.top - popRect.height - 8;
     if (top < 8) top = rect.bottom + 8;
     if (left < 8) left = 8;
     if (left + popRect.width > window.innerWidth - 8) left = window.innerWidth - popRect.width - 8;
-    pop.style.left = `${ Math.round(left) } px`;
-    pop.style.top = `${ Math.round(top) } px`;
+    pop.style.left = `${Math.round(left)} px`;
+    pop.style.top = `${Math.round(top)} px`;
   }
 
   pop.style.visibility = 'visible';
@@ -1087,10 +1073,10 @@ function getQuickOptions() {
     if (!Array.isArray(arr)) return [];
     return arr.map((item, i) => {
       if (Array.isArray(item)) {
-        return { label: String(item[0] || `选项${ i + 1 } `), prompt: String(item[1] || '') };
+        return { label: String(item[0] || `选项${i + 1} `), prompt: String(item[1] || '') };
       }
       if (item && typeof item === 'object') {
-        return { label: String(item.label || `选项${ i + 1 } `), prompt: String(item.prompt || '') };
+        return { label: String(item.label || `选项${i + 1} `), prompt: String(item.prompt || '') };
       }
       return null;
     }).filter(Boolean);
@@ -1143,12 +1129,12 @@ function renderQuickOptionsHtml(context = 'inline') {
   if (!options.length) return '';
 
   const buttons = options.map((opt, i) => {
-    const label = escapeHtml(opt.label || `选项${ i + 1 } `);
+    const label = escapeHtml(opt.label || `选项${i + 1} `);
     const prompt = escapeHtml(opt.prompt || '');
-    return `< button class="sg-quick-option" data - sg - prompt="${prompt}" title = "${prompt}" > ${ label }</button > `;
+    return `< button class="sg-quick-option" data - sg - prompt="${prompt}" title = "${prompt}" > ${label}</button > `;
   }).join('');
 
-  return `< div class="sg-quick-options" > ${ buttons }</div > `;
+  return `< div class="sg-quick-options" > ${buttons}</div > `;
 }
 
 // 渲染AI生成的动态快捷选项（从分析结果的quick_actions数组生成按钮，直接显示选项内容）
@@ -1170,14 +1156,14 @@ function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
 
     const escapedText = escapeHtml(cleaned);
     // 按钮直接显示完整选项内容，点击后输入到聊天框
-    return `< button class="sg-quick-option sg-dynamic-option" data - sg - prompt="${escapedText}" title = "点击输入到聊天框" > ${ escapedText }</button > `;
+    return `< button class="sg-quick-option sg-dynamic-option" data - sg - prompt="${escapedText}" title = "点击输入到聊天框" > ${escapedText}</button > `;
   }).filter(Boolean).join('');
 
   if (!buttons) return '';
 
   return `< div class="sg-quick-options sg-dynamic-options" >
   <div class="sg-quick-options-title">💡 快捷选项（点击输入）</div>
-    ${ buttons }
+    ${buttons}
   </div > `;
 }
 
@@ -1492,13 +1478,13 @@ function ensureMapMinimums(parsed) {
   const addCount = Math.max(neededTotal, neededExplore);
 
   if (addCount > 0) {
-    const baseName = out.currentLocation ? `${ out.currentLocation }·待探索` : '待探索地点';
+    const baseName = out.currentLocation ? `${out.currentLocation}·待探索` : '待探索地点';
     for (let i = 0; i < addCount; i++) {
-      let name = `${ baseName }${ i + 1 } `;
+      let name = `${baseName}${i + 1} `;
       let n = 1;
       while (existingNames.has(name)) {
         n += 1;
-        name = `${ baseName }${ i + 1 } -${ n } `;
+        name = `${baseName}${i + 1} -${n} `;
       }
       existingNames.add(name);
       out.newLocations.push({
@@ -1566,8 +1552,8 @@ function normalizeMapEvent(evt) {
 function formatMapEventText(evt) {
   const text = typeof evt === 'string' ? evt : String(evt?.text || evt?.event || '').trim();
   const tags = Array.isArray(evt?.tags) ? evt.tags : [];
-  const tagText = tags.length ? ` [${ tags.join('/') }]` : '';
-  return `${ text }${ tagText } `.trim();
+  const tagText = tags.length ? ` [${tags.join('/')}]` : '';
+  return `${text}${tagText} `.trim();
 }
 
 
@@ -1686,7 +1672,7 @@ function mergeMapData(existingMap, newData) {
 function findAdjacentGridPosition(map, baseRow, baseCol) {
   const occupied = new Set();
   for (const loc of Object.values(map.locations)) {
-    occupied.add(`${ loc.row },${ loc.col } `);
+    occupied.add(`${loc.row},${loc.col} `);
   }
   const candidates = [
     { row: baseRow - 1, col: baseCol },
@@ -1700,7 +1686,7 @@ function findAdjacentGridPosition(map, baseRow, baseCol) {
   ];
   for (const pos of candidates) {
     if (pos.row < 0 || pos.col < 0) continue;
-    if (!occupied.has(`${ pos.row },${ pos.col } `)) return pos;
+    if (!occupied.has(`${pos.row},${pos.col} `)) return pos;
   }
   return findNextGridPosition(map);
 }
@@ -1718,12 +1704,12 @@ function ensureGridSize(map, row, col) {
 function findNextGridPosition(map) {
   const occupied = new Set();
   for (const loc of Object.values(map.locations)) {
-    occupied.add(`${ loc.row },${ loc.col } `);
+    occupied.add(`${loc.row},${loc.col} `);
   }
 
   for (let r = 0; r < map.gridSize.rows; r++) {
     for (let c = 0; c < map.gridSize.cols; c++) {
-      if (!occupied.has(`${ r },${ c } `)) {
+      if (!occupied.has(`${r},${c} `)) {
         return { row: r, col: c };
       }
     }
@@ -1790,7 +1776,7 @@ function renderGridMap(mapData) {
   }
 
   // 渲染 HTML（使用 CSS Grid）
-  const gridInlineStyle = `display: grid; grid - template - columns: repeat(${ cols }, 80px); grid - auto - rows: 50px; gap: 4px; justify - content: center; `;
+  const gridInlineStyle = `display: grid; grid - template - columns: repeat(${cols}, 80px); grid - auto - rows: 50px; gap: 4px; justify - content: center; `;
   const baseCellStyle = 'width:80px;height:50px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;text-align:center;position:relative;';
   const emptyCellStyle = baseCellStyle + 'background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.08);';
   const locationBaseStyle = baseCellStyle + 'background:rgba(100,150,200,0.2);border:1px solid rgba(100,150,200,0.35);';
@@ -1809,8 +1795,8 @@ function renderGridMap(mapData) {
         if (hasEvents) classes.push('sg-map-has-events');
         if (!cell.visited) classes.push('sg-map-unvisited');
 
-        const eventList = hasEvents ? cell.events.map(e => `• ${ formatMapEventText(e) } `).join('\n') : '';
-        const tooltip = `${ cell.name }${ cell.description ? '\n' + cell.description : '' }${ eventList ? '\n---\n' + eventList : '' } `;
+        const eventList = hasEvents ? cell.events.map(e => `• ${formatMapEventText(e)} `).join('\n') : '';
+        const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''} `;
 
         let inlineStyle = locationBaseStyle;
         if (isProtagonist) inlineStyle += 'background:rgba(100,200,100,0.25);border-color:rgba(100,200,100,0.5);box-shadow:0 0 8px rgba(100,200,100,0.3);';
@@ -1824,11 +1810,11 @@ function renderGridMap(mapData) {
         html += `< div class="${classes.join(' ')}" style = "${inlineStyle}" title = "${escapeHtml(tooltip)}" data - name="${nameAttr}" data - desc="${descAttr}" data - events="${eventsJson}" data - group="${groupAttr}" data - layer="${layerAttr}" > `;
         if (cell.layer || cell.group) {
           html += `< div class="sg-map-badges" > `;
-          if (cell.layer) html += `< span class="sg-map-badge sg-map-badge-layer" title = "${escapeHtml(String(cell.layer))}" > ${ escapeHtml(String(cell.layer || '').slice(0, 2)) }</span > `;
-          if (cell.group) html += `< span class="sg-map-badge sg-map-badge-group" title = "${escapeHtml(String(cell.group))}" > ${ escapeHtml(String(cell.group || '').slice(0, 2)) }</span > `;
+          if (cell.layer) html += `< span class="sg-map-badge sg-map-badge-layer" title = "${escapeHtml(String(cell.layer))}" > ${escapeHtml(String(cell.layer || '').slice(0, 2))}</span > `;
+          if (cell.group) html += `< span class="sg-map-badge sg-map-badge-group" title = "${escapeHtml(String(cell.group))}" > ${escapeHtml(String(cell.group || '').slice(0, 2))}</span > `;
           html += `</div > `;
         }
-        html += `< span class="sg-map-name" > ${ escapeHtml(cell.name) }</span > `;
+        html += `< span class="sg-map-name" > ${escapeHtml(cell.name)}</span > `;
         if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
         if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
         html += '</div>';
@@ -1872,7 +1858,7 @@ function generateBoundWorldInfoName(type) {
     .slice(0, 20);
   const ts = Date.now().toString(36);
   const prefix = ensureSettings().autoBindWorldInfoPrefix || 'SG';
-  return `${ prefix }_${ charName }_${ ts }_${ type } `;
+  return `${prefix}_${charName}_${ts}_${type} `;
 }
 
 // 检查并确保当前聊天启用了自动绑定（使用 chatbook 模式）
@@ -1941,7 +1927,7 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条目')
     // 创建一个 Blob 作为 JSON 文件
     const blob = new Blob([JSON.stringify(worldInfoData)], { type: 'application/json' });
     const formData = new FormData();
-    formData.append('avatar', blob, `${ fileName }.json`);
+    formData.append('avatar', blob, `${fileName}.json`);
 
     const res = await fetch('/api/worldinfo/import', {
       method: 'POST',
@@ -1997,7 +1983,7 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条目')
     const safeFileName = quoteSlashValue(fileName);
     const safeKey = quoteSlashValue('__SG_INIT__');
     const safeContent = quoteSlashValue(initialContent);
-    const cmd = `/ createentry file = ${ safeFileName } key = ${ safeKey } ${ safeContent } `;
+    const cmd = `/ createentry file = ${safeFileName} key = ${safeKey} ${safeContent} `;
     await execSlash(cmd);
     console.log('[StoryGuide] STscript 方式可能成功');
     return true;
@@ -2014,16 +2000,16 @@ async function createWorldInfoFile(fileName, initialContent = '初始化条目')
 async function resolveChatbookFileName() {
   const varName = '__sg_chatbook_name';
   try {
-    const out = await execSlash(`/ getchatbook | /setvar key=${varName} | /getvar ${ varName } | /flushvar ${varName}`);
-const raw = slashOutputToText(out).trim();
-if (!raw) return '';
-const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-const name = lines[lines.length - 1] || '';
-return name.replace(/^"+|"+$/g, '');
+    const out = await execSlash(`/ getchatbook | /setvar key=${varName} | /getvar ${varName} | /flushvar ${varName}`);
+    const raw = slashOutputToText(out).trim();
+    if (!raw) return '';
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const name = lines[lines.length - 1] || '';
+    return name.replace(/^"+|"+$/g, '');
   } catch (e) {
-  console.warn('[StoryGuide] resolveChatbookFileName failed:', e?.message || e);
-  return '';
-}
+    console.warn('[StoryGuide] resolveChatbookFileName failed:', e?.message || e);
+    return '';
+  }
 }
 
 // 将绑定的世界书应用到设置
