@@ -7422,68 +7422,6 @@ async function generateImagePromptBatch() {
   return results;
 }
 
-  if (!storyContent.trim()) throw new Error('没有找到对话内容');
-
-  const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
-  const patterns = getImageGenBatchPatterns();
-  if (!patterns.length) throw new Error('未配置批次模板');
-
-  const results = [];
-  for (let i = 0; i < patterns.length; i += 1) {
-    const pattern = patterns[i];
-    let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
-  if (statDataJson) {
-    userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
-  }
-    if (pattern.type === 'character') {
-      userPrompt += `【要求】：生成单人角色立绘提示词，重点描述角色外观。\n`;
-    } else if (pattern.type === 'duo') {
-      userPrompt += `【要求】：生成双人同框提示词，突出两人互动和构图。\n`;
-    } else if (pattern.type === 'scene') {
-      userPrompt += `【要求】：生成场景图提示词，重点描述环境和氛围。\n`;
-    } else {
-      userPrompt += `【要求】：生成彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。\n`;
-    }
-    userPrompt += `【差异要求】：本组必须与其他组明显不同，不要重复上一组的构图与动作。\n`;
-    const distinctHint = getBatchDistinctHint(i, patterns.length);
-    if (distinctHint) userPrompt += `【构图提示】：${distinctHint}\n`;
-    if (pattern.detail) userPrompt += `【细化】：${pattern.detail}\n`;
-    userPrompt += `\n【故事内容】：\n${storyContent}\n\n请输出 JSON 格式的提示词。`;
-
-    const messages = [
-      { role: 'system', content: s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt },
-      { role: 'user', content: userPrompt }
-    ];
-
-    const result = await callLLM(messages, { temperature: 0.7 });
-    let parsed;
-    try {
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
-    } catch {
-      parsed = null;
-    }
-
-    const positive = parsed?.positive || result.slice(0, 500);
-    const negative = parsed?.negative || '';
-    let finalPositive = positive;
-    if (worldBookTags) finalPositive = `${worldBookTags}, ${finalPositive}`;
-    if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
-      const artist = String(s.imageGenArtistPrompt || '').trim();
-      if (artist) finalPositive = `${artist}, ${finalPositive}`;
-    }
-
-    results.push({
-      label: pattern.label,
-      type: pattern.type,
-      positive: finalPositive,
-      negative: negative,
-      subject: parsed?.subject || ''
-    });
-  }
-  return results;
-}
-
 async function generateImageFromBatch() {
   const s = ensureSettings();
   if (!imageGenBatchPrompts.length) {
