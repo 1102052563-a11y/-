@@ -524,6 +524,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenAutoSave: false,
   imageGenSavePath: '',
   imageGenLookbackMessages: 5,
+  imageGenReadStatData: false,
+  imageGenStatVarName: 'stat_data',
   imageGenLlmProvider: 'custom', // custom
   imageGenCustomEndpoint: '',
   imageGenCustomApiKey: '',
@@ -7188,10 +7190,11 @@ function matchCharacterTagsFromWorldBook(storyContent) {
   return allTags;
 }
 
-async function generateImagePromptWithLLM(storyContent, genType) {
+async function generateImagePromptWithLLM(storyContent, genType, statData = null) {
   const s = ensureSettings();
   const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
 
+  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
   let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
   if (genType === 'character') {
     userPrompt += `【要求】：生成角色立绘的提示词，重点描述角色外观。\n\n`;
@@ -7200,7 +7203,11 @@ async function generateImagePromptWithLLM(storyContent, genType) {
   } else {
     userPrompt += `【要求】：自动判断应该生成角色还是场景。\n\n`;
   }
-  userPrompt += `【故事内容】：\n${storyContent}\n\n请输出 JSON 格式的提示词。`;
+  userPrompt += `【故事内容】：\n${storyContent}\n\n`;
+  if (statDataJson) {
+    userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+  }
+  userPrompt += `请输出 JSON 格式的提示词。`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -7361,7 +7368,24 @@ async function runImageGeneration() {
     if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
 
     setImageGenStatus('正在使用 LLM 生成图像提示词…', 'warn');
-    const promptResult = await generateImagePromptWithLLM(storyContent, genType);
+    let statData = null;
+    if (s.imageGenReadStatData) {
+      try {
+        const ctx = SillyTavern.getContext();
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+        const { statData: loaded } = await resolveStatDataComprehensive(chat, {
+          ...s,
+          wiRollStatVarName: s.imageGenStatVarName || 'stat_data'
+        });
+        if (loaded) {
+          statData = loaded;
+          console.log('[ImageGen] Loaded stat_data for image prompt:', statData);
+        }
+      } catch (e) {
+        console.warn('[ImageGen] Failed to load stat_data for image prompt:', e);
+      }
+    }
+    const promptResult = await generateImagePromptWithLLM(storyContent, genType, statData);
 
     // 从世界书匹配角色标签
     const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
@@ -8812,6 +8836,10 @@ function buildModalHtml() {
                 <label>读取最近消息数</label>
                 <input id="sg_imageGenLookbackMessages" type="number" min="1" max="30">
               </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_imageGenReadStatData">读取角色状态变量</label>
+                <input id="sg_imageGenStatVarName" type="text" placeholder="stat_data" style="width:120px">
+              </div>
 
               <div class="sg-field">
                 <label>标签生成提示词 (System)</label>
@@ -9124,7 +9152,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -9784,6 +9812,8 @@ function pullSettingsToUi() {
   $('#sg_imageGenAutoSave').prop('checked', !!s.imageGenAutoSave);
   $('#sg_imageGenSavePath').val(String(s.imageGenSavePath || ''));
   $('#sg_imageGenLookbackMessages').val(s.imageGenLookbackMessages || 5);
+  $('#sg_imageGenReadStatData').prop('checked', !!s.imageGenReadStatData);
+  $('#sg_imageGenStatVarName').val(String(s.imageGenStatVarName || 'stat_data'));
   $('#sg_imageGenCustomEndpoint').val(String(s.imageGenCustomEndpoint || ''));
   $('#sg_imageGenCustomApiKey').val(String(s.imageGenCustomApiKey || ''));
   $('#sg_imageGenCustomModel').val(String(s.imageGenCustomModel || 'gpt-4o-mini'));
@@ -10257,6 +10287,8 @@ function pullUiToSettings() {
   s.imageGenAutoSave = $('#sg_imageGenAutoSave').is(':checked');
   s.imageGenSavePath = String($('#sg_imageGenSavePath').val() || '').trim();
   s.imageGenLookbackMessages = clampInt($('#sg_imageGenLookbackMessages').val(), 1, 30, s.imageGenLookbackMessages || 5);
+  s.imageGenReadStatData = $('#sg_imageGenReadStatData').is(':checked');
+  s.imageGenStatVarName = String($('#sg_imageGenStatVarName').val() || 'stat_data').trim() || 'stat_data';
   s.imageGenCustomEndpoint = String($('#sg_imageGenCustomEndpoint').val() || '').trim();
   s.imageGenCustomApiKey = String($('#sg_imageGenCustomApiKey').val() || '').trim();
   s.imageGenCustomModel = String($('#sg_imageGenCustomModel').val() || 'gpt-4o-mini');
