@@ -9906,16 +9906,16 @@ function ensureModal() {
     await refreshImageGenModels();
   });
 
-  $('#sg_imageGenProfileAdd').on('click', () => {
+  $(document).on('click', '#sg_imageGenProfileAdd', () => {
     const s = ensureSettings();
-  const list = getCharacterProfilesFromSettings();
-  list.push({ name: `人物${list.length + 1}`, keys: [], tags: '', enabled: true });
-  s.imageGenCharacterProfiles = list;
-  saveSettings();
-  renderCharacterProfilesUi();
-  pullSettingsToUi();
-
+    const list = getCharacterProfilesFromSettings();
+    list.push({ name: `人物${list.length + 1}`, keys: [], tags: '', enabled: true });
+    s.imageGenCharacterProfiles = list;
+    saveSettings();
+    renderCharacterProfilesUi();
+    pullSettingsToUi();
   });
+
 
   $(document).on('input change', '#sg_imageGenProfiles input, #sg_imageGenProfiles textarea, #sg_imageGenProfiles .sg-profile-enabled', () => {
     const s = ensureSettings();
