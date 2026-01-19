@@ -1479,6 +1479,68 @@ body.sg-zoom-lock {
   border-radius: 12px;
 }
 
+.sg-image-zoom {
+  cursor: zoom-in;
+}
+
+.sg-image-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 18, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  z-index: 99999;
+}
+
+.sg-image-preview-backdrop.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.sg-image-preview-panel {
+  position: relative;
+  max-width: min(92vw, 1200px);
+  max-height: 92vh;
+  background: rgba(18, 20, 28, 0.92);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+
+.sg-image-preview-panel img {
+  display: block;
+  max-width: 88vw;
+  max-height: 82vh;
+  border-radius: 10px;
+}
+
+.sg-image-preview-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 20px;
+  line-height: 32px;
+  cursor: pointer;
+}
+
+.sg-image-preview-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+body.sg-image-preview-open {
+  overflow: hidden;
+}
+
 .sg-floating-empty {
   padding: 12px;
   opacity: 0.7;

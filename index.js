@@ -7290,6 +7290,44 @@ function setImageGenStatus(text, kind = '') {
   $s.text(text || '');
 }
 
+function closeImagePreviewModal() {
+  $('#sg_image_preview_backdrop').removeClass('show');
+  $('body').removeClass('sg-image-preview-open');
+}
+
+function openImagePreviewModal(src, altText = 'Image preview') {
+  if (!src) return;
+  if (!$('#sg_image_preview_backdrop').length) {
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="sg_image_preview_backdrop" class="sg-image-preview-backdrop">
+        <div class="sg-image-preview-panel">
+          <button class="sg-image-preview-close" type="button" aria-label="Close">×</button>
+          <img id="sg_image_preview_img" alt="${escapeHtml(altText)}">
+        </div>
+      </div>
+    `);
+
+    $('#sg_image_preview_backdrop').on('click', (e) => {
+      if (e.target && e.target.id === 'sg_image_preview_backdrop') closeImagePreviewModal();
+    });
+
+    $(document).on('keydown', (e) => {
+      if (e.key === 'Escape') closeImagePreviewModal();
+    });
+
+    $(document).on('click', '#sg_image_preview_backdrop .sg-image-preview-close', (e) => {
+      e.preventDefault();
+      closeImagePreviewModal();
+    });
+  }
+
+  $('#sg_image_preview_img').attr('src', src);
+  $('#sg_image_preview_img').attr('alt', altText || 'Image preview');
+  $('#sg_image_preview_backdrop').addClass('show');
+  $('body').addClass('sg-image-preview-open');
+}
+
+
 // 通用 LLM 调用函数（使用图像生成模块独立 API）
 async function callLLM(messages, opts = {}) {
   const s = ensureSettings();
@@ -7463,7 +7501,10 @@ function renderImageGenBatchPreview() {
   const counter = `${imageGenPreviewIndex + 1}/${imageGenBatchPrompts.length}`;
   const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '就绪');
   const imgUrl = imageGenImageUrls[imageGenPreviewIndex] || '';
-  const imgHtml = imgUrl ? `<img class="sg-floating-image" src="${escapeHtml(imgUrl)}" alt="Generated" />` : '<div class="sg-floating-empty">暂无图像</div>';
+  const imgHtml = imgUrl
+    ? `<img class="sg-floating-image sg-image-zoom" src="${escapeHtml(imgUrl)}" data-full="${escapeHtml(imgUrl)}" alt="Generated" style="cursor: zoom-in;" />`
+    : '<div class="sg-floating-empty">暂无图像</div>';
+  const regenDisabled = (!imgUrl || imageGenBatchBusy) ? 'disabled' : '';
   $wrap.html(`
     <div class="sg-floating-row">
       <div class="sg-floating-title-sm">提示词预览（${escapeHtml(counter)}）</div>
@@ -7474,10 +7515,13 @@ function renderImageGenBatchPreview() {
       <button class="sg-floating-mini-btn" id="sg_imagegen_prev">◀</button>
       <button class="sg-floating-mini-btn" id="sg_imagegen_next">▶</button>
       <div class="sg-floating-spacer"></div>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_regen" ${regenDisabled}>重生成</button>
       <button class="sg-floating-mini-btn" id="sg_imagegen_clear">清空</button>
     </div>
     <div class="sg-floating-image-wrap">${imgHtml}</div>
   `);
+
+  if (!imgUrl) $('#sg_imagegen_regen').prop('disabled', true);
 }
 
 async function generateImagePromptBatch() {
@@ -7845,7 +7889,9 @@ async function runImageGeneration() {
     const imageUrl = await generateImageWithNovelAI(finalPositive, promptResult.negative);
 
     $('#sg_generatedImage').attr('src', imageUrl);
+    $('#sg_generatedImage').attr('data-full', imageUrl);
     $('#sg_imageResult').show();
+
 
     setImageGenStatus(`✅ 生成成功！类型: ${promptResult.type}，主题: ${promptResult.subject}`, 'ok');
 
@@ -7948,8 +7994,10 @@ async function matchGalleryImage() {
     const imageUrl = matchedImage.path.startsWith('http') ? matchedImage.path : baseUrl + matchedImage.path;
 
     $('#sg_matchedGalleryImage').attr('src', imageUrl);
+    $('#sg_matchedGalleryImage').attr('data-full', imageUrl);
     $('#sg_galleryMatchReason').text(`🎯 ${parsed.reason || ''}`);
     $('#sg_galleryResult').show();
+
     setImageGenStatus(`✅ 匹配：${matchedImage.description || parsed.matchedId}`, 'ok');
   } catch (e) {
     console.error('[ImageGallery] Match failed:', e);
@@ -8361,9 +8409,10 @@ function buildModalHtml() {
           剧情指导 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
         </div>
         <div class="sg-modal-actions">
-          <button class="menu_button sg-btn" id="sg_close">关闭</button>
+          <button class="menu_button sg-btn" id="sg_close">✕</button>
         </div>
       </div>
+
 
       <div class="sg-modal-body">
         <div class="sg-left">
@@ -9377,11 +9426,13 @@ function buildModalHtml() {
               </div>
 
               <div id="sg_imageResult" class="sg-image-result" style="display:none; margin-top:12px;">
-                <img id="sg_generatedImage" src="" alt="Generated Image" style="max-width:100%; max-height:500px; border-radius:6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                <img id="sg_generatedImage" src="" alt="Generated Image" class="sg-image-zoom" style="max-width:100%; max-height:500px; border-radius:6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: zoom-in;">
                 <div class="sg-row sg-inline" style="margin-top:8px; justify-content:center;">
+                  <button class="menu_button sg-btn" id="sg_regenImage">🔄 重生成</button>
                   <button class="menu_button sg-btn" id="sg_downloadImage">💾 保存图像</button>
                 </div>
               </div>
+
 
               <div class="sg-hint" id="sg_imageGenStatus" style="margin-top:10px;"></div>
             </div>
@@ -9411,8 +9462,9 @@ function buildModalHtml() {
 
               <div id="sg_galleryResult" class="sg-image-result" style="display:none; margin-top:12px;">
                 <div class="sg-hint" id="sg_galleryMatchReason" style="margin-bottom:8px;"></div>
-                <img id="sg_matchedGalleryImage" src="" alt="Matched Image" style="max-width:100%; max-height:500px; border-radius:6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                <img id="sg_matchedGalleryImage" src="" alt="Matched Image" class="sg-image-zoom" style="max-width:100%; max-height:500px; border-radius:6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: zoom-in;">
               </div>
+
             </div>
           </div> <!-- sg_page_image -->
 
@@ -9454,8 +9506,22 @@ function ensureModal() {
   // --- settings pages (剧情指导 / 总结设置 / 索引设置 / ROLL 设置) ---
   setupSettingsPages();
 
-  $('#sg_modal_backdrop').on('click', (e) => { if (e.target && e.target.id === 'sg_modal_backdrop') closeModal(); });
-  $('#sg_close').on('click', closeModal);
+  $('#sg_modal_backdrop').on('click', (e) => {
+    if (e.target && e.target.id === 'sg_modal_backdrop') closeModal();
+  });
+  $('#sg_close').on('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeModal();
+  });
+  $('#sg_close').on('pointerdown', (e) => {
+    e.stopPropagation();
+  });
+
+  $('#sg_close').on('pointerup', (e) => {
+    e.stopPropagation();
+  });
+
 
   $('#sg_tab_md').on('click', () => showPane('md'));
   $('#sg_tab_json').on('click', () => showPane('json'));
@@ -9745,6 +9811,12 @@ function ensureModal() {
     };
     downloadTextFile(`storyguide-imagegen-preset-${preset.name}.json`, JSON.stringify(payload, null, 2));
     setStatus('预设已导出 ✅', 'ok');
+  });
+
+  $('#sg_imageResult, #sg_galleryResult, #sg_imagegen_float_preview').on('click', 'img', (e) => {
+    const src = String($(e.currentTarget).attr('data-full') || $(e.currentTarget).attr('src') || '').trim();
+    if (!src) return;
+    openImagePreviewModal(src, $(e.currentTarget).attr('alt') || 'Image preview');
   });
 
   $('#sg_imageGenImportPreset').on('click', async () => {
@@ -10222,6 +10294,26 @@ function setupSettingsPages() {
     const src = $('#sg_generatedImage').attr('src');
     if (src) await saveGeneratedImage(src);
   });
+
+  $('#sg_regenImage').on('click', async () => {
+    const positive = String($('#sg_imagePositivePrompt').val() || '').trim();
+    if (!positive) {
+      setImageGenStatus('暂无提示词可重生成', 'warn');
+      return;
+    }
+    const negative = String($('#sg_novelaiNegativePrompt').val() || '').trim();
+    setImageGenStatus('正在重新生成图像…', 'warn');
+    try {
+      const imageUrl = await generateImageWithNovelAI(positive, negative);
+      $('#sg_generatedImage').attr('src', imageUrl);
+      $('#sg_generatedImage').attr('data-full', imageUrl);
+      $('#sg_imageResult').show();
+      setImageGenStatus('✅ 已重新生成', 'ok');
+    } catch (e) {
+      setImageGenStatus(`❌ 重生成失败: ${e?.message || e}`, 'err');
+    }
+  });
+
 
   $('#sg_copyImagePrompt').on('click', () => {
     const prompt = $('#sg_imagePositivePrompt').val();
@@ -11414,6 +11506,28 @@ function createFloatingPanel() {
     openModal();
     hideFloatingPanel();
   });
+
+  // Image regen click (floating panel)
+  $(document).on('click', '#sg_imagegen_regen', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    if (imageGenBatchBusy) return;
+    const current = imageGenBatchPrompts[imageGenPreviewIndex];
+    if (!current || !current.positive) return;
+    try {
+      imageGenBatchBusy = true;
+      imageGenBatchStatus = `重新生成：${current.label || '当前'}`;
+      renderImageGenBatchPreview();
+      const url = await generateImageWithNovelAI(current.positive, current.negative || '');
+      imageGenImageUrls[imageGenPreviewIndex] = url;
+      imageGenBatchStatus = `已重新生成：${current.label || '当前'}`;
+    } catch (err) {
+      imageGenBatchStatus = `重生成失败：${err?.message || err}`;
+    } finally {
+      imageGenBatchBusy = false;
+      renderImageGenBatchPreview();
+    }
+  });
+
 
   // Drag logic
   const header = panel.querySelector('.sg-floating-header');
