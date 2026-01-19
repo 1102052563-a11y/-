@@ -698,6 +698,15 @@ function ensureSettings() {
     extensionSettings[MODULE_NAME].summaryToBlueWorldInfo = true;
     saveSettingsDebounced();
   }
+
+  // 迁移：批量提示词模板更新（仅在仍为旧模板或为空时）
+  const batchRaw = String(extensionSettings[MODULE_NAME].imageGenBatchPatterns || '').trim();
+  const isOldBatch = batchRaw && batchRaw.includes('单人-1') && !batchRaw.includes('单人-近景');
+  if (!batchRaw || isOldBatch) {
+    extensionSettings[MODULE_NAME].imageGenBatchPatterns = DEFAULT_SETTINGS.imageGenBatchPatterns;
+    saveSettingsDebounced();
+  }
+
   return extensionSettings[MODULE_NAME];
 }
 
@@ -9137,6 +9146,9 @@ function buildModalHtml() {
                 <div class="sg-field" style="margin-top:6px;">
                   <textarea id="sg_imageGenBatchPatterns" rows="8" placeholder='[{"label":"单人-1","type":"character","detail":"..."},{"label":"双人","type":"duo","detail":"..."}]'></textarea>
                 </div>
+                <div class="sg-actions-row" style="margin-top:6px;">
+                  <button class="menu_button sg-btn" id="sg_imageGenResetBatch">恢复默认模板</button>
+                </div>
               </div>
 
             </div>
@@ -9466,6 +9478,14 @@ function ensureModal() {
     pullUiToSettings(); saveSettings();
     await refreshImageGenModels();
   });
+
+  $('#sg_imageGenResetBatch').on('click', () => {
+    $('#sg_imageGenBatchPatterns').val(String(DEFAULT_SETTINGS.imageGenBatchPatterns || ''));
+    pullUiToSettings();
+    saveSettings();
+    setStatus('已恢复默认批量模板 ✅', 'ok');
+  });
+
 
   $('#sg_loadImageGenWorldBook').on('click', async () => {
     pullUiToSettings(); saveSettings();
