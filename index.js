@@ -559,11 +559,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenPromptRules: '',
   imageGenBatchEnabled: true,
   imageGenBatchPatterns: JSON.stringify([
-    { label: '单人-1', type: 'character', detail: '单人角色立绘，突出外观与动作' },
-    { label: '单人-2', type: 'character', detail: '单人角色立绘，强调服装与表情' },
-    { label: '双人', type: 'duo', detail: '两人同框互动' },
-    { label: '场景', type: 'scene', detail: '纯场景氛围图' },
-    { label: '彩蛋', type: 'bonus', detail: '当前角色/场景做与剧情无关的轻松行为' }
+    { label: '单人-近景', type: 'character', detail: '近景/特写，怼脸构图，重点表现五官、表情与视线' },
+    { label: '单人-全身', type: 'character', detail: '全身立绘，展示完整服装、姿态与肢体动作' },
+    { label: '双人', type: 'duo', detail: '两人同框互动，突出动作关系与情绪交流' },
+    { label: '场景', type: 'scene', detail: '纯场景要素为主，强调空间、环境细节与氛围光影' },
+    { label: '彩蛋', type: 'bonus', detail: '当前角色/场景做与剧情无关的轻松行为，自由发挥' }
   ], null, 2),
 
 
