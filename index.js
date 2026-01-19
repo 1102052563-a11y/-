@@ -7571,6 +7571,26 @@ function splitStoryIntoParts(text, count) {
   return parts;
 }
 
+function encodeBase64Utf8(text) {
+  const bytes = new TextEncoder().encode(String(text || ''));
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function decodeBase64Utf8(encoded) {
+  if (!encoded) return '';
+  try {
+    const binary = atob(String(encoded || ''));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return '';
+  }
+}
+
 async function loadTagDictionary(force = false) {
   if (!force && tagDictSet && tagDictBuckets) return { count: tagDictCount, loaded: true };
   if (tagDictLoadingPromise) return tagDictLoadingPromise;
@@ -7579,7 +7599,7 @@ async function loadTagDictionary(force = false) {
     const s = ensureSettings();
     let text = '';
     if (s.imageGenTagDictExternal) {
-      try { text = atob(String(s.imageGenTagDictExternal || '')); } catch { text = ''; }
+      text = decodeBase64Utf8(s.imageGenTagDictExternal);
     }
     if (!text) {
       const base = EXT_BASE_URL || '';
@@ -10165,7 +10185,7 @@ function ensureModal() {
       if (!file) return;
       const text = await readFileText(file);
       const s = ensureSettings();
-      s.imageGenTagDictExternal = btoa(text);
+      s.imageGenTagDictExternal = encodeBase64Utf8(text);
       saveSettings();
       tagDictSet = null;
       tagDictBuckets = null;
