@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
@@ -523,7 +523,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   novelaiSteps: 28,
   novelaiScale: 5,
   novelaiSampler: 'k_euler',
+  novelaiFixedSeedEnabled: false,
+  novelaiFixedSeed: 0,
   novelaiNegativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
+
   imageGenAutoSave: false,
   imageGenSavePath: '',
   imageGenLookbackMessages: 5,
@@ -7491,9 +7494,11 @@ function getBatchDistinctHint(index, total) {
 }
 
 function renderImageGenBatchPreview() {
+  const s = ensureSettings();
   const $wrap = $('#sg_imagegen_batch');
   if (!$wrap.length) return;
   if (!imageGenBatchPrompts.length) {
+
     $wrap.html('<div class="sg-floating-empty">尚未生成提示词</div>');
     return;
   }
@@ -7505,12 +7510,30 @@ function renderImageGenBatchPreview() {
     ? `<img class="sg-floating-image sg-image-zoom" src="${escapeHtml(imgUrl)}" data-full="${escapeHtml(imgUrl)}" alt="Generated" style="cursor: zoom-in;" />`
     : '<div class="sg-floating-empty">暂无图像</div>';
   const regenDisabled = (!imgUrl || imageGenBatchBusy) ? 'disabled' : '';
+  const model = String(s.novelaiModel || DEFAULT_SETTINGS.novelaiModel || 'nai-diffusion-4-5-full');
+  const resolution = String(s.novelaiResolution || '832x1216');
+  const steps = s.novelaiSteps || 28;
+  const scale = s.novelaiScale || 5;
+  const sampler = String(s.novelaiSampler || (model.includes('diffusion-4') ? 'k_euler_ancestral' : 'k_euler'));
+  const seedLabel = s.novelaiFixedSeedEnabled ? `固定:${clampInt(s.novelaiFixedSeed, 0, 4294967295, 0)}` : '随机';
+  const negative = String((s.novelaiNegativePrompt || '').trim());
+  const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '…' : ''}` : '（空）';
+  const paramsHtml = `
+    <div class="sg-floating-params">
+      <div><b>模型</b>：${escapeHtml(model)}</div>
+      <div><b>分辨率</b>：${escapeHtml(resolution)}</div>
+      <div><b>Steps</b>：${escapeHtml(String(steps))}｜<b>Scale</b>：${escapeHtml(String(scale))}</div>
+      <div><b>Sampler</b>：${escapeHtml(sampler)}｜<b>Seed</b>：${escapeHtml(seedLabel)}</div>
+      <div><b>负面</b>：${escapeHtml(negativePreview)}</div>
+    </div>
+  `;
   $wrap.html(`
     <div class="sg-floating-row">
       <div class="sg-floating-title-sm">提示词预览（${escapeHtml(counter)}）</div>
       <div class="sg-floating-status">${escapeHtml(status)}</div>
     </div>
     <div class="sg-floating-prompt">${escapeHtml(String(current.positive || ''))}</div>
+    ${paramsHtml}
     <div class="sg-floating-row sg-floating-row-actions">
       <button class="sg-floating-mini-btn" id="sg_imagegen_prev">◀</button>
       <button class="sg-floating-mini-btn" id="sg_imagegen_next">▶</button>
@@ -7520,6 +7543,7 @@ function renderImageGenBatchPreview() {
     </div>
     <div class="sg-floating-image-wrap">${imgHtml}</div>
   `);
+
 
   if (!imgUrl) $('#sg_imagegen_regen').prop('disabled', true);
 }
@@ -7712,9 +7736,13 @@ async function generateImageWithNovelAI(positive, negative) {
   const defaultNegative = s.novelaiNegativePrompt || DEFAULT_SETTINGS.novelaiNegativePrompt;
   const finalNegative = negative ? `${defaultNegative}, ${negative}` : defaultNegative;
 
-  const model = s.novelaiModel || 'nai-diffusion-3';
+  const model = String(s.novelaiModel || DEFAULT_SETTINGS.novelaiModel || 'nai-diffusion-4-5-full');
   const isV4 = model.includes('diffusion-4');
-  const seed = Math.floor(Math.random() * 4294967295);
+  const fixedSeedEnabled = !!s.novelaiFixedSeedEnabled;
+  const fixedSeed = clampInt(s.novelaiFixedSeed, 0, 4294967295, 0);
+  const seed = fixedSeedEnabled ? fixedSeed : Math.floor(Math.random() * 4294967295);
+  const sampler = String(s.novelaiSampler || (isV4 ? 'k_euler_ancestral' : 'k_euler'));
+
 
   // V4/V4.5 需要完全不同的参数格式
   let payload;
@@ -7730,7 +7758,8 @@ async function generateImageWithNovelAI(positive, negative) {
         height: height || 1216,
         scale: s.novelaiScale || 5,
         steps: s.novelaiSteps || 28,
-        sampler: s.novelaiSampler || 'k_euler_ancestral',
+        sampler: sampler,
+
         n_samples: 1,
         ucPreset: 0,
         qualityToggle: true,
@@ -7774,7 +7803,8 @@ async function generateImageWithNovelAI(positive, negative) {
         height: height || 1216,
         scale: s.novelaiScale || 5,
         steps: s.novelaiSteps || 28,
-        sampler: s.novelaiSampler || 'k_euler',
+        sampler: sampler,
+
         negative_prompt: finalNegative,
         n_samples: 1,
         ucPreset: 0,
@@ -7786,11 +7816,25 @@ async function generateImageWithNovelAI(positive, negative) {
 
   setImageGenStatus('正在调用 Novel AI API 生成图像…', 'warn');
 
+  console.log('[ImageGen] NovelAI request params:', {
+    model,
+    width: width || 832,
+    height: height || 1216,
+    steps: s.novelaiSteps || 28,
+    scale: s.novelaiScale || 5,
+    sampler,
+    seed,
+    fixedSeedEnabled,
+    negative: finalNegative,
+    isV4
+  });
+
   const response = await fetch('https://image.novelai.net/ai/generate-image', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'Accept': 'application/zip' },
     body: JSON.stringify(payload)
   });
+
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
@@ -9313,15 +9357,42 @@ function buildModalHtml() {
               </div>
 
               <div class="sg-field">
-                <label>默认负面提示词</label>
-                <textarea id="sg_novelaiNegativePrompt" rows="2" placeholder="lowres, bad anatomy, ..."></textarea>
-              </div>
+                  <label>默认负面提示词</label>
+                  <textarea id="sg_novelaiNegativePrompt" rows="2" placeholder="lowres, bad anatomy, ..."></textarea>
+                </div>
 
-              <hr class="sg-hr">
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>Sampler</label>
+                    <select id="sg_novelaiSampler">
+                      <option value="k_euler">k_euler</option>
+                      <option value="k_euler_ancestral">k_euler_ancestral</option>
+                      <option value="k_dpmpp_2m">k_dpmpp_2m</option>
+                      <option value="k_dpmpp_2m_sde">k_dpmpp_2m_sde</option>
+                      <option value="k_dpmpp_sde">k_dpmpp_sde</option>
+                      <option value="k_dpmpp_2s_a">k_dpmpp_2s_a</option>
+                      <option value="k_dpmpp_sde_ancestral">k_dpmpp_sde_ancestral</option>
+                      <option value="k_lms">k_lms</option>
+                      <option value="k_heun">k_heun</option>
+                      <option value="k_dpm_2">k_dpm_2</option>
+                      <option value="k_dpm_2_ancestral">k_dpm_2_ancestral</option>
+                    </select>
+                  </div>
+                  <div class="sg-field">
+                    <label>固定 Seed</label>
+                    <div class="sg-row sg-inline" style="gap:8px; align-items:center;">
+                      <label class="sg-check"><input type="checkbox" id="sg_novelaiFixedSeedEnabled">启用</label>
+                      <input id="sg_novelaiFixedSeed" type="number" min="0" max="4294967295" step="1" style="flex:1; min-width:120px;">
+                    </div>
+                  </div>
+                </div>
 
-              <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_imageGenAutoSave">自动保存生成的图像</label>
-              </div>
+                <hr class="sg-hr">
+
+                <div class="sg-row sg-inline">
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenAutoSave">自动保存生成的图像</label>
+                </div>
+
               <div class="sg-field">
                 <label>保存路径（留空则仅显示不保存）</label>
                 <input id="sg_imageGenSavePath" type="text" placeholder="例如：C:/Images/Generated">
@@ -9730,10 +9801,11 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiNegativePrompt').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
+
 
   $('#sg_refreshModels').on('click', async () => {
 
@@ -10510,11 +10582,15 @@ function pullSettingsToUi() {
   // 图像生成设置
   $('#sg_imageGenEnabled').prop('checked', !!s.imageGenEnabled);
   $('#sg_novelaiApiKey').val(String(s.novelaiApiKey || ''));
-  $('#sg_novelaiModel').val(String(s.novelaiModel || 'nai-diffusion-3'));
+  $('#sg_novelaiModel').val(String(s.novelaiModel || DEFAULT_SETTINGS.novelaiModel || 'nai-diffusion-4-5-full'));
   $('#sg_novelaiResolution').val(String(s.novelaiResolution || '832x1216'));
   $('#sg_novelaiSteps').val(s.novelaiSteps || 28);
   $('#sg_novelaiScale').val(s.novelaiScale || 5);
+  $('#sg_novelaiSampler').val(String(s.novelaiSampler || 'k_euler'));
+  $('#sg_novelaiFixedSeedEnabled').prop('checked', !!s.novelaiFixedSeedEnabled);
+  $('#sg_novelaiFixedSeed').val(Number.isFinite(Number(s.novelaiFixedSeed)) ? Number(s.novelaiFixedSeed) : 0);
   $('#sg_novelaiNegativePrompt').val(String(s.novelaiNegativePrompt || ''));
+
   $('#sg_imageGenAutoSave').prop('checked', !!s.imageGenAutoSave);
   $('#sg_imageGenSavePath').val(String(s.imageGenSavePath || ''));
   $('#sg_imageGenLookbackMessages').val(s.imageGenLookbackMessages || 5);
@@ -11005,11 +11081,15 @@ function pullUiToSettings() {
   // 图像生成设置
   s.imageGenEnabled = $('#sg_imageGenEnabled').is(':checked');
   s.novelaiApiKey = String($('#sg_novelaiApiKey').val() || '').trim();
-  s.novelaiModel = String($('#sg_novelaiModel').val() || 'nai-diffusion-3');
+  s.novelaiModel = String($('#sg_novelaiModel').val() || DEFAULT_SETTINGS.novelaiModel || 'nai-diffusion-4-5-full');
   s.novelaiResolution = String($('#sg_novelaiResolution').val() || '832x1216');
   s.novelaiSteps = clampInt($('#sg_novelaiSteps').val(), 1, 50, s.novelaiSteps || 28);
   s.novelaiScale = clampFloat($('#sg_novelaiScale').val(), 1, 10, s.novelaiScale || 5);
+  s.novelaiSampler = String($('#sg_novelaiSampler').val() || s.novelaiSampler || 'k_euler');
+  s.novelaiFixedSeedEnabled = $('#sg_novelaiFixedSeedEnabled').is(':checked');
+  s.novelaiFixedSeed = clampInt($('#sg_novelaiFixedSeed').val(), 0, 4294967295, s.novelaiFixedSeed || 0);
   s.novelaiNegativePrompt = String($('#sg_novelaiNegativePrompt').val() || '').trim();
+
   s.imageGenAutoSave = $('#sg_imageGenAutoSave').is(':checked');
   s.imageGenSavePath = String($('#sg_imageGenSavePath').val() || '').trim();
   s.imageGenLookbackMessages = clampInt($('#sg_imageGenLookbackMessages').val(), 1, 30, s.imageGenLookbackMessages || 5);

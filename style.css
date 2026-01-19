@@ -1455,6 +1455,16 @@ body.sg-zoom-lock {
   overflow: auto;
 }
 
+.sg-floating-params {
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin-bottom: 8px;
+  opacity: 0.9;
+}
+
 .sg-floating-row-actions {
   align-items: center;
 }
