@@ -1490,7 +1490,9 @@ body.sg-zoom-lock {
   opacity: 1;
   visibility: visible;
   transform: translateY(0) scale(1);
+  display: flex;
 }
+
 
 .sg-floating-header {
   display: flex;

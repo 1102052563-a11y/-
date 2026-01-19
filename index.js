@@ -11232,15 +11232,16 @@ function showFloatingPanel() {
       panel.style.transform = '';
       panel.style.maxWidth = '';
       panel.style.maxHeight = '';
-      panel.style.display = '';
+      panel.style.display = 'flex';
       panel.style.height = '';
       panel.style.opacity = '';
       panel.style.visibility = '';
       panel.style.transition = '';
       panel.style.borderRadius = '';
     } else {
-      panel.style.display = '';
+      panel.style.display = 'flex';
     }
+
 
     panel.classList.add('visible');
     floatingPanelVisible = true;
