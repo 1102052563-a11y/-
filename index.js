@@ -515,16 +515,19 @@ const DEFAULT_SETTINGS = Object.freeze({
   // ===== 图像生成模块 =====
   imageGenEnabled: false,
   novelaiApiKey: '',
-  novelaiModel: 'nai-diffusion-3', // nai-diffusion-3 | nai-diffusion-4-curated-preview
+  novelaiModel: 'nai-diffusion-4-5-full', // V4.5 Full | V4 Full | V4 Curated | V3
   novelaiResolution: '832x1216', // 默认立绘尺寸
   novelaiSteps: 28,
   novelaiScale: 5,
   novelaiSampler: 'k_euler',
   novelaiNegativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
   imageGenAutoSave: false,
-  imageGenSavePath: '', // 用户设置的保存路径
-  imageGenLookbackMessages: 5, // 读取最近几条消息
-  imageGenLlmProvider: 'st', // st | custom
+  imageGenSavePath: '',
+  imageGenLookbackMessages: 5,
+  imageGenLlmProvider: 'custom', // custom
+  imageGenCustomEndpoint: '',
+  imageGenCustomApiKey: '',
+  imageGenCustomModel: 'gpt-4o-mini',
   imageGenSystemPrompt: `你是专业的AI绘画提示词生成器。根据提供的故事内容，分析场景或角色，输出 Novel AI 格式的 Danbooru 风格标签。
 
 要求：
@@ -7048,6 +7051,66 @@ function setImageGenStatus(text, kind = '') {
   $s.text(text || '');
 }
 
+// 通用 LLM 调用函数（使用图像生成模块独立 API）
+async function callLLM(messages, opts = {}) {
+  const s = ensureSettings();
+  const temperature = opts.temperature ?? 0.7;
+  const maxTokens = opts.max_tokens ?? 1024;
+
+  // 使用图像生成模块独立的 API 配置
+  const endpoint = s.imageGenCustomEndpoint || '';
+  const apiKey = s.imageGenCustomApiKey || '';
+  const model = s.imageGenCustomModel || 'gpt-4o-mini';
+
+  if (!endpoint) {
+    throw new Error('请先在「图像生成」标签页配置 LLM API 基础URL');
+  }
+
+  return await callViaCustom(endpoint, apiKey, model, messages, temperature, maxTokens, 0.95, false);
+}
+
+// 刷新图像生成 LLM 模型列表
+async function refreshImageGenModels() {
+  const s = ensureSettings();
+  const raw = String($('#sg_imageGenCustomEndpoint').val() || s.imageGenCustomEndpoint || '').trim();
+  const apiBase = normalizeBaseUrl(raw);
+  if (!apiBase) { setImageGenStatus('请先填写 LLM API 基础URL', 'warn'); return; }
+
+  setImageGenStatus('正在刷新模型列表…', 'warn');
+
+  try {
+    const apiKey = String($('#sg_imageGenCustomApiKey').val() || s.imageGenCustomApiKey || '').trim();
+    const url = apiBase + '/v1/models';
+    const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = await response.json();
+    const models = (data.data || data.models || data || [])
+      .map(m => typeof m === 'string' ? m : (m.id || m.name || ''))
+      .filter(Boolean)
+      .sort();
+
+    if (!models.length) { setImageGenStatus('未找到可用模型', 'warn'); return; }
+
+    const $sel = $('#sg_imageGenCustomModel');
+    const cur = $sel.val();
+    $sel.empty();
+    for (const m of models) {
+      $sel.append($('<option>').val(m).text(m));
+    }
+    if (models.includes(cur)) $sel.val(cur);
+    else if (models.length) $sel.val(models[0]);
+
+    pullUiToSettings(); saveSettings();
+    setImageGenStatus(`✅ 已加载 ${models.length} 个模型`, 'ok');
+  } catch (e) {
+    console.error('[ImageGen] Refresh models failed:', e);
+    setImageGenStatus(`❌ 刷新失败: ${e?.message || e}`, 'err');
+  }
+}
+
 async function generateImagePromptWithLLM(storyContent, genType) {
   const s = ensureSettings();
   const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
@@ -8493,18 +8556,49 @@ function buildModalHtml() {
                 <label class="sg-check"><input type="checkbox" id="sg_imageGenEnabled">启用图像生成模块</label>
               </div>
 
-              <div class="sg-field">
-                <label>Novel AI API Key</label>
-                <input id="sg_novelaiApiKey" type="password" placeholder="pst-...">
-                <div class="sg-hint">需要 Novel AI 订阅才能使用 API</div>
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title" style="font-size:0.95em;">LLM 提示词生成 API</div>
+                <div class="sg-hint">用于将剧情内容转换为图像生成标签（Tag）</div>
+                <div class="sg-grid2" style="margin-top:8px;">
+                  <div class="sg-field">
+                    <label>API 基础URL</label>
+                    <input id="sg_imageGenCustomEndpoint" type="text" placeholder="https://api.openai.com/v1">
+                  </div>
+                  <div class="sg-field">
+                    <label>API Key</label>
+                    <input id="sg_imageGenCustomApiKey" type="password" placeholder="sk-...">
+                  </div>
+                </div>
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>模型</label>
+                    <select id="sg_imageGenCustomModel">
+                      <option value="gpt-4o-mini">gpt-4o-mini</option>
+                      <option value="gpt-4o">gpt-4o</option>
+                    </select>
+                  </div>
+                  <div class="sg-field" style="display:flex; align-items:flex-end;">
+                    <button class="menu_button sg-btn" id="sg_imageGenRefreshModels">🔄 刷新模型</button>
+                  </div>
+                </div>
               </div>
+
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title" style="font-size:0.95em;">Novel AI 图像 API</div>
+                <div class="sg-field">
+                  <label>Novel AI API Key</label>
+                  <input id="sg_novelaiApiKey" type="password" placeholder="pst-...">
+                  <div class="sg-hint">需要 Novel AI 订阅才能使用 API</div>
+                </div>
 
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label>模型</label>
                   <select id="sg_novelaiModel">
+                    <option value="nai-diffusion-4-5-full">NAI Diffusion V4.5 Full</option>
+                    <option value="nai-diffusion-4-full">NAI Diffusion V4 Full</option>
+                    <option value="nai-diffusion-4-curated-preview">NAI Diffusion V4 Curated</option>
                     <option value="nai-diffusion-3">NAI Diffusion V3</option>
-                    <option value="nai-diffusion-4-curated-preview">NAI Diffusion V4 (Preview)</option>
                   </select>
                 </div>
                 <div class="sg-field">
@@ -8863,7 +8957,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -8874,6 +8968,11 @@ function ensureModal() {
   $('#sg_refreshModels').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await refreshModels();
+  });
+
+  $('#sg_imageGenRefreshModels').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await refreshImageGenModels();
   });
 
   // 导出/导入全局预设
@@ -9513,6 +9612,9 @@ function pullSettingsToUi() {
   $('#sg_imageGenAutoSave').prop('checked', !!s.imageGenAutoSave);
   $('#sg_imageGenSavePath').val(String(s.imageGenSavePath || ''));
   $('#sg_imageGenLookbackMessages').val(s.imageGenLookbackMessages || 5);
+  $('#sg_imageGenCustomEndpoint').val(String(s.imageGenCustomEndpoint || ''));
+  $('#sg_imageGenCustomApiKey').val(String(s.imageGenCustomApiKey || ''));
+  $('#sg_imageGenCustomModel').val(String(s.imageGenCustomModel || 'gpt-4o-mini'));
   $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt));
 
   // 在线图库设置
@@ -9976,6 +10078,9 @@ function pullUiToSettings() {
   s.imageGenAutoSave = $('#sg_imageGenAutoSave').is(':checked');
   s.imageGenSavePath = String($('#sg_imageGenSavePath').val() || '').trim();
   s.imageGenLookbackMessages = clampInt($('#sg_imageGenLookbackMessages').val(), 1, 30, s.imageGenLookbackMessages || 5);
+  s.imageGenCustomEndpoint = String($('#sg_imageGenCustomEndpoint').val() || '').trim();
+  s.imageGenCustomApiKey = String($('#sg_imageGenCustomApiKey').val() || '').trim();
+  s.imageGenCustomModel = String($('#sg_imageGenCustomModel').val() || 'gpt-4o-mini');
   s.imageGenSystemPrompt = String($('#sg_imageGenSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.imageGenSystemPrompt;
 
   // 在线图库设置
