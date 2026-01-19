@@ -547,6 +547,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   "positive": "1girl, long black hair, red eyes, ...",
   "negative": "额外的负面标签（可选，留空则使用默认）"
 }`,
+  imageGenArtistPromptEnabled: true,
+  imageGenArtistPrompt: '5::masterpiece, best quality ::, 3.65::3D, realistic, photorealistic ::,2.25::Artist:bm94199 ::,1.85::Artist:yueko (jiayue wu) ::,1.35::Artist:ruanjia ::,1.35::Artist:wo_jiushi_kanbudong ::,1.05::artist:seven_(sixplusone) ::,1.05::Artist:slash (slash-soft) ::,0.85::Artist:shal.e ::,0.75::Artist:nixeu ::,0.55::Artist:billyhhyb ::,-5::2D ::,-1::vivid::, year2025, cinematic , 0.9::lighting, volumetric lighting, no text, realistic, photo, real, artbook ::, 0.2::monochrome ::, 1.2::small eyes ::, 0.8::clean, normal ::,',
+
 
   // 在线图库设置
   imageGalleryEnabled: false,
@@ -7387,13 +7390,27 @@ async function runImageGeneration() {
     }
     const promptResult = await generateImagePromptWithLLM(storyContent, genType, statData);
 
+    const normalizePositive = (text) => String(text || '')
+      .replace(/\s+/g, ' ')
+      .replace(/^\s*,+\s*/g, '')
+      .replace(/\s*,+\s*$/g, '')
+      .trim();
+
     // 从世界书匹配角色标签
     const worldBookTags = matchCharacterTagsFromWorldBook(storyContent);
-    let finalPositive = promptResult.positive;
+    let finalPositive = normalizePositive(promptResult.positive);
     if (worldBookTags) {
-      finalPositive = worldBookTags + ', ' + promptResult.positive;
+      finalPositive = `${normalizePositive(worldBookTags)}, ${finalPositive}`;
       console.log('[ImageGen] Added world book tags:', worldBookTags);
     }
+
+    if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
+      const artistPrompt = normalizePositive(s.imageGenArtistPrompt);
+      if (artistPrompt) {
+        finalPositive = `${artistPrompt}, ${finalPositive}`;
+      }
+    }
+
 
     $('#sg_imagePositivePrompt').val(finalPositive);
     $('#sg_imagePromptPreview').show();
@@ -8848,6 +8865,18 @@ function buildModalHtml() {
                   <button class="menu_button sg-btn" id="sg_imageGenResetPrompt">恢复默认提示词</button>
                 </div>
               </div>
+
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title" style="font-size:0.95em;">画师/正向提示词</div>
+                <div class="sg-hint">启用后会把该权重串追加到正向提示词最前面。</div>
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenArtistPromptEnabled">启用画师/正向提示词</label>
+                </div>
+                <div class="sg-field" style="margin-top:6px;">
+                  <textarea id="sg_imageGenArtistPrompt" rows="4" placeholder="请输入权重串，如 1.2::artist:name ::, masterpiece"></textarea>
+                </div>
+              </div>
+
             </div>
 
             <div class="sg-card">
@@ -9818,6 +9847,9 @@ function pullSettingsToUi() {
   $('#sg_imageGenCustomApiKey').val(String(s.imageGenCustomApiKey || ''));
   $('#sg_imageGenCustomModel').val(String(s.imageGenCustomModel || 'gpt-4o-mini'));
   $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt));
+  $('#sg_imageGenArtistPromptEnabled').prop('checked', !!s.imageGenArtistPromptEnabled);
+  $('#sg_imageGenArtistPrompt').val(String(s.imageGenArtistPrompt || ''));
+
 
   // 在线图库设置
   $('#sg_imageGalleryEnabled').prop('checked', !!s.imageGalleryEnabled);
@@ -10293,8 +10325,11 @@ function pullUiToSettings() {
   s.imageGenCustomApiKey = String($('#sg_imageGenCustomApiKey').val() || '').trim();
   s.imageGenCustomModel = String($('#sg_imageGenCustomModel').val() || 'gpt-4o-mini');
   s.imageGenSystemPrompt = String($('#sg_imageGenSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.imageGenSystemPrompt;
+  s.imageGenArtistPromptEnabled = $('#sg_imageGenArtistPromptEnabled').is(':checked');
+  s.imageGenArtistPrompt = String($('#sg_imageGenArtistPrompt').val() || '').trim();
 
   // 在线图库设置
+
   s.imageGalleryEnabled = $('#sg_imageGalleryEnabled').is(':checked');
   s.imageGalleryUrl = String($('#sg_imageGalleryUrl').val() || '').trim();
 
