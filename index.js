@@ -299,6 +299,9 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // 预设导入/导出
   presetIncludeApiKey: false,
+  imageGenPresetList: '[]',
+  imageGenPresetActive: '',
+
 
   // 世界书（World Info/Lorebook）导入与注入
   worldbookEnabled: false,
@@ -2297,7 +2300,58 @@ function validateAndNormalizeModules(raw) {
 
 // -------------------- presets & worldbook --------------------
 
+function normalizeImageGenPresetName(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, 64);
+}
+
+function getImageGenPresetList() {
+  const s = ensureSettings();
+  const raw = String(s.imageGenPresetList || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function setImageGenPresetList(list) {
+  const s = ensureSettings();
+  s.imageGenPresetList = JSON.stringify(list || [], null, 2);
+  saveSettings();
+}
+
+function getImageGenPresetSnapshot() {
+  const s = ensureSettings();
+  return {
+    imageGenSystemPrompt: s.imageGenSystemPrompt,
+    imageGenArtistPromptEnabled: s.imageGenArtistPromptEnabled,
+    imageGenArtistPrompt: s.imageGenArtistPrompt,
+    imageGenPromptRulesEnabled: s.imageGenPromptRulesEnabled,
+    imageGenPromptRules: s.imageGenPromptRules,
+    imageGenBatchEnabled: s.imageGenBatchEnabled,
+    imageGenBatchPatterns: s.imageGenBatchPatterns,
+    imageGenReadStatData: s.imageGenReadStatData,
+    imageGenStatVarName: s.imageGenStatVarName
+  };
+}
+
+function applyImageGenPresetSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+  const s = ensureSettings();
+  const keys = Object.keys(getImageGenPresetSnapshot());
+  for (const k of keys) {
+    if (Object.hasOwn(snapshot, k)) s[k] = snapshot[k];
+  }
+  saveSettings();
+  pullSettingsToUi();
+}
+
 function downloadTextFile(filename, text, mime = 'application/json') {
+
   const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -9175,7 +9229,7 @@ function buildModalHtml() {
                 </div>
               </div>
 
-              <div class="sg-card sg-subcard" style="margin-top:10px;">
+               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-card-title" style="font-size:0.95em;">批量提示词模板</div>
                 <div class="sg-hint">用于生成五组提示词的模板（JSON 数组）。</div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
@@ -9186,6 +9240,21 @@ function buildModalHtml() {
                 </div>
                 <div class="sg-actions-row" style="margin-top:6px;">
                   <button class="menu_button sg-btn" id="sg_imageGenResetBatch">恢复默认模板</button>
+                </div>
+              </div>
+
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title" style="font-size:0.95em;">图像生成预设</div>
+                <div class="sg-hint">保存/导入用于“正文→标签”的预设配置。</div>
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <select id="sg_imageGenPresetSelect" style="min-width:160px;"></select>
+                  <button class="menu_button sg-btn" id="sg_imageGenApplyPreset">应用</button>
+                  <button class="menu_button sg-btn" id="sg_imageGenSavePreset">保存为预设</button>
+                  <button class="menu_button sg-btn" id="sg_imageGenDeletePreset">删除</button>
+                </div>
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <button class="menu_button sg-btn" id="sg_imageGenExportPreset">导出预设</button>
+                  <button class="menu_button sg-btn" id="sg_imageGenImportPreset">导入预设</button>
                 </div>
               </div>
 
@@ -9501,7 +9570,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -9522,6 +9591,93 @@ function ensureModal() {
     pullUiToSettings();
     saveSettings();
     setStatus('已恢复默认批量模板 ✅', 'ok');
+  });
+
+  $('#sg_imageGenSavePreset').on('click', () => {
+    const name = normalizeImageGenPresetName(prompt('预设名称：') || '');
+    if (!name) return;
+    const list = getImageGenPresetList();
+    const snapshot = getImageGenPresetSnapshot();
+    const idx = list.findIndex(p => p?.name === name);
+    if (idx >= 0) list[idx] = { name, snapshot };
+    else list.push({ name, snapshot });
+    setImageGenPresetList(list);
+    const s = ensureSettings();
+    s.imageGenPresetActive = name;
+    saveSettings();
+    pullSettingsToUi();
+    setStatus('预设已保存 ✅', 'ok');
+  });
+
+  $('#sg_imageGenApplyPreset').on('click', () => {
+    const name = String($('#sg_imageGenPresetSelect').val() || '').trim();
+    if (!name) return;
+    const list = getImageGenPresetList();
+    const preset = list.find(p => p?.name === name);
+    if (!preset) return;
+    applyImageGenPresetSnapshot(preset.snapshot);
+    const s = ensureSettings();
+    s.imageGenPresetActive = name;
+    saveSettings();
+    setStatus('预设已应用 ✅', 'ok');
+  });
+
+  $('#sg_imageGenDeletePreset').on('click', () => {
+    const name = String($('#sg_imageGenPresetSelect').val() || '').trim();
+    if (!name) return;
+    const list = getImageGenPresetList().filter(p => p?.name !== name);
+    setImageGenPresetList(list);
+    const s = ensureSettings();
+    if (s.imageGenPresetActive === name) s.imageGenPresetActive = '';
+    saveSettings();
+    pullSettingsToUi();
+    setStatus('预设已删除', 'ok');
+  });
+
+  $('#sg_imageGenExportPreset').on('click', () => {
+    const name = String($('#sg_imageGenPresetSelect').val() || '').trim();
+    const list = getImageGenPresetList();
+    const preset = list.find(p => p?.name === name);
+    if (!preset) {
+      setStatus('请选择一个预设再导出', 'warn');
+      return;
+    }
+    const payload = {
+      _type: 'StoryGuide_ImageGenPreset',
+      _version: '1.0',
+      _exportedAt: new Date().toISOString(),
+      name: preset.name,
+      snapshot: preset.snapshot
+    };
+    downloadTextFile(`storyguide-imagegen-preset-${preset.name}.json`, JSON.stringify(payload, null, 2));
+    setStatus('预设已导出 ✅', 'ok');
+  });
+
+  $('#sg_imageGenImportPreset').on('click', async () => {
+    const file = await pickFile('.json,application/json');
+    if (!file) return;
+    try {
+      const txt = await readFileText(file);
+      const data = JSON.parse(txt);
+      if (!data || data._type !== 'StoryGuide_ImageGenPreset') {
+        setStatus('预设文件格式不正确', 'err');
+        return;
+      }
+      const name = normalizeImageGenPresetName(data.name || '未命名');
+      if (!name) return;
+      const list = getImageGenPresetList();
+      const idx = list.findIndex(p => p?.name === name);
+      if (idx >= 0) list[idx] = { name, snapshot: data.snapshot || {} };
+      else list.push({ name, snapshot: data.snapshot || {} });
+      setImageGenPresetList(list);
+      const s = ensureSettings();
+      s.imageGenPresetActive = name;
+      saveSettings();
+      pullSettingsToUi();
+      setStatus('预设已导入 ✅', 'ok');
+    } catch (e) {
+      setStatus(`导入失败：${e?.message ?? e}`, 'err');
+    }
   });
 
 
@@ -10173,6 +10329,17 @@ function pullSettingsToUi() {
   $('#sg_imageGenCustomApiKey').val(String(s.imageGenCustomApiKey || ''));
   $('#sg_imageGenCustomModel').val(String(s.imageGenCustomModel || 'gpt-4o-mini'));
   $('#sg_imageGenCustomMaxTokens').val(s.imageGenCustomMaxTokens || 1024);
+
+  const presetList = getImageGenPresetList();
+  const $presetSelect = $('#sg_imageGenPresetSelect');
+  if ($presetSelect.length) {
+    $presetSelect.empty();
+    $presetSelect.append($('<option>').val('').text('选择预设'));
+    for (const item of presetList) {
+      $presetSelect.append($('<option>').val(item?.name || '').text(item?.name || '未命名'));
+    }
+    if (s.imageGenPresetActive) $presetSelect.val(s.imageGenPresetActive);
+  }
 
   $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt));
   $('#sg_imageGenArtistPromptEnabled').prop('checked', !!s.imageGenArtistPromptEnabled);
