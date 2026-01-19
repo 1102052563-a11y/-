@@ -638,6 +638,7 @@ let imageGenPreviewIndex = 0;
 let imageGenBatchStatus = '';
 let imageGenBatchBusy = false;
 let lastNovelaiPayload = null;
+let imageGenPreviewExpanded = true;
 
 
 
@@ -7620,8 +7621,10 @@ function renderImageGenBatchPreview() {
   const negative = String((s.novelaiNegativePrompt || '').trim());
   const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '…' : ''}` : '（空）';
   const legacyLabel = legacy ? '开' : '关';
+  const expandLabel = imageGenPreviewExpanded ? '折叠预览' : '展开预览';
+  const previewHiddenClass = imageGenPreviewExpanded ? '' : 'sg-floating-preview-collapsed';
   const paramsHtml = `
-    <div class="sg-floating-params">
+    <div class="sg-floating-params ${previewHiddenClass}">
       <div><b>模型</b>：${escapeHtml(model)}</div>
       <div><b>分辨率</b>：${escapeHtml(resolution)}</div>
       <div><b>Steps</b>：${escapeHtml(String(steps))}｜<b>Scale</b>：${escapeHtml(String(scale))}</div>
@@ -7630,6 +7633,7 @@ function renderImageGenBatchPreview() {
       <div><b>负面</b>：${escapeHtml(negativePreview)}</div>
     </div>
     <div class="sg-floating-row sg-floating-row-actions" style="margin-top:-2px;">
+      <button class="sg-floating-mini-btn" id="sg_imagegen_toggle_preview">${escapeHtml(expandLabel)}</button>
       <button class="sg-floating-mini-btn" id="sg_imagegen_copy_payload">复制请求参数</button>
     </div>
   `;
@@ -11887,6 +11891,12 @@ function createFloatingPanel() {
     } catch (err) {
       imageGenBatchStatus = `复制失败：${err?.message || err}`;
     }
+    renderImageGenBatchPreview();
+  });
+
+  $(document).on('click', '#sg_imagegen_toggle_preview', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    imageGenPreviewExpanded = !imageGenPreviewExpanded;
     renderImageGenBatchPreview();
   });
 

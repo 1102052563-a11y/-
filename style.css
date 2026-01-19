@@ -1465,6 +1465,10 @@ body.sg-zoom-lock {
   opacity: 0.9;
 }
 
+.sg-floating-preview-collapsed {
+  display: none;
+}
+
 .sg-profile-row {
   padding: 10px;
   border-radius: 12px;
