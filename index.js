@@ -7825,8 +7825,6 @@ async function generateImageWithNovelAI(positive, negative) {
 
   setImageGenStatus('正在调用 Novel AI API 生成图像…', 'warn');
 
-  const legacy = isV4 ? (s.novelaiLegacy !== false) : true;
-
   console.log('[ImageGen] NovelAI request params:', {
     model,
     width: width || 832,
