@@ -7741,7 +7741,7 @@ async function generateImageWithNovelAI(positive, negative) {
         sm: false,
         sm_dyn: false,
         noise_schedule: 'native',
-        legacy: false,
+        legacy: true,  // 启用以支持 V3 风格的 :: 权重语法
         legacy_v3_extend: false,
         skip_cfg_above_sigma: null,
         variety_boost: false,
