@@ -7165,24 +7165,29 @@ async function generateImageWithNovelAI(positive, negative) {
 
   const model = s.novelaiModel || 'nai-diffusion-3';
   const isV4 = model.includes('diffusion-4');
+  const seed = Math.floor(Math.random() * 4294967295);
 
-  // V4/V4.5 需要不同的参数格式
-  const payload = {
-    input: positive,
-    model: model,
-    action: 'generate',
-    parameters: {
-      width: width || 832,
-      height: height || 1216,
-      scale: s.novelaiScale || 5,
-      steps: s.novelaiSteps || 28,
-      sampler: s.novelaiSampler || 'k_euler',
-      negative_prompt: finalNegative,
-      n_samples: 1,
-      ucPreset: 0,
-      qualityToggle: true,
-      // V4/V4.5 所需额外参数
-      ...(isV4 ? {
+  // V4/V4.5 需要完全不同的参数格式
+  let payload;
+
+  if (isV4) {
+    // V4/V4.5 格式 - 基于 novelai-python SDK
+    payload = {
+      input: positive,
+      model: model,
+      action: 'generate',
+      parameters: {
+        width: width || 832,
+        height: height || 1216,
+        scale: s.novelaiScale || 5,
+        steps: s.novelaiSteps || 28,
+        sampler: s.novelaiSampler || 'k_euler_ancestral',
+        n_samples: 1,
+        ucPreset: 0,
+        qualityToggle: true,
+        seed: seed,
+        negative_prompt: finalNegative,
+        // V4/V4.5 特有参数
         cfg_rescale: 0,
         sm: false,
         sm_dyn: false,
@@ -7190,12 +7195,45 @@ async function generateImageWithNovelAI(positive, negative) {
         legacy: false,
         legacy_v3_extend: false,
         skip_cfg_above_sigma: null,
-        seed: Math.floor(Math.random() * 4294967295)
-      } : {
-        seed: Math.floor(Math.random() * 4294967295)
-      })
-    }
-  };
+        variety_boost: false,
+        decrisp_mode: false,
+        use_coords: false,
+        v4_prompt: {
+          caption: {
+            base_caption: positive,
+            char_captions: []
+          },
+          use_coords: false,
+          use_order: false
+        },
+        v4_negative_prompt: {
+          caption: {
+            base_caption: finalNegative,
+            char_captions: []
+          }
+        }
+      }
+    };
+  } else {
+    // V3 格式
+    payload = {
+      input: positive,
+      model: model,
+      action: 'generate',
+      parameters: {
+        width: width || 832,
+        height: height || 1216,
+        scale: s.novelaiScale || 5,
+        steps: s.novelaiSteps || 28,
+        sampler: s.novelaiSampler || 'k_euler',
+        negative_prompt: finalNegative,
+        n_samples: 1,
+        ucPreset: 0,
+        qualityToggle: true,
+        seed: seed
+      }
+    };
+  }
 
   setImageGenStatus('正在调用 Novel AI API 生成图像…', 'warn');
 
