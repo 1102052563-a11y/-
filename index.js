@@ -11528,7 +11528,6 @@ function createFloatingPanel() {
     }
   });
 
-
   // Drag logic
   const header = panel.querySelector('.sg-floating-header');
   let dragging = false;
@@ -12026,6 +12025,16 @@ function init() {
     createFloatingButton();
     injectFixedInputButton();
     installRollPreSendHook();
+
+    // 浮动面板图像点击放大（使用 document 级别事件委托确保动态元素可响应）
+    $(document).on('click', '#sg_floating_panel .sg-image-zoom, #sg_floating_panel .sg-floating-image', (e) => {
+      const $img = $(e.currentTarget);
+      const src = String($img.attr('data-full') || $img.attr('src') || '').trim();
+      if (!src) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openImagePreviewModal(src, $img.attr('alt') || 'Image preview');
+    });
   });
 
   // 聊天切换时自动绑定世界书
