@@ -7684,60 +7684,70 @@ async function generateImagePromptBatch() {
   const storyParts = splitStoryIntoParts(storyContent, 5);
   const results = [];
 
-  for (let i = 0; i < patterns.length; i += 1) {
-    const pattern = patterns[i];
-    let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
-    if (statDataJson) {
-      userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
-    }
+  let batchPrompt = `请根据以下故事内容生成一组图像提示词列表（JSON 数组）。\n\n`;
+  if (statDataJson) {
+    batchPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+  }
 
+  batchPrompt += `需要生成 ${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
+  batchPrompt += `要求：只输出 JSON 数组，不要其它文字。positive/negative 必须是英文标签串（逗号分隔）。\n`;
+
+  const patternLines = patterns.map((pattern, idx) => {
+    let rule = '';
     if (pattern.type === 'story') {
-      const part = storyParts.shift() || storyContent;
-      userPrompt += `【要求】：生成剧情代表性画面，可能包含单人/多人/对战/交谈等。\n`;
-      userPrompt += `【剧情片段】：\n${part}\n`;
+      const part = storyParts[idx] || storyContent;
+      rule = `剧情代表性画面。剧情片段：${part}`;
     } else if (pattern.type === 'character_close') {
-      userPrompt += `【要求】：生成单人女性近景特写，强调脸部与表情。\n`;
+      rule = '单人女性近景特写，强调脸部与表情。';
     } else if (pattern.type === 'character_full') {
-      userPrompt += `【要求】：生成单人女性全身立绘，展示服装与姿态。\n`;
+      rule = '单人女性全身立绘，展示服装与姿态。';
     } else if (pattern.type === 'duo') {
-      userPrompt += `【要求】：生成双人同框提示词，突出两人互动和构图；若剧情没有双人，请仍生成双人构图。\n`;
+      rule = '双人同框互动，突出动作关系与情绪交流；即使剧情没有双人也要生成双人构图。';
     } else if (pattern.type === 'scene') {
-      userPrompt += `【要求】：生成场景图提示词，重点描述环境和氛围。\n`;
+      rule = '场景图提示词，重点描述环境和氛围。';
     } else if (pattern.type === 'custom_female_1') {
       const custom = String(s.imageGenCustomFemalePrompt1 || '').trim();
-      userPrompt += `【要求】：生成女性角色提示词，融合以下自定义描述。\n`;
-      if (custom) userPrompt += `【自定义】：${custom}\n`;
+      rule = `女性角色提示词，融合自定义描述：${custom || '（空）'}`;
     } else if (pattern.type === 'custom_female_2') {
       const custom = String(s.imageGenCustomFemalePrompt2 || '').trim();
-      userPrompt += `【要求】：生成女性角色提示词，融合以下自定义描述。\n`;
-      if (custom) userPrompt += `【自定义】：${custom}\n`;
+      rule = `女性角色提示词，融合自定义描述：${custom || '（空）'}`;
     } else {
-      userPrompt += `【要求】：生成彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。\n`;
+      rule = '彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。';
     }
+    const distinctHint = getBatchDistinctHint(idx, patterns.length);
+    const detail = pattern.detail ? `细化：${pattern.detail}` : '';
+    const hint = distinctHint ? `构图提示：${distinctHint}` : '';
+    const parts = [rule, hint, detail].filter(Boolean).join(' | ');
+    return `${idx + 1}. label=${pattern.label}, type=${pattern.type} => ${parts}`;
+  }).join('\n');
 
-    userPrompt += `【差异要求】：本组必须与其他组明显不同，不要重复上一组的构图与动作。\n`;
-    const distinctHint = getBatchDistinctHint(i, patterns.length);
-    if (distinctHint) userPrompt += `【构图提示】：${distinctHint}\n`;
-    if (pattern.detail) userPrompt += `【细化】：${pattern.detail}\n`;
-    userPrompt += `\n【故事内容】：\n${storyContent}\n\n请输出 JSON 格式的提示词。`;
+  batchPrompt += `\n【模板列表】：\n${patternLines}\n`;
+  batchPrompt += `\n【故事内容】：\n${storyContent}\n`;
 
-    const messages = [
-      { role: 'system', content: s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt },
-      { role: 'user', content: userPrompt }
-    ];
+  const messages = [
+    { role: 'system', content: s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt },
+    { role: 'user', content: batchPrompt }
+  ];
 
-    const result = await callLLM(messages, { temperature: 0.7 });
-    let parsed;
-    try {
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
-    } catch {
-      parsed = null;
-    }
+  const result = await callLLM(messages, { temperature: 0.7 });
+  let parsedList;
+  try {
+    const jsonMatch = result.match(/\[[\s\S]*\]/);
+    if (jsonMatch) parsedList = JSON.parse(jsonMatch[0]);
+  } catch {
+    parsedList = null;
+  }
 
-    const positive = parsed?.positive || result.slice(0, 500);
+  if (!Array.isArray(parsedList)) {
+    throw new Error('批量提示词解析失败，请重试');
+  }
+
+  for (let i = 0; i < patterns.length; i += 1) {
+    const pattern = patterns[i];
+    const parsed = parsedList[i] || {};
+    const positive = parsed?.positive || '';
     const negative = parsed?.negative || '';
-    let finalPositive = positive;
+    let finalPositive = positive || '';
     if (profileTags) finalPositive = `${profileTags}, ${finalPositive}`;
 
     if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
@@ -7746,13 +7756,14 @@ async function generateImagePromptBatch() {
     }
 
     results.push({
-      label: pattern.label,
-      type: pattern.type,
-      positive: finalPositive,
-      negative: negative,
+      label: parsed?.label || pattern.label,
+      type: parsed?.type || pattern.type,
+      positive: finalPositive || positive || '',
+      negative: negative || '',
       subject: parsed?.subject || ''
     });
   }
+
   return results;
 
 }
