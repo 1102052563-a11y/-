@@ -7163,15 +7163,37 @@ async function generateImageWithNovelAI(positive, negative) {
   const defaultNegative = s.novelaiNegativePrompt || DEFAULT_SETTINGS.novelaiNegativePrompt;
   const finalNegative = negative ? `${defaultNegative}, ${negative}` : defaultNegative;
 
+  const model = s.novelaiModel || 'nai-diffusion-3';
+  const isV4 = model.includes('diffusion-4');
+
+  // V4/V4.5 需要不同的参数格式
   const payload = {
     input: positive,
-    model: s.novelaiModel || 'nai-diffusion-3',
+    model: model,
     action: 'generate',
     parameters: {
-      width: width || 832, height: height || 1216,
-      scale: s.novelaiScale || 5, steps: s.novelaiSteps || 28,
-      sampler: s.novelaiSampler || 'k_euler', negative_prompt: finalNegative,
-      n_samples: 1, ucPreset: 0, qualityToggle: true
+      width: width || 832,
+      height: height || 1216,
+      scale: s.novelaiScale || 5,
+      steps: s.novelaiSteps || 28,
+      sampler: s.novelaiSampler || 'k_euler',
+      negative_prompt: finalNegative,
+      n_samples: 1,
+      ucPreset: 0,
+      qualityToggle: true,
+      // V4/V4.5 所需额外参数
+      ...(isV4 ? {
+        cfg_rescale: 0,
+        sm: false,
+        sm_dyn: false,
+        noise_schedule: 'native',
+        legacy: false,
+        legacy_v3_extend: false,
+        skip_cfg_above_sigma: null,
+        seed: Math.floor(Math.random() * 4294967295)
+      } : {
+        seed: Math.floor(Math.random() * 4294967295)
+      })
     }
   };
 
