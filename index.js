@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
@@ -11737,9 +11737,8 @@ function hideFloatingPanel() {
   if (panel) {
     panel.classList.remove('visible');
     floatingPanelVisible = false;
-    if (isMobilePortrait()) {
-      panel.style.display = 'none';
-    }
+    // 始终清除内联 display 样式以确保面板隐藏
+    panel.style.display = 'none';
   }
 }
 
