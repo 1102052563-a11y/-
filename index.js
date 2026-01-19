@@ -9813,7 +9813,7 @@ function ensureModal() {
     setStatus('预设已导出 ✅', 'ok');
   });
 
-  $('#sg_imageResult, #sg_galleryResult, #sg_imagegen_float_preview').on('click', 'img', (e) => {
+  $('#sg_imageResult, #sg_galleryResult, #sg_imagegen_float_preview, #sg_imagegen_batch').on('click', 'img', (e) => {
     const src = String($(e.currentTarget).attr('data-full') || $(e.currentTarget).attr('src') || '').trim();
     if (!src) return;
     openImagePreviewModal(src, $(e.currentTarget).attr('alt') || 'Image preview');
