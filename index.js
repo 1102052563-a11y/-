@@ -1482,6 +1482,187 @@ function setDbImportTemp(value) {
   } catch { /* ignore */ }
 }
 
+function buildDatabaseImportPrompt({ chunk, baseData, tableMap, templates, settings }) {
+  const s = settings || ensureSettings();
+  const tableLines = tableMap.map(t => `- ${t.name} (${t.key})`).join('\n') || '（无）';
+  const templateLines = templates.map(t => {
+    const name = String(t.table || t.name || '').trim();
+    const feature = String(t.feature || '').trim();
+    const prompt = String(t.prompt || '').trim();
+    return `- ${name}${feature ? `：${feature}` : ''}${prompt ? `｜提示词：${prompt}` : ''}`;
+  }).join('\n') || '（无）';
+
+  const baseJson = JSON.stringify(baseData, null, 2);
+  const system = String(s.databasePromptSystem || '').trim() || '你是数据库更新助手。根据对话更新指定表格。';
+  const userTpl = String(s.databasePromptUser || '').trim() || '请根据导入文本更新数据库表格。';
+  const user = [
+    userTpl,
+    '',
+    '【需要更新的表格（表名/键）】',
+    tableLines,
+    '',
+    '【表格模板提示】',
+    templateLines,
+    '',
+    '【当前表格数据(JSON，仅包含需要更新的表格)】',
+    baseJson,
+    '',
+    '【导入文本】',
+    String(chunk || '')
+  ].join('\n');
+
+  const messages = [
+    { role: 'system', content: `${system}\n\n要求：只输出 JSON 对象本体，不要任何额外文本或代码块。` },
+    { role: 'user', content: user }
+  ];
+  if (s.databasePromptAssistant) {
+    messages.push({ role: 'assistant', content: String(s.databasePromptAssistant) });
+  }
+  return messages;
+}
+
+function normalizeDatabaseUpdateResponse(resp, nameToKey) {
+  if (!resp || typeof resp !== 'object') return {};
+  let data = resp;
+  if (resp.tables && typeof resp.tables === 'object') data = resp.tables;
+  const out = {};
+  Object.entries(data).forEach(([key, val]) => {
+    if (!val || typeof val !== 'object') return;
+    const sheetKey = key.startsWith('sheet_') ? key : (nameToKey[key] || '');
+    if (!sheetKey) return;
+    out[sheetKey] = val;
+  });
+  return out;
+}
+
+function extractTablesSubset(baseData, selectedKeys) {
+  const out = { mate: { type: 'chatSheets', version: 1 } };
+  if (!baseData || typeof baseData !== 'object') return out;
+  if (baseData.mate) out.mate = clone(baseData.mate);
+  (selectedKeys || []).forEach((key) => {
+    if (baseData[key]) out[key] = clone(baseData[key]);
+  });
+  return out;
+}
+
+async function callDatabaseApi(messages, settings) {
+  const s = settings || ensureSettings();
+  if (s.databaseApiEndpoint) {
+    return await callViaCustom(
+      s.databaseApiEndpoint,
+      s.databaseApiKey,
+      s.databaseApiModel,
+      messages,
+      s.databaseApiTemperature,
+      s.databaseApiMaxTokens,
+      s.databaseApiTopP,
+      s.databaseApiStream
+    );
+  }
+  return await callViaSillyTavern(messages, null, s.databaseApiTemperature ?? 0.3);
+}
+
+async function saveDatabaseToChat(data, settings) {
+  if (!data || typeof data !== 'object') return false;
+  const ctx = SillyTavern.getContext?.();
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  if (!chat.length) return false;
+
+  let target = null;
+  for (let i = chat.length - 1; i >= 0; i--) {
+    if (!chat[i]?.is_user) { target = chat[i]; break; }
+  }
+  if (!target) return false;
+
+  const s = settings || ensureSettings();
+  const isolationKey = getDatabaseIsolationKey(s);
+  const newIndependentData = {};
+  Object.keys(data).forEach((key) => {
+    if (!key.startsWith('sheet_')) return;
+    newIndependentData[key] = clone(data[key]);
+  });
+
+  const modifiedKeys = Object.keys(newIndependentData);
+  const updateGroupKeys = [...modifiedKeys];
+
+  let isolatedContainer = target.TavernDB_ACU_IsolatedData;
+  if (typeof isolatedContainer === 'string') {
+    try { isolatedContainer = JSON.parse(isolatedContainer); } catch { isolatedContainer = {}; }
+  }
+  if (!isolatedContainer || typeof isolatedContainer !== 'object') isolatedContainer = {};
+  if (!isolatedContainer[isolationKey]) {
+    isolatedContainer[isolationKey] = { independentData: {}, modifiedKeys: [], updateGroupKeys: [] };
+  }
+  isolatedContainer[isolationKey].independentData = newIndependentData;
+  isolatedContainer[isolationKey].modifiedKeys = modifiedKeys;
+  isolatedContainer[isolationKey].updateGroupKeys = updateGroupKeys;
+  target.TavernDB_ACU_IsolatedData = isolatedContainer;
+
+  if (s.databaseIsolationEnabled) target.TavernDB_ACU_Identity = s.databaseIsolationCode;
+  else delete target.TavernDB_ACU_Identity;
+  target.TavernDB_ACU_IndependentData = newIndependentData;
+  target.TavernDB_ACU_ModifiedKeys = modifiedKeys;
+  target.TavernDB_ACU_UpdateGroupKeys = updateGroupKeys;
+
+  try {
+    if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
+    else if (typeof ctx.saveChat === 'function') ctx.saveChat();
+  } catch { /* ignore */ }
+  return true;
+}
+
+async function runDatabaseImportUpdate(chunks) {
+  const s = ensureSettings();
+  const payload = await loadDatabasePayload(s);
+  if (!payload?.data) {
+    showToast('数据库未加载，无法执行导入更新', { kind: 'warn' });
+    return;
+  }
+
+  const tableList = getDatabaseTableList(payload.data);
+  const selectedNames = Array.isArray(s.databaseImportSelectedTables) ? s.databaseImportSelectedTables : null;
+  const selected = selectedNames?.length ? tableList.filter(t => selectedNames.includes(t.name)) : tableList;
+  if (!selected.length) {
+    showToast('未选择任何表格', { kind: 'warn' });
+    return;
+  }
+
+  const nameToKey = {};
+  selected.forEach(t => { nameToKey[t.name] = t.key; });
+  const templates = getDatabaseTemplates();
+
+  let current = clone(payload.data);
+  for (let i = 0; i < chunks.length; i += 1) {
+    const chunk = String(chunks[i]?.content || '').trim();
+    if (!chunk) continue;
+    const subset = extractTablesSubset(current, selected.map(t => t.key));
+    const messages = buildDatabaseImportPrompt({ chunk, baseData: subset, tableMap: selected, templates, settings: s });
+    let jsonText = '';
+    try {
+      jsonText = await callDatabaseApi(messages, s);
+      const parsed = safeJsonParse(jsonText);
+      if (!parsed) throw new Error('解析失败');
+      const updates = normalizeDatabaseUpdateResponse(parsed, nameToKey);
+      const updateKeys = Object.keys(updates);
+      if (!updateKeys.length) throw new Error('未返回有效表格数据');
+      updateKeys.forEach((key) => { current[key] = updates[key]; });
+    } catch (e) {
+      showToast(`第 ${i + 1}/${chunks.length} 段导入失败: ${e?.message || e}`, { kind: 'err' });
+      return;
+    }
+  }
+
+  const saved = await saveDatabaseToChat(current, s);
+  if (!saved) {
+    showToast('保存数据库失败', { kind: 'err' });
+    return;
+  }
+
+  lastDatabasePayload = current;
+  await refreshDatabaseStatusUi();
+  showToast(`导入完成：已更新 ${chunks.length} 段内容`, { kind: 'ok' });
+}
+
 function normalizeDatabaseIsolationCode(code) {
   return (typeof code === 'string') ? code.trim() : '';
 }
@@ -11681,7 +11862,9 @@ function setupSettingsPages() {
     }
     const s = ensureSettings();
     if (String(s.databaseImportMode || 'worldbook') === 'database') {
-      showToast('数据库更新导入尚未接入', { kind: 'warn' });
+      runDatabaseImportUpdate(chunks).catch((e) => {
+        showToast(`导入失败: ${e?.message || e}`, { kind: 'err' });
+      });
       return;
     }
     injectImportChunksToWorldbook(chunks).catch((e) => {
@@ -11692,7 +11875,7 @@ function setupSettingsPages() {
   $('#sg_db_import_delete').on('click', () => {
     const s = ensureSettings();
     if (String(s.databaseImportMode || 'worldbook') === 'database') {
-      showToast('数据库更新导入尚未接入', { kind: 'warn' });
+      showToast('数据库模式暂不支持删除导入条目', { kind: 'warn' });
       return;
     }
     deleteImportedWorldbookEntries().catch((e) => {
