@@ -1649,12 +1649,17 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
     return false;
   }
   const payload = await loadDatabasePayload(s);
-  if (!payload?.data) {
-    showToast('数据库未加载，无法执行更新', { kind: 'warn' });
+  let currentBase = payload?.data || null;
+  let tableList = currentBase ? getDatabaseTableList(currentBase) : [];
+  if (!currentBase || !tableList.length) {
+    const fallback = buildDatabaseBaseFromTemplates();
+    currentBase = fallback.data;
+    tableList = fallback.tableList;
+  }
+  if (!currentBase || !tableList.length) {
+    showToast('数据库未加载且模板为空，无法执行更新', { kind: 'warn' });
     return false;
   }
-
-  const tableList = getDatabaseTableList(payload.data);
   const selected = selectedNames?.length ? tableList.filter(t => selectedNames.includes(t.name)) : tableList;
   if (!selected.length) {
     showToast('未选择任何表格', { kind: 'warn' });
@@ -1665,7 +1670,7 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
   selected.forEach(t => { nameToKey[t.name] = t.key; });
   const templates = getDatabaseTemplates();
 
-  let current = clone(payload.data);
+  let current = clone(currentBase);
   for (let i = 0; i < chunks.length; i += 1) {
     const chunk = String(chunks[i]?.content || '').trim();
     if (!chunk) continue;
@@ -1960,6 +1965,35 @@ function getDatabaseTableList(data) {
   });
 }
 
+function getTemplateSheetKey(idx) {
+  return `sheet_tpl_${idx + 1}`;
+}
+
+function getDatabaseTableListFromTemplates() {
+  const templates = getDatabaseTemplates();
+  return templates.map((t, idx) => {
+    const name = String(t.table || t.name || `表${idx + 1}`).trim() || `表${idx + 1}`;
+    return { key: getTemplateSheetKey(idx), name };
+  });
+}
+
+function buildDatabaseBaseFromTemplates() {
+  const templates = getDatabaseTemplates();
+  const base = { mate: { type: 'chatSheets', version: 1 } };
+  templates.forEach((t, idx) => {
+    const key = getTemplateSheetKey(idx);
+    const name = String(t.table || t.name || `表${idx + 1}`).trim() || `表${idx + 1}`;
+    base[key] = {
+      uid: key,
+      name,
+      content: [[null, '内容']],
+      exportConfig: {},
+      orderNo: idx,
+    };
+  });
+  return { data: base, tableList: getDatabaseTableListFromTemplates() };
+}
+
 function getChatAiMessageCount() {
   const ctx = SillyTavern.getContext?.() ?? {};
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -2053,13 +2087,29 @@ async function refreshDatabaseStatusUi() {
 
   const payload = await loadDatabasePayload(s);
   if (!payload?.data) {
-    if ($status.length) $status.text('数据库状态: 未加载');
+    const templateTables = getDatabaseTableListFromTemplates();
+    if ($status.length) {
+      $status.text(templateTables.length ? '数据库状态: 未加载（将使用模板）' : '数据库状态: 未加载');
+    }
     if ($next.length) $next.text('下一次更新: 无');
     if ($tbody.length) {
-      $tbody.html('<tr><td colspan="5" style="text-align:center; padding:10px;">暂无数据库数据</td></tr>');
+      if (templateTables.length) {
+        const rowsHtml = templateTables.map((t) => `
+          <tr>
+            <td style="text-align:left; padding:6px;">${escapeHtml(t.name)}</td>
+            <td style="text-align:center; padding:6px;">N/A</td>
+            <td style="text-align:center; padding:6px;">N/A</td>
+            <td style="text-align:center; padding:6px;">未开始</td>
+            <td style="text-align:center; padding:6px;">N/A</td>
+          </tr>
+        `).join('');
+        $tbody.html(rowsHtml);
+      } else {
+        $tbody.html('<tr><td colspan="5" style="text-align:center; padding:10px;">暂无数据库数据</td></tr>');
+      }
     }
-    await renderManualTableSelector(null);
-    await renderImportTableSelector(null);
+    await renderManualTableSelector(payload?.data || null);
+    await renderImportTableSelector(payload?.data || null);
     return;
   }
 
@@ -2107,7 +2157,7 @@ async function refreshDatabaseStatusUi() {
 async function renderManualTableSelector(data) {
   const $wrap = $('#sg_db_manual_table_selector');
   if (!$wrap.length) return;
-  const tableList = getDatabaseTableList(data);
+  const tableList = getDatabaseTableList(data).length ? getDatabaseTableList(data) : getDatabaseTableListFromTemplates();
   if (!tableList.length) {
     $wrap.html('<div class="sg-hint">暂无表格</div>');
     return;
@@ -2132,7 +2182,7 @@ async function renderManualTableSelector(data) {
 async function renderImportTableSelector(data) {
   const $wrap = $('#sg_db_import_table_selector');
   if (!$wrap.length) return;
-  const tableList = getDatabaseTableList(data);
+  const tableList = getDatabaseTableList(data).length ? getDatabaseTableList(data) : getDatabaseTableListFromTemplates();
   if (!tableList.length) {
     $wrap.html('<div class="sg-hint">暂无表格</div>');
     return;
