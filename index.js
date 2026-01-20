@@ -1505,7 +1505,7 @@ function setDbImportTemp(value) {
 
 function buildDatabaseImportPrompt({ chunk, baseData, tableMap, templates, settings, extraHint }) {
   const s = settings || ensureSettings();
-  const tableLines = tableMap.map(t => `- ${t.name} (${t.key})`).join('\n') || '（无）';
+  const tableLines = tableMap.map((t, idx) => `${idx + 1}. ${t.name} (${t.key})`).join('\n') || '（无）';
   const templateLines = templates.map(t => {
     const name = String(t.table || t.name || '').trim();
     const feature = String(t.feature || '').trim();
@@ -1709,8 +1709,7 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
         updateKeys.forEach((key) => { current[key] = updates[key]; });
       } else {
         const insertUpdates = parseInsertRowCommands(jsonText);
-        const insertTableList = buildInsertRowTableList(current);
-        const inserted = applyInsertRowUpdates(current, insertUpdates, insertTableList);
+        const inserted = applyInsertRowUpdates(current, insertUpdates, selected);
         if (!inserted) throw new Error('解析失败：未检测到 insertRow 数据');
         lastDatabaseRawText = JSON.stringify(current, null, 2);
         if ($output.length) $output.val(String(lastDatabaseRawText || ''));
