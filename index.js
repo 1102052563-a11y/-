@@ -527,6 +527,18 @@ const DEFAULT_SETTINGS = Object.freeze({
   databaseVarName: 'table_data',
   databaseIsolationEnabled: false,
   databaseIsolationCode: '',
+  databaseApiEndpoint: '',
+  databaseApiKey: '',
+  databaseApiModel: 'gpt-4o-mini',
+  databaseApiModelsCache: [],
+  databaseApiTemperature: 0.3,
+  databaseApiTopP: 0.95,
+  databaseApiMaxTokens: 2048,
+  databaseApiStream: false,
+  databaseTemplatesJson: JSON.stringify([
+    { name: '技能表模板', table: '技能表', feature: '记录技能名称、等级、效果、来源与备注', prompt: '更新技能表：补充新技能、等级变化与关键效果。' },
+    { name: '势力表模板', table: '势力表', feature: '记录势力结构、目标、主要人物与关系', prompt: '整理势力表：更新势力动向、关系与核心人物。' }
+  ], null, 2),
 
   // ===== 图像生成模块 =====
   imageGenEnabled: false,
@@ -1467,6 +1479,19 @@ function mergeDatabaseTables(target, source) {
   });
 }
 
+function getDatabaseTemplates() {
+  const s = ensureSettings();
+  const raw = String(s.databaseTemplatesJson || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(t => t && typeof t === 'object');
+  } catch {
+    return [];
+  }
+}
+
 function loadDatabaseFromChat(settings) {
   const ctx = SillyTavern.getContext?.() ?? {};
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -1567,11 +1592,13 @@ function buildDatabaseModules(data) {
   if (!data || typeof data !== 'object') return { modules: [], totalTables: 0, totalRows: 0 };
 
   const keys = getSortedDatabaseSheetKeys(data);
+  const templates = getDatabaseTemplates();
   const modules = [];
   let totalRows = 0;
 
   const pushModule = (title, rows) => {
-    modules.push({ title, rows });
+    const template = templates.find(t => String(t.table || '').trim() === String(title || '').trim()) || null;
+    modules.push({ title, rows, template });
   };
 
   keys.forEach((sheetKey) => {
@@ -1610,12 +1637,18 @@ function buildDatabaseModules(data) {
 
 function renderDatabaseModuleHtml(mod) {
   const items = Array.isArray(mod.rows) ? mod.rows : [];
+  const template = mod.template;
+  const templateHtml = template
+    ? `<div class="sg-database-template">模板：${escapeHtml(String(template.name || ''))} · 特点：${escapeHtml(String(template.feature || ''))}</div>
+       ${template.prompt ? `<div class="sg-database-template sg-database-template-prompt">提示词：${escapeHtml(String(template.prompt || ''))}</div>` : ''}`
+    : '';
   const list = items.length
     ? `<ul class="sg-database-list">${items.map(item => `<li class="sg-database-item">${escapeHtml(String(item || ''))}</li>`).join('')}</ul>`
     : '<div class="sg-database-empty">暂无数据</div>';
   return `
     <div class="sg-database-module">
       <div class="sg-database-module-title">${escapeHtml(mod.title)}</div>
+      ${templateHtml}
       ${list}
     </div>
   `;
@@ -7199,6 +7232,20 @@ function fillModelSelect(modelIds, selected) {
   });
 }
 
+function fillDatabaseModelSelect(modelIds, selected) {
+  const $sel = $('#sg_db_api_model_select');
+  if (!$sel.length) return;
+  $sel.empty();
+  $sel.append('<option value="">（选择模型）</option>');
+  (modelIds || []).forEach((id) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    if (selected && id === selected) opt.selected = true;
+    $sel.append(opt);
+  });
+}
+
 
 function fillSummaryModelSelect(modelIds, selected) {
   const $sel = $('#sg_summaryModelSelect');
@@ -9724,6 +9771,61 @@ function buildModalHtml() {
                 <button class="menu_button sg-btn" id="sg_db_copy_json">复制最新 JSON</button>
               </div>
             </div>
+
+            <div class="sg-card sg-subcard" style="margin-top:10px;">
+              <div class="sg-card-title" style="font-size:0.95em;">独立 API</div>
+              <div class="sg-hint">用于数据库相关的独立模型调用（可单独维护模型列表）。</div>
+              <div class="sg-field" style="margin-top:8px;">
+                <label>API 基础URL</label>
+                <input id="sg_db_api_endpoint" type="text" placeholder="https://api.openai.com/v1">
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>API Key</label>
+                  <input id="sg_db_api_key" type="password" placeholder="sk-...">
+                </div>
+                <div class="sg-field">
+                  <label>模型（可手填）</label>
+                  <input id="sg_db_api_model" type="text" placeholder="gpt-4o-mini">
+                </div>
+              </div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_db_refresh_models">刷新模型</button>
+                <select id="sg_db_api_model_select" class="sg-model-select">
+                  <option value="">（选择模型）</option>
+                </select>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>Max Tokens</label>
+                  <input id="sg_db_api_max_tokens" type="number" min="128" max="200000">
+                </div>
+                <div class="sg-field">
+                  <label>Temperature</label>
+                  <input id="sg_db_api_temperature" type="number" min="0" max="2" step="0.05">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>TopP</label>
+                  <input id="sg_db_api_top_p" type="number" min="0" max="1" step="0.01">
+                </div>
+                <label class="sg-check" style="margin-top:24px;"><input type="checkbox" id="sg_db_api_stream">stream（若支持）</label>
+              </div>
+            </div>
+
+            <div class="sg-card sg-subcard" style="margin-top:10px;">
+              <div class="sg-card-title" style="font-size:0.95em;">自定义模板</div>
+              <div class="sg-hint">每个模板记录一个表格特点内容，用于数据库视图的说明。</div>
+              <div class="sg-field" style="margin-top:8px;">
+                <label>模板 JSON</label>
+                <textarea id="sg_db_templates_json" rows="6"></textarea>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:6px;">
+                <button class="menu_button sg-btn" id="sg_db_templates_reset">恢复默认模板</button>
+              </div>
+              <div class="sg-hint">示例：[{"name":"技能表模板","table":"技能表","feature":"记录技能名称、等级、效果","prompt":"更新技能表：补充新技能、等级变化"}]</div>
+            </div>
           </div> <!-- sg_page_database -->
 
           <div class="sg-page" id="sg_page_image">
@@ -10925,6 +11027,23 @@ function setupSettingsPages() {
     }
   });
 
+  $('#sg_db_refresh_models').on('click', async () => {
+    pullUiToSettings();
+    await refreshDatabaseModels();
+  });
+
+  $('#sg_db_api_model_select').on('change', () => {
+    const val = String($('#sg_db_api_model_select').val() || '').trim();
+    if (val) $('#sg_db_api_model').val(val);
+  });
+
+  $('#sg_db_templates_reset').on('click', () => {
+    $('#sg_db_templates_json').val(DEFAULT_SETTINGS.databaseTemplatesJson);
+    pullUiToSettings();
+    saveSettings();
+    setStatus('数据库模板已恢复默认', 'ok');
+  });
+
   // 图像生成事件
   $('#sg_generateImage').on('click', async () => {
     pullUiToSettings(); saveSettings();
@@ -11162,6 +11281,15 @@ function pullSettingsToUi() {
   $('#sg_db_var_name').val(String(s.databaseVarName || 'table_data'));
   $('#sg_db_isolation_enabled').prop('checked', !!s.databaseIsolationEnabled);
   $('#sg_db_isolation_code').val(String(s.databaseIsolationCode || ''));
+  $('#sg_db_api_endpoint').val(String(s.databaseApiEndpoint || ''));
+  $('#sg_db_api_key').val(String(s.databaseApiKey || ''));
+  $('#sg_db_api_model').val(String(s.databaseApiModel || 'gpt-4o-mini'));
+  $('#sg_db_api_max_tokens').val(s.databaseApiMaxTokens || 2048);
+  $('#sg_db_api_temperature').val(s.databaseApiTemperature ?? 0.3);
+  $('#sg_db_api_top_p').val(s.databaseApiTopP ?? 0.95);
+  $('#sg_db_api_stream').prop('checked', !!s.databaseApiStream);
+  fillDatabaseModelSelect(Array.isArray(s.databaseApiModelsCache) ? s.databaseApiModelsCache : [], s.databaseApiModel);
+  $('#sg_db_templates_json').val(String(s.databaseTemplatesJson || DEFAULT_SETTINGS.databaseTemplatesJson));
   updateDatabaseUi();
 
   // 图像生成设置
@@ -11677,6 +11805,14 @@ function pullUiToSettings() {
   s.databaseVarName = String($('#sg_db_var_name').val() || 'table_data').trim() || 'table_data';
   s.databaseIsolationEnabled = $('#sg_db_isolation_enabled').is(':checked');
   s.databaseIsolationCode = String($('#sg_db_isolation_code').val() || '').trim();
+  s.databaseApiEndpoint = String($('#sg_db_api_endpoint').val() || '').trim();
+  s.databaseApiKey = String($('#sg_db_api_key').val() || '');
+  s.databaseApiModel = String($('#sg_db_api_model').val() || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
+  s.databaseApiMaxTokens = clampInt($('#sg_db_api_max_tokens').val(), 128, 200000, s.databaseApiMaxTokens || 2048);
+  s.databaseApiTemperature = clampFloat($('#sg_db_api_temperature').val(), 0, 2, s.databaseApiTemperature ?? 0.3);
+  s.databaseApiTopP = clampFloat($('#sg_db_api_top_p').val(), 0, 1, s.databaseApiTopP ?? 0.95);
+  s.databaseApiStream = $('#sg_db_api_stream').is(':checked');
+  s.databaseTemplatesJson = String($('#sg_db_templates_json').val() || '').trim() || DEFAULT_SETTINGS.databaseTemplatesJson;
 
   // 图像生成设置
   s.imageGenEnabled = $('#sg_imageGenEnabled').is(':checked');
@@ -12579,6 +12715,63 @@ function updateFloatingPanelBody(html) {
   const $body = $('#sg_floating_body');
   if ($body.length) {
     $body.html(html);
+  }
+}
+
+async function refreshDatabaseModels() {
+  const s = ensureSettings();
+  const raw = String($('#sg_db_api_endpoint').val() || s.databaseApiEndpoint || '').trim();
+  const apiBase = normalizeBaseUrl(raw);
+  if (!apiBase) {
+    setStatus('请先填写 数据库 API基础URL 再刷新模型', 'warn');
+    return;
+  }
+
+  setStatus('正在刷新数据库模型列表…', 'warn');
+
+  const apiKey = String($('#sg_db_api_key').val() || s.databaseApiKey || '');
+  const statusUrl = '/api/backends/chat-completions/status';
+
+  const body = {
+    reverse_proxy: apiBase,
+    chat_completion_source: 'custom',
+    custom_url: apiBase,
+    custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : ''
+  };
+
+  try {
+    const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
+    const res = await fetch(statusUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) {
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      return;
+    }
+
+    s.databaseApiModelsCache = ids;
+    saveSettings();
+    fillDatabaseModelSelect(ids, s.databaseApiModel);
+    setStatus(`数据库模型已更新：${ids.length} 个`, 'ok');
+  } catch (e) {
+    console.warn('[StoryGuide] refreshDatabaseModels failed:', e);
+    setStatus(`刷新数据库模型失败: ${e?.message || e}`, 'err');
   }
 }
 
