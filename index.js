@@ -1698,14 +1698,23 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
     let jsonText = '';
     try {
       jsonText = await callDatabaseApi(messages, s);
+      lastDatabaseRawText = String(jsonText || '');
+      const $output = $('#sg_db_output_json');
+      if ($output.length) $output.val(String(lastDatabaseRawText || ''));
       const parsed = safeJsonParse(jsonText);
-      if (!parsed) throw new Error('解析失败');
-      const updates = normalizeDatabaseUpdateResponse(parsed, nameToKey);
-      const updateKeys = Object.keys(updates);
-      if (!updateKeys.length) throw new Error('未返回有效表格数据');
-      updateKeys.forEach((key) => { current[key] = updates[key]; });
+      if (parsed) {
+        const updates = normalizeDatabaseUpdateResponse(parsed, nameToKey);
+        const updateKeys = Object.keys(updates);
+        if (!updateKeys.length) throw new Error('未返回有效表格数据');
+        updateKeys.forEach((key) => { current[key] = updates[key]; });
+      } else {
+        const insertUpdates = parseInsertRowCommands(jsonText);
+        const inserted = applyInsertRowUpdates(current, insertUpdates);
+        if (!inserted) throw new Error('解析失败：未检测到 insertRow 数据');
+      }
     } catch (e) {
       showToast(`第 ${i + 1}/${chunks.length} 段更新失败: ${e?.message || e}`, { kind: 'err' });
+      if (lastDatabaseRawText) setStatus('解析失败：已写入输出框', 'warn');
       return false;
     }
   }
@@ -2095,6 +2104,68 @@ function buildChatChunkTextByIndex(chat, startIdx, endIdx, maxCharsPerMessage, m
     total += block.length + 2;
   }
   return parts.join('\n');
+}
+
+function parseInsertRowCommands(rawText) {
+  if (!rawText) return {};
+  let text = String(rawText || '');
+  text = text.replace(/\\n/g, '\n');
+  text = text.replace(/'\s*\+\s*'/g, '');
+  text = text.replace(/\+\s*'\s*/g, '');
+  text = text.replace(/\s*\+\s*'/g, '');
+
+  const updates = {};
+  const re = /insertRow\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*(\{[\s\S]*?\})\s*\)/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const sheetKey = match[1];
+    let objText = match[2];
+    let parsed = null;
+    try { parsed = JSON.parse(objText); } catch {
+      try { parsed = JSON.parse(objText.replace(/'/g, '"')); } catch { parsed = null; }
+    }
+    if (!parsed || typeof parsed !== 'object') continue;
+    if (!updates[sheetKey]) updates[sheetKey] = [];
+    updates[sheetKey].push(parsed);
+  }
+  return updates;
+}
+
+function applyInsertRowUpdates(current, updates) {
+  if (!current || typeof current !== 'object') return 0;
+  let inserted = 0;
+  Object.entries(updates || {}).forEach(([sheetKey, rows]) => {
+    if (!Array.isArray(rows) || !rows.length) return;
+    if (!current[sheetKey]) {
+      const headers = Object.keys(rows[0] || {}).sort((a, b) => Number(a) - Number(b)).map(k => `列${Number(k) + 1 || k}`);
+      current[sheetKey] = {
+        uid: sheetKey,
+        name: sheetKey,
+        content: [[null, ...headers]],
+        exportConfig: {},
+        orderNo: 0,
+      };
+    }
+    const table = current[sheetKey];
+    table.content = Array.isArray(table.content) ? table.content : [[null]];
+    const headerRow = Array.isArray(table.content[0]) ? table.content[0] : [null];
+
+    rows.forEach((rowObj) => {
+      const keys = Object.keys(rowObj || {}).sort((a, b) => Number(a) - Number(b));
+      const row = [null];
+      keys.forEach((k) => {
+        const idx = Number(k);
+        const value = rowObj[k];
+        if (!Number.isFinite(idx)) return;
+        while (headerRow.length <= idx + 1) headerRow.push(`列${headerRow.length}`);
+        row[idx + 1] = value;
+      });
+      const filled = headerRow.map((_, i) => (i === 0 ? null : (row[i] ?? '')));
+      table.content.push(filled);
+      inserted += 1;
+    });
+  });
+  return inserted;
 }
 
 function formatRelativeTime(ts) {
