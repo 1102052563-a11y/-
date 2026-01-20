@@ -123,7 +123,7 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 【任务】
 1. 识别本次对话中出现的重要 NPC（不含主角）
 2. 识别主角当前持有/装备的关键物品
-3. 识别主角新增或变化的能力
+3. 识别剧情中出现/变化的重要势力
 4. 识别需要删除的条目（死亡的角色、卖掉/分解的装备等）
 5. 生成档案式的客观第三人称描述
 
@@ -132,7 +132,7 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 - 装备：只记录绿色品质以上的装备，或紫色品质以上的重要物品
 
 【去重规则（重要）】
-- 仔细检查【已知人物列表】和【已知装备列表】，避免重复创建条目
+- 仔细检查【已知人物列表】、【已知装备列表】和【已知势力列表】，避免重复创建条目
 - 同一角色可能有多种写法（如繁体/简体、英文/中文翻译），必须识别为同一人
 - 如果发现角色已存在于列表中，使用 isUpdated=true 更新而不是创建新条目
 - 将不同名称写法添加到 aliases 数组中
@@ -140,7 +140,7 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 【删除条目规则】
 - 若角色在对话中明确死亡/永久离开，将其加入 deletedCharacters 数组
 - 若装备被卖掉/分解/丢弃/彻底损坏，将其加入 deletedEquipments 数组
-- 若能力被遗忘/剥夺/彻底失效，将其加入 deletedAbilities 数组
+- 若势力解散/覆灭/被吞并，将其加入 deletedFactions 数组
 
 【重要】
 - 若提供了 statData，请从中提取该角色/物品的**关键数值**（如属性、等级、状态），精简为1-2行
@@ -151,7 +151,8 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 - 为每个重要NPC提取「核心性格」：不会因剧情发展而轻易改变的根本特质
 - 提取「角色动机」：该角色自己的目标/追求，不是围绕主角转
 - 评估「关系阶段」：陌生/初识/熟悉/信任/亲密，关系发展应循序渐进`;
-const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
+const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
+const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}\\n【已知势力列表】\\n{{knownFactions}}`;
 const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。
 
 【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件
@@ -163,16 +164,16 @@ const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC�
 
 若角色死亡/永久离开，将其名字加入 deletedCharacters。若有 statData，在 statInfo 中精简总结。信息不足写"待确认"。`;
 const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备。若装备被卖掉/分解/丢弃/损坏，将其名字加入 deletedEquipments。若有 statData，精简总结其属性。`;
-const DEFAULT_STRUCTURED_ABILITY_PROMPT = `记录主角的能力/技能。说明类型、效果、触发条件、代价。若能力被遗忘/剥夺/失效，将其名字加入 deletedAbilities。若有 statData，精简总结其数值。`;
+const DEFAULT_STRUCTURED_FACTION_PROMPT = `记录重要势力/组织/阵营。说明性质、范围、领导者、理念、与主角关系、当前状态。若势力解散/覆灭/被吞并，将其名字加入 deletedFactions。若有 statData，精简总结其数值。`;
 const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。
 
-结构：{"characters":[...],"equipments":[...],"abilities":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedAbilities":[...]}
+结构：{"characters":[...],"equipments":[...],"factions":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedFactions":[...]}
 
 characters 条目结构：{name,uid,aliases[],faction,status,personality,corePersonality:"核心性格锚点（不轻易改变）",motivation:"角色独立动机/目标",relationshipStage:"陌生|初识|熟悉|信任|亲密",background,relationToProtagonist,keyEvents[],statInfo,isNew,isUpdated}
 
 equipments 条目结构：{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}
 
-abilities 条目结构：{name,uid,type,effects,trigger,cost,statInfo,boundEvents[],isNegative,isNew}`;
+factions 条目结构：{name,uid,aliases[],type,scope,leader,ideology,relationToProtagonist,status,keyEvents[],statInfo,isNew,isUpdated}`;
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
@@ -466,19 +467,19 @@ const DEFAULT_SETTINGS = Object.freeze({
   customSystemPreamble: '',     // 附加在默认 system 之后
   customConstraints: '',        // 附加在默认 constraints 之后
 
-  // ===== 结构化世界书条目（人物/装备/能力） =====
+  // ===== 结构化世界书条目（人物/装备/势力） =====
   structuredEntriesEnabled: true,
   characterEntriesEnabled: true,
   equipmentEntriesEnabled: true,
-  abilityEntriesEnabled: false, // 默认关闭
+  factionEntriesEnabled: false, // 默认关闭
   characterEntryPrefix: '人物',
   equipmentEntryPrefix: '装备',
-  abilityEntryPrefix: '能力',
+  factionEntryPrefix: '势力',
   structuredEntriesSystemPrompt: '',
   structuredEntriesUserTemplate: '',
   structuredCharacterPrompt: '',
   structuredEquipmentPrompt: '',
-  structuredAbilityPrompt: '',
+  structuredFactionPrompt: '',
 
   // ===== 快捷选项功能 =====
   quickOptionsEnabled: true,
@@ -730,11 +731,34 @@ function ensureSettings() {
     saveSettingsDebounced();
   }
 
+  // 迁移：结构化条目从“能力”改为“势力”
+  let factionSettingsMigrated = false;
+  if (extensionSettings[MODULE_NAME].factionEntriesEnabled === undefined && extensionSettings[MODULE_NAME].abilityEntriesEnabled !== undefined) {
+    extensionSettings[MODULE_NAME].factionEntriesEnabled = extensionSettings[MODULE_NAME].abilityEntriesEnabled;
+    factionSettingsMigrated = true;
+  }
+  if (extensionSettings[MODULE_NAME].factionEntryPrefix === undefined && extensionSettings[MODULE_NAME].abilityEntryPrefix) {
+    extensionSettings[MODULE_NAME].factionEntryPrefix = extensionSettings[MODULE_NAME].abilityEntryPrefix;
+    factionSettingsMigrated = true;
+  }
+  if (!extensionSettings[MODULE_NAME].structuredFactionPrompt && extensionSettings[MODULE_NAME].structuredAbilityPrompt) {
+    extensionSettings[MODULE_NAME].structuredFactionPrompt = extensionSettings[MODULE_NAME].structuredAbilityPrompt;
+    factionSettingsMigrated = true;
+  }
+  if (factionSettingsMigrated) saveSettingsDebounced();
+
   // 迁移：批量提示词模板更新（仅在仍为旧模板或为空时）
   const batchRaw = String(extensionSettings[MODULE_NAME].imageGenBatchPatterns || '').trim();
   const isOldBatch = batchRaw && batchRaw.includes('单人-1') && !batchRaw.includes('单人-近景');
   if (!batchRaw || isOldBatch) {
     extensionSettings[MODULE_NAME].imageGenBatchPatterns = DEFAULT_SETTINGS.imageGenBatchPatterns;
+    saveSettingsDebounced();
+  }
+
+  // 迁移：结构化提取模板补充势力列表
+  const structuredTpl = String(extensionSettings[MODULE_NAME].structuredEntriesUserTemplate || '').trim();
+  if (!structuredTpl || structuredTpl === LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE) {
+    extensionSettings[MODULE_NAME].structuredEntriesUserTemplate = DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
     saveSettingsDebounced();
   }
 
@@ -1340,10 +1364,10 @@ function getDefaultSummaryMeta() {
     // 结构化条目缓存（用于去重与更新 - 方案C混合策略）
     characterEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     equipmentEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
-    abilityEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
+    factionEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
     nextCharacterIndex: 1, // NPC-001, NPC-002...
     nextEquipmentIndex: 1, // EQP-001, EQP-002...
-    nextAbilityIndex: 1, // ABL-001, ABL-002...
+    nextFactionIndex: 1, // FCT-001, FCT-002...
   };
 }
 
@@ -1353,13 +1377,20 @@ function getSummaryMeta() {
   try {
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return getDefaultSummaryMeta();
-    return {
+    const merged = {
       ...getDefaultSummaryMeta(),
       ...data,
       history: Array.isArray(data.history) ? data.history : [],
       wiTriggerLogs: Array.isArray(data.wiTriggerLogs) ? data.wiTriggerLogs : [],
       rollLogs: Array.isArray(data.rollLogs) ? data.rollLogs : [],
     };
+    if (!Object.hasOwn(data, 'factionEntries') && data.abilityEntries) {
+      merged.factionEntries = data.abilityEntries;
+    }
+    if (!Object.hasOwn(data, 'nextFactionIndex') && data.nextAbilityIndex) {
+      merged.nextFactionIndex = data.nextAbilityIndex;
+    }
+    return merged;
   } catch {
     return getDefaultSummaryMeta();
   }
@@ -1960,15 +1991,15 @@ async function clearStaticModulesCache() {
   await setStaticModulesCache({});
 }
 
-// 清除结构化条目缓存（人物/装备/能力）
+// 清除结构化条目缓存（人物/装备/势力）
 async function clearStructuredEntriesCache() {
   const meta = getSummaryMeta();
   meta.characterEntries = {};
   meta.equipmentEntries = {};
-  meta.abilityEntries = {};
+  meta.factionEntries = {};
   meta.nextCharacterIndex = 1;
   meta.nextEquipmentIndex = 1;
-  meta.nextAbilityIndex = 1;
+  meta.nextFactionIndex = 1;
   await setSummaryMeta(meta);
 }
 
@@ -3598,7 +3629,11 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = nu
   if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
 
   // 格式化 statData（如果有）
-  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
+  let statDataJson = '';
+  if (statData) {
+    if (typeof statData === 'string') statDataJson = statData.trim();
+    else statDataJson = JSON.stringify(statData, null, 2);
+  }
 
   let user = renderTemplate(tpl, {
     fromFloor: String(fromFloor),
@@ -3677,12 +3712,12 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
   if (!sys) sys = DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
   const charPrompt = String(s.structuredCharacterPrompt || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   const equipPrompt = String(s.structuredEquipmentPrompt || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
-  const abilityPrompt = String(s.structuredAbilityPrompt || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
+  const factionPrompt = String(s.structuredFactionPrompt || '').trim() || DEFAULT_STRUCTURED_FACTION_PROMPT;
   sys = [
     sys,
     `【人物条目要求】\n${charPrompt}`,
     `【装备条目要求】\n${equipPrompt}`,
-    `【能力条目要求】\n${abilityPrompt}`,
+    `【势力条目要求】\n${factionPrompt}`,
     STRUCTURED_ENTRIES_JSON_REQUIREMENT,
   ].join('\n\n');
 
@@ -3695,9 +3730,17 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
     const aliases = Array.isArray(e.aliases) && e.aliases.length > 0 ? `[别名:${e.aliases.join('/')}]` : '';
     return `${e.name}${aliases}`;
   }).join('、') || '无';
+  const knownFactions = Object.values(meta.factionEntries || {}).map(f => {
+    const aliases = Array.isArray(f.aliases) && f.aliases.length > 0 ? `[别名:${f.aliases.join('/')}]` : '';
+    return `${f.name}${aliases}`;
+  }).join('、') || '无';
 
   // 格式化 statData
-  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
+  let statDataJson = '';
+  if (statData) {
+    if (typeof statData === 'string') statDataJson = statData.trim();
+    else statDataJson = JSON.stringify(statData, null, 2);
+  }
 
   let tpl = String(s.structuredEntriesUserTemplate || '').trim();
   if (!tpl) tpl = DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
@@ -3707,6 +3750,7 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
     chunk: String(chunkText || ''),
     knownCharacters: knownChars,
     knownEquipments: knownEquips,
+    knownFactions: knownFactions,
     statData: statDataJson,
   });
   // 如果有 statData 且模板里没有包含，追加到末尾
@@ -3733,10 +3777,10 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
   return {
     characters: Array.isArray(parsed.characters) ? parsed.characters : [],
     equipments: Array.isArray(parsed.equipments) ? parsed.equipments : [],
-    abilities: Array.isArray(parsed.abilities) ? parsed.abilities : [],
+    factions: Array.isArray(parsed.factions) ? parsed.factions : (Array.isArray(parsed.abilities) ? parsed.abilities : []),
     deletedCharacters: Array.isArray(parsed.deletedCharacters) ? parsed.deletedCharacters : [],
     deletedEquipments: Array.isArray(parsed.deletedEquipments) ? parsed.deletedEquipments : [],
-    deletedAbilities: Array.isArray(parsed.deletedAbilities) ? parsed.deletedAbilities : [],
+    deletedFactions: Array.isArray(parsed.deletedFactions) ? parsed.deletedFactions : (Array.isArray(parsed.deletedAbilities) ? parsed.deletedAbilities : []),
   };
 }
 
@@ -3786,18 +3830,21 @@ function buildEquipmentContent(equip) {
   return parts.join('\n');
 }
 
-function buildAbilityContent(ability) {
+function buildFactionContent(faction) {
   const parts = [];
-  if (ability.name) parts.push(`【能力】${ability.name}${ability.isNegative ? '（负面）' : ''}`);
-  if (ability.type) parts.push(`类型：${ability.type}`);
-  if (ability.effects) parts.push(`效果：${ability.effects}`);
-  if (ability.trigger) parts.push(`触发条件：${ability.trigger}`);
-  if (ability.cost) parts.push(`代价/冷却：${ability.cost}`);
-  if (ability.statInfo) {
-    const infoStr = typeof ability.statInfo === 'object' ? JSON.stringify(ability.statInfo, null, 2) : String(ability.statInfo);
+  if (faction.name) parts.push(`【势力】${faction.name}`);
+  if (faction.aliases?.length) parts.push(`别名：${faction.aliases.join('、')}`);
+  if (faction.type) parts.push(`性质：${faction.type}`);
+  if (faction.scope) parts.push(`范围：${faction.scope}`);
+  if (faction.leader) parts.push(`领袖：${faction.leader}`);
+  if (faction.ideology) parts.push(`理念：${faction.ideology}`);
+  if (faction.relationToProtagonist) parts.push(`与主角关系：${faction.relationToProtagonist}`);
+  if (faction.status) parts.push(`状态：${faction.status}`);
+  if (faction.keyEvents?.length) parts.push(`关键事件：${faction.keyEvents.join('；')}`);
+  if (faction.statInfo) {
+    const infoStr = typeof faction.statInfo === 'object' ? JSON.stringify(faction.statInfo, null, 2) : String(faction.statInfo);
     parts.push(`属性数据：${infoStr}`);
   }
-  if (ability.boundEvents?.length) parts.push(`相关事件：${ability.boundEvents.join('；')}`);
   return parts.join('\n');
 }
 
@@ -4091,27 +4138,27 @@ async function writeOrUpdateEquipmentEntry(equip, meta, settings) {
   return results.length ? results : null;
 }
 
-async function writeOrUpdateAbilityEntry(ability, meta, settings) {
-  if (!ability?.name) return null;
+async function writeOrUpdateFactionEntry(faction, meta, settings) {
+  if (!faction?.name) return null;
   const results = [];
   // 写入绿灯世界书
   if (settings.summaryToWorldInfo) {
-    const r = await writeOrUpdateStructuredEntry('ability', ability, meta, settings, {
-      buildContent: buildAbilityContent,
-      entriesCache: meta.abilityEntries,
-      nextIndexKey: 'nextAbilityIndex',
-      prefix: settings.abilityEntryPrefix || '能力',
+    const r = await writeOrUpdateStructuredEntry('faction', faction, meta, settings, {
+      buildContent: buildFactionContent,
+      entriesCache: meta.factionEntries,
+      nextIndexKey: 'nextFactionIndex',
+      prefix: settings.factionEntryPrefix || '势力',
       targetType: 'green',
     });
     if (r) results.push(r);
   }
   // 写入蓝灯世界书
   if (settings.summaryToBlueWorldInfo) {
-    const r = await writeOrUpdateStructuredEntry('ability', ability, meta, settings, {
-      buildContent: buildAbilityContent,
-      entriesCache: meta.abilityEntries,
-      nextIndexKey: 'nextAbilityIndex',
-      prefix: settings.abilityEntryPrefix || '能力',
+    const r = await writeOrUpdateStructuredEntry('faction', faction, meta, settings, {
+      buildContent: buildFactionContent,
+      entriesCache: meta.factionEntries,
+      nextIndexKey: 'nextFactionIndex',
+      prefix: settings.factionEntryPrefix || '势力',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4284,21 +4331,21 @@ async function deleteEquipmentEntry(equipName, meta, settings) {
   return results.length ? results : null;
 }
 
-// 删除能力条目
-async function deleteAbilityEntry(abilityName, meta, settings) {
+// 删除势力条目
+async function deleteFactionEntry(factionName, meta, settings) {
   const results = [];
   if (settings.summaryToWorldInfo) {
-    const r = await deleteStructuredEntry('ability', abilityName, meta, settings, {
-      entriesCache: meta.abilityEntries,
-      prefix: settings.abilityEntryPrefix || '能力',
+    const r = await deleteStructuredEntry('faction', factionName, meta, settings, {
+      entriesCache: meta.factionEntries,
+      prefix: settings.factionEntryPrefix || '势力',
       targetType: 'green',
     });
     if (r) results.push(r);
   }
   if (settings.summaryToBlueWorldInfo) {
-    const r = await deleteStructuredEntry('ability', abilityName, meta, settings, {
-      entriesCache: meta.abilityEntries,
-      prefix: settings.abilityEntryPrefix || '能力',
+    const r = await deleteStructuredEntry('faction', factionName, meta, settings, {
+      entriesCache: meta.factionEntries,
+      prefix: settings.factionEntryPrefix || '势力',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4707,13 +4754,20 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     let summaryStatData = null;
     if (s.summaryReadStatData) {
       try {
-        const { statData } = await resolveStatDataComprehensive(chat, {
+        const statSettings = {
           ...s,
           wiRollStatVarName: s.summaryStatVarName || 'stat_data'
-        });
+        };
+        const { statData } = await resolveStatDataComprehensive(chat, statSettings);
         if (statData) {
           summaryStatData = statData;
           console.log('[StoryGuide] Summary loaded stat_data:', summaryStatData);
+        } else {
+          const rawText = await resolveStatDataRawText(chat, statSettings);
+          if (rawText) {
+            summaryStatData = rawText;
+            console.log('[StoryGuide] Summary loaded raw stat_data text');
+          }
         }
       } catch (e) {
         console.warn('[StoryGuide] Failed to load stat_data for summary:', e);
@@ -4824,7 +4878,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
       try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
 
-      // 生成结构化世界书条目（人物/装备/能力 - 与剧情总结同一事务）
+      // 生成结构化世界书条目（人物/装备/势力 - 与剧情总结同一事务）
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         try {
           const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
@@ -4844,11 +4898,11 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
                 await writeOrUpdateEquipmentEntry(equip, meta, s);
               }
             }
-            // 写入/更新能力条目
-            if (s.abilityEntriesEnabled && structuredResult.abilities?.length) {
-              console.log(`[StoryGuide] Processing ${structuredResult.abilities.length} ability(s)`);
-              for (const ability of structuredResult.abilities) {
-                await writeOrUpdateAbilityEntry(ability, meta, s);
+            // 写入/更新势力条目
+            if (s.factionEntriesEnabled && structuredResult.factions?.length) {
+              console.log(`[StoryGuide] Processing ${structuredResult.factions.length} faction(s)`);
+              for (const faction of structuredResult.factions) {
+                await writeOrUpdateFactionEntry(faction, meta, s);
               }
             }
 
@@ -4865,10 +4919,10 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
                 await deleteEquipmentEntry(equipName, meta, s);
               }
             }
-            if (structuredResult.deletedAbilities?.length) {
-              console.log(`[StoryGuide] Deleting ${structuredResult.deletedAbilities.length} ability(s)`);
-              for (const abilityName of structuredResult.deletedAbilities) {
-                await deleteAbilityEntry(abilityName, meta, s);
+            if (structuredResult.deletedFactions?.length) {
+              console.log(`[StoryGuide] Deleting ${structuredResult.deletedFactions.length} faction(s)`);
+              for (const factionName of structuredResult.deletedFactions) {
+                await deleteFactionEntry(factionName, meta, s);
               }
             }
 
@@ -5610,6 +5664,24 @@ async function resolveStatDataComprehensive(chat, settings) {
   } catch { /* continue */ }
 
   return { statData: null, rawText: '', source: null };
+}
+
+async function resolveStatDataRawText(chat, settings) {
+  const s = settings || ensureSettings();
+  const steps = [
+    async () => resolveStatDataViaSlashCommand(s),
+    async () => resolveStatDataFromVariableStore(s),
+    async () => resolveStatDataFromTemplate(s),
+    async () => resolveStatDataFromChatDOM(s),
+    async () => resolveStatDataFromLatestAssistant(chat, s),
+  ];
+  for (const step of steps) {
+    try {
+      const { rawText } = await step();
+      if (rawText && String(rawText).trim()) return String(rawText).trim();
+    } catch { /* ignore */ }
+  }
+  return '';
 }
 
 async function maybeInjectRollResult(reason = 'msg_sent') {
@@ -8958,12 +9030,12 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card sg-subcard">
-              <div class="sg-card-title">结构化条目（人物/装备/能力）</div>
+              <div class="sg-card-title">结构化条目（人物/装备/势力）</div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">启用结构化条目</label>
                 <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">人物</label>
                 <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">装备</label>
-                <label class="sg-check"><input type="checkbox" id="sg_abilityEntriesEnabled">能力</label>
+                <label class="sg-check"><input type="checkbox" id="sg_factionEntriesEnabled">势力</label>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
@@ -8977,8 +9049,8 @@ function buildModalHtml() {
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>能力条目前缀</label>
-                  <input id="sg_abilityEntryPrefix" type="text" placeholder="能力">
+                  <label>势力条目前缀</label>
+                  <input id="sg_factionEntryPrefix" type="text" placeholder="势力">
                 </div>
               </div>
               <div class="sg-field">
@@ -8987,7 +9059,7 @@ function buildModalHtml() {
               </div>
               <div class="sg-field">
                 <label>结构化提取模板（User，可选）</label>
-                <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}"></textarea>
+                <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownFactions}}"></textarea>
               </div>
               <div class="sg-field">
                 <label>人物条目提示词（可选）</label>
@@ -8998,13 +9070,13 @@ function buildModalHtml() {
                 <textarea id="sg_structuredEquipmentPrompt" rows="3" placeholder="例如：强调来源/稀有度/当前状态…"></textarea>
               </div>
               <div class="sg-field">
-                <label>能力条目提示词（可选）</label>
-                <textarea id="sg_structuredAbilityPrompt" rows="3" placeholder="例如：强调触发条件/代价/负面效果…"></textarea>
+                <label>势力条目提示词（可选）</label>
+                <textarea id="sg_structuredFactionPrompt" rows="3" placeholder="例如：强调范围/领袖/关系变化…"></textarea>
               </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
                 <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓存</button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}。</div>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownFactions}}。</div>
               </div>
             </div>
 
@@ -9942,7 +10014,7 @@ function ensureModal() {
     $('#sg_structuredEntriesUserTemplate').val(DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE);
     $('#sg_structuredCharacterPrompt').val(DEFAULT_STRUCTURED_CHARACTER_PROMPT);
     $('#sg_structuredEquipmentPrompt').val(DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
-    $('#sg_structuredAbilityPrompt').val(DEFAULT_STRUCTURED_ABILITY_PROMPT);
+    $('#sg_structuredFactionPrompt').val(DEFAULT_STRUCTURED_FACTION_PROMPT);
     pullUiToSettings();
     saveSettings();
     setStatus('已恢复默认结构化提示词 ✅', 'ok');
@@ -10010,6 +10082,14 @@ function ensureModal() {
 
   // auto-save summary settings
   $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryInfoLabel();
+    updateBlueIndexInfoLabel();
+    updateSummaryManualRangeHint(false);
+  });
+
+  $('#sg_factionEntriesEnabled, #sg_factionEntryPrefix, #sg_structuredFactionPrompt').on('input change', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -10758,15 +10838,15 @@ function pullSettingsToUi() {
   $('#sg_structuredEntriesEnabled').prop('checked', !!s.structuredEntriesEnabled);
   $('#sg_characterEntriesEnabled').prop('checked', !!s.characterEntriesEnabled);
   $('#sg_equipmentEntriesEnabled').prop('checked', !!s.equipmentEntriesEnabled);
-  $('#sg_abilityEntriesEnabled').prop('checked', !!s.abilityEntriesEnabled);
+  $('#sg_factionEntriesEnabled').prop('checked', !!s.factionEntriesEnabled);
   $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '人物'));
   $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '装备'));
-  $('#sg_abilityEntryPrefix').val(String(s.abilityEntryPrefix || '能力'));
+  $('#sg_factionEntryPrefix').val(String(s.factionEntryPrefix || '势力'));
   $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
   $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
   $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
-  $('#sg_structuredAbilityPrompt').val(String(s.structuredAbilityPrompt || DEFAULT_STRUCTURED_ABILITY_PROMPT));
+  $('#sg_structuredFactionPrompt').val(String(s.structuredFactionPrompt || DEFAULT_STRUCTURED_FACTION_PROMPT));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -11270,15 +11350,15 @@ function pullUiToSettings() {
   s.structuredEntriesEnabled = $('#sg_structuredEntriesEnabled').is(':checked');
   s.characterEntriesEnabled = $('#sg_characterEntriesEnabled').is(':checked');
   s.equipmentEntriesEnabled = $('#sg_equipmentEntriesEnabled').is(':checked');
-  s.abilityEntriesEnabled = $('#sg_abilityEntriesEnabled').is(':checked');
+  s.factionEntriesEnabled = $('#sg_factionEntriesEnabled').is(':checked');
   s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '人物').trim() || '人物';
   s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '装备').trim() || '装备';
-  s.abilityEntryPrefix = String($('#sg_abilityEntryPrefix').val() || '能力').trim() || '能力';
+  s.factionEntryPrefix = String($('#sg_factionEntryPrefix').val() || '势力').trim() || '势力';
   s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
   s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
-  s.structuredAbilityPrompt = String($('#sg_structuredAbilityPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
+  s.structuredFactionPrompt = String($('#sg_structuredFactionPrompt').val() || '').trim() || DEFAULT_STRUCTURED_FACTION_PROMPT;
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
