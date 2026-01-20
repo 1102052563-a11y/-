@@ -1888,16 +1888,18 @@ function buildDatabaseModules(data) {
   const modules = [];
   let totalRows = 0;
 
-  const pushModule = (title, rows) => {
-    const template = templates.find(t => String(t.table || '').trim() === String(title || '').trim()) || null;
+  const pushModule = (title, rows, templateOverride) => {
+    const template = templateOverride || templates.find(t => String(t.table || '').trim() === String(title || '').trim()) || null;
     modules.push({ title, rows, template });
   };
 
+  const seenNames = new Set();
   keys.forEach((sheetKey) => {
     const table = data[sheetKey];
     if (!table || !table.name || !Array.isArray(table.content)) return;
 
     const name = String(table.name || '').trim() || sheetKey;
+    seenNames.add(name);
     const headers = Array.isArray(table.content[0]) ? table.content[0].slice(1) : [];
     const rows = table.content.slice(1).map((row) => {
       const cells = Array.isArray(row) ? row.slice(1) : [];
@@ -1922,6 +1924,13 @@ function buildDatabaseModules(data) {
     const exportConfig = table.exportConfig || {};
     if (exportConfig.enabled || exportConfig.injectIntoWorldbook === false) return;
     pushModule(name, rows);
+  });
+
+  // 补充模板里存在但数据里还没有的表
+  templates.forEach((tpl) => {
+    const name = String(tpl.table || tpl.name || '').trim();
+    if (!name || seenNames.has(name)) return;
+    pushModule(name, [], tpl);
   });
 
   return { modules, totalTables: keys.length, totalRows };
@@ -1968,7 +1977,8 @@ async function renderDatabaseView(settings) {
     : '<div class="sg-database-empty">暂无可展示的表格。</div>';
 
   const sourceLabel = payload.source === 'variable' ? '变量' : '聊天记录';
-  const infoText = `来源：${sourceLabel}｜表格：${info.totalTables}｜记录：${info.totalRows}`;
+  const templateCount = getDatabaseTemplates().length;
+  const infoText = `来源：${sourceLabel}｜表格：${info.totalTables}｜模板：${templateCount}｜记录：${info.totalRows}`;
   return { html: modulesHtml, infoText };
 }
 
@@ -14391,6 +14401,15 @@ async function showFloatingDatabase() {
   $body.html('<div class="sg-floating-loading">正在读取数据库...</div>');
   const { html, infoText } = await renderDatabaseView(s);
 
+  const rawSection = lastDatabaseRawText
+    ? `
+      <details class="sg-database-raw">
+        <summary>原始表格 JSON</summary>
+        <pre>${escapeHtml(lastDatabaseRawText)}</pre>
+      </details>
+    `
+    : '';
+
   const header = `
     <div class="sg-database-header">
       <div>
@@ -14404,7 +14423,7 @@ async function showFloatingDatabase() {
     </div>
   `;
 
-  $body.html(`${header}<div class="sg-database-view">${html}</div>`);
+  $body.html(`${header}${rawSection}<div class="sg-database-view">${html}</div>`);
 }
 
 // -------------------- init --------------------
