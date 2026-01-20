@@ -1709,7 +1709,8 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
         updateKeys.forEach((key) => { current[key] = updates[key]; });
       } else {
         const insertUpdates = parseInsertRowCommands(jsonText);
-        const inserted = applyInsertRowUpdates(current, insertUpdates, tableList);
+        const insertTableList = buildInsertRowTableList(current);
+        const inserted = applyInsertRowUpdates(current, insertUpdates, insertTableList);
         if (!inserted) throw new Error('解析失败：未检测到 insertRow 数据');
         lastDatabaseRawText = JSON.stringify(current, null, 2);
         if ($output.length) $output.val(String(lastDatabaseRawText || ''));
@@ -2142,6 +2143,27 @@ function resolveInsertTargetKey(target, tableList) {
     if (idx >= 0 && Array.isArray(tableList) && tableList[idx]) return tableList[idx].key;
   }
   return '';
+}
+
+function buildInsertRowTableList(current) {
+  const dataList = getDatabaseTableList(current);
+  const nameToKey = new Map(dataList.map(item => [item.name, item.key]));
+  const templates = getDatabaseTemplates();
+  const ordered = [];
+
+  templates.forEach((tpl, idx) => {
+    const name = String(tpl.table || tpl.name || '').trim();
+    if (!name) return;
+    const key = nameToKey.get(name) || getTemplateSheetKey(idx);
+    ordered.push({ key, name });
+  });
+
+  dataList.forEach((item) => {
+    if (ordered.find(x => x.key === item.key)) return;
+    ordered.push(item);
+  });
+
+  return ordered;
 }
 
 function applyInsertRowUpdates(current, updates, tableList) {
