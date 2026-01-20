@@ -1728,6 +1728,7 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
   await setDatabaseMeta(meta);
 
   lastDatabasePayload = current;
+  lastDatabaseRawText = safeStringifyShort(current, 8000);
   await refreshDatabaseStatusUi();
   showToast(`更新完成：已处理 ${chunks.length} 段`, { kind: 'ok' });
   return true;
@@ -12462,8 +12463,13 @@ function setupSettingsPages() {
   });
 
   $('#sg_db_output_refresh').on('click', async () => {
-    const payload = await loadDatabasePayload(ensureSettings());
-    lastDatabaseRawText = payload?.rawText || '';
+    if (lastDatabasePayload) {
+      lastDatabaseRawText = safeStringifyShort(lastDatabasePayload, 8000);
+    } else {
+      const payload = await loadDatabasePayload(ensureSettings());
+      lastDatabaseRawText = payload?.rawText || '';
+      lastDatabasePayload = payload?.data || null;
+    }
     $('#sg_db_output_json').val(String(lastDatabaseRawText || ''));
     showToast('输出已刷新', { kind: 'ok' });
   });
