@@ -2125,6 +2125,7 @@ async function refreshDatabaseStatusUi() {
     else $next.text(nextFloor ? `下一次更新: ${nextFloor}` : '下一次更新: 无');
   }
 
+  const floorNow = getChatAiMessageCount();
   const tableList = getDatabaseTableList(payload.data);
   if ($tbody.length) {
     if (!tableList.length) {
