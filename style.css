@@ -1996,6 +1996,54 @@ body.sg-image-preview-open {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.sg-db-prompt-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.sg-db-prompt-block {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sg-db-prompt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.sg-db-prompt-role {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.sg-db-prompt-role-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(220, 230, 240, 0.9);
+}
+
+.sg-db-prompt-role-btn.active {
+  background: rgba(80, 140, 220, 0.25);
+  border-color: rgba(120, 170, 240, 0.35);
+  color: #eaf2ff;
+}
+
+.sg-db-prompt-remove {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 120, 120, 0.35);
+  background: rgba(255, 120, 120, 0.1);
+  color: rgba(255, 210, 210, 0.9);
+}
+
 .sg-database-list {
   list-style: none;
   margin: 0;

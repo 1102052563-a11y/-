@@ -560,6 +560,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   databasePromptSystem: '你是数据库更新助手。根据对话更新指定表格。',
   databasePromptUser: '请根据最新剧情更新数据库表格，保持条目简洁。',
   databasePromptAssistant: '',
+  databasePromptBlocksJson: JSON.stringify([
+    { role: 'system', content: '你是数据库更新助手。根据对话更新指定表格。' },
+    { role: 'user', content: '请根据最新剧情更新数据库表格，保持条目简洁。' }
+  ], null, 2),
   databaseTemplatesJson: JSON.stringify([
     { name: '技能表模板', table: '技能表', feature: '记录技能名称、等级、效果、来源与备注', prompt: '更新技能表：补充新技能、等级变化与关键效果。' },
     { name: '势力表模板', table: '势力表', feature: '记录势力结构、目标、主要人物与关系', prompt: '整理势力表：更新势力动向、关系与核心人物。' }
@@ -1510,10 +1514,10 @@ function buildDatabaseImportPrompt({ chunk, baseData, tableMap, templates, setti
   }).join('\n') || '（无）';
 
   const baseJson = JSON.stringify(baseData, null, 2);
-  const system = String(s.databasePromptSystem || '').trim() || '你是数据库更新助手。根据对话更新指定表格。';
-  const userTpl = String(s.databasePromptUser || '').trim() || '请根据导入文本更新数据库表格。';
+  const blocks = getDatabasePromptBlocks();
+  const userTpl = blocks.find(b => b.role === 'user')?.content || '请根据导入文本更新数据库表格。';
   const user = [
-    userTpl,
+    String(userTpl || '').trim(),
     extraHint ? `\n【额外提示词】\n${extraHint}\n` : '',
     s.databaseContextExtractTags ? `\n【正文标签提取】${s.databaseContextExtractTags}` : '',
     s.databaseContextExcludeTags ? `\n【标签排除】${s.databaseContextExcludeTags}` : '',
@@ -1531,13 +1535,26 @@ function buildDatabaseImportPrompt({ chunk, baseData, tableMap, templates, setti
     String(chunk || '')
   ].join('\n');
 
-  const messages = [
-    { role: 'system', content: `${system}\n\n要求：只输出 JSON 对象本体，不要任何额外文本或代码块。` },
-    { role: 'user', content: user }
-  ];
-  if (s.databasePromptAssistant) {
-    messages.push({ role: 'assistant', content: String(s.databasePromptAssistant) });
+  const requirement = '要求：只输出 JSON 对象本体，不要任何额外文本或代码块。';
+  const messages = blocks.length
+    ? blocks.map(b => ({ role: b.role, content: String(b.content || '').trim() }))
+    : [
+      { role: 'system', content: String(s.databasePromptSystem || '').trim() },
+      { role: 'user', content: String(s.databasePromptUser || '').trim() }
+    ].filter(b => b.content);
+
+  const sysIdx = messages.findIndex(m => m.role === 'system');
+  if (sysIdx >= 0) messages[sysIdx].content = `${messages[sysIdx].content}\n\n${requirement}`.trim();
+  else messages.unshift({ role: 'system', content: requirement });
+
+  const userIdx = [...messages].reverse().findIndex(m => m.role === 'user');
+  if (userIdx >= 0) {
+    const realIdx = messages.length - 1 - userIdx;
+    messages[realIdx].content = `${messages[realIdx].content}\n\n${user}`.trim();
+  } else {
+    messages.push({ role: 'user', content: user });
   }
+
   return messages;
 }
 
@@ -2216,6 +2233,59 @@ function updateDatabaseImportStatus() {
   } else {
     $status.text(count ? `已缓存导入内容（${count}段）` : '尚未提交文件');
   }
+}
+
+function getDatabasePromptBlocks() {
+  const s = ensureSettings();
+  const raw = String(s.databasePromptBlocksJson || '').trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        return parsed
+          .map(b => ({ role: String(b.role || '').trim() || 'user', content: String(b.content || '') }))
+          .filter(b => b.content || b.role);
+      }
+    } catch { /* ignore */ }
+  }
+  const out = [];
+  if (s.databasePromptSystem) out.push({ role: 'system', content: String(s.databasePromptSystem) });
+  if (s.databasePromptUser) out.push({ role: 'user', content: String(s.databasePromptUser) });
+  if (s.databasePromptAssistant) out.push({ role: 'assistant', content: String(s.databasePromptAssistant) });
+  return out.length ? out : [{ role: 'user', content: '' }];
+}
+
+function renderDatabasePromptBlocks(blocks) {
+  const $wrap = $('#sg_db_prompt_blocks');
+  if (!$wrap.length) return;
+  const list = Array.isArray(blocks) && blocks.length ? blocks : [{ role: 'user', content: '' }];
+  $wrap.html(list.map((b, idx) => {
+    const role = String(b.role || 'user');
+    return `
+      <div class="sg-db-prompt-block" data-idx="${idx}">
+        <div class="sg-db-prompt-head">
+          <div class="sg-db-prompt-role">
+            <button class="sg-db-prompt-role-btn ${role === 'system' ? 'active' : ''}" data-role="system">系统</button>
+            <button class="sg-db-prompt-role-btn ${role === 'user' ? 'active' : ''}" data-role="user">用户</button>
+            <button class="sg-db-prompt-role-btn ${role === 'assistant' ? 'active' : ''}" data-role="assistant">AI</button>
+          </div>
+          <button class="sg-db-prompt-remove" title="删除">-</button>
+        </div>
+        <textarea class="sg-db-prompt-text" rows="3">${escapeHtml(String(b.content || ''))}</textarea>
+      </div>
+    `;
+  }).join(''));
+}
+
+function readDatabasePromptBlocksFromUi() {
+  const blocks = [];
+  $('#sg_db_prompt_blocks .sg-db-prompt-block').each((_, el) => {
+    const $el = $(el);
+    const role = $el.find('.sg-db-prompt-role-btn.active').data('role') || 'user';
+    const content = String($el.find('.sg-db-prompt-text').val() || '');
+    blocks.push({ role, content });
+  });
+  return blocks;
 }
 
 function normalizeWorldbookListPayload(data) {
@@ -10653,18 +10723,10 @@ function buildModalHtml() {
 
             <div class="sg-card" style="margin-top:12px;">
               <div class="sg-card-title">数据库更新预设（任务指令）</div>
-              <div class="sg-field">
-                <label>系统提示词</label>
-                <textarea id="sg_db_prompt_system" rows="4"></textarea>
+              <div class="sg-row" style="justify-content:flex-end;">
+                <button class="menu_button sg-btn" id="sg_db_prompt_add">+</button>
               </div>
-              <div class="sg-field">
-                <label>用户提示词</label>
-                <textarea id="sg_db_prompt_user" rows="4"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>AI提示词</label>
-                <textarea id="sg_db_prompt_assistant" rows="4"></textarea>
-              </div>
+              <div id="sg_db_prompt_blocks" class="sg-db-prompt-blocks"></div>
               <div class="sg-row sg-inline" style="margin-top:6px;">
                 <button class="menu_button sg-btn" id="sg_db_prompt_reset">恢复默认</button>
               </div>
@@ -12013,12 +12075,36 @@ function setupSettingsPages() {
   });
 
   $('#sg_db_prompt_reset').on('click', () => {
-    $('#sg_db_prompt_system').val(DEFAULT_SETTINGS.databasePromptSystem || '');
-    $('#sg_db_prompt_user').val(DEFAULT_SETTINGS.databasePromptUser || '');
-    $('#sg_db_prompt_assistant').val(DEFAULT_SETTINGS.databasePromptAssistant || '');
+    renderDatabasePromptBlocks(safeJsonParse(DEFAULT_SETTINGS.databasePromptBlocksJson) || []);
     pullUiToSettings();
     saveSettings();
     setStatus('数据库提示词已恢复默认', 'ok');
+  });
+
+  $('#sg_db_prompt_add').on('click', () => {
+    const blocks = readDatabasePromptBlocksFromUi();
+    blocks.push({ role: 'user', content: '' });
+    renderDatabasePromptBlocks(blocks);
+    pullUiToSettings();
+    saveSettings();
+  });
+
+  $(document).on('click', '.sg-db-prompt-role-btn', (e) => {
+    const $btn = $(e.currentTarget);
+    $btn.closest('.sg-db-prompt-role').find('.sg-db-prompt-role-btn').removeClass('active');
+    $btn.addClass('active');
+    pullUiToSettings();
+    saveSettings();
+  });
+
+  $(document).on('click', '.sg-db-prompt-remove', (e) => {
+    const $block = $(e.currentTarget).closest('.sg-db-prompt-block');
+    $block.remove();
+    const blocks = readDatabasePromptBlocksFromUi();
+    if (!blocks.length) blocks.push({ role: 'user', content: '' });
+    renderDatabasePromptBlocks(blocks);
+    pullUiToSettings();
+    saveSettings();
   });
 
   $('#sg_db_import_pick').on('click', () => {
@@ -12467,9 +12553,7 @@ function pullSettingsToUi() {
   $('#sg_db_update_batch_size').val(s.databaseUpdateBatchSize ?? 3);
   $('#sg_db_skip_update_floors').val(s.databaseSkipUpdateFloors ?? 0);
   $('#sg_db_keep_recent_floors').val(String(s.databaseKeepRecentFloors || ''));
-  $('#sg_db_prompt_system').val(String(s.databasePromptSystem || ''));
-  $('#sg_db_prompt_user').val(String(s.databasePromptUser || ''));
-  $('#sg_db_prompt_assistant').val(String(s.databasePromptAssistant || ''));
+  renderDatabasePromptBlocks(getDatabasePromptBlocks());
   $('#sg_db_import_mode').val(String(s.databaseImportMode || 'worldbook'));
   $('#sg_db_import_worldbook_target').val(String(s.databaseImportWorldbookTarget || 'chatbook'));
   $('#sg_db_import_worldbook_name').val(String(s.databaseImportWorldbookName || ''));
@@ -13016,6 +13100,16 @@ function pullUiToSettings() {
   s.databasePromptSystem = String($('#sg_db_prompt_system').val() || '').trim();
   s.databasePromptUser = String($('#sg_db_prompt_user').val() || '').trim();
   s.databasePromptAssistant = String($('#sg_db_prompt_assistant').val() || '').trim();
+  if ($('#sg_db_prompt_blocks').length) {
+    const blocks = readDatabasePromptBlocksFromUi();
+    s.databasePromptBlocksJson = JSON.stringify(blocks, null, 2);
+    const sys = blocks.find(b => b.role === 'system')?.content || '';
+    const usr = blocks.find(b => b.role === 'user')?.content || '';
+    const asst = blocks.find(b => b.role === 'assistant')?.content || '';
+    s.databasePromptSystem = String(sys || '').trim();
+    s.databasePromptUser = String(usr || '').trim();
+    s.databasePromptAssistant = String(asst || '').trim();
+  }
   s.databaseImportMode = String($('#sg_db_import_mode').val() || 'worldbook');
   s.databaseImportWorldbookTarget = String($('#sg_db_import_worldbook_target').val() || 'chatbook');
   s.databaseImportWorldbookName = String($('#sg_db_import_worldbook_name').val() || '').trim();
