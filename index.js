@@ -124,15 +124,18 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 1. 识别本次对话中出现的重要 NPC（不含主角）
 2. 识别主角当前持有/装备的关键物品
 3. 识别剧情中出现/变化的重要势力
-4. 识别需要删除的条目（死亡的角色、卖掉/分解的装备等）
-5. 生成档案式的客观第三人称描述
+4. 识别剧情中的成就记录
+5. 识别主角的副职业变化
+6. 识别当前或新增的任务记录
+7. 识别需要删除的条目（死亡的角色、卖掉/分解的装备等）
+8. 生成档案式的客观第三人称描述
 
 【筛选标准】
 - NPC：只记录有名有姓的角色，忽略杂兵、无名NPC、普通敌人
 - 装备：只记录绿色品质以上的装备，或紫色品质以上的重要物品
 
 【去重规则（重要）】
-- 仔细检查【已知人物列表】、【已知装备列表】和【已知势力列表】，避免重复创建条目
+- 仔细检查【已知人物列表】、【已知装备列表】、【已知势力列表】、【已知成就列表】、【已知副职业列表】、【已知任务列表】，避免重复创建条目
 - 同一角色可能有多种写法（如繁体/简体、英文/中文翻译），必须识别为同一人
 - 如果发现角色已存在于列表中，使用 isUpdated=true 更新而不是创建新条目
 - 将不同名称写法添加到 aliases 数组中
@@ -141,6 +144,9 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 - 若角色在对话中明确死亡/永久离开，将其加入 deletedCharacters 数组
 - 若装备被卖掉/分解/丢弃/彻底损坏，将其加入 deletedEquipments 数组
 - 若势力解散/覆灭/被吞并，将其加入 deletedFactions 数组
+- 若成就被撤销/失效，将其加入 deletedAchievements 数组
+- 若副职业被放弃/失去，将其加入 deletedSubProfessions 数组
+- 若任务完成/失败/取消，将其加入 deletedQuests 数组
 
 【重要】
 - 若提供了 statData，请从中提取该角色/物品的**关键数值**（如属性、等级、状态），精简为1-2行
@@ -151,8 +157,9 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 - 为每个重要NPC提取「核心性格」：不会因剧情发展而轻易改变的根本特质
 - 提取「角色动机」：该角色自己的目标/追求，不是围绕主角转
 - 评估「关系阶段」：陌生/初识/熟悉/信任/亲密，关系发展应循序渐进`;
-const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
-const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}\\n【已知势力列表】\\n{{knownFactions}}`;
+const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V1 = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
+const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V2 = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}\\n【已知势力列表】\\n{{knownFactions}}`;
+const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}\\n【已知势力列表】\\n{{knownFactions}}\\n【已知成就列表】\\n{{knownAchievements}}\\n【已知副职业列表】\\n{{knownSubProfessions}}\\n【已知任务列表】\\n{{knownQuests}}`;
 const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。
 
 【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件
@@ -165,15 +172,24 @@ const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC�
 若角色死亡/永久离开，将其名字加入 deletedCharacters。若有 statData，在 statInfo 中精简总结。信息不足写"待确认"。`;
 const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备。若装备被卖掉/分解/丢弃/损坏，将其名字加入 deletedEquipments。若有 statData，精简总结其属性。`;
 const DEFAULT_STRUCTURED_FACTION_PROMPT = `记录重要势力/组织/阵营。说明性质、范围、领导者、理念、与主角关系、当前状态。若势力解散/覆灭/被吞并，将其名字加入 deletedFactions。若有 statData，精简总结其数值。`;
+const DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT = `记录主角获得的成就。说明达成条件、影响、获得时间与当前状态。若成就被撤销/失效，将其名字加入 deletedAchievements。若有 statData，精简总结其数值。`;
+const DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT = `记录主角的副职业/第二职业。说明定位、等级/进度、核心技能、获得方式、当前状态。若副职业被放弃/失去，将其名字加入 deletedSubProfessions。若有 statData，精简总结其数值。`;
+const DEFAULT_STRUCTURED_QUEST_PROMPT = `记录任务/委托。说明目标、发布者、进度、奖励、期限/地点。若任务完成/失败/取消，将其名字加入 deletedQuests。若有 statData，精简总结其数值。`;
 const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。
 
-结构：{"characters":[...],"equipments":[...],"factions":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedFactions":[...]}
+结构：{"characters":[...],"equipments":[...],"factions":[...],"achievements":[...],"subProfessions":[...],"quests":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedFactions":[...],"deletedAchievements":[...],"deletedSubProfessions":[...],"deletedQuests":[...]}
 
 characters 条目结构：{name,uid,aliases[],faction,status,personality,corePersonality:"核心性格锚点（不轻易改变）",motivation:"角色独立动机/目标",relationshipStage:"陌生|初识|熟悉|信任|亲密",background,relationToProtagonist,keyEvents[],statInfo,isNew,isUpdated}
 
 equipments 条目结构：{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}
 
-factions 条目结构：{name,uid,aliases[],type,scope,leader,ideology,relationToProtagonist,status,keyEvents[],statInfo,isNew,isUpdated}`;
+factions 条目结构：{name,uid,aliases[],type,scope,leader,ideology,relationToProtagonist,status,keyEvents[],statInfo,isNew,isUpdated}
+
+achievements 条目结构：{name,uid,description,requirements,obtainedAt,status,effects,keyEvents[],statInfo,isNew,isUpdated}
+
+subProfessions 条目结构：{name,uid,role,level,progress,skills,source,status,keyEvents[],statInfo,isNew,isUpdated}
+
+quests 条目结构：{name,uid,goal,progress,status,issuer,reward,deadline,location,keyEvents[],statInfo,isNew,isUpdated}`;
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
@@ -467,19 +483,28 @@ const DEFAULT_SETTINGS = Object.freeze({
   customSystemPreamble: '',     // 附加在默认 system 之后
   customConstraints: '',        // 附加在默认 constraints 之后
 
-  // ===== 结构化世界书条目（人物/装备/势力） =====
+  // ===== 结构化世界书条目（人物/装备/势力/成就/副职业/任务） =====
   structuredEntriesEnabled: true,
   characterEntriesEnabled: true,
   equipmentEntriesEnabled: true,
   factionEntriesEnabled: false, // 默认关闭
+  achievementEntriesEnabled: false,
+  subProfessionEntriesEnabled: false,
+  questEntriesEnabled: false,
   characterEntryPrefix: '人物',
   equipmentEntryPrefix: '装备',
   factionEntryPrefix: '势力',
+  achievementEntryPrefix: '成就',
+  subProfessionEntryPrefix: '副职业',
+  questEntryPrefix: '任务',
   structuredEntriesSystemPrompt: '',
   structuredEntriesUserTemplate: '',
   structuredCharacterPrompt: '',
   structuredEquipmentPrompt: '',
   structuredFactionPrompt: '',
+  structuredAchievementPrompt: '',
+  structuredSubProfessionPrompt: '',
+  structuredQuestPrompt: '',
 
   // ===== 快捷选项功能 =====
   quickOptionsEnabled: true,
@@ -755,9 +780,14 @@ function ensureSettings() {
     saveSettingsDebounced();
   }
 
-  // 迁移：结构化提取模板补充势力列表
+  // 迁移：结构化提取模板补充更多条目列表
   const structuredTpl = String(extensionSettings[MODULE_NAME].structuredEntriesUserTemplate || '').trim();
-  if (!structuredTpl || structuredTpl === LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE) {
+  const isLegacyStructuredTpl = (
+    !structuredTpl
+    || structuredTpl === LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V1
+    || structuredTpl === LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V2
+  );
+  if (isLegacyStructuredTpl) {
     extensionSettings[MODULE_NAME].structuredEntriesUserTemplate = DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
     saveSettingsDebounced();
   }
@@ -1365,9 +1395,15 @@ function getDefaultSummaryMeta() {
     characterEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     equipmentEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     factionEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
+    achievementEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
+    subProfessionEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
+    questEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
     nextCharacterIndex: 1, // NPC-001, NPC-002...
     nextEquipmentIndex: 1, // EQP-001, EQP-002...
     nextFactionIndex: 1, // FCT-001, FCT-002...
+    nextAchievementIndex: 1, // ACH-001, ACH-002...
+    nextSubProfessionIndex: 1, // SUB-001, SUB-002...
+    nextQuestIndex: 1, // QUE-001, QUE-002...
   };
 }
 
@@ -1991,15 +2027,21 @@ async function clearStaticModulesCache() {
   await setStaticModulesCache({});
 }
 
-// 清除结构化条目缓存（人物/装备/势力）
+// 清除结构化条目缓存（人物/装备/势力/成就/副职业/任务）
 async function clearStructuredEntriesCache() {
   const meta = getSummaryMeta();
   meta.characterEntries = {};
   meta.equipmentEntries = {};
   meta.factionEntries = {};
+  meta.achievementEntries = {};
+  meta.subProfessionEntries = {};
+  meta.questEntries = {};
   meta.nextCharacterIndex = 1;
   meta.nextEquipmentIndex = 1;
   meta.nextFactionIndex = 1;
+  meta.nextAchievementIndex = 1;
+  meta.nextSubProfessionIndex = 1;
+  meta.nextQuestIndex = 1;
   await setSummaryMeta(meta);
 }
 
@@ -3713,11 +3755,17 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
   const charPrompt = String(s.structuredCharacterPrompt || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   const equipPrompt = String(s.structuredEquipmentPrompt || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
   const factionPrompt = String(s.structuredFactionPrompt || '').trim() || DEFAULT_STRUCTURED_FACTION_PROMPT;
+  const achievementPrompt = String(s.structuredAchievementPrompt || '').trim() || DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT;
+  const subProfessionPrompt = String(s.structuredSubProfessionPrompt || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT;
+  const questPrompt = String(s.structuredQuestPrompt || '').trim() || DEFAULT_STRUCTURED_QUEST_PROMPT;
   sys = [
     sys,
     `【人物条目要求】\n${charPrompt}`,
     `【装备条目要求】\n${equipPrompt}`,
     `【势力条目要求】\n${factionPrompt}`,
+    `【成就条目要求】\n${achievementPrompt}`,
+    `【副职业条目要求】\n${subProfessionPrompt}`,
+    `【任务条目要求】\n${questPrompt}`,
     STRUCTURED_ENTRIES_JSON_REQUIREMENT,
   ].join('\n\n');
 
@@ -3733,6 +3781,18 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
   const knownFactions = Object.values(meta.factionEntries || {}).map(f => {
     const aliases = Array.isArray(f.aliases) && f.aliases.length > 0 ? `[别名:${f.aliases.join('/')}]` : '';
     return `${f.name}${aliases}`;
+  }).join('、') || '无';
+  const knownAchievements = Object.values(meta.achievementEntries || {}).map(a => {
+    const aliases = Array.isArray(a.aliases) && a.aliases.length > 0 ? `[别名:${a.aliases.join('/')}]` : '';
+    return `${a.name}${aliases}`;
+  }).join('、') || '无';
+  const knownSubProfessions = Object.values(meta.subProfessionEntries || {}).map(p => {
+    const aliases = Array.isArray(p.aliases) && p.aliases.length > 0 ? `[别名:${p.aliases.join('/')}]` : '';
+    return `${p.name}${aliases}`;
+  }).join('、') || '无';
+  const knownQuests = Object.values(meta.questEntries || {}).map(q => {
+    const aliases = Array.isArray(q.aliases) && q.aliases.length > 0 ? `[别名:${q.aliases.join('/')}]` : '';
+    return `${q.name}${aliases}`;
   }).join('、') || '无';
 
   // 格式化 statData
@@ -3751,6 +3811,9 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
     knownCharacters: knownChars,
     knownEquipments: knownEquips,
     knownFactions: knownFactions,
+    knownAchievements: knownAchievements,
+    knownSubProfessions: knownSubProfessions,
+    knownQuests: knownQuests,
     statData: statDataJson,
   });
   // 如果有 statData 且模板里没有包含，追加到末尾
@@ -3778,9 +3841,15 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
     characters: Array.isArray(parsed.characters) ? parsed.characters : [],
     equipments: Array.isArray(parsed.equipments) ? parsed.equipments : [],
     factions: Array.isArray(parsed.factions) ? parsed.factions : (Array.isArray(parsed.abilities) ? parsed.abilities : []),
+    achievements: Array.isArray(parsed.achievements) ? parsed.achievements : [],
+    subProfessions: Array.isArray(parsed.subProfessions) ? parsed.subProfessions : [],
+    quests: Array.isArray(parsed.quests) ? parsed.quests : [],
     deletedCharacters: Array.isArray(parsed.deletedCharacters) ? parsed.deletedCharacters : [],
     deletedEquipments: Array.isArray(parsed.deletedEquipments) ? parsed.deletedEquipments : [],
     deletedFactions: Array.isArray(parsed.deletedFactions) ? parsed.deletedFactions : (Array.isArray(parsed.deletedAbilities) ? parsed.deletedAbilities : []),
+    deletedAchievements: Array.isArray(parsed.deletedAchievements) ? parsed.deletedAchievements : [],
+    deletedSubProfessions: Array.isArray(parsed.deletedSubProfessions) ? parsed.deletedSubProfessions : [],
+    deletedQuests: Array.isArray(parsed.deletedQuests) ? parsed.deletedQuests : [],
   };
 }
 
@@ -3843,6 +3912,57 @@ function buildFactionContent(faction) {
   if (faction.keyEvents?.length) parts.push(`关键事件：${faction.keyEvents.join('；')}`);
   if (faction.statInfo) {
     const infoStr = typeof faction.statInfo === 'object' ? JSON.stringify(faction.statInfo, null, 2) : String(faction.statInfo);
+    parts.push(`属性数据：${infoStr}`);
+  }
+  return parts.join('\n');
+}
+
+function buildAchievementContent(achievement) {
+  const parts = [];
+  if (achievement.name) parts.push(`【成就】${achievement.name}`);
+  if (achievement.description) parts.push(`描述：${achievement.description}`);
+  if (achievement.requirements) parts.push(`达成条件：${achievement.requirements}`);
+  if (achievement.obtainedAt) parts.push(`获得时间：${achievement.obtainedAt}`);
+  if (achievement.status) parts.push(`状态：${achievement.status}`);
+  if (achievement.effects) parts.push(`影响：${achievement.effects}`);
+  if (achievement.keyEvents?.length) parts.push(`关键事件：${achievement.keyEvents.join('；')}`);
+  if (achievement.statInfo) {
+    const infoStr = typeof achievement.statInfo === 'object' ? JSON.stringify(achievement.statInfo, null, 2) : String(achievement.statInfo);
+    parts.push(`属性数据：${infoStr}`);
+  }
+  return parts.join('\n');
+}
+
+function buildSubProfessionContent(subProfession) {
+  const parts = [];
+  if (subProfession.name) parts.push(`【副职业】${subProfession.name}`);
+  if (subProfession.role) parts.push(`定位：${subProfession.role}`);
+  if (subProfession.level) parts.push(`等级：${subProfession.level}`);
+  if (subProfession.progress) parts.push(`进度：${subProfession.progress}`);
+  if (subProfession.skills) parts.push(`核心技能：${subProfession.skills}`);
+  if (subProfession.source) parts.push(`获得方式：${subProfession.source}`);
+  if (subProfession.status) parts.push(`状态：${subProfession.status}`);
+  if (subProfession.keyEvents?.length) parts.push(`关键事件：${subProfession.keyEvents.join('；')}`);
+  if (subProfession.statInfo) {
+    const infoStr = typeof subProfession.statInfo === 'object' ? JSON.stringify(subProfession.statInfo, null, 2) : String(subProfession.statInfo);
+    parts.push(`属性数据：${infoStr}`);
+  }
+  return parts.join('\n');
+}
+
+function buildQuestContent(quest) {
+  const parts = [];
+  if (quest.name) parts.push(`【任务】${quest.name}`);
+  if (quest.goal) parts.push(`目标：${quest.goal}`);
+  if (quest.progress) parts.push(`进度：${quest.progress}`);
+  if (quest.status) parts.push(`状态：${quest.status}`);
+  if (quest.issuer) parts.push(`发布者：${quest.issuer}`);
+  if (quest.reward) parts.push(`奖励：${quest.reward}`);
+  if (quest.deadline) parts.push(`期限：${quest.deadline}`);
+  if (quest.location) parts.push(`地点：${quest.location}`);
+  if (quest.keyEvents?.length) parts.push(`关键事件：${quest.keyEvents.join('；')}`);
+  if (quest.statInfo) {
+    const infoStr = typeof quest.statInfo === 'object' ? JSON.stringify(quest.statInfo, null, 2) : String(quest.statInfo);
     parts.push(`属性数据：${infoStr}`);
   }
   return parts.join('\n');
@@ -4166,6 +4286,84 @@ async function writeOrUpdateFactionEntry(faction, meta, settings) {
   return results.length ? results : null;
 }
 
+async function writeOrUpdateAchievementEntry(achievement, meta, settings) {
+  if (!achievement?.name) return null;
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('achievement', achievement, meta, settings, {
+      buildContent: buildAchievementContent,
+      entriesCache: meta.achievementEntries,
+      nextIndexKey: 'nextAchievementIndex',
+      prefix: settings.achievementEntryPrefix || '成就',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('achievement', achievement, meta, settings, {
+      buildContent: buildAchievementContent,
+      entriesCache: meta.achievementEntries,
+      nextIndexKey: 'nextAchievementIndex',
+      prefix: settings.achievementEntryPrefix || '成就',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+async function writeOrUpdateSubProfessionEntry(subProfession, meta, settings) {
+  if (!subProfession?.name) return null;
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('subProfession', subProfession, meta, settings, {
+      buildContent: buildSubProfessionContent,
+      entriesCache: meta.subProfessionEntries,
+      nextIndexKey: 'nextSubProfessionIndex',
+      prefix: settings.subProfessionEntryPrefix || '副职业',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('subProfession', subProfession, meta, settings, {
+      buildContent: buildSubProfessionContent,
+      entriesCache: meta.subProfessionEntries,
+      nextIndexKey: 'nextSubProfessionIndex',
+      prefix: settings.subProfessionEntryPrefix || '副职业',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+async function writeOrUpdateQuestEntry(quest, meta, settings) {
+  if (!quest?.name) return null;
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('quest', quest, meta, settings, {
+      buildContent: buildQuestContent,
+      entriesCache: meta.questEntries,
+      nextIndexKey: 'nextQuestIndex',
+      prefix: settings.questEntryPrefix || '任务',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('quest', quest, meta, settings, {
+      buildContent: buildQuestContent,
+      entriesCache: meta.questEntries,
+      nextIndexKey: 'nextQuestIndex',
+      prefix: settings.questEntryPrefix || '任务',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
 // 删除结构化条目（从世界书中删除死亡角色、卖掉装备等）
 async function deleteStructuredEntry(entryType, entryName, meta, settings, {
   entriesCache,
@@ -4346,6 +4544,72 @@ async function deleteFactionEntry(factionName, meta, settings) {
     const r = await deleteStructuredEntry('faction', factionName, meta, settings, {
       entriesCache: meta.factionEntries,
       prefix: settings.factionEntryPrefix || '势力',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+// 删除成就条目
+async function deleteAchievementEntry(achievementName, meta, settings) {
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await deleteStructuredEntry('achievement', achievementName, meta, settings, {
+      entriesCache: meta.achievementEntries,
+      prefix: settings.achievementEntryPrefix || '成就',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await deleteStructuredEntry('achievement', achievementName, meta, settings, {
+      entriesCache: meta.achievementEntries,
+      prefix: settings.achievementEntryPrefix || '成就',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+// 删除副职业条目
+async function deleteSubProfessionEntry(subProfessionName, meta, settings) {
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await deleteStructuredEntry('subProfession', subProfessionName, meta, settings, {
+      entriesCache: meta.subProfessionEntries,
+      prefix: settings.subProfessionEntryPrefix || '副职业',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await deleteStructuredEntry('subProfession', subProfessionName, meta, settings, {
+      entriesCache: meta.subProfessionEntries,
+      prefix: settings.subProfessionEntryPrefix || '副职业',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+// 删除任务条目
+async function deleteQuestEntry(questName, meta, settings) {
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await deleteStructuredEntry('quest', questName, meta, settings, {
+      entriesCache: meta.questEntries,
+      prefix: settings.questEntryPrefix || '任务',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await deleteStructuredEntry('quest', questName, meta, settings, {
+      entriesCache: meta.questEntries,
+      prefix: settings.questEntryPrefix || '任务',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4878,7 +5142,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
       try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
 
-      // 生成结构化世界书条目（人物/装备/势力 - 与剧情总结同一事务）
+      // 生成结构化世界书条目（人物/装备/势力/成就/副职业/任务 - 与剧情总结同一事务）
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         try {
           const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
@@ -4905,6 +5169,27 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
                 await writeOrUpdateFactionEntry(faction, meta, s);
               }
             }
+            // 写入/更新成就条目
+            if (s.achievementEntriesEnabled && structuredResult.achievements?.length) {
+              console.log(`[StoryGuide] Processing ${structuredResult.achievements.length} achievement(s)`);
+              for (const achievement of structuredResult.achievements) {
+                await writeOrUpdateAchievementEntry(achievement, meta, s);
+              }
+            }
+            // 写入/更新副职业条目
+            if (s.subProfessionEntriesEnabled && structuredResult.subProfessions?.length) {
+              console.log(`[StoryGuide] Processing ${structuredResult.subProfessions.length} sub profession(s)`);
+              for (const subProfession of structuredResult.subProfessions) {
+                await writeOrUpdateSubProfessionEntry(subProfession, meta, s);
+              }
+            }
+            // 写入/更新任务条目
+            if (s.questEntriesEnabled && structuredResult.quests?.length) {
+              console.log(`[StoryGuide] Processing ${structuredResult.quests.length} quest(s)`);
+              for (const quest of structuredResult.quests) {
+                await writeOrUpdateQuestEntry(quest, meta, s);
+              }
+            }
 
             // 处理删除的条目
             if (structuredResult.deletedCharacters?.length) {
@@ -4923,6 +5208,24 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
               console.log(`[StoryGuide] Deleting ${structuredResult.deletedFactions.length} faction(s)`);
               for (const factionName of structuredResult.deletedFactions) {
                 await deleteFactionEntry(factionName, meta, s);
+              }
+            }
+            if (structuredResult.deletedAchievements?.length) {
+              console.log(`[StoryGuide] Deleting ${structuredResult.deletedAchievements.length} achievement(s)`);
+              for (const achievementName of structuredResult.deletedAchievements) {
+                await deleteAchievementEntry(achievementName, meta, s);
+              }
+            }
+            if (structuredResult.deletedSubProfessions?.length) {
+              console.log(`[StoryGuide] Deleting ${structuredResult.deletedSubProfessions.length} sub profession(s)`);
+              for (const subProfessionName of structuredResult.deletedSubProfessions) {
+                await deleteSubProfessionEntry(subProfessionName, meta, s);
+              }
+            }
+            if (structuredResult.deletedQuests?.length) {
+              console.log(`[StoryGuide] Deleting ${structuredResult.deletedQuests.length} quest(s)`);
+              for (const questName of structuredResult.deletedQuests) {
+                await deleteQuestEntry(questName, meta, s);
               }
             }
 
@@ -9030,12 +9333,17 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card sg-subcard">
-              <div class="sg-card-title">结构化条目（人物/装备/势力）</div>
+              <div class="sg-card-title">结构化条目（人物/装备/势力/成就/副职业/任务）</div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">启用结构化条目</label>
                 <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">人物</label>
                 <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">装备</label>
                 <label class="sg-check"><input type="checkbox" id="sg_factionEntriesEnabled">势力</label>
+              </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_achievementEntriesEnabled">成就</label>
+                <label class="sg-check"><input type="checkbox" id="sg_subProfessionEntriesEnabled">副职业</label>
+                <label class="sg-check"><input type="checkbox" id="sg_questEntriesEnabled">任务</label>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
@@ -9052,6 +9360,20 @@ function buildModalHtml() {
                   <label>势力条目前缀</label>
                   <input id="sg_factionEntryPrefix" type="text" placeholder="势力">
                 </div>
+                <div class="sg-field">
+                  <label>成就条目前缀</label>
+                  <input id="sg_achievementEntryPrefix" type="text" placeholder="成就">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>副职业条目前缀</label>
+                  <input id="sg_subProfessionEntryPrefix" type="text" placeholder="副职业">
+                </div>
+                <div class="sg-field">
+                  <label>任务条目前缀</label>
+                  <input id="sg_questEntryPrefix" type="text" placeholder="任务">
+                </div>
               </div>
               <div class="sg-field">
                 <label>结构化提取提示词（System，可选）</label>
@@ -9059,7 +9381,7 @@ function buildModalHtml() {
               </div>
               <div class="sg-field">
                 <label>结构化提取模板（User，可选）</label>
-                <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownFactions}}"></textarea>
+                <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownFactions}} {{knownAchievements}} {{knownSubProfessions}} {{knownQuests}}"></textarea>
               </div>
               <div class="sg-field">
                 <label>人物条目提示词（可选）</label>
@@ -9073,10 +9395,22 @@ function buildModalHtml() {
                 <label>势力条目提示词（可选）</label>
                 <textarea id="sg_structuredFactionPrompt" rows="3" placeholder="例如：强调范围/领袖/关系变化…"></textarea>
               </div>
+              <div class="sg-field">
+                <label>成就条目提示词（可选）</label>
+                <textarea id="sg_structuredAchievementPrompt" rows="3" placeholder="例如：强调达成条件/影响…"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>副职业条目提示词（可选）</label>
+                <textarea id="sg_structuredSubProfessionPrompt" rows="3" placeholder="例如：强调定位/技能/进度…"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>任务条目提示词（可选）</label>
+                <textarea id="sg_structuredQuestPrompt" rows="3" placeholder="例如：强调目标/进度/奖励…"></textarea>
+              </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
                 <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓存</button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownFactions}}。</div>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownFactions}} {{knownAchievements}} {{knownSubProfessions}} {{knownQuests}}。</div>
               </div>
             </div>
 
@@ -10015,6 +10349,9 @@ function ensureModal() {
     $('#sg_structuredCharacterPrompt').val(DEFAULT_STRUCTURED_CHARACTER_PROMPT);
     $('#sg_structuredEquipmentPrompt').val(DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
     $('#sg_structuredFactionPrompt').val(DEFAULT_STRUCTURED_FACTION_PROMPT);
+    $('#sg_structuredAchievementPrompt').val(DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT);
+    $('#sg_structuredSubProfessionPrompt').val(DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT);
+    $('#sg_structuredQuestPrompt').val(DEFAULT_STRUCTURED_QUEST_PROMPT);
     pullUiToSettings();
     saveSettings();
     setStatus('已恢复默认结构化提示词 ✅', 'ok');
@@ -10089,7 +10426,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_factionEntriesEnabled, #sg_factionEntryPrefix, #sg_structuredFactionPrompt').on('input change', () => {
+  $('#sg_factionEntriesEnabled, #sg_factionEntryPrefix, #sg_structuredFactionPrompt, #sg_achievementEntriesEnabled, #sg_achievementEntryPrefix, #sg_structuredAchievementPrompt, #sg_subProfessionEntriesEnabled, #sg_subProfessionEntryPrefix, #sg_structuredSubProfessionPrompt, #sg_questEntriesEnabled, #sg_questEntryPrefix, #sg_structuredQuestPrompt').on('input change', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -10839,14 +11176,23 @@ function pullSettingsToUi() {
   $('#sg_characterEntriesEnabled').prop('checked', !!s.characterEntriesEnabled);
   $('#sg_equipmentEntriesEnabled').prop('checked', !!s.equipmentEntriesEnabled);
   $('#sg_factionEntriesEnabled').prop('checked', !!s.factionEntriesEnabled);
+  $('#sg_achievementEntriesEnabled').prop('checked', !!s.achievementEntriesEnabled);
+  $('#sg_subProfessionEntriesEnabled').prop('checked', !!s.subProfessionEntriesEnabled);
+  $('#sg_questEntriesEnabled').prop('checked', !!s.questEntriesEnabled);
   $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '人物'));
   $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '装备'));
   $('#sg_factionEntryPrefix').val(String(s.factionEntryPrefix || '势力'));
+  $('#sg_achievementEntryPrefix').val(String(s.achievementEntryPrefix || '成就'));
+  $('#sg_subProfessionEntryPrefix').val(String(s.subProfessionEntryPrefix || '副职业'));
+  $('#sg_questEntryPrefix').val(String(s.questEntryPrefix || '任务'));
   $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
   $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
   $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
   $('#sg_structuredFactionPrompt').val(String(s.structuredFactionPrompt || DEFAULT_STRUCTURED_FACTION_PROMPT));
+  $('#sg_structuredAchievementPrompt').val(String(s.structuredAchievementPrompt || DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT));
+  $('#sg_structuredSubProfessionPrompt').val(String(s.structuredSubProfessionPrompt || DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT));
+  $('#sg_structuredQuestPrompt').val(String(s.structuredQuestPrompt || DEFAULT_STRUCTURED_QUEST_PROMPT));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -11351,14 +11697,23 @@ function pullUiToSettings() {
   s.characterEntriesEnabled = $('#sg_characterEntriesEnabled').is(':checked');
   s.equipmentEntriesEnabled = $('#sg_equipmentEntriesEnabled').is(':checked');
   s.factionEntriesEnabled = $('#sg_factionEntriesEnabled').is(':checked');
+  s.achievementEntriesEnabled = $('#sg_achievementEntriesEnabled').is(':checked');
+  s.subProfessionEntriesEnabled = $('#sg_subProfessionEntriesEnabled').is(':checked');
+  s.questEntriesEnabled = $('#sg_questEntriesEnabled').is(':checked');
   s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '人物').trim() || '人物';
   s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '装备').trim() || '装备';
   s.factionEntryPrefix = String($('#sg_factionEntryPrefix').val() || '势力').trim() || '势力';
+  s.achievementEntryPrefix = String($('#sg_achievementEntryPrefix').val() || '成就').trim() || '成就';
+  s.subProfessionEntryPrefix = String($('#sg_subProfessionEntryPrefix').val() || '副职业').trim() || '副职业';
+  s.questEntryPrefix = String($('#sg_questEntryPrefix').val() || '任务').trim() || '任务';
   s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
   s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
   s.structuredFactionPrompt = String($('#sg_structuredFactionPrompt').val() || '').trim() || DEFAULT_STRUCTURED_FACTION_PROMPT;
+  s.structuredAchievementPrompt = String($('#sg_structuredAchievementPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT;
+  s.structuredSubProfessionPrompt = String($('#sg_structuredSubProfessionPrompt').val() || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT;
+  s.structuredQuestPrompt = String($('#sg_structuredQuestPrompt').val() || '').trim() || DEFAULT_STRUCTURED_QUEST_PROMPT;
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
