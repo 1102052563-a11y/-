@@ -63,6 +63,8 @@ const DEFAULT_MODULES = Object.freeze([
   { key: 'quick_actions', title: '快捷选项', type: 'list', prompt: '根据当前剧情走向，给出4~6个玩家可以发送的具体行动选项（每项15~40字，可直接作为对话输入发送）', maxItems: 6, required: true, panel: true, inline: true },
 ]);
 
+const DB_IMPORT_COMMENT_PREFIX = 'SG-外部导入';
+
 // ===== 总结提示词默认值（可在面板中自定义） =====
 const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
 
@@ -1464,7 +1466,6 @@ let lastDatabaseInfo = null;
 let dbImportTempMem = null;
 
 const DB_IMPORT_ENTRIES_KEY = 'sg_db_import_entries';
-const DB_IMPORT_COMMENT_PREFIX = 'SG-外部导入';
 
 function getDbImportTemp() {
   try {
