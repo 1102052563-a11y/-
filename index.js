@@ -1343,9 +1343,11 @@ function getDefaultSummaryMeta() {
     characterEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     equipmentEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     abilityEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
+    customEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
     nextCharacterIndex: 1, // NPC-001, NPC-002...
     nextEquipmentIndex: 1, // EQP-001, EQP-002...
     nextAbilityIndex: 1, // ABL-001, ABL-002...
+    nextCustomEntryIndex: 1, // CST-001, CST-002...
   };
 }
 
@@ -1968,9 +1970,11 @@ async function clearStructuredEntriesCache() {
   meta.characterEntries = {};
   meta.equipmentEntries = {};
   meta.abilityEntries = {};
+  meta.customEntries = {};
   meta.nextCharacterIndex = 1;
   meta.nextEquipmentIndex = 1;
   meta.nextAbilityIndex = 1;
+  meta.nextCustomEntryIndex = 1;
   await setSummaryMeta(meta);
 }
 
@@ -3143,6 +3147,24 @@ async function fallbackAskJsonCustom(apiBaseUrl, apiKey, model, messages, temper
   return await callViaCustom(apiBaseUrl, apiKey, model, retry, temperature, maxTokens, topP, stream);
 }
 
+function buildJsonRepairMessages(rawText, hint = '') {
+  const cleaned = String(rawText || '').trim().slice(0, 12000);
+  const sys = `你是 JSON 修复器。任务：把用户给出的内容修复为严格 JSON 对象，只输出 JSON 本体，不要任何额外文字。${hint}`.trim();
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: cleaned || '（空）' },
+  ];
+}
+
+async function repairJsonWithProvider(rawText, settings, schema, hint = '') {
+  const messages = buildJsonRepairMessages(rawText, hint);
+  if (String(settings.summaryProvider || 'st') === 'custom') {
+    return await callViaCustom(settings.summaryCustomEndpoint, settings.summaryCustomApiKey, settings.summaryCustomModel, messages, settings.summaryTemperature, settings.summaryCustomMaxTokens, 0.95, settings.summaryCustomStream);
+  }
+  const res = await callViaSillyTavern(messages, schema, settings.summaryTemperature);
+  return (typeof res === 'string') ? res : JSON.stringify(res ?? '');
+}
+
 function hasAnyModuleKey(obj, modules) {
   if (!obj || typeof obj !== 'object') return false;
   for (const m of modules || []) {
@@ -3912,6 +3934,18 @@ function buildAbilityContent(ability) {
   return parts.join('\n');
 }
 
+function buildCustomEntryContent(entry, label) {
+  const parts = [];
+  const name = String(entry?.name || '').trim();
+  const prefix = String(label || '').trim();
+  if (prefix || name) parts.push(`【${prefix || '自定义'}】${name || '条目'}`);
+  const summary = String(entry?.summary || '').trim();
+  if (summary) parts.push(summary);
+  const keywords = Array.isArray(entry?.keywords) ? entry.keywords.map(k => String(k || '').trim()).filter(Boolean) : [];
+  if (keywords.length) parts.push(`关键词：${keywords.slice(0, 12).join('、')}`);
+  return parts.join('\n');
+}
+
 // 写入或更新结构化条目（方案C：混合策略）
 // targetType: 'green' = 绿灯世界书（触发词触发）, 'blue' = 蓝灯世界书（常开索引）
 async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings, {
@@ -4223,6 +4257,32 @@ async function writeOrUpdateAbilityEntry(ability, meta, settings) {
       entriesCache: meta.abilityEntries,
       nextIndexKey: 'nextAbilityIndex',
       prefix: settings.abilityEntryPrefix || '能力',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+async function writeOrUpdateCustomEntry(entry, meta, settings, label) {
+  if (!entry?.name) return null;
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('custom', entry, meta, settings, {
+      buildContent: (e) => buildCustomEntryContent(e, label),
+      entriesCache: meta.customEntries,
+      nextIndexKey: 'nextCustomEntryIndex',
+      prefix: label || '自定义',
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry('custom', entry, meta, settings, {
+      buildContent: (e) => buildCustomEntryContent(e, label),
+      entriesCache: meta.customEntries,
+      nextIndexKey: 'nextCustomEntryIndex',
+      prefix: label || '自定义',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4876,15 +4936,23 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
 
       const parsed = safeJsonParse(jsonText);
-      if (!parsed || !parsed.summary) {
+      let parsedSummary = parsed;
+      if (!parsedSummary || !parsedSummary.summary) {
+        try {
+          const repaired = await repairJsonWithProvider(jsonText, s, schema, '必须包含 summary 与 keywords 字段。');
+          parsedSummary = safeJsonParse(repaired);
+          if (parsedSummary && parsedSummary.summary) jsonText = repaired;
+        } catch { /* ignore */ }
+      }
+      if (!parsedSummary || !parsedSummary.summary) {
         runErrs.push(`${fromFloor}-${toFloor}：总结输出无法解析为 JSON`);
         continue;
       }
 
       const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
-      const rawTitle = String(parsed.title || '').trim();
-      const summary = String(parsed.summary || '').trim();
-      const modelKeywords = sanitizeKeywords(parsed.keywords);
+      const rawTitle = String(parsedSummary.title || '').trim();
+      const summary = String(parsedSummary.summary || '').trim();
+      const modelKeywords = sanitizeKeywords(parsedSummary.keywords);
       let indexId = '';
       let keywords = modelKeywords;
 
@@ -4965,7 +5033,14 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
             continue;
           }
 
-          const customParsed = safeJsonParse(customJsonText);
+          let customParsed = safeJsonParse(customJsonText);
+          if (!customParsed || !customParsed.summary) {
+            try {
+              const repaired = await repairJsonWithProvider(customJsonText, s, schema, '必须包含 summary 与 keywords 字段。');
+              customParsed = safeJsonParse(repaired);
+              if (customParsed && customParsed.summary) customJsonText = repaired;
+            } catch { /* ignore */ }
+          }
           if (!customParsed || !customParsed.summary) {
             runErrs.push(`${fromFloor}-${toFloor}：自定义栏目输出无法解析为 JSON`);
             continue;
@@ -5020,6 +5095,21 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           customCreated += 1;
           try { appendToBlueIndexCache(customRec); } catch { /* ignore */ }
 
+          if (s.structuredEntriesEnabled) {
+            const label = String(customItem.prefix || customItem.title || customItem.type || '自定义').trim() || '自定义';
+            const structuredEntry = {
+              name: customTitle,
+              summary: customSummary,
+              keywords: customKeywords,
+              type: customItem.type || undefined,
+            };
+            try {
+              await writeOrUpdateCustomEntry(structuredEntry, meta, s, label);
+            } catch (e) {
+              writeErrs.push(`${fromFloor}-${toFloor} 结构化自定义：${e?.message ?? e}`);
+            }
+          }
+
           if (s.summaryToWorldInfo) {
             try {
               await writeSummaryToWorldInfoEntry(customRec, null, {
@@ -5054,7 +5144,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
 
       // 生成结构化世界书条目（人物/装备/能力 - 与剧情总结同一事务）
-      if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
+      const enableStructured = s.structuredEntriesEnabled && (s.characterEntriesEnabled || s.equipmentEntriesEnabled || s.abilityEntriesEnabled);
+      if (enableStructured) {
         try {
           const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
           console.log('[StoryGuide] Structured entries result:', structuredResult);
