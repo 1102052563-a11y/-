@@ -12397,9 +12397,30 @@ function setupSettingsPages() {
   });
 
   $(document).on('change', '#sg_page_database input, #sg_page_database select, #sg_page_database textarea', (e) => {
-    if ($(e.target).is('#sg_db_import_file')) return;
+    if ($(e.target).is('#sg_db_import_file, #sg_db_templates_json')) return;
     pullUiToSettings();
     saveSettings();
+  });
+
+  $('#sg_db_templates_json').on('input change', () => {
+    const raw = String($('#sg_db_templates_json').val() || '').trim();
+    if (!raw) {
+      setStatus('模板 JSON 为空', 'warn');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('模板不是数组');
+    } catch (e) {
+      setStatus(`模板 JSON 格式错误：${e?.message || e}`, 'err');
+      return;
+    }
+    pullUiToSettings();
+    saveSettings();
+    setStatus('模板已保存 ✅', 'ok');
+    if (floatingPanelVisible && lastFloatingContent === 'database') {
+      showFloatingDatabase();
+    }
   });
 
   $('#sg_db_open_panel').on('click', async () => {
