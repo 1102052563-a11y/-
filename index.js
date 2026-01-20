@@ -173,6 +173,15 @@ characters 条目结构：{name,uid,aliases[],faction,status,personality,corePer
 equipments 条目结构：{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}
 
 abilities 条目结构：{name,uid,type,effects,trigger,cost,statInfo,boundEvents[],isNegative,isNew}`;
+const STRUCTURED_CUSTOM_TYPES_PLACEHOLDER = `[
+  {
+    "id": "faction",
+    "label": "势力",
+    "prefix": "势力",
+    "enabled": true,
+    "prompt": "记录重要势力/组织：地位、目标、成员、与主角关系、关键事件。信息不足写待确认。"
+  }
+]`;
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
@@ -479,6 +488,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   structuredCharacterPrompt: '',
   structuredEquipmentPrompt: '',
   structuredAbilityPrompt: '',
+  structuredCustomTypesJson: '[]',
 
   // ===== 快捷选项功能 =====
   quickOptionsEnabled: true,
@@ -1344,6 +1354,7 @@ function getDefaultSummaryMeta() {
     nextCharacterIndex: 1, // NPC-001, NPC-002...
     nextEquipmentIndex: 1, // EQP-001, EQP-002...
     nextAbilityIndex: 1, // ABL-001, ABL-002...
+    customEntries: {}, // { typeId: { uid: { name, aliases, lastUpdated, wiEntryUid, content } } }
   };
 }
 
@@ -1969,6 +1980,10 @@ async function clearStructuredEntriesCache() {
   meta.nextCharacterIndex = 1;
   meta.nextEquipmentIndex = 1;
   meta.nextAbilityIndex = 1;
+  meta.customEntries = {};
+  for (const key of Object.keys(meta)) {
+    if (key.startsWith('nextCustom_')) delete meta[key];
+  }
   await setSummaryMeta(meta);
 }
 
@@ -3671,6 +3686,46 @@ function appendToBlueIndexCache(rec) {
 
 // ===== 结构化世界书条目核心函数 =====
 
+function parseStructuredCustomTypes(raw) {
+  if (!raw) return [];
+  let list = [];
+  try {
+    list = JSON.parse(String(raw || '').trim() || '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const idRaw = String(item.id || item.key || '').trim();
+    if (!idRaw) continue;
+    const id = idRaw.replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const label = String(item.label || item.name || id).trim() || id;
+    const prefix = String(item.prefix || label).trim() || label;
+    const prompt = String(item.prompt || '').trim();
+    const enabled = item.enabled !== false;
+    out.push({ id, label, prefix, prompt, enabled });
+  }
+  return out;
+}
+
+function getStructuredCustomTypes(settings) {
+  return parseStructuredCustomTypes(settings?.structuredCustomTypesJson || '[]');
+}
+
+function buildStructuredEntriesJsonRequirement(customTypes) {
+  const base = STRUCTURED_ENTRIES_JSON_REQUIREMENT;
+  const list = Array.isArray(customTypes) ? customTypes.filter(t => t && t.enabled) : [];
+  if (!list.length) return base;
+  const typeIds = list.map(t => t.id).join(', ');
+  const schemaLines = list.map(t => `${t.id} 条目结构：{name,uid,aliases[],description,keywords[],statInfo,isNew,isUpdated}（允许额外字段）`).join('\n');
+  return `${base}\n\n【自定义条目】\n- customEntries 为对象，key 为类型 id：${typeIds}\n- deletedCustomEntries 为对象，key 为类型 id\n${schemaLines}`;
+}
+
 function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta, statData = null) {
   const s = ensureSettings();
   let sys = String(s.structuredEntriesSystemPrompt || '').trim();
@@ -3678,12 +3733,19 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
   const charPrompt = String(s.structuredCharacterPrompt || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   const equipPrompt = String(s.structuredEquipmentPrompt || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
   const abilityPrompt = String(s.structuredAbilityPrompt || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
+  const customTypes = getStructuredCustomTypes(s).filter(t => t.enabled);
+  const customPromptBlocks = customTypes.map((t) => {
+    const tip = t.prompt || `记录重要${t.label}，用档案式描述。信息不足写“待确认”。`;
+    return `【${t.label}条目要求】\n${tip}`;
+  });
+  const jsonRequirement = buildStructuredEntriesJsonRequirement(customTypes);
   sys = [
     sys,
     `【人物条目要求】\n${charPrompt}`,
     `【装备条目要求】\n${equipPrompt}`,
     `【能力条目要求】\n${abilityPrompt}`,
-    STRUCTURED_ENTRIES_JSON_REQUIREMENT,
+    ...customPromptBlocks,
+    jsonRequirement,
   ].join('\n\n');
 
   // 构建已知列表供 LLM 判断是否新增/更新（包含别名以帮助识别不同写法）
@@ -3695,6 +3757,14 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
     const aliases = Array.isArray(e.aliases) && e.aliases.length > 0 ? `[别名:${e.aliases.join('/')}]` : '';
     return `${e.name}${aliases}`;
   }).join('、') || '无';
+  const knownCustomLines = customTypes.map((t) => {
+    const cache = meta.customEntries?.[t.id] || {};
+    const list = Object.values(cache).map((c) => {
+      const aliases = Array.isArray(c.aliases) && c.aliases.length > 0 ? `[别名:${c.aliases.join('/')}]` : '';
+      return `${c.name}${aliases}`;
+    }).join('、') || '无';
+    return `【已知${t.label}列表】\n${list}`;
+  }).filter(Boolean).join('\n');
 
   // 格式化 statData
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
@@ -3707,11 +3777,15 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
     chunk: String(chunkText || ''),
     knownCharacters: knownChars,
     knownEquipments: knownEquips,
+    knownCustomEntries: knownCustomLines,
     statData: statDataJson,
   });
   // 如果有 statData 且模板里没有包含，追加到末尾
   if (statData && !/\{\{\s*statData\s*\}\}/i.test(tpl)) {
     user = String(user || '').trim() + `\n\n【角色状态数据 statData】\n${statDataJson}`;
+  }
+  if (customTypes.length && knownCustomLines && !/\{\{\s*knownCustomEntries\s*\}\}/i.test(tpl)) {
+    user = String(user || '').trim() + `\n\n【已知自定义条目列表】\n${knownCustomLines}`;
   }
   return [
     { role: 'system', content: sys },
@@ -3730,6 +3804,15 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
   }
   const parsed = safeJsonParse(jsonText);
   if (!parsed) return null;
+  const customTypes = getStructuredCustomTypes(settings).filter(t => t.enabled);
+  const customEntries = {};
+  const deletedCustomEntries = {};
+  for (const t of customTypes) {
+    const entries = parsed?.customEntries?.[t.id];
+    const deleted = parsed?.deletedCustomEntries?.[t.id];
+    if (Array.isArray(entries)) customEntries[t.id] = entries;
+    if (Array.isArray(deleted)) deletedCustomEntries[t.id] = deleted;
+  }
   return {
     characters: Array.isArray(parsed.characters) ? parsed.characters : [],
     equipments: Array.isArray(parsed.equipments) ? parsed.equipments : [],
@@ -3737,6 +3820,8 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
     deletedCharacters: Array.isArray(parsed.deletedCharacters) ? parsed.deletedCharacters : [],
     deletedEquipments: Array.isArray(parsed.deletedEquipments) ? parsed.deletedEquipments : [],
     deletedAbilities: Array.isArray(parsed.deletedAbilities) ? parsed.deletedAbilities : [],
+    customEntries,
+    deletedCustomEntries,
   };
 }
 
@@ -3798,6 +3883,36 @@ function buildAbilityContent(ability) {
     parts.push(`属性数据：${infoStr}`);
   }
   if (ability.boundEvents?.length) parts.push(`相关事件：${ability.boundEvents.join('；')}`);
+  return parts.join('\n');
+}
+
+function buildCustomEntryContent(entry, customType) {
+  const parts = [];
+  const label = customType?.label || '条目';
+  if (entry.name) parts.push(`【${label}】${entry.name}`);
+  if (entry.aliases?.length) parts.push(`别名：${entry.aliases.join('、')}`);
+  if (entry.description) parts.push(`描述：${entry.description}`);
+  if (!entry.description && entry.summary) parts.push(`描述：${entry.summary}`);
+  if (entry.keywords?.length) parts.push(`关键词：${entry.keywords.join('、')}`);
+  if (entry.statInfo) {
+    const infoStr = typeof entry.statInfo === 'object' ? JSON.stringify(entry.statInfo, null, 2) : String(entry.statInfo);
+    parts.push(`属性数据：${infoStr}`);
+  }
+  const skip = new Set(['name', 'uid', 'aliases', 'description', 'summary', 'keywords', 'statInfo', 'isNew', 'isUpdated']);
+  for (const [key, value] of Object.entries(entry || {})) {
+    if (skip.has(key)) continue;
+    if (value === null || value === undefined || value === '') continue;
+    let valText = '';
+    if (Array.isArray(value)) {
+      valText = value.filter(Boolean).join('、');
+    } else if (typeof value === 'object') {
+      valText = JSON.stringify(value, null, 2);
+    } else {
+      valText = String(value);
+    }
+    if (!valText) continue;
+    parts.push(`${key}：${valText}`);
+  }
   return parts.join('\n');
 }
 
@@ -4112,6 +4227,65 @@ async function writeOrUpdateAbilityEntry(ability, meta, settings) {
       entriesCache: meta.abilityEntries,
       nextIndexKey: 'nextAbilityIndex',
       prefix: settings.abilityEntryPrefix || '能力',
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+function ensureCustomEntriesCache(meta, typeId) {
+  meta.customEntries = meta.customEntries || {};
+  if (!meta.customEntries[typeId]) meta.customEntries[typeId] = {};
+  return meta.customEntries[typeId];
+}
+
+async function writeOrUpdateCustomEntry(customType, entry, meta, settings) {
+  if (!customType?.id || !entry?.name) return null;
+  const results = [];
+  const entriesCache = ensureCustomEntriesCache(meta, customType.id);
+  const prefix = customType.prefix || customType.label || customType.id;
+  const nextIndexKey = `nextCustom_${customType.id}`;
+  if (settings.summaryToWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry(`custom:${customType.id}`, entry, meta, settings, {
+      buildContent: (data) => buildCustomEntryContent(data, customType),
+      entriesCache,
+      nextIndexKey,
+      prefix,
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await writeOrUpdateStructuredEntry(`custom:${customType.id}`, entry, meta, settings, {
+      buildContent: (data) => buildCustomEntryContent(data, customType),
+      entriesCache,
+      nextIndexKey,
+      prefix,
+      targetType: 'blue',
+    });
+    if (r) results.push(r);
+  }
+  return results.length ? results : null;
+}
+
+async function deleteCustomEntry(customType, entryName, meta, settings) {
+  if (!customType?.id) return null;
+  const entriesCache = ensureCustomEntriesCache(meta, customType.id);
+  const prefix = customType.prefix || customType.label || customType.id;
+  const results = [];
+  if (settings.summaryToWorldInfo) {
+    const r = await deleteStructuredEntry(`custom:${customType.id}`, entryName, meta, settings, {
+      entriesCache,
+      prefix,
+      targetType: 'green',
+    });
+    if (r) results.push(r);
+  }
+  if (settings.summaryToBlueWorldInfo) {
+    const r = await deleteStructuredEntry(`custom:${customType.id}`, entryName, meta, settings, {
+      entriesCache,
+      prefix,
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4827,6 +5001,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       // 生成结构化世界书条目（人物/装备/能力 - 与剧情总结同一事务）
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         try {
+          const customTypes = getStructuredCustomTypes(s).filter(t => t.enabled);
           const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
           console.log('[StoryGuide] Structured entries result:', structuredResult);
           if (structuredResult) {
@@ -4852,6 +5027,17 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
               }
             }
 
+            if (customTypes.length && structuredResult.customEntries) {
+              for (const t of customTypes) {
+                const list = structuredResult.customEntries?.[t.id] || [];
+                if (!list.length) continue;
+                console.log(`[StoryGuide] Processing ${list.length} custom ${t.id}(s)`);
+                for (const item of list) {
+                  await writeOrUpdateCustomEntry(t, item, meta, s);
+                }
+              }
+            }
+
             // 处理删除的条目
             if (structuredResult.deletedCharacters?.length) {
               console.log(`[StoryGuide] Deleting ${structuredResult.deletedCharacters.length} character(s)`);
@@ -4869,6 +5055,16 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
               console.log(`[StoryGuide] Deleting ${structuredResult.deletedAbilities.length} ability(s)`);
               for (const abilityName of structuredResult.deletedAbilities) {
                 await deleteAbilityEntry(abilityName, meta, s);
+              }
+            }
+            if (customTypes.length && structuredResult.deletedCustomEntries) {
+              for (const t of customTypes) {
+                const list = structuredResult.deletedCustomEntries?.[t.id] || [];
+                if (!list.length) continue;
+                console.log(`[StoryGuide] Deleting ${list.length} custom ${t.id}(s)`);
+                for (const entryName of list) {
+                  await deleteCustomEntry(t, entryName, meta, s);
+                }
               }
             }
 
@@ -9001,10 +9197,15 @@ function buildModalHtml() {
                 <label>能力条目提示词（可选）</label>
                 <textarea id="sg_structuredAbilityPrompt" rows="3" placeholder="例如：强调触发条件/代价/负面效果…"></textarea>
               </div>
+              <div class="sg-field">
+                <label>自定义条目类型（JSON）</label>
+                <textarea id="sg_structuredCustomTypesJson" rows="5" placeholder="在这里填写自定义条目类型（JSON 数组）。"></textarea>
+                <div class="sg-hint" style="margin-top:6px">格式示例：[{"id":"faction","label":"势力","prefix":"势力","enabled":true,"prompt":"..."}]</div>
+              </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
                 <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓存</button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}。</div>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownCustomEntries}}。</div>
               </div>
             </div>
 
@@ -10008,6 +10209,11 @@ function ensureModal() {
     }
   });
 
+  $('#sg_structuredCustomTypesJson').on('input change', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
+
   // auto-save summary settings
   $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
@@ -10767,6 +10973,8 @@ function pullSettingsToUi() {
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
   $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
   $('#sg_structuredAbilityPrompt').val(String(s.structuredAbilityPrompt || DEFAULT_STRUCTURED_ABILITY_PROMPT));
+  $('#sg_structuredCustomTypesJson').val(String(s.structuredCustomTypesJson || '[]'));
+  $('#sg_structuredCustomTypesJson').attr('placeholder', STRUCTURED_CUSTOM_TYPES_PLACEHOLDER);
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -11279,6 +11487,7 @@ function pullUiToSettings() {
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
   s.structuredAbilityPrompt = String($('#sg_structuredAbilityPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
+  s.structuredCustomTypesJson = String($('#sg_structuredCustomTypesJson').val() || '[]');
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
