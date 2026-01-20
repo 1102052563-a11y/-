@@ -5997,7 +5997,7 @@ async function maybeAutoDatabaseUpdate(reason = '') {
   const meta = getDatabaseMeta();
   if (endFloor <= (meta.lastAutoFloor || 0)) return;
 
-  const { chunks, endFloor } = buildDatabaseChunksFromChat(s);
+  const { chunks, endFloor: endFloorCalc } = buildDatabaseChunksFromChat(s);
   if (!chunks.length) return;
 
   const tokenThreshold = clampInt(s.databaseAutoUpdateTokenThreshold, 0, 1000000, 0);
@@ -6014,7 +6014,7 @@ async function maybeAutoDatabaseUpdate(reason = '') {
       selectedNames: null,
       reason: 'auto',
       extraHint: keepRecent ? `保留最近N层数据：${keepRecent}` : '',
-      floorMark: endFloor,
+      floorMark: endFloorCalc,
     });
   } finally {
     isDbUpdating = false;
