@@ -661,6 +661,7 @@ const META_KEYS = Object.freeze({
   boundBlueWI: 'storyguide_bound_blue_wi',
   autoBindCreated: 'storyguide_auto_bind_created',
   mapData: 'storyguide_map_data',
+  databaseMeta: 'storyguide_database_meta',
 });
 
 let lastReport = null;
@@ -670,7 +671,9 @@ let lastSummaryText = '';
 let refreshTimer = null;
 let appendTimer = null;
 let summaryTimer = null;
+let dbUpdateTimer = null;
 let isSummarizing = false;
+let isDbUpdating = false;
 let summaryCancelled = false;
 let sgToastTimer = null;
 
@@ -1459,6 +1462,19 @@ async function setMapData(mapData) {
   await setChatMetaValue(META_KEYS.mapData, JSON.stringify(mapData ?? getDefaultMapData()));
 }
 
+function getDatabaseMeta() {
+  const raw = String(getChatMetaValue(META_KEYS.databaseMeta) || '').trim();
+  try {
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch { /* ignore */ }
+  return { lastAutoFloor: 0, lastManualFloor: 0, lastUpdatedAt: 0, tableStats: {} };
+}
+
+async function setDatabaseMeta(meta) {
+  await setChatMetaValue(META_KEYS.databaseMeta, JSON.stringify(meta || getDatabaseMeta()));
+}
+
 // ===== 数据库模块 =====
 let lastDatabasePayload = null;
 let lastDatabaseRawText = '';
@@ -1483,7 +1499,7 @@ function setDbImportTemp(value) {
   } catch { /* ignore */ }
 }
 
-function buildDatabaseImportPrompt({ chunk, baseData, tableMap, templates, settings }) {
+function buildDatabaseImportPrompt({ chunk, baseData, tableMap, templates, settings, extraHint }) {
   const s = settings || ensureSettings();
   const tableLines = tableMap.map(t => `- ${t.name} (${t.key})`).join('\n') || '（无）';
   const templateLines = templates.map(t => {
@@ -1498,6 +1514,9 @@ function buildDatabaseImportPrompt({ chunk, baseData, tableMap, templates, setti
   const userTpl = String(s.databasePromptUser || '').trim() || '请根据导入文本更新数据库表格。';
   const user = [
     userTpl,
+    extraHint ? `\n【额外提示词】\n${extraHint}\n` : '',
+    s.databaseContextExtractTags ? `\n【正文标签提取】${s.databaseContextExtractTags}` : '',
+    s.databaseContextExcludeTags ? `\n【标签排除】${s.databaseContextExcludeTags}` : '',
     '',
     '【需要更新的表格（表名/键）】',
     tableLines,
@@ -1613,19 +1632,33 @@ async function saveDatabaseToChat(data, settings) {
 }
 
 async function runDatabaseImportUpdate(chunks) {
+  await runDatabaseUpdateFromChunks({
+    chunks,
+    selectedNames: Array.isArray(ensureSettings().databaseImportSelectedTables) ? ensureSettings().databaseImportSelectedTables : null,
+    reason: 'import',
+    extraHint: String(ensureSettings().databaseKeepRecentFloors || '').trim()
+      ? `保留最近N层数据：${String(ensureSettings().databaseKeepRecentFloors || '').trim()}`
+      : '',
+  });
+}
+
+async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extraHint, floorMark }) {
   const s = ensureSettings();
+  if (String(s.databaseSource || 'chat') === 'variable') {
+    showToast('当前数据库来源为变量，无法写回聊天记录', { kind: 'warn' });
+    return false;
+  }
   const payload = await loadDatabasePayload(s);
   if (!payload?.data) {
-    showToast('数据库未加载，无法执行导入更新', { kind: 'warn' });
-    return;
+    showToast('数据库未加载，无法执行更新', { kind: 'warn' });
+    return false;
   }
 
   const tableList = getDatabaseTableList(payload.data);
-  const selectedNames = Array.isArray(s.databaseImportSelectedTables) ? s.databaseImportSelectedTables : null;
   const selected = selectedNames?.length ? tableList.filter(t => selectedNames.includes(t.name)) : tableList;
   if (!selected.length) {
     showToast('未选择任何表格', { kind: 'warn' });
-    return;
+    return false;
   }
 
   const nameToKey = {};
@@ -1637,7 +1670,7 @@ async function runDatabaseImportUpdate(chunks) {
     const chunk = String(chunks[i]?.content || '').trim();
     if (!chunk) continue;
     const subset = extractTablesSubset(current, selected.map(t => t.key));
-    const messages = buildDatabaseImportPrompt({ chunk, baseData: subset, tableMap: selected, templates, settings: s });
+    const messages = buildDatabaseImportPrompt({ chunk, baseData: subset, tableMap: selected, templates, settings: s, extraHint });
     let jsonText = '';
     try {
       jsonText = await callDatabaseApi(messages, s);
@@ -1648,20 +1681,32 @@ async function runDatabaseImportUpdate(chunks) {
       if (!updateKeys.length) throw new Error('未返回有效表格数据');
       updateKeys.forEach((key) => { current[key] = updates[key]; });
     } catch (e) {
-      showToast(`第 ${i + 1}/${chunks.length} 段导入失败: ${e?.message || e}`, { kind: 'err' });
-      return;
+      showToast(`第 ${i + 1}/${chunks.length} 段更新失败: ${e?.message || e}`, { kind: 'err' });
+      return false;
     }
   }
 
   const saved = await saveDatabaseToChat(current, s);
   if (!saved) {
     showToast('保存数据库失败', { kind: 'err' });
-    return;
+    return false;
   }
+
+  const meta = getDatabaseMeta();
+  const floorNow = Number.isFinite(Number(floorMark)) ? Number(floorMark) : getChatAiMessageCount();
+  if (reason === 'auto') meta.lastAutoFloor = floorNow;
+  else meta.lastManualFloor = floorNow;
+  meta.lastUpdatedAt = Date.now();
+  meta.tableStats = meta.tableStats || {};
+  selected.forEach((t) => {
+    meta.tableStats[t.key] = { lastUpdatedFloor: floorNow, lastUpdatedAt: Date.now() };
+  });
+  await setDatabaseMeta(meta);
 
   lastDatabasePayload = current;
   await refreshDatabaseStatusUi();
-  showToast(`导入完成：已更新 ${chunks.length} 段内容`, { kind: 'ok' });
+  showToast(`更新完成：已处理 ${chunks.length} 段`, { kind: 'ok' });
+  return true;
 }
 
 function normalizeDatabaseIsolationCode(code) {
@@ -1921,6 +1966,75 @@ function getChatAiMessageCount() {
   return chat.filter(m => m && !m.is_user).length;
 }
 
+function findIndexForAssistantFloor(chat, targetFloor) {
+  const arr = Array.isArray(chat) ? chat : [];
+  let c = 0;
+  for (let i = 0; i < arr.length; i++) {
+    if (isCountableAssistantMessage(arr[i])) c += 1;
+    if (c >= targetFloor) return i;
+  }
+  return arr.length - 1;
+}
+
+function buildChatChunkTextByIndex(chat, startIdx, endIdx, maxCharsPerMessage, maxTotalChars) {
+  const arr = Array.isArray(chat) ? chat : [];
+  const start = Math.max(0, Math.min(arr.length, Number(startIdx) || 0));
+  const end = Math.max(start, Math.min(arr.length - 1, Number(endIdx) || (arr.length - 1)));
+  const perMsg = clampInt(maxCharsPerMessage, 200, 8000, 4000);
+  const totalMax = clampInt(maxTotalChars, 2000, 80000, 24000);
+
+  const parts = [];
+  let total = 0;
+  for (let i = start; i <= end; i++) {
+    const m = arr[i];
+    if (!isCountableMessage(m)) continue;
+    const who = m.is_user === true ? '用户' : (m.name || 'AI');
+    let txt = stripHtml(m.mes || '');
+    if (!txt) continue;
+    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '…';
+    const block = `【${who}】${txt}`;
+    if (total + block.length + 2 > totalMax) break;
+    parts.push(block);
+    total += block.length + 2;
+  }
+  return parts.join('\n');
+}
+
+function formatRelativeTime(ts) {
+  if (!ts) return '未开始';
+  const diff = Date.now() - ts;
+  if (diff < 60000) return '刚刚';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}小时前`;
+  const days = Math.floor(hours / 24);
+  return `${days}天前`;
+}
+
+function buildDatabaseChunksFromChat(settings) {
+  const s = settings || ensureSettings();
+  const ctx = SillyTavern.getContext?.() ?? {};
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const floorNow = computeFloorCount(chat, 'assistant');
+  const skip = clampInt(s.databaseSkipUpdateFloors, 0, 200000, 0);
+  const endFloor = Math.max(0, floorNow - skip);
+  const threshold = clampInt(s.databaseAutoUpdateThreshold, 1, 200000, 3);
+  const startFloor = Math.max(1, endFloor - threshold + 1);
+  const batchSize = clampInt(s.databaseUpdateBatchSize, 1, 200000, 3);
+  if (endFloor <= 0 || startFloor > endFloor) return { chunks: [], startFloor, endFloor, floorNow };
+
+  const chunks = [];
+  for (let from = startFloor; from <= endFloor; from += batchSize) {
+    const to = Math.min(endFloor, from + batchSize - 1);
+    const startIdx = findIndexForAssistantFloor(chat, from);
+    const endIdx = findIndexForAssistantFloor(chat, to);
+    const text = buildChatChunkTextByIndex(chat, startIdx, endIdx, s.summaryMaxCharsPerMessage || 4000, s.summaryMaxTotalChars || 24000);
+    if (text) chunks.push({ content: text, fromFloor: from, toFloor: to });
+  }
+  return { chunks, startFloor, endFloor, floorNow };
+}
+
 async function refreshDatabaseStatusUi() {
   const s = ensureSettings();
   updateDatabaseImportStatus();
@@ -1931,6 +2045,7 @@ async function refreshDatabaseStatusUi() {
   const $status = $('#sg_db_status_label');
   const $next = $('#sg_db_next_update');
   const $tbody = $('#sg_db_status_table_body');
+  const meta = getDatabaseMeta();
 
   if ($tbody.length) {
     $tbody.html('<tr><td colspan="5" style="text-align:center; padding:10px;">正在加载数据...</td></tr>');
@@ -1950,23 +2065,37 @@ async function refreshDatabaseStatusUi() {
 
   const info = buildDatabaseModules(payload.data);
   lastDatabaseInfo = info;
-  if ($status.length) $status.text(`数据库状态: 已加载 (${info.totalTables}个表格, ${info.totalRows}条记录)`);
-  if ($next.length) $next.text('下一次更新: 无');
+  if ($status.length) {
+    $status.text(`数据库状态: 已加载 (${info.totalTables}个表格, ${info.totalRows}条记录)`);
+  }
+  if ($next.length) {
+    const freq = clampInt(s.databaseAutoUpdateFrequency, 1, 200000, 1);
+    const nextFloor = meta.lastAutoFloor ? (meta.lastAutoFloor + freq) : 0;
+    if (!s.databaseAutoUpdateEnabled) $next.text('下一次更新: 关闭');
+    else $next.text(nextFloor ? `下一次更新: ${nextFloor}` : '下一次更新: 无');
+  }
 
   const tableList = getDatabaseTableList(payload.data);
   if ($tbody.length) {
     if (!tableList.length) {
       $tbody.html('<tr><td colspan="5" style="text-align:center; padding:10px;">暂无表格</td></tr>');
     } else {
-      const rowsHtml = tableList.map((t) => `
+      const rowsHtml = tableList.map((t) => {
+        const stat = meta.tableStats?.[t.key] || {};
+        const lastFloor = stat.lastUpdatedFloor || 0;
+        const missed = lastFloor ? Math.max(0, floorNow - lastFloor) : 'N/A';
+        const freq = clampInt(s.databaseAutoUpdateFrequency, 1, 200000, 1);
+        const nextTrigger = lastFloor ? (lastFloor + freq) : 'N/A';
+        return `
         <tr>
           <td style="text-align:left; padding:6px;">${escapeHtml(t.name)}</td>
-          <td style="text-align:center; padding:6px;">N/A</td>
-          <td style="text-align:center; padding:6px;">N/A</td>
-          <td style="text-align:center; padding:6px;">未开始</td>
-          <td style="text-align:center; padding:6px;">N/A</td>
+          <td style="text-align:center; padding:6px;">${stat.updateFrequency || freq}</td>
+          <td style="text-align:center; padding:6px;">${missed}</td>
+          <td style="text-align:center; padding:6px;">${formatRelativeTime(stat.lastUpdatedAt)}</td>
+          <td style="text-align:center; padding:6px;">${nextTrigger}</td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
       $tbody.html(rowsHtml);
     }
   }
@@ -5837,6 +5966,59 @@ async function maybeAutoSummary(reason = '') {
   if (floorNow <= last) return;
 
   await runSummary({ reason: 'auto' });
+}
+
+function scheduleAutoDatabaseUpdate(reason = '') {
+  const s = ensureSettings();
+  if (!s.databaseEnabled || !s.databaseAutoUpdateEnabled) return;
+  const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
+  if (dbUpdateTimer) clearTimeout(dbUpdateTimer);
+  dbUpdateTimer = setTimeout(() => {
+    dbUpdateTimer = null;
+    maybeAutoDatabaseUpdate(reason).catch(() => void 0);
+  }, delay);
+}
+
+async function maybeAutoDatabaseUpdate(reason = '') {
+  const s = ensureSettings();
+  if (!s.databaseEnabled || !s.databaseAutoUpdateEnabled) return;
+  if (isDbUpdating) return;
+
+  const ctx = SillyTavern.getContext?.() ?? {};
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const floorNow = computeFloorCount(chat, 'assistant');
+  if (floorNow <= 0) return;
+
+  const skip = clampInt(s.databaseSkipUpdateFloors, 0, 200000, 0);
+  const endFloor = Math.max(0, floorNow - skip);
+  const freq = clampInt(s.databaseAutoUpdateFrequency, 1, 200000, 1);
+  if (!endFloor || endFloor % freq !== 0) return;
+
+  const meta = getDatabaseMeta();
+  if (endFloor <= (meta.lastAutoFloor || 0)) return;
+
+  const { chunks, endFloor } = buildDatabaseChunksFromChat(s);
+  if (!chunks.length) return;
+
+  const tokenThreshold = clampInt(s.databaseAutoUpdateTokenThreshold, 0, 1000000, 0);
+  if (tokenThreshold > 0) {
+    const totalLen = chunks.reduce((sum, c) => sum + String(c.content || '').length, 0);
+    if (totalLen < tokenThreshold) return;
+  }
+
+  isDbUpdating = true;
+  try {
+    const keepRecent = String(s.databaseKeepRecentFloors || '').trim();
+    await runDatabaseUpdateFromChunks({
+      chunks,
+      selectedNames: null,
+      reason: 'auto',
+      extraHint: keepRecent ? `保留最近N层数据：${keepRecent}` : '',
+      floorMark: endFloor,
+    });
+  } finally {
+    isDbUpdating = false;
+  }
 }
 
 // -------------------- 蓝灯索引 → 绿灯触发（发送消息时注入触发词） --------------------
@@ -11715,15 +11897,36 @@ function setupSettingsPages() {
   $('#sg_db_manual_update').on('click', async () => {
     pullUiToSettings();
     saveSettings();
+    const s = ensureSettings();
     if (ensureSettings().databaseManualExtraHint) {
       const extra = prompt('输入额外提示词（仅本次手动更新生效）：', ensureSettings().databaseManualExtraHintText || '');
       if (extra != null) {
-        const s = ensureSettings();
         s.databaseManualExtraHintText = String(extra).trim();
         saveSettings();
       }
     }
-    showToast('手动更新功能尚未接入', { kind: 'warn' });
+    const { chunks, endFloor } = buildDatabaseChunksFromChat(s);
+    if (!chunks.length) {
+      showToast('没有可更新的内容', { kind: 'warn' });
+      return;
+    }
+    isDbUpdating = true;
+    try {
+      const selectedNames = Array.isArray(s.databaseManualTableSelection) ? s.databaseManualTableSelection : null;
+      const keepRecent = String(s.databaseKeepRecentFloors || '').trim();
+      await runDatabaseUpdateFromChunks({
+        chunks,
+        selectedNames,
+        reason: 'manual',
+        extraHint: [s.databaseManualExtraHintText, keepRecent ? `保留最近N层数据：${keepRecent}` : '']
+          .map(x => String(x || '').trim())
+          .filter(Boolean)
+          .join('\n'),
+        floorMark: endFloor,
+      });
+    } finally {
+      isDbUpdating = false;
+    }
   });
 
   $(document).on('change', '.sg-db-manual-table', () => {
@@ -11828,6 +12031,11 @@ function setupSettingsPages() {
     if (val && val !== 'chatbook') {
       $('#sg_db_import_worldbook_name').val(val);
     }
+  });
+
+  $('#sg_db_import_mode').on('change', () => {
+    pullUiToSettings();
+    updateDatabaseUi();
   });
 
   $(document).on('change', '.sg-db-import-table', () => {
@@ -12024,6 +12232,11 @@ function updateDatabaseUi() {
   $('#sg_db_var_block').toggle(source === 'variable');
   const isIsolation = !!s.databaseIsolationEnabled;
   $('#sg_db_isolation_code').prop('disabled', !isIsolation);
+  const importMode = String(s.databaseImportMode || 'worldbook');
+  const isWorldbook = importMode === 'worldbook';
+  $('#sg_db_import_worldbook_target').prop('disabled', !isWorldbook);
+  $('#sg_db_import_worldbook_name').prop('disabled', !isWorldbook);
+  $('#sg_db_import_refresh_worldbooks').prop('disabled', !isWorldbook);
 }
 
 function pullSettingsToUi() {
@@ -12949,6 +13162,7 @@ function setupEventListeners() {
       scheduleReapplyAll('msg_received');
       // 自动总结（独立功能）
       scheduleAutoSummary('msg_received');
+      scheduleAutoDatabaseUpdate('msg_received');
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
