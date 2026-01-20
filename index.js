@@ -2185,7 +2185,12 @@ async function refreshDatabaseStatusUi() {
 async function renderManualTableSelector(data) {
   const $wrap = $('#sg_db_manual_table_selector');
   if (!$wrap.length) return;
-  const tableList = getDatabaseTableList(data).length ? getDatabaseTableList(data) : getDatabaseTableListFromTemplates();
+  const dataTables = getDatabaseTableList(data);
+  const templateTables = getDatabaseTableListFromTemplates();
+  const mergedMap = new Map();
+  templateTables.forEach(t => mergedMap.set(t.name, t));
+  dataTables.forEach(t => mergedMap.set(t.name, t));
+  const tableList = Array.from(mergedMap.values());
   if (!tableList.length) {
     $wrap.html('<div class="sg-hint">暂无表格</div>');
     return;
@@ -2210,7 +2215,12 @@ async function renderManualTableSelector(data) {
 async function renderImportTableSelector(data) {
   const $wrap = $('#sg_db_import_table_selector');
   if (!$wrap.length) return;
-  const tableList = getDatabaseTableList(data).length ? getDatabaseTableList(data) : getDatabaseTableListFromTemplates();
+  const dataTables = getDatabaseTableList(data);
+  const templateTables = getDatabaseTableListFromTemplates();
+  const mergedMap = new Map();
+  templateTables.forEach(t => mergedMap.set(t.name, t));
+  dataTables.forEach(t => mergedMap.set(t.name, t));
+  const tableList = Array.from(mergedMap.values());
   if (!tableList.length) {
     $wrap.html('<div class="sg-hint">暂无表格</div>');
     return;
