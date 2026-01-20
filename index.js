@@ -59,9 +59,13 @@ const DEFAULT_MODULES = Object.freeze([
   { key: 'current_scene', title: '当前时间点 · 具体剧情', type: 'text', prompt: '描述当前发生了什么（地点/人物动机/冲突/悬念）', required: true, panel: true, inline: true },
   { key: 'next_events', title: '后续将会发生的事', type: 'list', prompt: '接下来最可能发生的事（条目）', maxItems: 6, required: true, panel: true, inline: true },
   { key: 'protagonist_impact', title: '主角行为造成的影响', type: 'text', prompt: '主角行为对剧情/关系/风险造成的改变', required: true, panel: true, inline: false },
+  { key: 'factions', title: '势力', type: 'list', prompt: '提取当前剧情涉及的势力/组织，列出名称与简短描述（条目）。', maxItems: 10, required: false, panel: true, inline: true },
+  { key: 'guilds', title: '冒险团/小队', type: 'list', prompt: '提取冒险团/小队/队伍信息，列出名称与当前状态（条目）。', maxItems: 10, required: false, panel: true, inline: true },
+  { key: 'npc_relationships', title: '女NPC亲密记录', type: 'text', prompt: '仅记录女NPC的亲密/性相关剧情进展，按时间顺序简要总结（保持克制、只记录事实）。', required: false, panel: true, inline: true },
   { key: 'tips', title: '给主角的提示（基于原著后续/大纲）', type: 'list', prompt: '给出可执行提示（尽量具体）', maxItems: 4, required: true, panel: true, inline: true },
   { key: 'quick_actions', title: '快捷选项', type: 'list', prompt: '根据当前剧情走向，给出4~6个玩家可以发送的具体行动选项（每项15~40字，可直接作为对话输入发送）', maxItems: 6, required: true, panel: true, inline: true },
 ]);
+
 
 // ===== 总结提示词默认值（可在面板中自定义） =====
 const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
@@ -448,7 +452,14 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiRollCustomTemperature: 0.2,
   wiRollCustomStream: false,
 
+  // 模块注入（基于面板模块内容，按关键词触发）
+  moduleInjectEnabled: true,
+  moduleInjectStyle: 'hidden',
+  moduleInjectTag: 'SG_MODULES',
+  moduleInjectKeywords: '势力, 冒险团, 小队, 帮派, 组织, 女, 女性, npc, 亲密, 性, 交合, 房事',
+
   // 蓝灯索引读取方式：默认“实时读取蓝灯世界书文件”
+
   // - live：每次触发前会按需拉取蓝灯世界书（带缓存/节流）
   // - cache：只使用导入/缓存的 summaryBlueIndex
   wiBlueIndexMode: 'live',
@@ -579,6 +590,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenCharacterProfiles: [],
   imageGenProfilesExpanded: false,
   imageGenBatchEnabled: true,
+  customModulesApplied: false,
   imageGenBatchPatterns: JSON.stringify([
     { label: '剧情-1', type: 'story', detail: '正文第一段的代表性画面' },
     { label: '剧情-2', type: 'story', detail: '正文第二段的代表性画面' },
@@ -704,6 +716,12 @@ function ensureSettings() {
       extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
     }
   }
+
+  if (!extensionSettings[MODULE_NAME].customModulesApplied) {
+    extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
+    saveSettingsDebounced();
+  }
+
   if (typeof extensionSettings[MODULE_NAME].wiRollSystemPrompt === 'string') {
     const cur = extensionSettings[MODULE_NAME].wiRollSystemPrompt;
     const hasMojibake = /\?{5,}/.test(cur);
@@ -746,11 +764,11 @@ function saveSettings() { SillyTavern.getContext().saveSettingsDebounced(); }
 // 导出全局预设
 function exportPreset() {
   const s = ensureSettings();
-  const preset = {
+  return {
     _type: 'StoryGuide_Preset',
     _version: '1.0',
     _exportedAt: new Date().toISOString(),
-    settings: { ...s }
+    settings: { ...s, customModulesApplied: true }
   };
   // 移除敏感信息（API Key）
   delete preset.settings.customApiKey;
@@ -5050,8 +5068,44 @@ function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style= 'hidden'
   return `\n\n<!--${tag}\n${body}\n-->`;
 }
 
+// -------------------- 模块注入（基于面板模块内容） --------------------
+function shouldInjectModulesByKeywords(text, keywords) {
+  const t = String(text || '').toLowerCase();
+  if (!t) return false;
+  const list = String(keywords || '').split(',').map(k => String(k || '').trim().toLowerCase()).filter(Boolean);
+  if (!list.length) return false;
+  return list.some(k => t.includes(k));
+}
+
+async function buildModuleInjectionForText(text, s, logStatus) {
+  if (!s.moduleInjectEnabled) return null;
+  if (!lastReport?.json) return null;
+  if (!shouldInjectModulesByKeywords(text, s.moduleInjectKeywords)) return null;
+
+  const tag = String(s.moduleInjectTag || 'SG_MODULES').trim() || 'SG_MODULES';
+  const style = String(s.moduleInjectStyle || 'hidden').trim() || 'hidden';
+  const modules = getModules('panel');
+  const payload = {};
+
+  for (const m of modules) {
+    if (!m || !m.key) continue;
+    if (!['factions', 'guilds', 'npc_relationships'].includes(m.key)) continue;
+    payload[m.key] = lastReport?.json?.[m.key] ?? '';
+  }
+
+  const keywords = [];
+  if (Array.isArray(payload.factions)) keywords.push(...payload.factions);
+  if (Array.isArray(payload.guilds)) keywords.push(...payload.guilds);
+  if (payload.npc_relationships) keywords.push(String(payload.npc_relationships).slice(0, 120));
+
+  const injected = buildTriggerInjection(keywords.filter(Boolean), tag, style);
+  if (injected) logStatus?.('模块信息已注入', 'ok');
+  return injected || null;
+}
+
 // -------------------- ROLL 判定 --------------------
 function rollDice(sides = 100) {
+
   const s = Math.max(2, Number(sides) || 100);
   return Math.floor(Math.random() * s) + 1;
 }
@@ -5927,13 +5981,16 @@ function installRollPreSendHook() {
     const text = String(raw ?? '').trim();
     if (!text || text.startsWith('/')) return null;
 
-    const rollText = s.wiRollEnabled ? await buildRollInjectionForText(text, chat, s, logStatus) : null;
-    const triggerText = s.wiTriggerEnabled ? await buildTriggerInjectionForText(text, chat, s, logStatus) : null;
-    if (!rollText && !triggerText) return null;
+  const rollText = s.wiRollEnabled ? await buildRollInjectionForText(text, chat, s, logStatus) : null;
+  const triggerText = s.wiTriggerEnabled ? await buildTriggerInjectionForText(text, chat, s, logStatus) : null;
+  const moduleText = s.moduleInjectEnabled ? await buildModuleInjectionForText(text, s, logStatus) : null;
+  if (!rollText && !triggerText && !moduleText) return null;
 
-    let cleaned = stripTriggerInjection(text, String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL');
-    cleaned = stripTriggerInjection(cleaned, String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS');
-    return cleaned + (rollText || '') + (triggerText || '');
+  let cleaned = stripTriggerInjection(text, String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL');
+  cleaned = stripTriggerInjection(cleaned, String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS');
+  cleaned = stripTriggerInjection(cleaned, String(s.moduleInjectTag || 'SG_MODULES').trim() || 'SG_MODULES');
+  return cleaned + (rollText || '') + (triggerText || '') + (moduleText || '');
+
   }
 
   function findMessageArg(args) {
@@ -9634,8 +9691,25 @@ function buildModalHtml() {
                 </div>
               </div>
 
-              <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">提示词替换</div>
+  <div class="sg-card sg-subcard" style="margin-top:10px;">
+    <div class="sg-card-title" style="font-size:0.95em;">模块注入</div>
+    <div class="sg-hint">当用户输入包含关键词时，将“势力/冒险团/女NPC记录”注入到输入末尾（隐藏注释）。</div>
+    <div class="sg-row sg-inline" style="margin-top:6px;">
+      <label class="sg-check"><input type="checkbox" id="sg_moduleInjectEnabled">启用模块注入</label>
+      <select id="sg_moduleInjectStyle" style="min-width:110px;">
+        <option value="hidden">隐藏注释</option>
+        <option value="plain">普通文本</option>
+      </select>
+    </div>
+    <div class="sg-field" style="margin-top:6px;">
+      <label>注入关键词（逗号分隔）</label>
+      <input id="sg_moduleInjectKeywords" type="text" placeholder="势力, 冒险团, 女, NPC, 亲密">
+    </div>
+  </div>
+
+  <div class="sg-card sg-subcard" style="margin-top:10px;">
+    <div class="sg-card-title" style="font-size:0.95em;">提示词替换</div>
+
                 <div class="sg-hint">对剧情文本进行替换/插入，再交给 LLM 生成标签（命中规则时生效）。</div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
                   <label class="sg-check"><input type="checkbox" id="sg_imageGenPromptRulesEnabled">启用提示词替换</label>
@@ -10009,7 +10083,7 @@ function ensureModal() {
   });
 
   // auto-save summary settings
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_moduleInjectEnabled, #sg_moduleInjectStyle, #sg_moduleInjectKeywords, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -10486,14 +10560,16 @@ function ensureModal() {
       setStatus(`模块 JSON 解析失败：${e?.message ?? e}`, 'err');
       return;
     }
-    const v = validateAndNormalizeModules(parsed);
-    if (!v.ok) { setStatus(`模块校验失败：${v.error}`, 'err'); return; }
+  const v = validateAndNormalizeModules(parsed);
+  if (!v.ok) { setStatus(`模块校验失败：${v.error}`, 'err'); return; }
 
-    const s = ensureSettings();
-    s.modulesJson = JSON.stringify(v.modules, null, 2);
-    saveSettings();
-    $('#sg_modulesJson').val(s.modulesJson);
-    setStatus('模块已应用并保存 ✅（注意：追加框展示的模块由“追加框展示模块”控制）', 'ok');
+  const s = ensureSettings();
+  s.modulesJson = JSON.stringify(v.modules, null, 2);
+  s.customModulesApplied = true;
+  saveSettings();
+  $('#sg_modulesJson').val(s.modulesJson);
+  setStatus('模块已应用并保存 ✅（注意：追加框展示的模块由“追加框展示模块”控制）', 'ok');
+
   });
 
   // 刷新静态模块缓存
@@ -10759,6 +10835,10 @@ function pullSettingsToUi() {
   $('#sg_characterEntriesEnabled').prop('checked', !!s.characterEntriesEnabled);
   $('#sg_equipmentEntriesEnabled').prop('checked', !!s.equipmentEntriesEnabled);
   $('#sg_abilityEntriesEnabled').prop('checked', !!s.abilityEntriesEnabled);
+  $('#sg_moduleInjectEnabled').prop('checked', !!s.moduleInjectEnabled);
+  $('#sg_moduleInjectStyle').val(String(s.moduleInjectStyle || 'hidden'));
+  $('#sg_moduleInjectKeywords').val(String(s.moduleInjectKeywords || ''));
+
   $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '人物'));
   $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '装备'));
   $('#sg_abilityEntryPrefix').val(String(s.abilityEntryPrefix || '能力'));
@@ -11271,14 +11351,15 @@ function pullUiToSettings() {
   s.characterEntriesEnabled = $('#sg_characterEntriesEnabled').is(':checked');
   s.equipmentEntriesEnabled = $('#sg_equipmentEntriesEnabled').is(':checked');
   s.abilityEntriesEnabled = $('#sg_abilityEntriesEnabled').is(':checked');
-  s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '人物').trim() || '人物';
-  s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '装备').trim() || '装备';
-  s.abilityEntryPrefix = String($('#sg_abilityEntryPrefix').val() || '能力').trim() || '能力';
+  s.moduleInjectEnabled = $('#sg_moduleInjectEnabled').is(':checked');
+  s.moduleInjectStyle = String($('#sg_moduleInjectStyle').val() || 'hidden');
+  s.moduleInjectKeywords = String($('#sg_moduleInjectKeywords').val() || '').trim();
   s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
   s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
   s.structuredAbilityPrompt = String($('#sg_structuredAbilityPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
+
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
