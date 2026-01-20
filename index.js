@@ -551,6 +551,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   databaseManualTableSelection: null,
   databaseImportSelectedTables: null,
   databaseImportFilename: '',
+  databaseImportMode: 'worldbook', // worldbook | database
+  databaseImportWorldbookTarget: 'chatbook',
+  databaseImportWorldbookName: '',
+  databaseImportCommentPrefix: DB_IMPORT_COMMENT_PREFIX,
   databasePromptSystem: '你是数据库更新助手。根据对话更新指定表格。',
   databasePromptUser: '请根据最新剧情更新数据库表格，保持条目简洁。',
   databasePromptAssistant: '',
@@ -1457,6 +1461,26 @@ async function setMapData(mapData) {
 let lastDatabasePayload = null;
 let lastDatabaseRawText = '';
 let lastDatabaseInfo = null;
+let dbImportTempMem = null;
+
+const DB_IMPORT_ENTRIES_KEY = 'sg_db_import_entries';
+const DB_IMPORT_COMMENT_PREFIX = 'SG-外部导入';
+
+function getDbImportTemp() {
+  try {
+    const raw = localStorage.getItem(DB_IMPORT_ENTRIES_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return dbImportTempMem;
+}
+
+function setDbImportTemp(value) {
+  dbImportTempMem = value;
+  try {
+    if (value == null) localStorage.removeItem(DB_IMPORT_ENTRIES_KEY);
+    else localStorage.setItem(DB_IMPORT_ENTRIES_KEY, JSON.stringify(value));
+  } catch { /* ignore */ }
+}
 
 function normalizeDatabaseIsolationCode(code) {
   return (typeof code === 'string') ? code.trim() : '';
@@ -1823,7 +1847,206 @@ function updateDatabaseImportStatus() {
   const s = ensureSettings();
   const $status = $('#sg_db_import_status');
   if (!$status.length) return;
-  $status.text(s.databaseImportFilename ? `已选择: ${s.databaseImportFilename}` : '尚未提交文件');
+  const temp = getDbImportTemp();
+  const count = Array.isArray(temp) ? temp.length : 0;
+  if (s.databaseImportFilename) {
+    $status.text(count ? `已选择: ${s.databaseImportFilename}（${count}段）` : `已选择: ${s.databaseImportFilename}`);
+  } else {
+    $status.text(count ? `已缓存导入内容（${count}段）` : '尚未提交文件');
+  }
+}
+
+function normalizeWorldbookListPayload(data) {
+  if (!data) return [];
+  const candidates = [
+    data?.world_info,
+    data?.worldInfo,
+    data?.lorebook,
+    data?.lorebooks,
+    data?.books,
+    data?.files,
+    data?.list,
+    data?.data,
+    Array.isArray(data) ? data : null,
+  ].filter(Boolean);
+
+  let list = null;
+  for (const c of candidates) {
+    if (Array.isArray(c)) { list = c; break; }
+    if (typeof c === 'object') {
+      const vals = Object.values(c);
+      if (vals.length) { list = vals; break; }
+    }
+  }
+  if (!list) return [];
+
+  return list.map((item) => {
+    if (!item) return '';
+    if (typeof item === 'string') return item;
+    return String(item.name || item.file || item.filename || item.title || item.id || '').trim();
+  }).filter(Boolean);
+}
+
+async function fetchWorldbookList() {
+  const tryList = ['/api/worldinfo/list', '/api/worldinfo/list?all=1'];
+  let lastErr = null;
+  for (const url of tryList) {
+    try {
+      const data = await fetchJsonCompat(url, { method: 'GET' });
+      const list = normalizeWorldbookListPayload(data);
+      if (list.length) return Array.from(new Set(list));
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return [];
+}
+
+function extractWorldbookEntriesMap(worldInfoJson) {
+  if (!worldInfoJson || typeof worldInfoJson !== 'object') return {};
+  const wrappers = [
+    worldInfoJson?.data,
+    worldInfoJson?.world_info,
+    worldInfoJson?.worldInfo,
+    worldInfoJson?.lorebook,
+    worldInfoJson?.book,
+    worldInfoJson?.worldbook,
+    worldInfoJson,
+  ].filter(Boolean);
+
+  let payload = wrappers[0] || worldInfoJson;
+  for (const w of wrappers) {
+    if (w?.entries || w?.world_info?.entries || w?.worldInfo?.entries || w?.items) {
+      payload = w;
+      break;
+    }
+  }
+
+  let entries = payload?.entries || payload?.world_info?.entries || payload?.worldInfo?.entries || payload?.items || null;
+  if (!entries) return {};
+
+  if (Array.isArray(entries)) {
+    const map = {};
+    entries.forEach((entry, idx) => {
+      if (!entry || typeof entry !== 'object') return;
+      const uid = Number.isFinite(Number(entry.uid)) ? Number(entry.uid) : idx;
+      map[uid] = { ...entry, uid };
+    });
+    return map;
+  }
+
+  if (typeof entries === 'object') {
+    const map = {};
+    Object.entries(entries).forEach(([key, entry]) => {
+      if (!entry || typeof entry !== 'object') return;
+      const uid = Number.isFinite(Number(entry.uid)) ? Number(entry.uid) : Number(key);
+      map[uid] = { ...entry, uid };
+    });
+    return map;
+  }
+
+  return {};
+}
+
+function buildWorldbookEntriesMap(entriesMap) {
+  const out = {};
+  Object.entries(entriesMap || {}).forEach(([uid, entry]) => {
+    if (!entry || typeof entry !== 'object') return;
+    const id = Number.isFinite(Number(entry.uid)) ? Number(entry.uid) : Number(uid);
+    out[id] = { ...entry, uid: id };
+  });
+  return out;
+}
+
+async function resolveImportWorldbookFileName(settings) {
+  const s = settings || ensureSettings();
+  const target = String(s.databaseImportWorldbookTarget || '').trim();
+  if (target === 'chatbook') {
+    const name = await resolveChatbookFileName();
+    return name ? name.replace(/^"+|"+$/g, '') : '';
+  }
+  const manual = String(s.databaseImportWorldbookName || '').trim();
+  return manual || target;
+}
+
+async function injectImportChunksToWorldbook(chunks) {
+  const s = ensureSettings();
+  const fileName = await resolveImportWorldbookFileName(s);
+  if (!fileName) {
+    showToast('未设置导入目标世界书', { kind: 'warn' });
+    return;
+  }
+
+  await createWorldInfoFile(fileName, '外部导入初始化');
+  const prefix = String(s.databaseImportCommentPrefix || DB_IMPORT_COMMENT_PREFIX).trim() || DB_IMPORT_COMMENT_PREFIX;
+  const keyValue = 'SG_IMPORT';
+
+  for (let i = 0; i < chunks.length; i += 1) {
+    const content = String(chunks[i]?.content || '').trim();
+    if (!content) continue;
+    const comment = `${prefix}-${i + 1}`;
+    const uidVar = '__sg_db_import_uid';
+    const parts = [];
+    parts.push(`/createentry file=${quoteSlashValue(fileName)} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(content)}`);
+    parts.push(`/setvar key=${uidVar}`);
+    parts.push(`/setentryfield file=${quoteSlashValue(fileName)} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(comment)}`);
+    parts.push(`/setentryfield file=${quoteSlashValue(fileName)} uid={{getvar::${uidVar}}} field=disable 0`);
+    parts.push(`/setentryfield file=${quoteSlashValue(fileName)} uid={{getvar::${uidVar}}} field=constant 0`);
+    parts.push(`/flushvar ${uidVar}`);
+    await execSlash(parts.join(' | '));
+  }
+
+  showToast(`已注入 ${chunks.length} 段到世界书`, { kind: 'ok' });
+}
+
+async function deleteImportedWorldbookEntries() {
+  const s = ensureSettings();
+  const fileName = await resolveImportWorldbookFileName(s);
+  if (!fileName) {
+    showToast('未设置导入目标世界书', { kind: 'warn' });
+    return;
+  }
+
+  let data = null;
+  try {
+    data = await fetchWorldInfoFileJsonCompat(fileName);
+  } catch (e) {
+    showToast(`读取世界书失败: ${e?.message || e}`, { kind: 'err' });
+    return;
+  }
+
+  const entriesMap = extractWorldbookEntriesMap(data);
+  const prefix = String(s.databaseImportCommentPrefix || DB_IMPORT_COMMENT_PREFIX).trim() || DB_IMPORT_COMMENT_PREFIX;
+  let removed = 0;
+  const next = {};
+  Object.values(entriesMap).forEach((entry) => {
+    const comment = String(entry?.comment || '').trim();
+    if (comment.startsWith(prefix)) {
+      removed += 1;
+      return;
+    }
+    const uid = Number.isFinite(Number(entry.uid)) ? Number(entry.uid) : null;
+    if (uid != null) next[uid] = entry;
+  });
+
+  if (!removed) {
+    showToast('未找到可删除的外部导入条目', { kind: 'warn' });
+    return;
+  }
+
+  try {
+    const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
+    const payload = { name: fileName, data: { entries: buildWorldbookEntriesMap(next) } };
+    const res = await fetch('/api/worldinfo/edit', { method: 'POST', headers, body: JSON.stringify(payload) });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${res.statusText}${text ? `\n${text}` : ''}`);
+    }
+    showToast(`已删除 ${removed} 条外部导入条目`, { kind: 'ok' });
+  } catch (e) {
+    showToast(`删除导入条目失败: ${e?.message || e}`, { kind: 'err' });
+  }
 }
 
 // 更新地图预览
@@ -10035,6 +10258,28 @@ function buildModalHtml() {
             <div class="sg-card" style="margin-top:12px;">
               <div class="sg-card-title">外部导入</div>
               <div class="sg-hint" id="sg_db_import_status">尚未提交文件</div>
+              <div class="sg-grid2" style="margin-top:10px;">
+                <div class="sg-field">
+                  <label>导入注入方式</label>
+                  <select id="sg_db_import_mode">
+                    <option value="worldbook">注入到世界书</option>
+                    <option value="database">更新数据库（AI）</option>
+                  </select>
+                </div>
+                <div class="sg-field">
+                  <label>世界书目标</label>
+                  <select id="sg_db_import_worldbook_target">
+                    <option value="chatbook">当前对话世界书</option>
+                  </select>
+                </div>
+              </div>
+              <div class="sg-field">
+                <label>世界书文件名（手动）</label>
+                <input id="sg_db_import_worldbook_name" type="text" placeholder="可手动填写世界书文件名">
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:6px;">
+                <button class="menu_button sg-btn" id="sg_db_import_refresh_worldbooks">刷新世界书列表</button>
+              </div>
               <div class="sg-row sg-inline" style="margin-top:10px;">
                 <button class="menu_button sg-btn" id="sg_db_import_pick">1. 选择并拆分TXT文件</button>
                 <input id="sg_db_import_file" type="file" accept=".txt" style="display:none;">
@@ -11342,10 +11587,65 @@ function setupSettingsPages() {
     const input = e.target;
     const file = input?.files?.[0];
     const s = ensureSettings();
+    if (!file) return;
     s.databaseImportFilename = file?.name ? String(file.name) : '';
     saveSettings();
     updateDatabaseImportStatus();
-    showToast('已选择导入文件（尚未解析）', { kind: 'warn' });
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const content = String(reader.result || '');
+        if (!content) {
+          showToast('文件为空或读取失败', { kind: 'warn' });
+          return;
+        }
+        const splitSize = 10000;
+        const chunks = [];
+        for (let i = 0; i < content.length; i += splitSize) {
+          chunks.push({ content: content.slice(i, i + splitSize) });
+        }
+        setDbImportTemp(chunks);
+        updateDatabaseImportStatus();
+        showToast(`已拆分并缓存 ${chunks.length} 段文本`, { kind: 'ok' });
+      } catch (err) {
+        showToast(`解析导入文件失败: ${err?.message || err}`, { kind: 'err' });
+      } finally {
+        input.value = '';
+      }
+    };
+    reader.onerror = () => {
+      showToast('读取文件失败', { kind: 'err' });
+    };
+    reader.readAsText(file, 'utf-8');
+  });
+
+  $('#sg_db_import_refresh_worldbooks').on('click', async () => {
+    try {
+      const list = await fetchWorldbookList();
+      const $sel = $('#sg_db_import_worldbook_target');
+      if ($sel.length) {
+        $sel.empty();
+        $sel.append('<option value="chatbook">当前对话世界书</option>');
+        list.forEach((name) => {
+          $sel.append(`<option value="${escapeHtml(String(name))}">${escapeHtml(String(name))}</option>`);
+        });
+        const s = ensureSettings();
+        if (s.databaseImportWorldbookTarget && $sel.find(`option[value="${s.databaseImportWorldbookTarget}"]`).length) {
+          $sel.val(s.databaseImportWorldbookTarget);
+        }
+      }
+      showToast(`已加载 ${list.length} 个世界书`, { kind: 'ok' });
+    } catch (e) {
+      showToast(`读取世界书列表失败: ${e?.message || e}`, { kind: 'err' });
+    }
+  });
+
+  $('#sg_db_import_worldbook_target').on('change', () => {
+    const val = String($('#sg_db_import_worldbook_target').val() || '');
+    if (val && val !== 'chatbook') {
+      $('#sg_db_import_worldbook_name').val(val);
+    }
   });
 
   $(document).on('change', '.sg-db-import-table', () => {
@@ -11374,19 +11674,45 @@ function setupSettingsPages() {
   });
 
   $('#sg_db_import_apply').on('click', () => {
-    showToast('外部导入尚未接入', { kind: 'warn' });
+    const chunks = getDbImportTemp();
+    if (!Array.isArray(chunks) || !chunks.length) {
+      showToast('没有可注入的导入内容', { kind: 'warn' });
+      return;
+    }
+    const s = ensureSettings();
+    if (String(s.databaseImportMode || 'worldbook') === 'database') {
+      showToast('数据库更新导入尚未接入', { kind: 'warn' });
+      return;
+    }
+    injectImportChunksToWorldbook(chunks).catch((e) => {
+      showToast(`注入失败: ${e?.message || e}`, { kind: 'err' });
+    });
   });
 
   $('#sg_db_import_delete').on('click', () => {
-    showToast('删除注入条目尚未接入', { kind: 'warn' });
+    const s = ensureSettings();
+    if (String(s.databaseImportMode || 'worldbook') === 'database') {
+      showToast('数据库更新导入尚未接入', { kind: 'warn' });
+      return;
+    }
+    deleteImportedWorldbookEntries().catch((e) => {
+      showToast(`删除失败: ${e?.message || e}`, { kind: 'err' });
+    });
   });
 
   $('#sg_db_import_clear').on('click', () => {
     const s = ensureSettings();
     s.databaseImportFilename = '';
     saveSettings();
+    setDbImportTemp(null);
     updateDatabaseImportStatus();
     showToast('导入暂存缓存已清空', { kind: 'ok' });
+  });
+
+  $(document).on('change', '#sg_page_database input, #sg_page_database select, #sg_page_database textarea', (e) => {
+    if ($(e.target).is('#sg_db_import_file')) return;
+    pullUiToSettings();
+    saveSettings();
   });
 
   $('#sg_db_open_panel').on('click', async () => {
@@ -11689,6 +12015,12 @@ function pullSettingsToUi() {
   $('#sg_db_prompt_system').val(String(s.databasePromptSystem || ''));
   $('#sg_db_prompt_user').val(String(s.databasePromptUser || ''));
   $('#sg_db_prompt_assistant').val(String(s.databasePromptAssistant || ''));
+  $('#sg_db_import_mode').val(String(s.databaseImportMode || 'worldbook'));
+  $('#sg_db_import_worldbook_target').val(String(s.databaseImportWorldbookTarget || 'chatbook'));
+  $('#sg_db_import_worldbook_name').val(String(s.databaseImportWorldbookName || ''));
+  if (String(s.databaseImportWorldbookTarget || '') && $('#sg_db_import_worldbook_target option').length > 0) {
+    $('#sg_db_import_worldbook_target').val(String(s.databaseImportWorldbookTarget));
+  }
   updateDatabaseImportStatus();
   $('#sg_db_api_endpoint').val(String(s.databaseApiEndpoint || ''));
   $('#sg_db_api_key').val(String(s.databaseApiKey || ''));
@@ -12229,6 +12561,9 @@ function pullUiToSettings() {
   s.databasePromptSystem = String($('#sg_db_prompt_system').val() || '').trim();
   s.databasePromptUser = String($('#sg_db_prompt_user').val() || '').trim();
   s.databasePromptAssistant = String($('#sg_db_prompt_assistant').val() || '').trim();
+  s.databaseImportMode = String($('#sg_db_import_mode').val() || 'worldbook');
+  s.databaseImportWorldbookTarget = String($('#sg_db_import_worldbook_target').val() || 'chatbook');
+  s.databaseImportWorldbookName = String($('#sg_db_import_worldbook_name').val() || '').trim();
   s.databaseApiEndpoint = String($('#sg_db_api_endpoint').val() || '').trim();
   s.databaseApiKey = String($('#sg_db_api_key').val() || '');
   s.databaseApiModel = String($('#sg_db_api_model').val() || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
