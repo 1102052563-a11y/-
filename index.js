@@ -460,9 +460,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 蓝灯索引缓存（可选：用于检索；每条为 {title, summary, keywords, range?}）
   summaryBlueIndex: [],
 
-  // 自定义总结栏目（[{id,title,prompt,prefix,type}])
-  summaryCustomItems: [],
-
   // 模块自定义（JSON 字符串 + 解析备份）
   modulesJson: '',
   // 额外可自定义提示词“骨架”
@@ -1257,7 +1254,7 @@ function renderQuickOptionsHtml(context = 'inline') {
   const buttons = options.map((opt, i) => {
     const label = escapeHtml(opt.label || `选项${i + 1} `);
     const prompt = escapeHtml(opt.prompt || '');
-    return `<button class="sg-quick-option" data-sg-prompt="${prompt}" title="${prompt}">${label}</button>`;
+    return `<button class="sg-quick-option" data - sg - prompt="${prompt}" title= "${prompt}" > ${label}</button> `;
   }).join('');
 
   return `<div class="sg-quick-options" > ${buttons}</div> `;
@@ -1282,7 +1279,7 @@ function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
 
     const escapedText = escapeHtml(cleaned);
     // 按钮直接显示完整选项内容，点击后输入到聊天框
-    return `<button class="sg-quick-option sg-dynamic-option" data-sg-prompt="${escapedText}" title="点击输入到聊天框">${escapedText}</button>`;
+    return `<button class="sg-quick-option sg-dynamic-option" data - sg - prompt="${escapedText}" title= "点击输入到聊天框" > ${escapedText}</button> `;
   }).filter(Boolean).join('');
 
   if (!buttons) return '';
@@ -1304,9 +1301,10 @@ function installQuickOptionsClickHandler() {
     e.preventDefault();
     e.stopPropagation();
 
-    const rawPrompt = (btn.dataset && btn.dataset.sgPrompt) || btn.getAttribute('data-sg-prompt') || btn.textContent || '';
-    const prompt = String(rawPrompt || '').trim();
-    if (prompt) injectToUserInput(prompt);
+    const prompt = btn.dataset.sgPrompt || '';
+    if (prompt) {
+      injectToUserInput(prompt);
+    }
   }, true);
 }
 
@@ -1343,11 +1341,9 @@ function getDefaultSummaryMeta() {
     characterEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     equipmentEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     abilityEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
-    customEntries: {}, // { uid: { name, lastUpdated, wiEntryUid, content } }
     nextCharacterIndex: 1, // NPC-001, NPC-002...
     nextEquipmentIndex: 1, // EQP-001, EQP-002...
     nextAbilityIndex: 1, // ABL-001, ABL-002...
-    nextCustomEntryIndex: 1, // CST-001, CST-002...
   };
 }
 
@@ -1970,11 +1966,9 @@ async function clearStructuredEntriesCache() {
   meta.characterEntries = {};
   meta.equipmentEntries = {};
   meta.abilityEntries = {};
-  meta.customEntries = {};
   meta.nextCharacterIndex = 1;
   meta.nextEquipmentIndex = 1;
   meta.nextAbilityIndex = 1;
-  meta.nextCustomEntryIndex = 1;
   await setSummaryMeta(meta);
 }
 
@@ -3147,24 +3141,6 @@ async function fallbackAskJsonCustom(apiBaseUrl, apiKey, model, messages, temper
   return await callViaCustom(apiBaseUrl, apiKey, model, retry, temperature, maxTokens, topP, stream);
 }
 
-function buildJsonRepairMessages(rawText, hint = '') {
-  const cleaned = String(rawText || '').trim().slice(0, 12000);
-  const sys = `你是 JSON 修复器。任务：把用户给出的内容修复为严格 JSON 对象，只输出 JSON 本体，不要任何额外文字。${hint}`.trim();
-  return [
-    { role: 'system', content: sys },
-    { role: 'user', content: cleaned || '（空）' },
-  ];
-}
-
-async function repairJsonWithProvider(rawText, settings, schema, hint = '') {
-  const messages = buildJsonRepairMessages(rawText, hint);
-  if (String(settings.summaryProvider || 'st') === 'custom') {
-    return await callViaCustom(settings.summaryCustomEndpoint, settings.summaryCustomApiKey, settings.summaryCustomModel, messages, settings.summaryTemperature, settings.summaryCustomMaxTokens, 0.95, settings.summaryCustomStream);
-  }
-  const res = await callViaSillyTavern(messages, schema, settings.summaryTemperature);
-  return (typeof res === 'string') ? res : JSON.stringify(res ?? '');
-}
-
 function hasAnyModuleKey(obj, modules) {
   if (!obj || typeof obj !== 'object') return false;
   for (const m of modules || []) {
@@ -3644,34 +3620,6 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = nu
   ];
 }
 
-function buildCustomSummaryPromptMessages(item, chunkText, fromFloor, toFloor, statData = null) {
-  const s = ensureSettings();
-  const customPrompt = String(item?.prompt || '').trim();
-  if (!customPrompt) return null;
-
-  let sys = customPrompt + '\n\n' + SUMMARY_JSON_REQUIREMENT;
-  let tpl = String(s.summaryUserTemplate || '').trim();
-  if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
-
-  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
-  let user = renderTemplate(tpl, {
-    fromFloor: String(fromFloor),
-    toFloor: String(toFloor),
-    chunk: String(chunkText || ''),
-    statData: statDataJson,
-  });
-  if (!/{{\s*chunk\s*}}/i.test(tpl) && !String(user).includes(String(chunkText || '').slice(0, 12))) {
-    user = String(user || '').trim() + `\n\n【对话片段】\n${chunkText}`;
-  }
-  if (statData && !/{{\s*statData\s*}}/i.test(tpl)) {
-    user = String(user || '').trim() + `\n\n【角色状态数据】\n${statDataJson}`;
-  }
-  return [
-    { role: 'system', content: sys },
-    { role: 'user', content: user },
-  ];
-}
-
 function sanitizeKeywords(kws) {
   const out = [];
   const seen = new Set();
@@ -3691,87 +3639,6 @@ function sanitizeKeywords(kws) {
     }
   }
   return out;
-}
-
-function normalizeSummaryCustomItems(raw) {
-  if (!raw) return [];
-  let list = raw;
-  if (typeof raw === 'string') {
-    try { list = JSON.parse(raw); } catch { return []; }
-  }
-  if (!Array.isArray(list)) return [];
-  const out = [];
-  for (const item of list) {
-    if (!item || typeof item !== 'object') continue;
-    const title = String(item.title || '').trim();
-    const prompt = String(item.prompt || '').trim();
-    const prefix = String(item.prefix || '').trim();
-    const type = String(item.type || '').trim();
-    if (!title && !prompt && !prefix && !type) continue;
-    const id = String(item.id || `sg_custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
-    out.push({ id, title, prompt, prefix, type });
-  }
-  return out;
-}
-
-function getSummaryCustomItemsFromSettings() {
-  const s = ensureSettings();
-  return normalizeSummaryCustomItems(s.summaryCustomItems);
-}
-
-function renderSummaryCustomItemsUi() {
-  const list = getSummaryCustomItemsFromSettings();
-  const $wrap = $('#sg_summaryCustomList');
-  if (!$wrap.length) return;
-  if (!list.length) {
-    $wrap.html('<div class="sg-hint">暂无自定义栏目，点击“+ 添加”创建。</div>');
-    return;
-  }
-  const rows = list.map((item, idx) => {
-    return `
-      <div class="sg-summary-custom-item" data-id="${escapeHtml(item.id)}">
-        <div class="sg-grid3">
-          <div class="sg-field">
-            <label>名称</label>
-            <input type="text" class="sg-summary-custom-title" placeholder="栏目名称" value="${escapeHtml(item.title || '')}">
-          </div>
-          <div class="sg-field">
-            <label>类型</label>
-            <input type="text" class="sg-summary-custom-type" placeholder="势力/组织/关系" value="${escapeHtml(item.type || '')}">
-          </div>
-          <div class="sg-field">
-            <label>前缀</label>
-            <input type="text" class="sg-summary-custom-prefix" placeholder="写入世界书的前缀" value="${escapeHtml(item.prefix || '')}">
-          </div>
-        </div>
-        <div class="sg-field" style="margin-top:6px;">
-          <label>提示词（System）</label>
-          <textarea rows="3" class="sg-summary-custom-prompt" placeholder="例如：总结本段中所有势力的状态与动向（只输出 JSON）">${escapeHtml(item.prompt || '')}</textarea>
-        </div>
-        <div class="sg-row sg-inline" style="margin-top:6px;">
-          <div class="sg-hint">占位符仍可用：{{fromFloor}} {{toFloor}} {{chunk}} {{statData}}（会追加到 User 模板中）。</div>
-          <div class="sg-spacer"></div>
-          <button class="menu_button sg-btn sg-summary-custom-remove" type="button">删除</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-  $wrap.html(rows);
-}
-
-function collectSummaryCustomItemsFromUi() {
-  const list = [];
-  $('#sg_summaryCustomList .sg-summary-custom-item').each((_, el) => {
-    const $row = $(el);
-    const id = String($row.attr('data-id') || '').trim() || `sg_custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const title = String($row.find('.sg-summary-custom-title').val() || '').trim();
-    const type = String($row.find('.sg-summary-custom-type').val() || '').trim();
-    const prefix = String($row.find('.sg-summary-custom-prefix').val() || '').trim();
-    const prompt = String($row.find('.sg-summary-custom-prompt').val() || '').trim();
-    if (!title && !prompt && !prefix && !type) return;
-    list.push({ id, title, type, prefix, prompt });
-  });
-  return list;
 }
 
 function appendToBlueIndexCache(rec) {
@@ -3931,18 +3798,6 @@ function buildAbilityContent(ability) {
     parts.push(`属性数据：${infoStr}`);
   }
   if (ability.boundEvents?.length) parts.push(`相关事件：${ability.boundEvents.join('；')}`);
-  return parts.join('\n');
-}
-
-function buildCustomEntryContent(entry, label) {
-  const parts = [];
-  const name = String(entry?.name || '').trim();
-  const prefix = String(label || '').trim();
-  if (prefix || name) parts.push(`【${prefix || '自定义'}】${name || '条目'}`);
-  const summary = String(entry?.summary || '').trim();
-  if (summary) parts.push(summary);
-  const keywords = Array.isArray(entry?.keywords) ? entry.keywords.map(k => String(k || '').trim()).filter(Boolean) : [];
-  if (keywords.length) parts.push(`关键词：${keywords.slice(0, 12).join('、')}`);
   return parts.join('\n');
 }
 
@@ -4257,32 +4112,6 @@ async function writeOrUpdateAbilityEntry(ability, meta, settings) {
       entriesCache: meta.abilityEntries,
       nextIndexKey: 'nextAbilityIndex',
       prefix: settings.abilityEntryPrefix || '能力',
-      targetType: 'blue',
-    });
-    if (r) results.push(r);
-  }
-  return results.length ? results : null;
-}
-
-async function writeOrUpdateCustomEntry(entry, meta, settings, label) {
-  if (!entry?.name) return null;
-  const results = [];
-  if (settings.summaryToWorldInfo) {
-    const r = await writeOrUpdateStructuredEntry('custom', entry, meta, settings, {
-      buildContent: (e) => buildCustomEntryContent(e, label),
-      entriesCache: meta.customEntries,
-      nextIndexKey: 'nextCustomEntryIndex',
-      prefix: label || '自定义',
-      targetType: 'green',
-    });
-    if (r) results.push(r);
-  }
-  if (settings.summaryToBlueWorldInfo) {
-    const r = await writeOrUpdateStructuredEntry('custom', entry, meta, settings, {
-      buildContent: (e) => buildCustomEntryContent(e, label),
-      entriesCache: meta.customEntries,
-      nextIndexKey: 'nextCustomEntryIndex',
-      prefix: label || '自定义',
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -4871,9 +4700,6 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     let created = 0;
     let wroteGreenOk = 0;
     let wroteBlueOk = 0;
-    let customCreated = 0;
-    let customGreenOk = 0;
-    let customBlueOk = 0;
     const writeErrs = [];
     const runErrs = [];
 
@@ -4936,23 +4762,15 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
 
       const parsed = safeJsonParse(jsonText);
-      let parsedSummary = parsed;
-      if (!parsedSummary || !parsedSummary.summary) {
-        try {
-          const repaired = await repairJsonWithProvider(jsonText, s, schema, '必须包含 summary 与 keywords 字段。');
-          parsedSummary = safeJsonParse(repaired);
-          if (parsedSummary && parsedSummary.summary) jsonText = repaired;
-        } catch { /* ignore */ }
-      }
-      if (!parsedSummary || !parsedSummary.summary) {
+      if (!parsed || !parsed.summary) {
         runErrs.push(`${fromFloor}-${toFloor}：总结输出无法解析为 JSON`);
         continue;
       }
 
       const prefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
-      const rawTitle = String(parsedSummary.title || '').trim();
-      const summary = String(parsedSummary.summary || '').trim();
-      const modelKeywords = sanitizeKeywords(parsedSummary.keywords);
+      const rawTitle = String(parsed.title || '').trim();
+      const summary = String(parsed.summary || '').trim();
+      const modelKeywords = sanitizeKeywords(parsed.keywords);
       let indexId = '';
       let keywords = modelKeywords;
 
@@ -5006,145 +4824,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
       try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
 
-      // 自定义总结栏目（与剧情总结同一回合生成）
-      if (customItems.length) {
-        for (const customItem of customItems) {
-          if (summaryCancelled) break;
-          const customMessages = buildCustomSummaryPromptMessages(customItem, chunkText, fromFloor, toFloor, summaryStatData);
-          if (!customMessages) continue;
-
-          let customJsonText = '';
-          try {
-            if (String(s.summaryProvider || 'st') === 'custom') {
-              customJsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, customMessages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream);
-              const parsedTry = safeJsonParse(customJsonText);
-              if (!parsedTry || !parsedTry.summary) {
-                try { customJsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, customMessages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream); }
-                catch { /* ignore */ }
-              }
-            } else {
-              customJsonText = await callViaSillyTavern(customMessages, schema, s.summaryTemperature);
-              if (typeof customJsonText !== 'string') customJsonText = JSON.stringify(customJsonText ?? '');
-              const parsedTry = safeJsonParse(customJsonText);
-              if (!parsedTry || !parsedTry.summary) customJsonText = await fallbackAskJson(customMessages, s.summaryTemperature);
-            }
-          } catch (e) {
-            runErrs.push(`${fromFloor}-${toFloor}：自定义栏目失败（${customItem.title || customItem.type || '未命名'}）`);
-            continue;
-          }
-
-          let customParsed = safeJsonParse(customJsonText);
-          if (!customParsed || !customParsed.summary) {
-            try {
-              const repaired = await repairJsonWithProvider(customJsonText, s, schema, '必须包含 summary 与 keywords 字段。');
-              customParsed = safeJsonParse(repaired);
-              if (customParsed && customParsed.summary) customJsonText = repaired;
-            } catch { /* ignore */ }
-          }
-          if (!customParsed || !customParsed.summary) {
-            runErrs.push(`${fromFloor}-${toFloor}：自定义栏目输出无法解析为 JSON`);
-            continue;
-          }
-
-          const customPrefix = String(customItem.prefix || customItem.title || customItem.type || '自定义总结').trim() || '自定义总结';
-          const rawCustomTitle = String(customParsed.title || '').trim();
-          let customTitle = rawCustomTitle || String(customItem.title || customPrefix).trim();
-          const labelPrefix = String(customItem.type || customItem.title || customPrefix).trim();
-          if (labelPrefix && customTitle && !customTitle.startsWith(labelPrefix)) {
-            customTitle = `${labelPrefix}：${customTitle}`;
-          }
-          const customSummary = String(customParsed.summary || '').trim();
-          let customKeywords = sanitizeKeywords(customParsed.keywords);
-          if (labelPrefix && !customKeywords.includes(labelPrefix) && customKeywords.length < 16) {
-            customKeywords.push(labelPrefix);
-          }
-
-          let customIndexId = '';
-          if (keyMode === 'indexId') {
-            if (!Number.isFinite(Number(meta.nextIndex))) {
-              let maxN = 0;
-              const pref = String(s.summaryIndexPrefix || 'A-');
-              const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
-              for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
-                const id0 = String(h?.indexId || '').trim();
-                const m = id0.match(re);
-                if (m) maxN = Math.max(maxN, Number.parseInt(m[1], 10) || 0);
-              }
-              meta.nextIndex = Math.max(clampInt(s.summaryIndexStart, 1, 1000000, 1), maxN + 1);
-            }
-            const pref = String(s.summaryIndexPrefix || 'A-');
-            const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
-            const n = clampInt(meta.nextIndex, 1, 100000000, 1);
-            customIndexId = `${pref}${String(n).padStart(pad, '0')}`;
-            customKeywords = [customIndexId];
-            meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
-          }
-
-          const customRec = {
-            title: customTitle,
-            summary: customSummary,
-            keywords: customKeywords,
-            indexId: customIndexId || undefined,
-            modelKeywords: (keyMode === 'indexId') ? sanitizeKeywords(customParsed.keywords) : undefined,
-            createdAt: Date.now(),
-            range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: endIdx },
-            customType: customItem.type || undefined,
-            customPrefix: customPrefix || undefined,
-          };
-
-          customCreated += 1;
-          try { appendToBlueIndexCache(customRec); } catch { /* ignore */ }
-
-          if (s.structuredEntriesEnabled) {
-            const label = String(customItem.prefix || customItem.title || customItem.type || '自定义').trim() || '自定义';
-            const structuredEntry = {
-              name: customTitle,
-              summary: customSummary,
-              keywords: customKeywords,
-              type: customItem.type || undefined,
-            };
-            try {
-              await writeOrUpdateCustomEntry(structuredEntry, meta, s, label);
-            } catch (e) {
-              writeErrs.push(`${fromFloor}-${toFloor} 结构化自定义：${e?.message ?? e}`);
-            }
-          }
-
-          if (s.summaryToWorldInfo) {
-            try {
-              await writeSummaryToWorldInfoEntry(customRec, null, {
-                target: String(s.summaryWorldInfoTarget || 'chatbook'),
-                file: String(s.summaryWorldInfoFile || ''),
-                commentPrefix: customPrefix,
-                constant: 0,
-              });
-              customGreenOk += 1;
-            } catch (e) {
-              writeErrs.push(`${fromFloor}-${toFloor} 绿灯自定义：${e?.message ?? e}`);
-            }
-          }
-
-          if (s.summaryToBlueWorldInfo) {
-            try {
-              await writeSummaryToWorldInfoEntry(customRec, null, {
-                target: 'file',
-                file: String(s.summaryBlueWorldInfoFile || ''),
-                commentPrefix: customPrefix,
-                constant: 1,
-              });
-              customBlueOk += 1;
-            } catch (e) {
-              writeErrs.push(`${fromFloor}-${toFloor} 蓝灯自定义：${e?.message ?? e}`);
-            }
-          }
-        }
-        if (keyMode === 'indexId' && customCreated > 0) {
-          await setSummaryMeta(meta);
-        }
-      }
-
       // 生成结构化世界书条目（人物/装备/能力 - 与剧情总结同一事务）
-      if (s.structuredEntriesEnabled) {
+      if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         try {
           const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
           console.log('[StoryGuide] Structured entries result:', structuredResult);
@@ -5250,7 +4931,6 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     // final status
     if (totalSeg > 1) {
       const parts = [`生成 ${created} 条`];
-      if (customCreated > 0) parts.push(`自定义 ${customCreated} 条`);
       if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
         const wrote = [];
         if (s.summaryToWorldInfo) wrote.push(`绿灯 ${wroteGreenOk}/${created}`);
@@ -5277,16 +4957,12 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           if (wroteBlueOk >= 1) ok.push('蓝灯世界书');
           else if (writeErrs.find(x => x.includes('蓝灯'))) err.push(writeErrs.find(x => x.includes('蓝灯')));
         }
-        const customInfo = customCreated > 0 ? `｜自定义 ${customCreated} 条` : '';
-        if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ') || '（无）'}${customInfo}）`, 'ok');
-        else setStatus(`总结完成 ✅（写入失败：${err.join('；')}${customInfo}）`, 'warn');
+        if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ') || '（无）'}）`, 'ok');
+        else setStatus(`总结完成 ✅（写入失败：${err.join('；')}）`, 'warn');
       } else {
-        const customInfo = customCreated > 0 ? `（自定义 ${customCreated} 条）` : '';
-        setStatus(`总结完成 ✅${customInfo}`, 'ok');
+        setStatus('总结完成 ✅', 'ok');
       }
     }
-
-    const customItems = getSummaryCustomItemsFromSettings().filter(item => String(item.prompt || '').trim());
 
     // toast notify (non-blocking)
     try {
@@ -8436,8 +8112,6 @@ async function runImageGeneration() {
       }
     }
 
-    const customItems = getSummaryCustomItemsFromSettings().filter(item => String(item.prompt || '').trim());
-
     $('#sg_imagePositivePrompt').val(finalPositive);
 
 
@@ -9332,16 +9006,6 @@ function buildModalHtml() {
                 <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓存</button>
                 <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}}。</div>
               </div>
-            </div>
-
-            <div class="sg-card sg-subcard">
-              <div class="sg-row sg-inline" style="margin-top:0;">
-                <div class="sg-card-title" style="margin:0;">自定义总结栏目</div>
-                <div class="sg-spacer"></div>
-                <button class="menu_button sg-btn" id="sg_summaryCustomAdd">+ 添加</button>
-              </div>
-              <div id="sg_summaryCustomList" style="margin-top:8px;"></div>
-              <div class="sg-hint" style="margin-top:8px;">自定义栏目会随常规总结一起生成，并按上方世界书设置同时写入绿灯/蓝灯。</div>
             </div>
 
             <div class="sg-card sg-subcard" id="sg_summary_custom_block" style="display:none">
@@ -10293,36 +9957,6 @@ function ensureModal() {
     }
   });
 
-  $('#sg_summaryCustomAdd').on('click', () => {
-    const s = ensureSettings();
-    const list = getSummaryCustomItemsFromSettings();
-    list.push({
-      id: `sg_custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      title: `栏目${list.length + 1}`,
-      type: '',
-      prefix: '',
-      prompt: ''
-    });
-    s.summaryCustomItems = list;
-    saveSettings();
-    renderSummaryCustomItemsUi();
-  });
-
-  $(document).on('click', '#sg_summaryCustomList .sg-summary-custom-remove', (e) => {
-    const s = ensureSettings();
-    const id = String($(e.currentTarget).closest('.sg-summary-custom-item').attr('data-id') || '').trim();
-    const list = getSummaryCustomItemsFromSettings().filter(item => item.id !== id);
-    s.summaryCustomItems = list;
-    saveSettings();
-    renderSummaryCustomItemsUi();
-  });
-
-  $(document).on('input change', '#sg_summaryCustomList input, #sg_summaryCustomList textarea', () => {
-    const s = ensureSettings();
-    s.summaryCustomItems = collectSummaryCustomItemsFromUi();
-    saveSettings();
-  });
-
   // manual range split toggle & hint refresh
   $('#sg_summaryManualSplit').on('change', () => {
     pullUiToSettings();
@@ -11151,8 +10785,6 @@ function pullSettingsToUi() {
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
 
-  renderSummaryCustomItemsUi();
-
   // 自动绑定世界书
   $('#sg_autoBindWorldInfo').prop('checked', !!s.autoBindWorldInfo);
   $('#sg_autoBindWorldInfoPrefix').val(String(s.autoBindWorldInfoPrefix || 'SG'));
@@ -11663,7 +11295,6 @@ function pullUiToSettings() {
   s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
   s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
-  s.summaryCustomItems = collectSummaryCustomItemsFromUi();
 
   // 自动绑定世界书
   s.autoBindWorldInfo = $('#sg_autoBindWorldInfo').is(':checked');
