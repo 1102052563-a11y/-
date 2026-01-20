@@ -7652,6 +7652,9 @@ function renderImageGenBatchPreview() {
       <button class="sg-floating-mini-btn" id="sg_imagegen_clear">清空</button>
     </div>
     <div class="sg-floating-image-wrap">${imgHtml}</div>
+    <div class="sg-floating-row sg-floating-row-actions" style="margin-top:6px;">
+      <button class="sg-floating-mini-btn" id="sg_imagegen_download">下载图像</button>
+    </div>
   `);
 
 
@@ -11897,6 +11900,32 @@ function createFloatingPanel() {
   $(document).on('click', '#sg_imagegen_toggle_preview', (e) => {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     imageGenPreviewExpanded = !imageGenPreviewExpanded;
+    renderImageGenBatchPreview();
+  });
+
+  $(document).on('click', '#sg_imagegen_download', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const url = imageGenImageUrls[imageGenPreviewIndex];
+    if (!url) {
+      imageGenBatchStatus = '暂无可下载图像';
+      renderImageGenBatchPreview();
+      return;
+    }
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const filename = `storyguide-image-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      imageGenBatchStatus = '图像已下载';
+    } catch (err) {
+      imageGenBatchStatus = `下载失败：${err?.message || err}`;
+    }
     renderImageGenBatchPreview();
   });
 
