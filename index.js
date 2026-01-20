@@ -3717,6 +3717,72 @@ function getStructuredCustomTypes(settings) {
   return parseStructuredCustomTypes(settings?.structuredCustomTypesJson || '[]');
 }
 
+function buildDefaultCustomType(index) {
+  const idx = Math.max(1, Number(index) || 1);
+  return {
+    id: `custom_${idx}`,
+    label: `自定义${idx}`,
+    prefix: `自定义${idx}`,
+    enabled: true,
+    prompt: '',
+  };
+}
+
+function renderStructuredCustomTypesUi(types) {
+  const $list = $('#sg_structuredCustomTypes');
+  if (!$list.length) return;
+  $list.empty();
+  const safeTypes = Array.isArray(types) ? types : [];
+  if (!safeTypes.length) {
+    $list.append('<div class="sg-hint">（暂无自定义类型）</div>');
+    return;
+  }
+  for (const item of safeTypes) {
+    const id = String(item.id || '').trim();
+    const label = String(item.label || '').trim();
+    const prefix = String(item.prefix || '').trim();
+    const prompt = String(item.prompt || '').trim();
+    const enabled = item.enabled !== false;
+    const $card = $(
+      '<div class="sg-card sg-subcard sg-custom-type-card" style="padding:8px; gap:8px"></div>'
+    );
+    const $row = $(
+      '<div class="sg-row sg-inline" style="gap:8px; align-items:center"></div>'
+    );
+    $row.append(`<input class="sg-custom-type-id" type="text" placeholder="id" style="width:120px">`);
+    $row.append(`<input class="sg-custom-type-label" type="text" placeholder="名称" style="width:140px">`);
+    $row.append(`<input class="sg-custom-type-prefix" type="text" placeholder="前缀" style="width:140px">`);
+    $row.append('<label class="sg-check"><input type="checkbox" class="sg-custom-type-enabled">启用</label>');
+    $row.append('<button class="menu_button sg-btn sg-custom-type-remove">删除</button>');
+    $card.append($row);
+    const $prompt = $(
+      '<textarea class="sg-custom-type-prompt" rows="2" placeholder="提示词"></textarea>'
+    );
+    $card.append($prompt);
+    $card.find('.sg-custom-type-id').val(id);
+    $card.find('.sg-custom-type-label').val(label);
+    $card.find('.sg-custom-type-prefix').val(prefix);
+    $card.find('.sg-custom-type-enabled').prop('checked', enabled);
+    $card.find('.sg-custom-type-prompt').val(prompt);
+    $list.append($card);
+  }
+}
+
+function readStructuredCustomTypesFromUi() {
+  const list = [];
+  $('#sg_structuredCustomTypes .sg-custom-type-card').each((_, el) => {
+    const $el = $(el);
+    const id = String($el.find('.sg-custom-type-id').val() || '').trim();
+    const label = String($el.find('.sg-custom-type-label').val() || '').trim();
+    const prefix = String($el.find('.sg-custom-type-prefix').val() || '').trim();
+    const prompt = String($el.find('.sg-custom-type-prompt').val() || '').trim();
+    const enabled = $el.find('.sg-custom-type-enabled').is(':checked');
+    if (!id) return;
+    list.push({ id, label: label || id, prefix: prefix || label || id, enabled, prompt });
+  });
+  return list;
+}
+
 function buildStructuredEntriesJsonRequirement(customTypes) {
   const base = STRUCTURED_ENTRIES_JSON_REQUIREMENT;
   const list = Array.isArray(customTypes) ? customTypes.filter(t => t && t.enabled) : [];
@@ -9198,9 +9264,12 @@ function buildModalHtml() {
                 <textarea id="sg_structuredAbilityPrompt" rows="3" placeholder="例如：强调触发条件/代价/负面效果…"></textarea>
               </div>
               <div class="sg-field">
-                <label>自定义条目类型（JSON）</label>
-                <textarea id="sg_structuredCustomTypesJson" rows="5" placeholder="在这里填写自定义条目类型（JSON 数组）。"></textarea>
-                <div class="sg-hint" style="margin-top:6px">格式示例：[{"id":"faction","label":"势力","prefix":"势力","enabled":true,"prompt":"..."}]</div>
+                <label>自定义条目类型</label>
+                <div id="sg_structuredCustomTypes" class="sg-col" style="gap:8px"></div>
+                <div class="sg-row sg-inline" style="margin-top:6px">
+                  <button class="menu_button sg-btn" id="sg_structuredCustomAdd">+ 添加条目类型</button>
+                  <div class="sg-hint" style="margin-left:auto">支持多个类型：名称/前缀/提示词/启用。</div>
+                </div>
               </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
@@ -10144,6 +10213,7 @@ function ensureModal() {
     $('#sg_structuredCharacterPrompt').val(DEFAULT_STRUCTURED_CHARACTER_PROMPT);
     $('#sg_structuredEquipmentPrompt').val(DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
     $('#sg_structuredAbilityPrompt').val(DEFAULT_STRUCTURED_ABILITY_PROMPT);
+    renderStructuredCustomTypesUi(parseStructuredCustomTypes(STRUCTURED_CUSTOM_TYPES_PLACEHOLDER));
     pullUiToSettings();
     saveSettings();
     setStatus('已恢复默认结构化提示词 ✅', 'ok');
@@ -10209,7 +10279,24 @@ function ensureModal() {
     }
   });
 
-  $('#sg_structuredCustomTypesJson').on('input change', () => {
+  $('#sg_structuredCustomAdd').on('click', () => {
+    const current = readStructuredCustomTypesFromUi();
+    const nextIndex = current.length + 1;
+    current.push(buildDefaultCustomType(nextIndex));
+    renderStructuredCustomTypesUi(current);
+    pullUiToSettings();
+    saveSettings();
+  });
+
+  $(document).on('input change', '#sg_structuredCustomTypes input, #sg_structuredCustomTypes textarea', () => {
+    pullUiToSettings();
+    saveSettings();
+  });
+
+  $(document).on('click', '#sg_structuredCustomTypes .sg-custom-type-remove', (e) => {
+    e.preventDefault();
+    const $card = $(e.currentTarget).closest('.sg-custom-type-card');
+    $card.remove();
     pullUiToSettings();
     saveSettings();
   });
@@ -10973,8 +11060,7 @@ function pullSettingsToUi() {
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
   $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
   $('#sg_structuredAbilityPrompt').val(String(s.structuredAbilityPrompt || DEFAULT_STRUCTURED_ABILITY_PROMPT));
-  $('#sg_structuredCustomTypesJson').val(String(s.structuredCustomTypesJson || '[]'));
-  $('#sg_structuredCustomTypesJson').attr('placeholder', STRUCTURED_CUSTOM_TYPES_PLACEHOLDER);
+  renderStructuredCustomTypesUi(parseStructuredCustomTypes(String(s.structuredCustomTypesJson || '[]')));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -11487,7 +11573,7 @@ function pullUiToSettings() {
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
   s.structuredAbilityPrompt = String($('#sg_structuredAbilityPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
-  s.structuredCustomTypesJson = String($('#sg_structuredCustomTypesJson').val() || '[]');
+  s.structuredCustomTypesJson = JSON.stringify(readStructuredCustomTypesFromUi(), null, 2);
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
