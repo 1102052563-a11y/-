@@ -5286,6 +5286,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
     }
 
+    const customItems = getSummaryCustomItemsFromSettings().filter(item => String(item.prompt || '').trim());
+
     // toast notify (non-blocking)
     try {
       const errCount = (writeErrs?.length || 0) + (runErrs?.length || 0);
