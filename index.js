@@ -1709,9 +1709,9 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
         updateKeys.forEach((key) => { current[key] = updates[key]; });
       } else {
         const insertUpdates = parseInsertRowCommands(jsonText);
-        const inserted = applyInsertRowUpdates(current, insertUpdates);
+        const inserted = applyInsertRowUpdates(current, insertUpdates, tableList);
         if (!inserted) throw new Error('解析失败：未检测到 insertRow 数据');
-        lastDatabaseRawText = safeStringifyShort(current, 8000);
+        lastDatabaseRawText = JSON.stringify(current, null, 2);
         if ($output.length) $output.val(String(lastDatabaseRawText || ''));
       }
     } catch (e) {
@@ -1739,7 +1739,7 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
   await setDatabaseMeta(meta);
 
   lastDatabasePayload = current;
-  lastDatabaseRawText = safeStringifyShort(current, 8000);
+  lastDatabaseRawText = JSON.stringify(current, null, 2);
   await refreshDatabaseStatusUi();
   showToast(`更新完成：已处理 ${chunks.length} 段`, { kind: 'ok' });
   return true;
@@ -2120,7 +2120,7 @@ function parseInsertRowCommands(rawText) {
   const re = /insertRow\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*(\{[\s\S]*?\})\s*\)/g;
   let match;
   while ((match = re.exec(text)) !== null) {
-    const sheetKey = match[1];
+    const sheetKey = String(match[1] || '').trim();
     let objText = match[2];
     let parsed = null;
     try { parsed = JSON.parse(objText); } catch {
@@ -2133,22 +2133,34 @@ function parseInsertRowCommands(rawText) {
   return updates;
 }
 
-function applyInsertRowUpdates(current, updates) {
+function resolveInsertTargetKey(target, tableList) {
+  const t = String(target || '').trim();
+  if (!t) return '';
+  if (t.startsWith('sheet_')) return t;
+  if (/^\d+$/.test(t)) {
+    const idx = Number(t) - 1;
+    if (idx >= 0 && Array.isArray(tableList) && tableList[idx]) return tableList[idx].key;
+  }
+  return '';
+}
+
+function applyInsertRowUpdates(current, updates, tableList) {
   if (!current || typeof current !== 'object') return 0;
   let inserted = 0;
   Object.entries(updates || {}).forEach(([sheetKey, rows]) => {
     if (!Array.isArray(rows) || !rows.length) return;
-    if (!current[sheetKey]) {
+    const resolvedKey = resolveInsertTargetKey(sheetKey, tableList) || sheetKey;
+    if (!current[resolvedKey]) {
       const headers = Object.keys(rows[0] || {}).sort((a, b) => Number(a) - Number(b)).map(k => `列${Number(k) + 1 || k}`);
-      current[sheetKey] = {
-        uid: sheetKey,
-        name: sheetKey,
+      current[resolvedKey] = {
+        uid: resolvedKey,
+        name: resolvedKey,
         content: [[null, ...headers]],
         exportConfig: {},
         orderNo: 0,
       };
     }
-    const table = current[sheetKey];
+    const table = current[resolvedKey];
     table.content = Array.isArray(table.content) ? table.content : [[null]];
     const headerRow = Array.isArray(table.content[0]) ? table.content[0] : [null];
 
@@ -12537,7 +12549,7 @@ function setupSettingsPages() {
 
   $('#sg_db_output_refresh').on('click', async () => {
     if (lastDatabasePayload) {
-      lastDatabaseRawText = safeStringifyShort(lastDatabasePayload, 8000);
+      lastDatabaseRawText = JSON.stringify(lastDatabasePayload, null, 2);
     } else {
       const payload = await loadDatabasePayload(ensureSettings());
       lastDatabaseRawText = payload?.rawText || '';
