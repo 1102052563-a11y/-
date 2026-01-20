@@ -5144,8 +5144,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
 
       // 生成结构化世界书条目（人物/装备/能力 - 与剧情总结同一事务）
-      const enableStructured = s.structuredEntriesEnabled && (s.characterEntriesEnabled || s.equipmentEntriesEnabled || s.abilityEntriesEnabled);
-      if (enableStructured) {
+      if (s.structuredEntriesEnabled) {
         try {
           const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
           console.log('[StoryGuide] Structured entries result:', structuredResult);
