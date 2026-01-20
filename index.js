@@ -1711,6 +1711,8 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
         const insertUpdates = parseInsertRowCommands(jsonText);
         const inserted = applyInsertRowUpdates(current, insertUpdates);
         if (!inserted) throw new Error('解析失败：未检测到 insertRow 数据');
+        lastDatabaseRawText = safeStringifyShort(current, 8000);
+        if ($output.length) $output.val(String(lastDatabaseRawText || ''));
       }
     } catch (e) {
       showToast(`第 ${i + 1}/${chunks.length} 段更新失败: ${e?.message || e}`, { kind: 'err' });
