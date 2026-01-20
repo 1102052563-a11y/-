@@ -535,6 +535,25 @@ const DEFAULT_SETTINGS = Object.freeze({
   databaseApiTopP: 0.95,
   databaseApiMaxTokens: 2048,
   databaseApiStream: false,
+  databaseApiPresetName: '',
+  databaseContextExtractTags: '',
+  databaseContextExcludeTags: '',
+  databaseManualExtraHint: false,
+  databaseManualExtraHintText: '',
+  databaseAutoUpdateEnabled: false,
+  databaseSilentPrompt: false,
+  databaseAutoUpdateTokenThreshold: 0,
+  databaseAutoUpdateThreshold: 3,
+  databaseAutoUpdateFrequency: 1,
+  databaseUpdateBatchSize: 3,
+  databaseSkipUpdateFloors: 0,
+  databaseKeepRecentFloors: '',
+  databaseManualTableSelection: null,
+  databaseImportSelectedTables: null,
+  databaseImportFilename: '',
+  databasePromptSystem: '你是数据库更新助手。根据对话更新指定表格。',
+  databasePromptUser: '请根据最新剧情更新数据库表格，保持条目简洁。',
+  databasePromptAssistant: '',
   databaseTemplatesJson: JSON.stringify([
     { name: '技能表模板', table: '技能表', feature: '记录技能名称、等级、效果、来源与备注', prompt: '更新技能表：补充新技能、等级变化与关键效果。' },
     { name: '势力表模板', table: '势力表', feature: '记录势力结构、目标、主要人物与关系', prompt: '整理势力表：更新势力动向、关系与核心人物。' }
@@ -1678,6 +1697,133 @@ async function renderDatabaseView(settings) {
   const sourceLabel = payload.source === 'variable' ? '变量' : '聊天记录';
   const infoText = `来源：${sourceLabel}｜表格：${info.totalTables}｜记录：${info.totalRows}`;
   return { html: modulesHtml, infoText };
+}
+
+function getDatabaseTableList(data) {
+  if (!data || typeof data !== 'object') return [];
+  const keys = getSortedDatabaseSheetKeys(data);
+  return keys.map((key) => {
+    const table = data[key];
+    const name = String(table?.name || key).trim() || key;
+    return { key, name };
+  });
+}
+
+function getChatAiMessageCount() {
+  const ctx = SillyTavern.getContext?.() ?? {};
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  return chat.filter(m => m && !m.is_user).length;
+}
+
+async function refreshDatabaseStatusUi() {
+  const s = ensureSettings();
+  updateDatabaseImportStatus();
+  const totalMessages = getChatAiMessageCount();
+  const $total = $('#sg_db_total_messages');
+  if ($total.length) $total.text(`上下文总层数: ${totalMessages} (仅计算AI回复楼层)`);
+
+  const $status = $('#sg_db_status_label');
+  const $next = $('#sg_db_next_update');
+  const $tbody = $('#sg_db_status_table_body');
+
+  if ($tbody.length) {
+    $tbody.html('<tr><td colspan="5" style="text-align:center; padding:10px;">正在加载数据...</td></tr>');
+  }
+
+  const payload = await loadDatabasePayload(s);
+  if (!payload?.data) {
+    if ($status.length) $status.text('数据库状态: 未加载');
+    if ($next.length) $next.text('下一次更新: 无');
+    if ($tbody.length) {
+      $tbody.html('<tr><td colspan="5" style="text-align:center; padding:10px;">暂无数据库数据</td></tr>');
+    }
+    await renderManualTableSelector(null);
+    await renderImportTableSelector(null);
+    return;
+  }
+
+  const info = buildDatabaseModules(payload.data);
+  lastDatabaseInfo = info;
+  if ($status.length) $status.text(`数据库状态: 已加载 (${info.totalTables}个表格, ${info.totalRows}条记录)`);
+  if ($next.length) $next.text('下一次更新: 无');
+
+  const tableList = getDatabaseTableList(payload.data);
+  if ($tbody.length) {
+    if (!tableList.length) {
+      $tbody.html('<tr><td colspan="5" style="text-align:center; padding:10px;">暂无表格</td></tr>');
+    } else {
+      const rowsHtml = tableList.map((t) => `
+        <tr>
+          <td style="text-align:left; padding:6px;">${escapeHtml(t.name)}</td>
+          <td style="text-align:center; padding:6px;">N/A</td>
+          <td style="text-align:center; padding:6px;">N/A</td>
+          <td style="text-align:center; padding:6px;">未开始</td>
+          <td style="text-align:center; padding:6px;">N/A</td>
+        </tr>
+      `).join('');
+      $tbody.html(rowsHtml);
+    }
+  }
+
+  await renderManualTableSelector(payload.data);
+  await renderImportTableSelector(payload.data);
+}
+
+async function renderManualTableSelector(data) {
+  const $wrap = $('#sg_db_manual_table_selector');
+  if (!$wrap.length) return;
+  const tableList = getDatabaseTableList(data);
+  if (!tableList.length) {
+    $wrap.html('<div class="sg-hint">暂无表格</div>');
+    return;
+  }
+
+  const s = ensureSettings();
+  const defaultAll = !Array.isArray(s.databaseManualTableSelection);
+  const selected = new Set(Array.isArray(s.databaseManualTableSelection) ? s.databaseManualTableSelection : []);
+  const html = tableList.map((t) => {
+    const checked = defaultAll || selected.has(t.name);
+    return `
+      <label class="sg-check" style="margin-right:12px; display:inline-flex; align-items:center; gap:6px;">
+        <input type="checkbox" class="sg-db-manual-table" data-table-name="${escapeHtml(t.name)}" ${checked ? 'checked' : ''}>
+        ${escapeHtml(t.name)}
+      </label>
+    `;
+  }).join('');
+
+  $wrap.html(html);
+}
+
+async function renderImportTableSelector(data) {
+  const $wrap = $('#sg_db_import_table_selector');
+  if (!$wrap.length) return;
+  const tableList = getDatabaseTableList(data);
+  if (!tableList.length) {
+    $wrap.html('<div class="sg-hint">暂无表格</div>');
+    return;
+  }
+
+  const s = ensureSettings();
+  const defaultAll = !Array.isArray(s.databaseImportSelectedTables);
+  const selected = new Set(Array.isArray(s.databaseImportSelectedTables) ? s.databaseImportSelectedTables : []);
+  const html = tableList.map((t) => {
+    const checked = defaultAll || selected.has(t.name);
+    return `
+      <label class="sg-check sg-db-import-item">
+        <input type="checkbox" class="sg-db-import-table" data-table-name="${escapeHtml(t.name)}" ${checked ? 'checked' : ''}>
+        ${escapeHtml(t.name)}
+      </label>
+    `;
+  }).join('');
+
+  $wrap.html(html);
+}
+
+function updateDatabaseImportStatus() {
+  const s = ensureSettings();
+  const $status = $('#sg_db_import_status');
+  if (!$status.length) return;
+  $status.text(s.databaseImportFilename ? `已选择: ${s.databaseImportFilename}` : '尚未提交文件');
 }
 
 // 更新地图预览
@@ -9772,6 +9918,140 @@ function buildModalHtml() {
               </div>
             </div>
 
+            <div class="sg-grid2" style="margin-top:12px;">
+              <div class="sg-card">
+                <div class="sg-card-title">数据库状态</div>
+                <div class="sg-row sg-inline" style="margin-bottom:10px;">
+                  <span class="sg-hint" id="sg_db_total_messages">上下文总层数: N/A (仅计算AI回复楼层)</span>
+                  <span class="sg-hint" id="sg_db_status_label">数据库状态: 未加载</span>
+                </div>
+                <table class="sg-db-status-table">
+                  <thead>
+                    <tr>
+                      <th>表格名称</th>
+                      <th>更新频率</th>
+                      <th>未记录楼层</th>
+                      <th>上次更新</th>
+                      <th>下次触发</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sg_db_status_table_body">
+                    <tr><td colspan="5" style="text-align:center; padding:10px;">暂无数据</td></tr>
+                  </tbody>
+                </table>
+                <div class="sg-row" style="justify-content:flex-end; margin-top:8px;">
+                  <span class="sg-hint" id="sg_db_next_update">下一次更新: 无</span>
+                </div>
+              </div>
+
+              <div class="sg-card">
+                <div class="sg-card-title">核心操作</div>
+                <div class="sg-field">
+                  <label>填表API预设</label>
+                  <select id="sg_db_api_preset">
+                    <option value="">使用当前API配置</option>
+                  </select>
+                </div>
+                <div class="sg-field">
+                  <label>正文标签提取</label>
+                  <input id="sg_db_context_extract" type="text" placeholder="例如: think,reason">
+                </div>
+                <div class="sg-field">
+                  <label>标签排除</label>
+                  <input id="sg_db_context_exclude" type="text" placeholder="例如: thinking,reason">
+                </div>
+                <button class="menu_button sg-btn-primary" id="sg_db_manual_update">立即手动更新</button>
+                <label class="sg-check" style="margin-top:8px;"><input type="checkbox" id="sg_db_manual_extra_hint">额外提示词（仅手动更新时临时追加）</label>
+                <label class="sg-check" style="margin-top:6px;"><input type="checkbox" id="sg_db_auto_update_enabled">启用自动更新</label>
+                <label class="sg-check" style="margin-top:6px;"><input type="checkbox" id="sg_db_silent_prompt">静默提示框（隐藏表/规划/导入/恐拷外，其它提示不弹窗）</label>
+                <div class="sg-hint" style="margin-top:8px;">手动更新会使用当前参数，对勾选的表进行更新；未勾选默认更新全部表。</div>
+              </div>
+            </div>
+
+            <div class="sg-card" style="margin-top:12px;">
+              <div class="sg-card-title">手动更新表选择</div>
+              <div class="sg-hint" style="margin-bottom:6px;">选择需要手动更新的表（可多选，默认全选新表）</div>
+              <div class="sg-row sg-inline" style="margin-bottom:6px;">
+                <button class="menu_button sg-btn" id="sg_db_manual_select_all">全选</button>
+                <button class="menu_button sg-btn" id="sg_db_manual_select_none">全不选</button>
+              </div>
+              <div id="sg_db_manual_table_selector" style="min-height:60px;">加载表格列表中...</div>
+            </div>
+
+            <div class="sg-card" style="margin-top:12px;">
+              <div class="sg-card-title">公用设置</div>
+              <div class="sg-field">
+                <label>跳过更新最小回复长度</label>
+                <input id="sg_db_update_token_threshold" type="number" min="0" step="100">
+                <div class="sg-hint">AI回复少于此长度时跳过自动填表</div>
+              </div>
+            </div>
+
+            <div class="sg-card" style="margin-top:12px;">
+              <div class="sg-card-title">更新配置</div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>AI读取上下文层数</label>
+                  <input id="sg_db_auto_update_threshold" type="number" min="0" step="1">
+                </div>
+                <div class="sg-field">
+                  <label>每N层自动更新一次</label>
+                  <input id="sg_db_auto_update_frequency" type="number" min="1" step="1">
+                </div>
+                <div class="sg-field">
+                  <label>每批次更新楼层数</label>
+                  <input id="sg_db_update_batch_size" type="number" min="1" step="1">
+                </div>
+                <div class="sg-field">
+                  <label>保留X层楼不更新</label>
+                  <input id="sg_db_skip_update_floors" type="number" min="0" step="1">
+                </div>
+              </div>
+              <div class="sg-field">
+                <label>保留最近N层数据</label>
+                <input id="sg_db_keep_recent_floors" type="text" placeholder="空=全部保留">
+              </div>
+            </div>
+
+            <div class="sg-card" style="margin-top:12px;">
+              <div class="sg-card-title">数据库更新预设（任务指令）</div>
+              <div class="sg-field">
+                <label>系统提示词</label>
+                <textarea id="sg_db_prompt_system" rows="4"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>用户提示词</label>
+                <textarea id="sg_db_prompt_user" rows="4"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>AI提示词</label>
+                <textarea id="sg_db_prompt_assistant" rows="4"></textarea>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:6px;">
+                <button class="menu_button sg-btn" id="sg_db_prompt_reset">恢复默认</button>
+              </div>
+            </div>
+
+            <div class="sg-card" style="margin-top:12px;">
+              <div class="sg-card-title">外部导入</div>
+              <div class="sg-hint" id="sg_db_import_status">尚未提交文件</div>
+              <div class="sg-row sg-inline" style="margin-top:10px;">
+                <button class="menu_button sg-btn" id="sg_db_import_pick">1. 选择并拆分TXT文件</button>
+                <input id="sg_db_import_file" type="file" accept=".txt" style="display:none;">
+              </div>
+              <div class="sg-hint" style="margin-top:10px;">注入表选择（自选表格）</div>
+              <div class="sg-row sg-inline" style="margin-top:6px;">
+                <button class="menu_button sg-btn" id="sg_db_import_select_all">全选</button>
+                <button class="menu_button sg-btn" id="sg_db_import_select_none">全不选</button>
+              </div>
+              <div id="sg_db_import_table_selector" class="sg-db-import-list" style="margin-top:8px;">加载表格列表中...</div>
+              <div class="sg-row sg-inline" style="margin-top:10px;">
+                <button class="menu_button sg-btn" id="sg_db_import_apply">2. 注入（自选表格）</button>
+                <button class="menu_button sg-btn" id="sg_db_import_delete">删除注入条目</button>
+                <button class="menu_button sg-btn" id="sg_db_import_clear">清空导入暂存缓存</button>
+              </div>
+            </div>
+
             <div class="sg-card sg-subcard" style="margin-top:10px;">
               <div class="sg-card-title" style="font-size:0.95em;">独立 API</div>
               <div class="sg-hint">用于数据库相关的独立模型调用（可单独维护模型列表）。</div>
@@ -10957,6 +11237,7 @@ function showSettingsPage(page) {
   } else if (p === 'database') {
     $('#sg_pgtab_database').addClass('active');
     $('#sg_page_database').addClass('active');
+    refreshDatabaseStatusUi().catch(() => void 0);
   } else if (p === 'image') {
     $('#sg_pgtab_image').addClass('active');
     $('#sg_page_image').addClass('active');
@@ -11002,6 +11283,110 @@ function setupSettingsPages() {
   $('#sg_db_isolation_enabled').on('change', () => {
     pullUiToSettings();
     updateDatabaseUi();
+  });
+
+  $('#sg_db_manual_update').on('click', async () => {
+    pullUiToSettings();
+    saveSettings();
+    if (ensureSettings().databaseManualExtraHint) {
+      const extra = prompt('输入额外提示词（仅本次手动更新生效）：', ensureSettings().databaseManualExtraHintText || '');
+      if (extra != null) {
+        const s = ensureSettings();
+        s.databaseManualExtraHintText = String(extra).trim();
+        saveSettings();
+      }
+    }
+    showToast('手动更新功能尚未接入', { kind: 'warn' });
+  });
+
+  $(document).on('change', '.sg-db-manual-table', () => {
+    const names = Array.from(document.querySelectorAll('.sg-db-manual-table'))
+      .filter(el => el.checked)
+      .map(el => el.getAttribute('data-table-name'))
+      .filter(Boolean);
+    const s = ensureSettings();
+    const allCount = document.querySelectorAll('.sg-db-manual-table').length;
+    s.databaseManualTableSelection = (names.length === allCount) ? null : names;
+    saveSettings();
+  });
+
+  $('#sg_db_manual_select_all').on('click', () => {
+    document.querySelectorAll('.sg-db-manual-table').forEach((el) => { el.checked = true; });
+    const s = ensureSettings();
+    s.databaseManualTableSelection = null;
+    saveSettings();
+  });
+
+  $('#sg_db_manual_select_none').on('click', () => {
+    document.querySelectorAll('.sg-db-manual-table').forEach((el) => { el.checked = false; });
+    const s = ensureSettings();
+    s.databaseManualTableSelection = [];
+    saveSettings();
+  });
+
+  $('#sg_db_prompt_reset').on('click', () => {
+    $('#sg_db_prompt_system').val(DEFAULT_SETTINGS.databasePromptSystem || '');
+    $('#sg_db_prompt_user').val(DEFAULT_SETTINGS.databasePromptUser || '');
+    $('#sg_db_prompt_assistant').val(DEFAULT_SETTINGS.databasePromptAssistant || '');
+    pullUiToSettings();
+    saveSettings();
+    setStatus('数据库提示词已恢复默认', 'ok');
+  });
+
+  $('#sg_db_import_pick').on('click', () => {
+    const input = document.getElementById('sg_db_import_file');
+    if (input) input.click();
+  });
+
+  $('#sg_db_import_file').on('change', (e) => {
+    const input = e.target;
+    const file = input?.files?.[0];
+    const s = ensureSettings();
+    s.databaseImportFilename = file?.name ? String(file.name) : '';
+    saveSettings();
+    updateDatabaseImportStatus();
+    showToast('已选择导入文件（尚未解析）', { kind: 'warn' });
+  });
+
+  $(document).on('change', '.sg-db-import-table', () => {
+    const names = Array.from(document.querySelectorAll('.sg-db-import-table'))
+      .filter(el => el.checked)
+      .map(el => el.getAttribute('data-table-name'))
+      .filter(Boolean);
+    const s = ensureSettings();
+    const allCount = document.querySelectorAll('.sg-db-import-table').length;
+    s.databaseImportSelectedTables = (names.length === allCount) ? null : names;
+    saveSettings();
+  });
+
+  $('#sg_db_import_select_all').on('click', () => {
+    document.querySelectorAll('.sg-db-import-table').forEach((el) => { el.checked = true; });
+    const s = ensureSettings();
+    s.databaseImportSelectedTables = null;
+    saveSettings();
+  });
+
+  $('#sg_db_import_select_none').on('click', () => {
+    document.querySelectorAll('.sg-db-import-table').forEach((el) => { el.checked = false; });
+    const s = ensureSettings();
+    s.databaseImportSelectedTables = [];
+    saveSettings();
+  });
+
+  $('#sg_db_import_apply').on('click', () => {
+    showToast('外部导入尚未接入', { kind: 'warn' });
+  });
+
+  $('#sg_db_import_delete').on('click', () => {
+    showToast('删除注入条目尚未接入', { kind: 'warn' });
+  });
+
+  $('#sg_db_import_clear').on('click', () => {
+    const s = ensureSettings();
+    s.databaseImportFilename = '';
+    saveSettings();
+    updateDatabaseImportStatus();
+    showToast('导入暂存缓存已清空', { kind: 'ok' });
   });
 
   $('#sg_db_open_panel').on('click', async () => {
@@ -11281,6 +11666,30 @@ function pullSettingsToUi() {
   $('#sg_db_var_name').val(String(s.databaseVarName || 'table_data'));
   $('#sg_db_isolation_enabled').prop('checked', !!s.databaseIsolationEnabled);
   $('#sg_db_isolation_code').val(String(s.databaseIsolationCode || ''));
+  const $dbPreset = $('#sg_db_api_preset');
+  if ($dbPreset.length) {
+    $dbPreset.empty();
+    $dbPreset.append('<option value="">使用当前API配置</option>');
+    if (s.databaseApiPresetName) {
+      $dbPreset.append(`<option value="${escapeHtml(String(s.databaseApiPresetName))}">${escapeHtml(String(s.databaseApiPresetName))}</option>`);
+      $dbPreset.val(String(s.databaseApiPresetName));
+    }
+  }
+  $('#sg_db_context_extract').val(String(s.databaseContextExtractTags || ''));
+  $('#sg_db_context_exclude').val(String(s.databaseContextExcludeTags || ''));
+  $('#sg_db_manual_extra_hint').prop('checked', !!s.databaseManualExtraHint);
+  $('#sg_db_auto_update_enabled').prop('checked', !!s.databaseAutoUpdateEnabled);
+  $('#sg_db_silent_prompt').prop('checked', !!s.databaseSilentPrompt);
+  $('#sg_db_update_token_threshold').val(s.databaseAutoUpdateTokenThreshold ?? 0);
+  $('#sg_db_auto_update_threshold').val(s.databaseAutoUpdateThreshold ?? 3);
+  $('#sg_db_auto_update_frequency').val(s.databaseAutoUpdateFrequency ?? 1);
+  $('#sg_db_update_batch_size').val(s.databaseUpdateBatchSize ?? 3);
+  $('#sg_db_skip_update_floors').val(s.databaseSkipUpdateFloors ?? 0);
+  $('#sg_db_keep_recent_floors').val(String(s.databaseKeepRecentFloors || ''));
+  $('#sg_db_prompt_system').val(String(s.databasePromptSystem || ''));
+  $('#sg_db_prompt_user').val(String(s.databasePromptUser || ''));
+  $('#sg_db_prompt_assistant').val(String(s.databasePromptAssistant || ''));
+  updateDatabaseImportStatus();
   $('#sg_db_api_endpoint').val(String(s.databaseApiEndpoint || ''));
   $('#sg_db_api_key').val(String(s.databaseApiKey || ''));
   $('#sg_db_api_model').val(String(s.databaseApiModel || 'gpt-4o-mini'));
@@ -11805,6 +12214,21 @@ function pullUiToSettings() {
   s.databaseVarName = String($('#sg_db_var_name').val() || 'table_data').trim() || 'table_data';
   s.databaseIsolationEnabled = $('#sg_db_isolation_enabled').is(':checked');
   s.databaseIsolationCode = String($('#sg_db_isolation_code').val() || '').trim();
+  s.databaseApiPresetName = String($('#sg_db_api_preset').val() || '').trim();
+  s.databaseContextExtractTags = String($('#sg_db_context_extract').val() || '').trim();
+  s.databaseContextExcludeTags = String($('#sg_db_context_exclude').val() || '').trim();
+  s.databaseManualExtraHint = $('#sg_db_manual_extra_hint').is(':checked');
+  s.databaseAutoUpdateEnabled = $('#sg_db_auto_update_enabled').is(':checked');
+  s.databaseSilentPrompt = $('#sg_db_silent_prompt').is(':checked');
+  s.databaseAutoUpdateTokenThreshold = clampInt($('#sg_db_update_token_threshold').val(), 0, 1000000, s.databaseAutoUpdateTokenThreshold ?? 0);
+  s.databaseAutoUpdateThreshold = clampInt($('#sg_db_auto_update_threshold').val(), 0, 200000, s.databaseAutoUpdateThreshold ?? 3);
+  s.databaseAutoUpdateFrequency = clampInt($('#sg_db_auto_update_frequency').val(), 1, 200000, s.databaseAutoUpdateFrequency ?? 1);
+  s.databaseUpdateBatchSize = clampInt($('#sg_db_update_batch_size').val(), 1, 200000, s.databaseUpdateBatchSize ?? 3);
+  s.databaseSkipUpdateFloors = clampInt($('#sg_db_skip_update_floors').val(), 0, 200000, s.databaseSkipUpdateFloors ?? 0);
+  s.databaseKeepRecentFloors = String($('#sg_db_keep_recent_floors').val() || '').trim();
+  s.databasePromptSystem = String($('#sg_db_prompt_system').val() || '').trim();
+  s.databasePromptUser = String($('#sg_db_prompt_user').val() || '').trim();
+  s.databasePromptAssistant = String($('#sg_db_prompt_assistant').val() || '').trim();
   s.databaseApiEndpoint = String($('#sg_db_api_endpoint').val() || '').trim();
   s.databaseApiKey = String($('#sg_db_api_key').val() || '');
   s.databaseApiModel = String($('#sg_db_api_model').val() || 'gpt-4o-mini').trim() || 'gpt-4o-mini';

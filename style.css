@@ -1964,6 +1964,38 @@ body.sg-image-preview-open {
   color: rgba(190, 200, 215, 0.9);
 }
 
+.sg-db-status-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.sg-db-status-table th,
+.sg-db-status-table td {
+  padding: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.sg-db-status-table th:first-child,
+.sg-db-status-table td:first-child {
+  text-align: left;
+}
+
+.sg-db-import-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sg-db-import-item {
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .sg-database-list {
   list-style: none;
   margin: 0;
