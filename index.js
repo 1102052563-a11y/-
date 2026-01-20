@@ -10976,6 +10976,16 @@ function buildModalHtml() {
               </div>
             </div>
 
+            <div class="sg-card" style="margin-top:12px;">
+              <div class="sg-card-title">数据表 JSON 输出</div>
+              <div class="sg-hint">显示最新读取到的数据库原始 JSON（只读）。</div>
+              <textarea id="sg_db_output_json" rows="10" readonly></textarea>
+              <div class="sg-row sg-inline" style="margin-top:6px;">
+                <button class="menu_button sg-btn" id="sg_db_output_refresh">刷新输出</button>
+                <button class="menu_button sg-btn" id="sg_db_output_copy">复制输出</button>
+              </div>
+            </div>
+
             <div class="sg-card sg-subcard" style="margin-top:10px;">
               <div class="sg-card-title" style="font-size:0.95em;">独立 API</div>
               <div class="sg-hint">用于数据库相关的独立模型调用（可单独维护模型列表）。</div>
@@ -12451,6 +12461,27 @@ function setupSettingsPages() {
     showToast('导入暂存缓存已清空', { kind: 'ok' });
   });
 
+  $('#sg_db_output_refresh').on('click', async () => {
+    const payload = await loadDatabasePayload(ensureSettings());
+    lastDatabaseRawText = payload?.rawText || '';
+    $('#sg_db_output_json').val(String(lastDatabaseRawText || ''));
+    showToast('输出已刷新', { kind: 'ok' });
+  });
+
+  $('#sg_db_output_copy').on('click', async () => {
+    try {
+      const text = String($('#sg_db_output_json').val() || '');
+      if (!text) {
+        showToast('没有可复制的输出', { kind: 'warn' });
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      showToast('已复制输出 JSON', { kind: 'ok' });
+    } catch (e) {
+      showToast(`复制失败: ${e?.message || e}`, { kind: 'err' });
+    }
+  });
+
   $(document).on('change', '#sg_page_database input, #sg_page_database select, #sg_page_database textarea', (e) => {
     if ($(e.target).is('#sg_db_import_file, #sg_db_templates_json')) return;
     pullUiToSettings();
@@ -12784,6 +12815,7 @@ function pullSettingsToUi() {
   $('#sg_db_import_mode').val(String(s.databaseImportMode || 'worldbook'));
   $('#sg_db_import_worldbook_target').val(String(s.databaseImportWorldbookTarget || 'chatbook'));
   $('#sg_db_import_worldbook_name').val(String(s.databaseImportWorldbookName || ''));
+  $('#sg_db_output_json').val(String(lastDatabaseRawText || ''));
   if (String(s.databaseImportWorldbookTarget || '') && $('#sg_db_import_worldbook_target option').length > 0) {
     $('#sg_db_import_worldbook_target').val(String(s.databaseImportWorldbookTarget));
   }
