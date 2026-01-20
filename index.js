@@ -264,6 +264,124 @@ const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是一个判定动作是否需�
 
 const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
 
+const DEFAULT_IMAGEGEN_SYSTEM_PROMPT = `你是专业的 AI 绘画提示词生成器。根据提供的故事内容，分析场景或角色，只输出 Novel AI 可用的 Danbooru 标签。
+
+目标：尽可能完整地还原正文中出现的角色/场景细节，让标签更丰富、更具体。
+
+要求：
+1. 仅输出英文标签，逗号分隔；不要解释、不要额外文字
+2. positive / negative 字段必须是标签串（只给 Novel AI 看）
+3. 标签要“多且具体”，优先补齐以下信息：
+   - 角色：发色/瞳色/发型/发长、体型、年龄段、肤色、表情、动作、姿势、服装材质/风格/配饰、鞋袜、武器/道具
+   - 场景：地点类型、建筑/室内外、时间(白天/夜晚/黄昏)、天气、光照/光影、氛围、主色调、构图视角/镜头距离
+4. 若正文信息不足，使用常见合理标签补全（如 light rays, depth of field, cinematic lighting），但不要臆造关键设定
+5. 标签按重要性排序，重要的放前面；避免重复
+6. 如果是角色，以 "1girl" 或 "1boy" 等人数标签开头
+7. 如果是场景，以场景类型标签开头（如 scenery, landscape, indoor）
+8. 输出严格 JSON，不要 Markdown、不要代码块
+
+输出格式：
+{
+  "type": "character" 或 "scene",
+  "subject": "简短中文描述生成对象（如：黑发少女战斗姿态）",
+  "positive": "1girl, long black hair, red eyes, ...",
+  "negative": "额外的负面标签（可选，留空则使用默认）"
+}`;
+
+const PROMPT_DB_DEFAULT = Object.freeze({
+  version: 1,
+  tables: {
+    modules: {
+      version: 1,
+      rows: DEFAULT_MODULES,
+    },
+    guidePrompt: {
+      version: 1,
+      rows: [
+        {
+          key: 'systemIntro',
+          group: 'system',
+          order: 10,
+          content: '你是执行型“剧情指导/编剧顾问”。从“正在经历的世界”（聊天+设定）提炼结构，并给出后续引导。',
+        },
+        {
+          key: 'constraint1',
+          group: 'constraints',
+          order: 20,
+          content: '1) 不要凭空杜撰世界观/人物/地点；不确定写“未知/待确认”。',
+        },
+        {
+          key: 'constraint2',
+          group: 'constraints',
+          order: 21,
+          content: '2) 不要复述流水账；只提炼关键矛盾、动机、风险与走向。',
+        },
+        {
+          key: 'constraint3',
+          group: 'constraints',
+          order: 22,
+          content: '3) 输出必须是 JSON 对象本体（无 Markdown、无代码块、无多余解释）。',
+        },
+        {
+          key: 'constraint4',
+          group: 'constraints',
+          order: 23,
+          content: '4) 只输出下面列出的字段，不要额外字段。',
+        },
+      ],
+    },
+    summaryPrompts: {
+      version: 1,
+      rows: [
+        { key: 'system', content: DEFAULT_SUMMARY_SYSTEM_PROMPT },
+        { key: 'userTemplate', content: DEFAULT_SUMMARY_USER_TEMPLATE },
+        { key: 'jsonRequirement', content: SUMMARY_JSON_REQUIREMENT },
+      ],
+    },
+    indexPrompts: {
+      version: 1,
+      rows: [
+        { key: 'system', content: DEFAULT_INDEX_SYSTEM_PROMPT },
+        { key: 'userTemplate', content: DEFAULT_INDEX_USER_TEMPLATE },
+        { key: 'jsonRequirement', content: INDEX_JSON_REQUIREMENT },
+      ],
+    },
+    structuredPrompts: {
+      version: 1,
+      rows: [
+        { key: 'system', content: DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT },
+        { key: 'userTemplate', content: DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE },
+        { key: 'character', content: DEFAULT_STRUCTURED_CHARACTER_PROMPT },
+        { key: 'equipment', content: DEFAULT_STRUCTURED_EQUIPMENT_PROMPT },
+        { key: 'ability', content: DEFAULT_STRUCTURED_ABILITY_PROMPT },
+        { key: 'jsonRequirement', content: STRUCTURED_ENTRIES_JSON_REQUIREMENT },
+      ],
+    },
+    rollPrompts: {
+      version: 1,
+      rows: [
+        { key: 'system', content: DEFAULT_ROLL_SYSTEM_PROMPT },
+        { key: 'userTemplate', content: DEFAULT_ROLL_USER_TEMPLATE },
+        { key: 'jsonRequirement', content: ROLL_JSON_REQUIREMENT },
+      ],
+    },
+    rollDecisionPrompts: {
+      version: 1,
+      rows: [
+        { key: 'system', content: DEFAULT_ROLL_DECISION_SYSTEM_PROMPT },
+        { key: 'userTemplate', content: DEFAULT_ROLL_DECISION_USER_TEMPLATE },
+        { key: 'jsonRequirement', content: ROLL_DECISION_JSON_REQUIREMENT },
+      ],
+    },
+    imageGenPrompts: {
+      version: 1,
+      rows: [
+        { key: 'system', content: DEFAULT_IMAGEGEN_SYSTEM_PROMPT },
+      ],
+    },
+  },
+});
+
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
 
@@ -548,29 +666,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenCustomModel: 'gpt-4o-mini',
   imageGenCustomMaxTokens: 1024,
 
-  imageGenSystemPrompt: `你是专业的 AI 绘画提示词生成器。根据提供的故事内容，分析场景或角色，只输出 Novel AI 可用的 Danbooru 标签。
-
-目标：尽可能完整地还原正文中出现的角色/场景细节，让标签更丰富、更具体。
-
-要求：
-1. 仅输出英文标签，逗号分隔；不要解释、不要额外文字
-2. positive / negative 字段必须是标签串（只给 Novel AI 看）
-3. 标签要“多且具体”，优先补齐以下信息：
-   - 角色：发色/瞳色/发型/发长、体型、年龄段、肤色、表情、动作、姿势、服装材质/风格/配饰、鞋袜、武器/道具
-   - 场景：地点类型、建筑/室内外、时间(白天/夜晚/黄昏)、天气、光照/光影、氛围、主色调、构图视角/镜头距离
-4. 若正文信息不足，使用常见合理标签补全（如 light rays, depth of field, cinematic lighting），但不要臆造关键设定
-5. 标签按重要性排序，重要的放前面；避免重复
-6. 如果是角色，以 "1girl" 或 "1boy" 等人数标签开头
-7. 如果是场景，以场景类型标签开头（如 scenery, landscape, indoor）
-8. 输出严格 JSON，不要 Markdown、不要代码块
-
-输出格式：
-{
-  "type": "character" 或 "scene",
-  "subject": "简短中文描述生成对象（如：黑发少女战斗姿态）",
-  "positive": "1girl, long black hair, red eyes, ...",
-  "negative": "额外的负面标签（可选，留空则使用默认）"
-}`,
+  imageGenSystemPrompt: DEFAULT_IMAGEGEN_SYSTEM_PROMPT,
   imageGenArtistPromptEnabled: true,
   imageGenArtistPrompt: '5::masterpiece, best quality ::, 3.65::3D, realistic, photorealistic ::,2.25::Artist:bm94199 ::,1.85::Artist:yueko (jiayue wu) ::,1.35::Artist:ruanjia ::,1.35::Artist:wo_jiushi_kanbudong ::,1.05::artist:seven_(sixplusone) ::,1.05::Artist:slash (slash-soft) ::,0.85::Artist:shal.e ::,0.75::Artist:nixeu ::,0.55::Artist:billyhhyb ::,-5::2D ::,-1::vivid::, year2025, cinematic , 0.9::lighting, volumetric lighting, no text, realistic, photo, real, artbook ::, 0.2::monochrome ::, 1.2::small eyes ::, 0.8::clean, normal ::,',
   imageGenPromptRulesEnabled: false,
@@ -688,12 +784,73 @@ function getStRequestHeadersCompat() {
 
 function clone(obj) { try { return structuredClone(obj); } catch { return JSON.parse(JSON.stringify(obj)); } }
 
+function clonePromptDbTable(table) {
+  return {
+    version: table?.version ?? 1,
+    rows: clone(table?.rows || []),
+  };
+}
+
+function ensurePromptDb(settings) {
+  if (!settings) return false;
+  let changed = false;
+  if (!settings.promptDb || typeof settings.promptDb !== 'object') {
+    settings.promptDb = clone(PROMPT_DB_DEFAULT);
+    return true;
+  }
+
+  const db = settings.promptDb;
+  if (db.version !== PROMPT_DB_DEFAULT.version) {
+    db.version = PROMPT_DB_DEFAULT.version;
+    changed = true;
+  }
+  if (!db.tables || typeof db.tables !== 'object') {
+    db.tables = {};
+    changed = true;
+  }
+
+  for (const [key, table] of Object.entries(PROMPT_DB_DEFAULT.tables)) {
+    const cur = db.tables[key];
+    if (!cur || typeof cur !== 'object') {
+      db.tables[key] = clonePromptDbTable(table);
+      changed = true;
+      continue;
+    }
+    if (cur.version !== table.version || !Array.isArray(cur.rows)) {
+      db.tables[key] = clonePromptDbTable(table);
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function getPromptDbTable(settings, tableKey) {
+  const table = settings?.promptDb?.tables?.[tableKey];
+  if (table && Array.isArray(table.rows)) return table;
+  return PROMPT_DB_DEFAULT.tables[tableKey];
+}
+
+function getPromptDbRowValue(table, key, fallback = '') {
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+  const row = rows.find(r => r && r.key === key);
+  if (!row) return fallback;
+  return String(row.content ?? fallback);
+}
+
+function getPromptDbGroupRows(table, group) {
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+  return rows
+    .filter(r => r && r.group === group)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
 function ensureSettings() {
   const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
   if (!extensionSettings[MODULE_NAME]) {
     extensionSettings[MODULE_NAME] = clone(DEFAULT_SETTINGS);
     // 初始写入默认 modulesJson
-    extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
+    extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(getPromptDbTable(extensionSettings[MODULE_NAME], 'modules').rows, null, 2);
     saveSettingsDebounced();
   } else {
     for (const k of Object.keys(DEFAULT_SETTINGS)) {
@@ -701,21 +858,23 @@ function ensureSettings() {
     }
     // 兼容旧版：若 modulesJson 为空，补默认
     if (!extensionSettings[MODULE_NAME].modulesJson) {
-      extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
+      extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(getPromptDbTable(extensionSettings[MODULE_NAME], 'modules').rows, null, 2);
     }
   }
   if (typeof extensionSettings[MODULE_NAME].wiRollSystemPrompt === 'string') {
     const cur = extensionSettings[MODULE_NAME].wiRollSystemPrompt;
     const hasMojibake = /\?{5,}/.test(cur);
     if (hasMojibake) {
-      extensionSettings[MODULE_NAME].wiRollSystemPrompt = DEFAULT_ROLL_SYSTEM_PROMPT;
+      const rollPromptTable = getPromptDbTable(extensionSettings[MODULE_NAME], 'rollPrompts');
+      extensionSettings[MODULE_NAME].wiRollSystemPrompt = getPromptDbRowValue(rollPromptTable, 'system', DEFAULT_ROLL_SYSTEM_PROMPT);
       saveSettingsDebounced();
     }
   }
   if (typeof extensionSettings[MODULE_NAME].wiRollUserTemplate === 'string') {
     const curTpl = extensionSettings[MODULE_NAME].wiRollUserTemplate;
     if (curTpl.includes('{{threshold}}')) {
-      extensionSettings[MODULE_NAME].wiRollUserTemplate = DEFAULT_ROLL_USER_TEMPLATE;
+      const rollPromptTable = getPromptDbTable(extensionSettings[MODULE_NAME], 'rollPrompts');
+      extensionSettings[MODULE_NAME].wiRollUserTemplate = getPromptDbRowValue(rollPromptTable, 'userTemplate', DEFAULT_ROLL_USER_TEMPLATE);
       saveSettingsDebounced();
     }
   }
@@ -735,6 +894,10 @@ function ensureSettings() {
   const isOldBatch = batchRaw && batchRaw.includes('单人-1') && !batchRaw.includes('单人-近景');
   if (!batchRaw || isOldBatch) {
     extensionSettings[MODULE_NAME].imageGenBatchPatterns = DEFAULT_SETTINGS.imageGenBatchPatterns;
+    saveSettingsDebounced();
+  }
+
+  if (ensurePromptDb(extensionSettings[MODULE_NAME])) {
     saveSettingsDebounced();
   }
 
@@ -2493,7 +2656,11 @@ function resolveImageGenPresetFromSillyPreset(rawText, nameFallback) {
   };
 
   if (data.temperature !== undefined && data.temperature !== null) {
-    snapshot.imageGenSystemPrompt = DEFAULT_SETTINGS.imageGenSystemPrompt;
+    snapshot.imageGenSystemPrompt = getPromptDbRowValue(
+      PROMPT_DB_DEFAULT.tables.imageGenPrompts,
+      'system',
+      DEFAULT_IMAGEGEN_SYSTEM_PROMPT
+    );
     snapshot.imageGenPromptRulesEnabled = false;
     snapshot.imageGenPromptRules = '';
   }
@@ -2934,7 +3101,8 @@ function getModules(mode /* panel|append */) {
   try { parsed = JSON.parse(rawText); } catch { parsed = null; }
 
   const v = validateAndNormalizeModules(parsed);
-  const base = v.ok ? v.modules : clone(DEFAULT_MODULES);
+  const fallbackModules = clone(getPromptDbTable(s, 'modules').rows || DEFAULT_MODULES);
+  const base = v.ok ? v.modules : fallbackModules;
 
   if (mode === 'append') {
     const src = String(s.inlineModulesSource || 'inline');
@@ -3006,6 +3174,20 @@ function buildOutputFieldsText(modules) {
 
 function buildPromptMessages(snapshotText, spoilerLevel, modules, mode /* panel|append */) {
   const s = ensureSettings();
+  const promptTable = getPromptDbTable(s, 'guidePrompt');
+  const systemIntro = getPromptDbRowValue(
+    promptTable,
+    'systemIntro',
+    '你是执行型“剧情指导/编剧顾问”。从“正在经历的世界”（聊天+设定）提炼结构，并给出后续引导。'
+  );
+  const constraintRows = getPromptDbGroupRows(promptTable, 'constraints');
+  const constraintLines = constraintRows.map(row => String(row.content || '').trim()).filter(Boolean);
+  const constraints = constraintLines.length ? constraintLines : [
+    '1) 不要凭空杜撰世界观/人物/地点；不确定写“未知/待确认”。',
+    '2) 不要复述流水账；只提炼关键矛盾、动机、风险与走向。',
+    '3) 输出必须是 JSON 对象本体（无 Markdown、无代码块、无多余解释）。',
+    '4) 只输出下面列出的字段，不要额外字段。',
+  ];
   const compactHint = mode === 'append'
     ? `【输出偏好】更精简：少废话、少铺垫、直给关键信息。`
     : `【输出偏好】适度详细：以“可执行引导”为主，不要流水账。`;
@@ -3016,16 +3198,13 @@ function buildPromptMessages(snapshotText, spoilerLevel, modules, mode /* panel|
   const system = [
     `---BEGIN PROMPT---`,
     `[System]`,
-    `你是执行型“剧情指导/编剧顾问”。从“正在经历的世界”（聊天+设定）提炼结构，并给出后续引导。`,
+    systemIntro,
     spoilerPolicyText(spoilerLevel),
     compactHint,
     extraSystem ? `\n【自定义 System 补充】\n${extraSystem}` : ``,
     ``,
     `[Constraints]`,
-    `1) 不要凭空杜撰世界观/人物/地点；不确定写“未知/待确认”。`,
-    `2) 不要复述流水账；只提炼关键矛盾、动机、风险与走向。`,
-    `3) 输出必须是 JSON 对象本体（无 Markdown、无代码块、无多余解释）。`,
-    `4) 只输出下面列出的字段，不要额外字段。`,
+    ...constraints,
     extraConstraints ? `\n【自定义 Constraints 补充】\n${extraConstraints}` : ``,
     ``,
     `[Output Fields]`,
@@ -3586,16 +3765,17 @@ function getSummarySchema() {
 
 function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = null) {
   const s = ensureSettings();
+  const promptTable = getPromptDbTable(s, 'summaryPrompts');
 
   // system prompt
   let sys = String(s.summarySystemPrompt || '').trim();
-  if (!sys) sys = DEFAULT_SUMMARY_SYSTEM_PROMPT;
+  if (!sys) sys = getPromptDbRowValue(promptTable, 'system', DEFAULT_SUMMARY_SYSTEM_PROMPT);
   // 强制追加 JSON 结构要求，避免用户自定义提示词导致解析失败
-  sys = sys + '\n\n' + SUMMARY_JSON_REQUIREMENT;
+  sys = sys + '\n\n' + getPromptDbRowValue(promptTable, 'jsonRequirement', SUMMARY_JSON_REQUIREMENT);
 
   // user template (supports placeholders)
   let tpl = String(s.summaryUserTemplate || '').trim();
-  if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
+  if (!tpl) tpl = getPromptDbRowValue(promptTable, 'userTemplate', DEFAULT_SUMMARY_USER_TEMPLATE);
 
   // 格式化 statData（如果有）
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
@@ -3673,17 +3853,22 @@ function appendToBlueIndexCache(rec) {
 
 function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta, statData = null) {
   const s = ensureSettings();
+  const promptTable = getPromptDbTable(s, 'structuredPrompts');
   let sys = String(s.structuredEntriesSystemPrompt || '').trim();
-  if (!sys) sys = DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
-  const charPrompt = String(s.structuredCharacterPrompt || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
-  const equipPrompt = String(s.structuredEquipmentPrompt || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
-  const abilityPrompt = String(s.structuredAbilityPrompt || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
+  if (!sys) sys = getPromptDbRowValue(promptTable, 'system', DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT);
+  const charPrompt = String(s.structuredCharacterPrompt || '').trim()
+    || getPromptDbRowValue(promptTable, 'character', DEFAULT_STRUCTURED_CHARACTER_PROMPT);
+  const equipPrompt = String(s.structuredEquipmentPrompt || '').trim()
+    || getPromptDbRowValue(promptTable, 'equipment', DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
+  const abilityPrompt = String(s.structuredAbilityPrompt || '').trim()
+    || getPromptDbRowValue(promptTable, 'ability', DEFAULT_STRUCTURED_ABILITY_PROMPT);
+  const requirement = getPromptDbRowValue(promptTable, 'jsonRequirement', STRUCTURED_ENTRIES_JSON_REQUIREMENT);
   sys = [
     sys,
     `【人物条目要求】\n${charPrompt}`,
     `【装备条目要求】\n${equipPrompt}`,
     `【能力条目要求】\n${abilityPrompt}`,
-    STRUCTURED_ENTRIES_JSON_REQUIREMENT,
+    requirement,
   ].join('\n\n');
 
   // 构建已知列表供 LLM 判断是否新增/更新（包含别名以帮助识别不同写法）
@@ -3700,7 +3885,7 @@ function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, met
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
 
   let tpl = String(s.structuredEntriesUserTemplate || '').trim();
-  if (!tpl) tpl = DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
+  if (!tpl) tpl = getPromptDbRowValue(promptTable, 'userTemplate', DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE);
   let user = renderTemplate(tpl, {
     fromFloor: String(fromFloor),
     toFloor: String(toFloor),
@@ -5237,8 +5422,11 @@ function getRollAnalysisSummary(res) {
 
 function buildRollPromptMessages(actionKey, statData, settings, formula, randomWeight, randomRoll) {
   const s = settings || ensureSettings();
-  const sys = String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT).trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
-  const tmpl = String(s.wiRollUserTemplate || DEFAULT_ROLL_USER_TEMPLATE).trim() || DEFAULT_ROLL_USER_TEMPLATE;
+  const promptTable = getPromptDbTable(s, 'rollPrompts');
+  const sys = String(s.wiRollSystemPrompt || '').trim()
+    || getPromptDbRowValue(promptTable, 'system', DEFAULT_ROLL_SYSTEM_PROMPT);
+  const tmpl = String(s.wiRollUserTemplate || '').trim()
+    || getPromptDbRowValue(promptTable, 'userTemplate', DEFAULT_ROLL_USER_TEMPLATE);
   const difficulty = String(s.wiRollDifficulty || 'normal');
   const statDataJson = JSON.stringify(statData || {}, null, 0);
   const modifierSourcesJson = String(s.wiRollModifierSourcesJson || JSON.stringify(DEFAULT_ROLL_MODIFIER_SOURCES));
@@ -5251,7 +5439,7 @@ function buildRollPromptMessages(actionKey, statData, settings, formula, randomW
     .replaceAll('{{modifierSourcesJson}}', modifierSourcesJson)
     .replaceAll('{{statDataJson}}', statDataJson);
 
-  const enforced = user + `\n\n` + ROLL_JSON_REQUIREMENT;
+  const enforced = user + `\n\n` + getPromptDbRowValue(promptTable, 'jsonRequirement', ROLL_JSON_REQUIREMENT);
   return [
     { role: 'system', content: sys },
     { role: 'user', content: enforced },
@@ -5260,22 +5448,24 @@ function buildRollPromptMessages(actionKey, statData, settings, formula, randomW
 
 function buildRollDecisionPromptMessages(userText, statData, settings, randomRoll) {
   const s = settings || ensureSettings();
+  const decisionTable = getPromptDbTable(s, 'rollDecisionPrompts');
   const rawSys = String(s.wiRollSystemPrompt || '').trim();
   const sys = (rawSys && rawSys !== DEFAULT_ROLL_SYSTEM_PROMPT)
     ? rawSys
-    : DEFAULT_ROLL_DECISION_SYSTEM_PROMPT;
+    : getPromptDbRowValue(decisionTable, 'system', DEFAULT_ROLL_DECISION_SYSTEM_PROMPT);
   const randomWeight = clampFloat(s.wiRollRandomWeight, 0, 1, 0.3);
   const difficulty = String(s.wiRollDifficulty || 'normal');
   const statDataJson = JSON.stringify(statData || {}, null, 0);
 
-  const user = DEFAULT_ROLL_DECISION_USER_TEMPLATE
+  const decisionTemplate = getPromptDbRowValue(decisionTable, 'userTemplate', DEFAULT_ROLL_DECISION_USER_TEMPLATE);
+  const user = decisionTemplate
     .replaceAll('{{userText}}', String(userText || ''))
     .replaceAll('{{randomWeight}}', String(randomWeight))
     .replaceAll('{{difficulty}}', difficulty)
     .replaceAll('{{randomRoll}}', String(randomRoll))
     .replaceAll('{{statDataJson}}', statDataJson);
 
-  const enforced = user + `\n\n` + ROLL_DECISION_JSON_REQUIREMENT;
+  const enforced = user + `\n\n` + getPromptDbRowValue(decisionTable, 'jsonRequirement', ROLL_DECISION_JSON_REQUIREMENT);
   return [
     { role: 'system', content: sys },
     { role: 'user', content: enforced },
@@ -6268,8 +6458,11 @@ function pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, 
 
 function buildIndexPromptMessages(recentText, userText, candidatesForModel, maxPick) {
   const s = ensureSettings();
-  const sys = String(s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT).trim() || DEFAULT_INDEX_SYSTEM_PROMPT;
-  const tmpl = String(s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE).trim() || DEFAULT_INDEX_USER_TEMPLATE;
+  const promptTable = getPromptDbTable(s, 'indexPrompts');
+  const sys = String(s.wiIndexSystemPrompt || '').trim()
+    || getPromptDbRowValue(promptTable, 'system', DEFAULT_INDEX_SYSTEM_PROMPT);
+  const tmpl = String(s.wiIndexUserTemplate || '').trim()
+    || getPromptDbRowValue(promptTable, 'userTemplate', DEFAULT_INDEX_USER_TEMPLATE);
 
   const candidatesJson = JSON.stringify(candidatesForModel, null, 0);
 
@@ -6279,9 +6472,11 @@ function buildIndexPromptMessages(recentText, userText, candidatesForModel, maxP
     .replaceAll('{{candidates}}', candidatesJson)
     .replaceAll('{{maxPick}}', String(maxPick));
 
+  const requirement = getPromptDbRowValue(promptTable, 'jsonRequirement', INDEX_JSON_REQUIREMENT)
+    .replaceAll('maxPick', String(maxPick));
   const enforced = user + `
 
-` + INDEX_JSON_REQUIREMENT.replaceAll('maxPick', String(maxPick));
+` + requirement;
 
   return [
     { role: 'system', content: sys },
@@ -7739,8 +7934,11 @@ async function generateImagePromptBatch() {
   batchPrompt += `\n【模板列表】：\n${patternLines}\n`;
   batchPrompt += `\n【故事内容】：\n${storyContent}\n`;
 
+  const promptTable = getPromptDbTable(s, 'imageGenPrompts');
+  const systemPrompt = s.imageGenSystemPrompt
+    || getPromptDbRowValue(promptTable, 'system', DEFAULT_IMAGEGEN_SYSTEM_PROMPT);
   const messages = [
-    { role: 'system', content: s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: batchPrompt }
   ];
 
@@ -7853,7 +8051,9 @@ function clearImageGenBatch() {
 
 async function generateImagePromptWithLLM(storyContent, genType, statData = null) {
   const s = ensureSettings();
-  const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
+  const promptTable = getPromptDbTable(s, 'imageGenPrompts');
+  const systemPrompt = s.imageGenSystemPrompt
+    || getPromptDbRowValue(promptTable, 'system', DEFAULT_IMAGEGEN_SYSTEM_PROMPT);
 
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
   let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
@@ -9903,8 +10103,10 @@ function ensureModal() {
 
   // index prompt reset
   $('#sg_wiIndexResetPrompt').on('click', () => {
-    $('#sg_wiIndexSystemPrompt').val(DEFAULT_INDEX_SYSTEM_PROMPT);
-    $('#sg_wiIndexUserTemplate').val(DEFAULT_INDEX_USER_TEMPLATE);
+    const s = ensureSettings();
+    const promptTable = getPromptDbTable(s, 'indexPrompts');
+    $('#sg_wiIndexSystemPrompt').val(getPromptDbRowValue(promptTable, 'system', DEFAULT_INDEX_SYSTEM_PROMPT));
+    $('#sg_wiIndexUserTemplate').val(getPromptDbRowValue(promptTable, 'userTemplate', DEFAULT_INDEX_USER_TEMPLATE));
     pullUiToSettings();
     saveSettings();
     setStatus('已恢复默认索引提示词 ✅', 'ok');
@@ -9929,8 +10131,10 @@ function ensureModal() {
 
   // summary prompt reset
   $('#sg_summaryResetPrompt').on('click', () => {
-    $('#sg_summarySystemPrompt').val(DEFAULT_SUMMARY_SYSTEM_PROMPT);
-    $('#sg_summaryUserTemplate').val(DEFAULT_SUMMARY_USER_TEMPLATE);
+    const s = ensureSettings();
+    const promptTable = getPromptDbTable(s, 'summaryPrompts');
+    $('#sg_summarySystemPrompt').val(getPromptDbRowValue(promptTable, 'system', DEFAULT_SUMMARY_SYSTEM_PROMPT));
+    $('#sg_summaryUserTemplate').val(getPromptDbRowValue(promptTable, 'userTemplate', DEFAULT_SUMMARY_USER_TEMPLATE));
     pullUiToSettings();
     saveSettings();
     setStatus('已恢复默认总结提示词 ✅', 'ok');
@@ -9938,11 +10142,13 @@ function ensureModal() {
 
   // structured entries prompt reset + cache clear
   $('#sg_structuredResetPrompt').on('click', () => {
-    $('#sg_structuredEntriesSystemPrompt').val(DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT);
-    $('#sg_structuredEntriesUserTemplate').val(DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE);
-    $('#sg_structuredCharacterPrompt').val(DEFAULT_STRUCTURED_CHARACTER_PROMPT);
-    $('#sg_structuredEquipmentPrompt').val(DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
-    $('#sg_structuredAbilityPrompt').val(DEFAULT_STRUCTURED_ABILITY_PROMPT);
+    const s = ensureSettings();
+    const promptTable = getPromptDbTable(s, 'structuredPrompts');
+    $('#sg_structuredEntriesSystemPrompt').val(getPromptDbRowValue(promptTable, 'system', DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
+    $('#sg_structuredEntriesUserTemplate').val(getPromptDbRowValue(promptTable, 'userTemplate', DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
+    $('#sg_structuredCharacterPrompt').val(getPromptDbRowValue(promptTable, 'character', DEFAULT_STRUCTURED_CHARACTER_PROMPT));
+    $('#sg_structuredEquipmentPrompt').val(getPromptDbRowValue(promptTable, 'equipment', DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
+    $('#sg_structuredAbilityPrompt').val(getPromptDbRowValue(promptTable, 'ability', DEFAULT_STRUCTURED_ABILITY_PROMPT));
     pullUiToSettings();
     saveSettings();
     setStatus('已恢复默认结构化提示词 ✅', 'ok');
@@ -10646,7 +10852,9 @@ function setupSettingsPages() {
   });
 
   $('#sg_imageGenResetPrompt').on('click', () => {
-    $('#sg_imageGenSystemPrompt').val(DEFAULT_SETTINGS.imageGenSystemPrompt);
+    const s = ensureSettings();
+    const promptTable = getPromptDbTable(s, 'imageGenPrompts');
+    $('#sg_imageGenSystemPrompt').val(getPromptDbRowValue(promptTable, 'system', DEFAULT_IMAGEGEN_SYSTEM_PROMPT));
     pullUiToSettings(); saveSettings();
     setImageGenStatus('已恢复默认提示词', 'ok');
   });
@@ -10717,7 +10925,7 @@ function pullSettingsToUi() {
   $('#sg_worldText').val(getChatMetaValue(META_KEYS.world));
   $('#sg_canonText').val(getChatMetaValue(META_KEYS.canon));
 
-  $('#sg_modulesJson').val(String(s.modulesJson || JSON.stringify(DEFAULT_MODULES, null, 2)));
+  $('#sg_modulesJson').val(String(s.modulesJson || JSON.stringify(getPromptDbTable(s, 'modules').rows, null, 2)));
   $('#sg_customSystemPreamble').val(String(s.customSystemPreamble || ''));
   $('#sg_customConstraints').val(String(s.customConstraints || ''));
 
@@ -10751,8 +10959,9 @@ function pullSettingsToUi() {
   $('#sg_summaryCountMode').val(String(s.summaryCountMode || 'assistant'));
   $('#sg_summaryProvider').val(String(s.summaryProvider || 'st'));
   $('#sg_summaryTemperature').val(s.summaryTemperature);
-  $('#sg_summarySystemPrompt').val(String(s.summarySystemPrompt || DEFAULT_SUMMARY_SYSTEM_PROMPT));
-  $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || DEFAULT_SUMMARY_USER_TEMPLATE));
+  const summaryPromptTable = getPromptDbTable(s, 'summaryPrompts');
+  $('#sg_summarySystemPrompt').val(String(s.summarySystemPrompt || getPromptDbRowValue(summaryPromptTable, 'system', DEFAULT_SUMMARY_SYSTEM_PROMPT)));
+  $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || getPromptDbRowValue(summaryPromptTable, 'userTemplate', DEFAULT_SUMMARY_USER_TEMPLATE)));
   $('#sg_summaryReadStatData').prop('checked', !!s.summaryReadStatData);
   $('#sg_summaryStatVarName').val(String(s.summaryStatVarName || 'stat_data'));
   $('#sg_structuredEntriesEnabled').prop('checked', !!s.structuredEntriesEnabled);
@@ -10762,11 +10971,12 @@ function pullSettingsToUi() {
   $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '人物'));
   $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '装备'));
   $('#sg_abilityEntryPrefix').val(String(s.abilityEntryPrefix || '能力'));
-  $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
-  $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
-  $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
-  $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
-  $('#sg_structuredAbilityPrompt').val(String(s.structuredAbilityPrompt || DEFAULT_STRUCTURED_ABILITY_PROMPT));
+  const structuredPromptTable = getPromptDbTable(s, 'structuredPrompts');
+  $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || getPromptDbRowValue(structuredPromptTable, 'system', DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT)));
+  $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || getPromptDbRowValue(structuredPromptTable, 'userTemplate', DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE)));
+  $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || getPromptDbRowValue(structuredPromptTable, 'character', DEFAULT_STRUCTURED_CHARACTER_PROMPT)));
+  $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || getPromptDbRowValue(structuredPromptTable, 'equipment', DEFAULT_STRUCTURED_EQUIPMENT_PROMPT)));
+  $('#sg_structuredAbilityPrompt').val(String(s.structuredAbilityPrompt || getPromptDbRowValue(structuredPromptTable, 'ability', DEFAULT_STRUCTURED_ABILITY_PROMPT)));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -10825,7 +11035,8 @@ function pullSettingsToUi() {
   $('#sg_wiRollCustomTopP').val(s.wiRollCustomTopP ?? 0.95);
   $('#sg_wiRollCustomTemperature').val(s.wiRollCustomTemperature ?? 0.2);
   $('#sg_wiRollCustomStream').prop('checked', !!s.wiRollCustomStream);
-  $('#sg_wiRollSystemPrompt').val(String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT));
+  const rollPromptTable = getPromptDbTable(s, 'rollPrompts');
+  $('#sg_wiRollSystemPrompt').val(String(s.wiRollSystemPrompt || getPromptDbRowValue(rollPromptTable, 'system', DEFAULT_ROLL_SYSTEM_PROMPT)));
   $('#sg_roll_custom_block').toggle(String(s.wiRollProvider || 'custom') === 'custom');
   fillRollModelSelect(Array.isArray(s.wiRollCustomModelsCache) ? s.wiRollCustomModelsCache : [], s.wiRollCustomModel);
 
@@ -10866,7 +11077,8 @@ function pullSettingsToUi() {
     if (s.imageGenPresetActive) $presetSelect.val(s.imageGenPresetActive);
   }
 
-  $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt));
+  const imagePromptTable = getPromptDbTable(s, 'imageGenPrompts');
+  $('#sg_imageGenSystemPrompt').val(String(s.imageGenSystemPrompt || getPromptDbRowValue(imagePromptTable, 'system', DEFAULT_IMAGEGEN_SYSTEM_PROMPT)));
   $('#sg_imageGenArtistPromptEnabled').prop('checked', !!s.imageGenArtistPromptEnabled);
   $('#sg_imageGenArtistPrompt').val(String(s.imageGenArtistPrompt || ''));
   $('#sg_imageGenPromptRulesEnabled').prop('checked', !!s.imageGenPromptRulesEnabled);
@@ -10897,8 +11109,9 @@ function pullSettingsToUi() {
   $('#sg_wiIndexPrefilterTopK').val(s.wiIndexPrefilterTopK ?? 24);
   $('#sg_wiIndexProvider').val(String(s.wiIndexProvider || 'st'));
   $('#sg_wiIndexTemperature').val(s.wiIndexTemperature ?? 0.2);
-  $('#sg_wiIndexSystemPrompt').val(String(s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT));
-  $('#sg_wiIndexUserTemplate').val(String(s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE));
+  const indexPromptTable = getPromptDbTable(s, 'indexPrompts');
+  $('#sg_wiIndexSystemPrompt').val(String(s.wiIndexSystemPrompt || getPromptDbRowValue(indexPromptTable, 'system', DEFAULT_INDEX_SYSTEM_PROMPT)));
+  $('#sg_wiIndexUserTemplate').val(String(s.wiIndexUserTemplate || getPromptDbRowValue(indexPromptTable, 'userTemplate', DEFAULT_INDEX_USER_TEMPLATE)));
   $('#sg_wiIndexCustomEndpoint').val(String(s.wiIndexCustomEndpoint || ''));
   $('#sg_wiIndexCustomApiKey').val(String(s.wiIndexCustomApiKey || ''));
   $('#sg_wiIndexCustomModel').val(String(s.wiIndexCustomModel || 'gpt-4o-mini'));
@@ -11239,7 +11452,8 @@ function pullUiToSettings() {
   s.customStream = $('#sg_customStream').is(':checked');
 
   // modulesJson：先不强行校验（用户可先保存再校验），但会在分析前用默认兜底
-  s.modulesJson = String($('#sg_modulesJson').val() || '').trim() || JSON.stringify(DEFAULT_MODULES, null, 2);
+  s.modulesJson = String($('#sg_modulesJson').val() || '').trim()
+    || JSON.stringify(getPromptDbTable(s, 'modules').rows, null, 2);
 
   s.customSystemPreamble = String($('#sg_customSystemPreamble').val() || '');
   s.customConstraints = String($('#sg_customConstraints').val() || '');
@@ -11256,6 +11470,12 @@ function pullUiToSettings() {
   s.worldbookMaxChars = clampInt($('#sg_worldbookMaxChars').val(), 500, 50000, s.worldbookMaxChars || 6000);
   s.worldbookWindowMessages = clampInt($('#sg_worldbookWindowMessages').val(), 5, 80, s.worldbookWindowMessages || 18);
 
+  const summaryPromptTable = getPromptDbTable(s, 'summaryPrompts');
+  const structuredPromptTable = getPromptDbTable(s, 'structuredPrompts');
+  const rollPromptTable = getPromptDbTable(s, 'rollPrompts');
+  const imagePromptTable = getPromptDbTable(s, 'imageGenPrompts');
+  const indexPromptTable = getPromptDbTable(s, 'indexPrompts');
+
   // summary
   s.summaryEnabled = $('#sg_summaryEnabled').is(':checked');
   s.summaryEvery = clampInt($('#sg_summaryEvery').val(), 1, 200, s.summaryEvery || 20);
@@ -11263,8 +11483,10 @@ function pullUiToSettings() {
   s.summaryCountMode = String($('#sg_summaryCountMode').val() || 'assistant');
   s.summaryProvider = String($('#sg_summaryProvider').val() || 'st');
   s.summaryTemperature = clampFloat($('#sg_summaryTemperature').val(), 0, 2, s.summaryTemperature || 0.4);
-  s.summarySystemPrompt = String($('#sg_summarySystemPrompt').val() || '').trim() || DEFAULT_SUMMARY_SYSTEM_PROMPT;
-  s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || DEFAULT_SUMMARY_USER_TEMPLATE;
+  s.summarySystemPrompt = String($('#sg_summarySystemPrompt').val() || '').trim()
+    || getPromptDbRowValue(summaryPromptTable, 'system', DEFAULT_SUMMARY_SYSTEM_PROMPT);
+  s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim()
+    || getPromptDbRowValue(summaryPromptTable, 'userTemplate', DEFAULT_SUMMARY_USER_TEMPLATE);
   s.summaryReadStatData = $('#sg_summaryReadStatData').is(':checked');
   s.summaryStatVarName = String($('#sg_summaryStatVarName').val() || 'stat_data').trim() || 'stat_data';
   s.structuredEntriesEnabled = $('#sg_structuredEntriesEnabled').is(':checked');
@@ -11274,11 +11496,16 @@ function pullUiToSettings() {
   s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '人物').trim() || '人物';
   s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '装备').trim() || '装备';
   s.abilityEntryPrefix = String($('#sg_abilityEntryPrefix').val() || '能力').trim() || '能力';
-  s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
-  s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
-  s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
-  s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
-  s.structuredAbilityPrompt = String($('#sg_structuredAbilityPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ABILITY_PROMPT;
+  s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim()
+    || getPromptDbRowValue(structuredPromptTable, 'system', DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT);
+  s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim()
+    || getPromptDbRowValue(structuredPromptTable, 'userTemplate', DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE);
+  s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim()
+    || getPromptDbRowValue(structuredPromptTable, 'character', DEFAULT_STRUCTURED_CHARACTER_PROMPT);
+  s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim()
+    || getPromptDbRowValue(structuredPromptTable, 'equipment', DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
+  s.structuredAbilityPrompt = String($('#sg_structuredAbilityPrompt').val() || '').trim()
+    || getPromptDbRowValue(structuredPromptTable, 'ability', DEFAULT_STRUCTURED_ABILITY_PROMPT);
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
@@ -11334,7 +11561,8 @@ function pullUiToSettings() {
   s.wiRollCustomTopP = clampFloat($('#sg_wiRollCustomTopP').val(), 0, 1, s.wiRollCustomTopP ?? 0.95);
   s.wiRollCustomTemperature = clampFloat($('#sg_wiRollCustomTemperature').val(), 0, 2, s.wiRollCustomTemperature ?? 0.2);
   s.wiRollCustomStream = $('#sg_wiRollCustomStream').is(':checked');
-  s.wiRollSystemPrompt = String($('#sg_wiRollSystemPrompt').val() || '').trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
+  s.wiRollSystemPrompt = String($('#sg_wiRollSystemPrompt').val() || '').trim()
+    || getPromptDbRowValue(rollPromptTable, 'system', DEFAULT_ROLL_SYSTEM_PROMPT);
 
   // 图像生成设置
   s.imageGenEnabled = $('#sg_imageGenEnabled').is(':checked');
@@ -11362,7 +11590,8 @@ function pullUiToSettings() {
   s.imageGenCustomModel = String($('#sg_imageGenCustomModel').val() || 'gpt-4o-mini');
   s.imageGenCustomMaxTokens = clampInt($('#sg_imageGenCustomMaxTokens').val(), 128, 200000, s.imageGenCustomMaxTokens || 1024);
 
-  s.imageGenSystemPrompt = String($('#sg_imageGenSystemPrompt').val() || '').trim() || DEFAULT_SETTINGS.imageGenSystemPrompt;
+  s.imageGenSystemPrompt = String($('#sg_imageGenSystemPrompt').val() || '').trim()
+    || getPromptDbRowValue(imagePromptTable, 'system', DEFAULT_IMAGEGEN_SYSTEM_PROMPT);
   s.imageGenArtistPromptEnabled = $('#sg_imageGenArtistPromptEnabled').is(':checked');
   s.imageGenArtistPrompt = String($('#sg_imageGenArtistPrompt').val() || '').trim();
   s.imageGenPromptRulesEnabled = $('#sg_imageGenPromptRulesEnabled').is(':checked');
@@ -11387,8 +11616,10 @@ function pullUiToSettings() {
   s.wiIndexPrefilterTopK = clampInt($('#sg_wiIndexPrefilterTopK').val(), 5, 80, s.wiIndexPrefilterTopK ?? 24);
   s.wiIndexProvider = String($('#sg_wiIndexProvider').val() || s.wiIndexProvider || 'st');
   s.wiIndexTemperature = clampFloat($('#sg_wiIndexTemperature').val(), 0, 2, s.wiIndexTemperature ?? 0.2);
-  s.wiIndexSystemPrompt = String($('#sg_wiIndexSystemPrompt').val() || s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT);
-  s.wiIndexUserTemplate = String($('#sg_wiIndexUserTemplate').val() || s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE);
+  s.wiIndexSystemPrompt = String($('#sg_wiIndexSystemPrompt').val() || s.wiIndexSystemPrompt
+    || getPromptDbRowValue(indexPromptTable, 'system', DEFAULT_INDEX_SYSTEM_PROMPT));
+  s.wiIndexUserTemplate = String($('#sg_wiIndexUserTemplate').val() || s.wiIndexUserTemplate
+    || getPromptDbRowValue(indexPromptTable, 'userTemplate', DEFAULT_INDEX_USER_TEMPLATE));
   s.wiIndexCustomEndpoint = String($('#sg_wiIndexCustomEndpoint').val() || s.wiIndexCustomEndpoint || '');
   s.wiIndexCustomApiKey = String($('#sg_wiIndexCustomApiKey').val() || s.wiIndexCustomApiKey || '');
   s.wiIndexCustomModel = String($('#sg_wiIndexCustomModel').val() || s.wiIndexCustomModel || 'gpt-4o-mini');
