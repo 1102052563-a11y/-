@@ -1673,6 +1673,8 @@ async function runDatabaseUpdateFromChunks({ chunks, selectedNames, reason, extr
     currentBase = fallback.data;
     tableList = fallback.tableList;
   }
+  currentBase = ensureTablesFromTemplates(currentBase);
+  tableList = getDatabaseTableList(currentBase);
   if (!currentBase || !tableList.length) {
     showToast('数据库未加载且模板为空，无法执行更新', { kind: 'warn' });
     return false;
@@ -2019,6 +2021,39 @@ function buildDatabaseBaseFromTemplates() {
     };
   });
   return { data: base, tableList: getDatabaseTableListFromTemplates() };
+}
+
+function ensureTablesFromTemplates(data) {
+  const templates = getDatabaseTemplates();
+  if (!templates.length) return data;
+  const out = clone(data || { mate: { type: 'chatSheets', version: 1 } });
+  const existingNames = new Set();
+  const existingKeys = new Set();
+  Object.keys(out).forEach((key) => {
+    if (!key.startsWith('sheet_')) return;
+    existingKeys.add(key);
+    const name = String(out[key]?.name || '').trim();
+    if (name) existingNames.add(name);
+  });
+
+  templates.forEach((t, idx) => {
+    const name = String(t.table || t.name || '').trim();
+    if (!name || existingNames.has(name)) return;
+    let key = getTemplateSheetKey(idx);
+    if (existingKeys.has(key)) {
+      key = `sheet_tpl_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`;
+    }
+    out[key] = {
+      uid: key,
+      name,
+      content: [[null, '内容']],
+      exportConfig: {},
+      orderNo: idx,
+    };
+    existingKeys.add(key);
+    existingNames.add(name);
+  });
+  return out;
 }
 
 function getChatAiMessageCount() {
