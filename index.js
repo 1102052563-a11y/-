@@ -521,6 +521,13 @@ const DEFAULT_SETTINGS = Object.freeze({
     ]
   }`,
 
+  // ===== 数据库模块 =====
+  databaseEnabled: false,
+  databaseSource: 'chat', // chat | variable
+  databaseVarName: 'table_data',
+  databaseIsolationEnabled: false,
+  databaseIsolationCode: '',
+
   // ===== 图像生成模块 =====
   imageGenEnabled: false,
   novelaiApiKey: '',
@@ -1413,6 +1420,231 @@ function getMapData() {
 
 async function setMapData(mapData) {
   await setChatMetaValue(META_KEYS.mapData, JSON.stringify(mapData ?? getDefaultMapData()));
+}
+
+// ===== 数据库模块 =====
+let lastDatabasePayload = null;
+let lastDatabaseRawText = '';
+let lastDatabaseInfo = null;
+
+function normalizeDatabaseIsolationCode(code) {
+  return (typeof code === 'string') ? code.trim() : '';
+}
+
+function getDatabaseIsolationKey(settings) {
+  if (!settings?.databaseIsolationEnabled) return '';
+  return normalizeDatabaseIsolationCode(settings.databaseIsolationCode);
+}
+
+function parseMaybeJson(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  try { return JSON.parse(value); } catch { return null; }
+}
+
+function getSortedDatabaseSheetKeys(data) {
+  const keys = Object.keys(data || {}).filter(k => k.startsWith('sheet_'));
+  return keys.sort((a, b) => {
+    const ao = Number(data[a]?.orderNo);
+    const bo = Number(data[b]?.orderNo);
+    const aHas = Number.isFinite(ao);
+    const bHas = Number.isFinite(bo);
+    if (aHas && bHas) return ao - bo;
+    if (aHas) return -1;
+    if (bHas) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+function mergeDatabaseTables(target, source) {
+  if (!source || typeof source !== 'object') return;
+  Object.keys(source).forEach((key) => {
+    if (!key.startsWith('sheet_')) return;
+    if (!target[key]) {
+      target[key] = clone(source[key]);
+    }
+  });
+}
+
+function loadDatabaseFromChat(settings) {
+  const ctx = SillyTavern.getContext?.() ?? {};
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  if (!chat.length) return null;
+
+  const isolationKey = getDatabaseIsolationKey(settings);
+  const merged = {};
+
+  for (let i = chat.length - 1; i >= 0; i--) {
+    const message = chat[i];
+    if (!message || message.is_user) continue;
+
+    const isolatedRaw = parseMaybeJson(message.TavernDB_ACU_IsolatedData);
+    if (isolatedRaw && Object.prototype.hasOwnProperty.call(isolatedRaw, isolationKey)) {
+      const tagData = isolatedRaw[isolationKey];
+      const independentData = parseMaybeJson(tagData?.independentData) || tagData?.independentData;
+      mergeDatabaseTables(merged, independentData);
+    }
+
+    const msgIdentity = normalizeDatabaseIsolationCode(message.TavernDB_ACU_Identity);
+    const legacyMatch = isolationKey ? (msgIdentity === isolationKey) : !msgIdentity;
+    if (!legacyMatch) continue;
+
+    mergeDatabaseTables(merged, parseMaybeJson(message.TavernDB_ACU_IndependentData) || message.TavernDB_ACU_IndependentData);
+    mergeDatabaseTables(merged, parseMaybeJson(message.TavernDB_ACU_Data) || message.TavernDB_ACU_Data);
+    mergeDatabaseTables(merged, parseMaybeJson(message.TavernDB_ACU_SummaryData) || message.TavernDB_ACU_SummaryData);
+  }
+
+  return Object.keys(merged).length ? merged : null;
+}
+
+function readVariableFromSources(key) {
+  if (!key) return null;
+  const ctx = SillyTavern.getContext?.() ?? {};
+
+  const sources = [
+    ctx?.variables,
+    ctx?.chatMetadata?.variables,
+    ctx?.chatMetadata,
+    globalThis?.SillyTavern?.chatVariables,
+    globalThis?.SillyTavern?.variables,
+    globalThis?.variables,
+    globalThis?.chatVariables,
+    ctx?.extensionSettings?.variables,
+    window?.variables,
+    window?.chatVariables,
+  ].filter(Boolean);
+
+  for (const src of sources) {
+    if (src && Object.prototype.hasOwnProperty.call(src, key)) return src[key];
+  }
+
+  if (Array.isArray(ctx?.chat)) {
+    for (let i = ctx.chat.length - 1; i >= Math.max(0, ctx.chat.length - 5); i--) {
+      const msg = ctx.chat[i];
+      if (msg?.extra?.variables && Object.prototype.hasOwnProperty.call(msg.extra.variables, key)) return msg.extra.variables[key];
+      if (msg?.variables && Object.prototype.hasOwnProperty.call(msg.variables, key)) return msg.variables[key];
+    }
+  }
+
+  return null;
+}
+
+async function loadDatabaseFromVariable(settings) {
+  const key = String(settings?.databaseVarName || '').trim();
+  if (!key) return { data: null, rawText: '' };
+  let raw = readVariableFromSources(key);
+  if (raw == null) {
+    try {
+      const out = await execSlash(`/getvar ${key}`);
+      const text = slashOutputToText(out).trim();
+      raw = text || null;
+    } catch { /* ignore */ }
+  }
+
+  if (raw == null) return { data: null, rawText: '' };
+
+  if (typeof raw === 'object') {
+    return { data: raw, rawText: safeStringifyShort(raw, 8000) };
+  }
+
+  const rawText = String(raw || '');
+  return { data: parseMaybeJson(rawText), rawText };
+}
+
+async function loadDatabasePayload(settings) {
+  const s = settings || ensureSettings();
+  if (String(s.databaseSource || 'chat') === 'variable') {
+    const { data, rawText } = await loadDatabaseFromVariable(s);
+    return { data, rawText, source: 'variable' };
+  }
+
+  const data = loadDatabaseFromChat(s);
+  return { data, rawText: data ? safeStringifyShort(data, 8000) : '', source: 'chat' };
+}
+
+function buildDatabaseModules(data) {
+  if (!data || typeof data !== 'object') return { modules: [], totalTables: 0, totalRows: 0 };
+
+  const keys = getSortedDatabaseSheetKeys(data);
+  const modules = [];
+  let totalRows = 0;
+
+  const pushModule = (title, rows) => {
+    modules.push({ title, rows });
+  };
+
+  keys.forEach((sheetKey) => {
+    const table = data[sheetKey];
+    if (!table || !table.name || !Array.isArray(table.content)) return;
+
+    const name = String(table.name || '').trim() || sheetKey;
+    const headers = Array.isArray(table.content[0]) ? table.content[0].slice(1) : [];
+    const rows = table.content.slice(1).map((row) => {
+      const cells = Array.isArray(row) ? row.slice(1) : [];
+      totalRows += 1;
+      if (!headers.length) return cells.join(' / ');
+      return headers.map((h, idx) => `${h}: ${cells[idx] ?? ''}`).join(' / ');
+    });
+
+    if (name === '重要人物表') {
+      pushModule('重要人物表', rows);
+      return;
+    }
+    if (name === '总结表') {
+      pushModule('总结表', rows);
+      return;
+    }
+    if (name === '总体大纲' || name === '总体大纲表') {
+      pushModule('总体大纲', rows);
+      return;
+    }
+
+    const exportConfig = table.exportConfig || {};
+    if (exportConfig.enabled || exportConfig.injectIntoWorldbook === false) return;
+    pushModule(name, rows);
+  });
+
+  return { modules, totalTables: keys.length, totalRows };
+}
+
+function renderDatabaseModuleHtml(mod) {
+  const items = Array.isArray(mod.rows) ? mod.rows : [];
+  const list = items.length
+    ? `<ul class="sg-database-list">${items.map(item => `<li class="sg-database-item">${escapeHtml(String(item || ''))}</li>`).join('')}</ul>`
+    : '<div class="sg-database-empty">暂无数据</div>';
+  return `
+    <div class="sg-database-module">
+      <div class="sg-database-module-title">${escapeHtml(mod.title)}</div>
+      ${list}
+    </div>
+  `;
+}
+
+async function renderDatabaseView(settings) {
+  const s = settings || ensureSettings();
+  const payload = await loadDatabasePayload(s);
+  lastDatabasePayload = payload?.data || null;
+  lastDatabaseRawText = payload?.rawText || '';
+
+  if (!payload?.data) {
+    lastDatabaseInfo = null;
+    return {
+      html: '<div class="sg-database-empty">数据库为空或未找到数据。</div>',
+      infoText: '无数据'
+    };
+  }
+
+  const info = buildDatabaseModules(payload.data);
+  lastDatabaseInfo = info;
+
+  const modulesHtml = info.modules.length
+    ? info.modules.map(renderDatabaseModuleHtml).join('')
+    : '<div class="sg-database-empty">暂无可展示的表格。</div>';
+
+  const sourceLabel = payload.source === 'variable' ? '变量' : '聊天记录';
+  const infoText = `来源：${sourceLabel}｜表格：${info.totalTables}｜记录：${info.totalRows}`;
+  return { html: modulesHtml, infoText };
 }
 
 // 更新地图预览
@@ -8652,6 +8884,7 @@ function buildModalHtml() {
             <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
             <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_database">数据库</button>
             <button class="sg-pgtab" id="sg_pgtab_image">图像生成</button>
           </div>
 
@@ -9443,6 +9676,55 @@ function buildModalHtml() {
               <div class="sg-hint" style="margin-top:8px;">提示：仅记录由 ROLL API 返回的简要计算摘要。</div>
             </div>
           </div> <!-- sg_page_roll -->
+
+          <div class="sg-page" id="sg_page_database">
+            <div class="sg-card">
+              <div class="sg-card-title">数据库模块</div>
+              <div class="sg-hint" style="margin-bottom:10px;">从聊天记录或变量中读取数据库 JSON，并在悬浮面板中浏览。</div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>启用</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_db_enabled">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+                <div class="sg-field">
+                  <label>数据来源</label>
+                  <select id="sg_db_source">
+                    <option value="chat">聊天记录（TavernDB/ACU）</option>
+                    <option value="variable">变量</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="sg-field" id="sg_db_var_block">
+                <label>变量名</label>
+                <input id="sg_db_var_name" type="text" placeholder="table_data">
+                <div class="sg-hint">从变量读取时会尝试 /getvar 作为回退。</div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>启用隔离标签</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_db_isolation_enabled">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+                <div class="sg-field">
+                  <label>隔离标签</label>
+                  <input id="sg_db_isolation_code" type="text" placeholder="留空=无标签">
+                </div>
+              </div>
+
+              <div class="sg-row sg-inline" style="margin-top:6px;">
+                <button class="menu_button sg-btn" id="sg_db_open_panel">在悬浮面板查看</button>
+                <button class="menu_button sg-btn" id="sg_db_copy_json">复制最新 JSON</button>
+              </div>
+            </div>
+          </div> <!-- sg_page_database -->
 
           <div class="sg-page" id="sg_page_image">
             <div class="sg-card">
@@ -10558,8 +10840,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_database, #sg_pgtab_image').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_database, #sg_page_image').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -10570,6 +10852,9 @@ function showSettingsPage(page) {
   } else if (p === 'roll') {
     $('#sg_pgtab_roll').addClass('active');
     $('#sg_page_roll').addClass('active');
+  } else if (p === 'database') {
+    $('#sg_pgtab_database').addClass('active');
+    $('#sg_page_database').addClass('active');
   } else if (p === 'image') {
     $('#sg_pgtab_image').addClass('active');
     $('#sg_page_image').addClass('active');
@@ -10600,11 +10885,45 @@ function setupSettingsPages() {
   $('#sg_pgtab_summary').on('click', () => showSettingsPage('summary'));
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
   $('#sg_pgtab_roll').on('click', () => showSettingsPage('roll'));
+  $('#sg_pgtab_database').on('click', () => showSettingsPage('database'));
   $('#sg_pgtab_image').on('click', () => showSettingsPage('image'));
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
   $('#sg_gotoRollPage').on('click', () => showSettingsPage('roll'));
+
+  $('#sg_db_source').on('change', () => {
+    pullUiToSettings();
+    updateDatabaseUi();
+  });
+
+  $('#sg_db_isolation_enabled').on('change', () => {
+    pullUiToSettings();
+    updateDatabaseUi();
+  });
+
+  $('#sg_db_open_panel').on('click', async () => {
+    pullUiToSettings();
+    saveSettings();
+    showFloatingPanel();
+    await showFloatingDatabase();
+  });
+
+  $('#sg_db_copy_json').on('click', async () => {
+    pullUiToSettings();
+    saveSettings();
+    const payload = await loadDatabasePayload(ensureSettings());
+    if (!payload?.data) {
+      setStatus('暂无数据库可导出', 'warn');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload.data, null, 2));
+      setStatus('数据库 JSON 已复制', 'ok');
+    } catch (err) {
+      setStatus(`复制失败: ${err?.message || err}`, 'err');
+    }
+  });
 
   // 图像生成事件
   $('#sg_generateImage').on('click', async () => {
@@ -10683,6 +11002,14 @@ function setupSettingsPages() {
     pullUiToSettings(); saveSettings();
     await matchGalleryImage();
   });
+}
+
+function updateDatabaseUi() {
+  const s = ensureSettings();
+  const source = String(s.databaseSource || 'chat');
+  $('#sg_db_var_block').toggle(source === 'variable');
+  const isIsolation = !!s.databaseIsolationEnabled;
+  $('#sg_db_isolation_code').prop('disabled', !isIsolation);
 }
 
 function pullSettingsToUi() {
@@ -10828,6 +11155,14 @@ function pullSettingsToUi() {
   $('#sg_wiRollSystemPrompt').val(String(s.wiRollSystemPrompt || DEFAULT_ROLL_SYSTEM_PROMPT));
   $('#sg_roll_custom_block').toggle(String(s.wiRollProvider || 'custom') === 'custom');
   fillRollModelSelect(Array.isArray(s.wiRollCustomModelsCache) ? s.wiRollCustomModelsCache : [], s.wiRollCustomModel);
+
+  // 数据库模块
+  $('#sg_db_enabled').prop('checked', !!s.databaseEnabled);
+  $('#sg_db_source').val(String(s.databaseSource || 'chat'));
+  $('#sg_db_var_name').val(String(s.databaseVarName || 'table_data'));
+  $('#sg_db_isolation_enabled').prop('checked', !!s.databaseIsolationEnabled);
+  $('#sg_db_isolation_code').val(String(s.databaseIsolationCode || ''));
+  updateDatabaseUi();
 
   // 图像生成设置
   $('#sg_imageGenEnabled').prop('checked', !!s.imageGenEnabled);
@@ -11336,6 +11671,13 @@ function pullUiToSettings() {
   s.wiRollCustomStream = $('#sg_wiRollCustomStream').is(':checked');
   s.wiRollSystemPrompt = String($('#sg_wiRollSystemPrompt').val() || '').trim() || DEFAULT_ROLL_SYSTEM_PROMPT;
 
+  // 数据库模块
+  s.databaseEnabled = $('#sg_db_enabled').is(':checked');
+  s.databaseSource = String($('#sg_db_source').val() || 'chat');
+  s.databaseVarName = String($('#sg_db_var_name').val() || 'table_data').trim() || 'table_data';
+  s.databaseIsolationEnabled = $('#sg_db_isolation_enabled').is(':checked');
+  s.databaseIsolationCode = String($('#sg_db_isolation_code').val() || '').trim();
+
   // 图像生成设置
   s.imageGenEnabled = $('#sg_imageGenEnabled').is(':checked');
   s.novelaiApiKey = String($('#sg_novelaiApiKey').val() || '').trim();
@@ -11726,6 +12068,7 @@ function createFloatingPanel() {
           <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺️</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_image" title="图像生成">🖼️</button>
           <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
+          <button class="sg-floating-action-btn" id="sg_floating_database" title="查看数据库">🗄️</button>
           <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
           <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
         </div>
@@ -11773,12 +12116,36 @@ function createFloatingPanel() {
     showFloatingImageGen();
   });
 
+  $('#sg_floating_database').on('click', () => {
+    showFloatingDatabase();
+  });
+
 
   // Delegate inner refresh click
   $(document).on('click', '.sg-inner-refresh-btn', async (e) => {
     // Only handle if inside our panel
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     await refreshFloatingPanelContent();
+  });
+
+  $(document).on('click', '.sg-inner-db-refresh-btn', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    await showFloatingDatabase();
+  });
+
+  $(document).on('click', '.sg-inner-db-export-btn', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    if (!lastDatabasePayload) {
+      showToast('暂无数据库可导出', { kind: 'warn' });
+      return;
+    }
+    try {
+      const text = JSON.stringify(lastDatabasePayload, null, 2);
+      await navigator.clipboard.writeText(text);
+      showToast('数据库 JSON 已复制', { kind: 'ok' });
+    } catch (err) {
+      showToast(`复制失败: ${err?.message || err}`, { kind: 'err' });
+    }
   });
 
   $(document).on('click', '.sg-inner-map-reset-btn', async (e) => {
@@ -12215,9 +12582,20 @@ function updateFloatingPanelBody(html) {
   }
 }
 
+function setFloatingActionActive(activeId) {
+  const ids = ['sg_floating_show_report', 'sg_floating_show_map', 'sg_floating_show_image', 'sg_floating_roll_logs', 'sg_floating_database'];
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (id === activeId) el.classList.add('active');
+    else el.classList.remove('active');
+  });
+}
+
 function showFloatingImageGen() {
   const $body = $('#sg_floating_body');
   if (!$body.length) return;
+  setFloatingActionActive('sg_floating_show_image');
   const s = ensureSettings();
   if (!s.imageGenEnabled) {
     $body.html('<div class="sg-floating-loading">图像生成功能未启用</div>');
@@ -12245,6 +12623,7 @@ function showFloatingRollLogs() {
 
   const $body = $('#sg_floating_body');
   if (!$body.length) return;
+  setFloatingActionActive('sg_floating_roll_logs');
 
   const meta = getSummaryMeta();
   const logs = Array.isArray(meta?.rollLogs) ? meta.rollLogs : [];
@@ -12289,6 +12668,7 @@ function showFloatingRollLogs() {
 function showFloatingMap() {
   const $body = $('#sg_floating_body');
   if (!$body.length) return;
+  setFloatingActionActive('sg_floating_show_map');
   const s = ensureSettings();
   if (!s.mapEnabled) {
     $body.html('<div class="sg-floating-loading">地图功能未启用</div>');
@@ -12309,6 +12689,7 @@ function showFloatingMap() {
 function showFloatingReport() {
   const $body = $('#sg_floating_body');
   if (!$body.length) return;
+  setFloatingActionActive('sg_floating_show_report');
 
   // Use last cached content if available, otherwise show empty state
   if (lastFloatingContent) {
@@ -12320,6 +12701,36 @@ function showFloatingReport() {
       </div>
     `);
   }
+}
+
+async function showFloatingDatabase() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+  setFloatingActionActive('sg_floating_database');
+
+  const s = ensureSettings();
+  if (!s.databaseEnabled) {
+    $body.html('<div class="sg-floating-loading">数据库模块未启用</div>');
+    return;
+  }
+
+  $body.html('<div class="sg-floating-loading">正在读取数据库...</div>');
+  const { html, infoText } = await renderDatabaseView(s);
+
+  const header = `
+    <div class="sg-database-header">
+      <div>
+        <div class="sg-floating-title-sm">数据库</div>
+        <div class="sg-database-info">${escapeHtml(infoText || '')}</div>
+      </div>
+      <div class="sg-database-actions">
+        <button class="menu_button sg-btn sg-database-update-btn sg-inner-db-refresh-btn">刷新</button>
+        <button class="menu_button sg-btn sg-database-export-btn sg-inner-db-export-btn">复制JSON</button>
+      </div>
+    </div>
+  `;
+
+  $body.html(`${header}<div class="sg-database-view">${html}</div>`);
 }
 
 // -------------------- init --------------------
