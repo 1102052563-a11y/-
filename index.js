@@ -2255,6 +2255,152 @@ function getDatabasePromptBlocks() {
   return out.length ? out : [{ role: 'user', content: '' }];
 }
 
+function unwrapCombinedSettingsObject(rawText) {
+  if (!rawText) return null;
+  let data = null;
+  try { data = JSON.parse(rawText); } catch { return null; }
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { return null; }
+  }
+  for (let i = 0; i < 4; i += 1) {
+    if (!data || typeof data !== 'object') break;
+    const wrappers = ['data', 'payload', 'preset', 'settings', 'result', 'value'];
+    let changed = false;
+    for (const k of wrappers) {
+      const v = data?.[k];
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (t && (t.startsWith('{') || t.startsWith('['))) {
+          try { data = JSON.parse(t); changed = true; break; } catch { /* ignore */ }
+        }
+      } else if (v && typeof v === 'object') {
+        data = v;
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) break;
+  }
+  return data && typeof data === 'object' ? data : null;
+}
+
+function extractTemplatesFromSheetObject(obj) {
+  if (!obj || typeof obj !== 'object') return [];
+  const keys = Object.keys(obj).filter(k => k.startsWith('sheet_'));
+  if (!keys.length) return [];
+  const list = keys.map((k, idx) => {
+    const table = obj[k] || {};
+    const name = String(table.name || k).trim() || k;
+    const source = table.sourceData || {};
+    const feature = String(source.note || source.initNode || '').trim();
+    const prompt = String(source.updateNode || '').trim();
+    return {
+      name: `${name}模板`,
+      table: name,
+      feature,
+      prompt,
+      order: Number(table.orderNo ?? idx)
+    };
+  });
+  return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map(({ order, ...rest }) => rest);
+}
+
+function findTemplateListInObject(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  const keys = ['databaseTemplatesJson', 'templates', 'customTemplate', 'tableTemplate', 'tableTemplates', 'template', 'templateJson'];
+  for (const key of keys) {
+    if (!Object.hasOwn(obj, key)) continue;
+    const v = obj[key];
+    if (typeof v === 'string') {
+      try {
+        const parsed = JSON.parse(v);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === 'object') {
+          const fromSheets = extractTemplatesFromSheetObject(parsed);
+          if (fromSheets.length) return fromSheets;
+        }
+      } catch { /* ignore */ }
+    } else if (Array.isArray(v)) {
+      return v;
+    } else if (v && typeof v === 'object') {
+      const fromSheets = extractTemplatesFromSheetObject(v);
+      if (fromSheets.length) return fromSheets;
+    }
+  }
+  const fromSheets = extractTemplatesFromSheetObject(obj);
+  if (fromSheets.length) return fromSheets;
+  return null;
+}
+
+function findPromptBlocksInObject(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  const keys = ['databasePromptBlocksJson', 'promptBlocks', 'prompts', 'taskPrompt', 'updatePrompt', 'prompt'];
+  for (const key of keys) {
+    if (!Object.hasOwn(obj, key)) continue;
+    const v = obj[key];
+    if (typeof v === 'string') {
+      try {
+        const parsed = JSON.parse(v);
+        if (Array.isArray(parsed)) return parsed;
+      } catch { /* ignore */ }
+    } else if (Array.isArray(v)) {
+      return v;
+    }
+  }
+  const sys = String(obj.databasePromptSystem || obj.system || obj.sys || '').trim();
+  const user = String(obj.databasePromptUser || obj.user || '').trim();
+  const asst = String(obj.databasePromptAssistant || obj.assistant || '').trim();
+  const blocks = [];
+  if (sys) blocks.push({ role: 'system', content: sys });
+  if (user) blocks.push({ role: 'user', content: user });
+  if (asst) blocks.push({ role: 'assistant', content: asst });
+  return blocks.length ? blocks : null;
+}
+
+async function importDatabaseTemplatesAndPrompts() {
+  try {
+    const file = await pickFile('.json,application/json,.txt,text/plain');
+    if (!file) return;
+    const text = await readFileText(file);
+    const data = unwrapCombinedSettingsObject(text);
+    if (!data) {
+      setStatus('导入失败：文件不是有效 JSON', 'err');
+      return;
+    }
+
+    const templates = findTemplateListInObject(data);
+    const promptBlocks = findPromptBlocksInObject(data);
+
+    const s = ensureSettings();
+    let changed = false;
+    if (templates && templates.length) {
+      s.databaseTemplatesJson = JSON.stringify(templates, null, 2);
+      changed = true;
+    }
+    if (promptBlocks && promptBlocks.length) {
+      s.databasePromptBlocksJson = JSON.stringify(promptBlocks, null, 2);
+      const sys = promptBlocks.find(b => b.role === 'system')?.content || '';
+      const user = promptBlocks.find(b => b.role === 'user')?.content || '';
+      const asst = promptBlocks.find(b => b.role === 'assistant')?.content || '';
+      s.databasePromptSystem = String(sys || '').trim();
+      s.databasePromptUser = String(user || '').trim();
+      s.databasePromptAssistant = String(asst || '').trim();
+      changed = true;
+    }
+
+    if (!changed) {
+      setStatus('未找到可导入的模板/指令', 'warn');
+      return;
+    }
+
+    saveSettings();
+    pullSettingsToUi();
+    setStatus('已导入模板与指令 ✅', 'ok');
+  } catch (e) {
+    setStatus(`导入失败：${e?.message || e}`, 'err');
+  }
+}
+
 function renderDatabasePromptBlocks(blocks) {
   const $wrap = $('#sg_db_prompt_blocks');
   if (!$wrap.length) return;
@@ -10728,6 +10874,7 @@ function buildModalHtml() {
               </div>
               <div id="sg_db_prompt_blocks" class="sg-db-prompt-blocks"></div>
               <div class="sg-row sg-inline" style="margin-top:6px;">
+                <button class="menu_button sg-btn" id="sg_db_prompt_import">导入模板与指令</button>
                 <button class="menu_button sg-btn" id="sg_db_prompt_reset">恢复默认</button>
               </div>
             </div>
@@ -12079,6 +12226,10 @@ function setupSettingsPages() {
     pullUiToSettings();
     saveSettings();
     setStatus('数据库提示词已恢复默认', 'ok');
+  });
+
+  $('#sg_db_prompt_import').on('click', () => {
+    importDatabaseTemplatesAndPrompts();
   });
 
   $('#sg_db_prompt_add').on('click', () => {
