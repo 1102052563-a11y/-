@@ -11949,6 +11949,12 @@ function setupSettingsPages() {
     pullUiToSettings();
     saveSettings();
     const s = ensureSettings();
+    if (isDbUpdating) {
+      showToast('数据库更新中，请稍候…', { kind: 'warn' });
+      return;
+    }
+    $('#sg_db_manual_update').prop('disabled', true);
+    showToast('开始手动更新…', { kind: 'warn' });
     if (ensureSettings().databaseManualExtraHint) {
       const extra = prompt('输入额外提示词（仅本次手动更新生效）：', ensureSettings().databaseManualExtraHintText || '');
       if (extra != null) {
@@ -11958,7 +11964,7 @@ function setupSettingsPages() {
     }
     const { chunks, endFloor } = buildDatabaseChunksFromChat(s);
     if (!chunks.length) {
-      showToast('没有可更新的内容', { kind: 'warn' });
+      showToast('没有可更新的内容（未检测到新楼层）', { kind: 'warn' });
       return;
     }
     isDbUpdating = true;
@@ -11977,6 +11983,7 @@ function setupSettingsPages() {
       });
     } finally {
       isDbUpdating = false;
+      $('#sg_db_manual_update').prop('disabled', false);
     }
   });
 
