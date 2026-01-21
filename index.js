@@ -2245,15 +2245,6 @@ async function applyBoundWorldInfoToSettings() {
     greenWI = await resolveChatbookFileName();
     if (greenWI) await setChatMetaValue(META_KEYS.boundGreenWI, greenWI);
   }
-  if (!greenWI) {
-    greenWI = generateBoundWorldInfoName('green');
-    try {
-      await createWorldInfoFile(greenWI, '由 StoryGuide 自动创建');
-    } catch (e) {
-      console.warn('[StoryGuide] 自动创建绿灯世界书失败:', e);
-    }
-    await setChatMetaValue(META_KEYS.boundGreenWI, greenWI);
-  }
 
   // 绿灯世界书：优先使用已解析的绑定文件名，避免切换/刷新后产生新文件
   s.summaryToWorldInfo = true;
