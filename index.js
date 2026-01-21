@@ -99,7 +99,7 @@ const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个"剧情索引匹配"助手。
 
 【返回要求】
 - 返回条目数量应 <= maxPick
-- 分类控制：人物条目 <= maxCharacters，装备条目 <= maxEquipments，剧情条目 <= maxPlot`;
+- 分类控制：人物 <= maxCharacters，装备 <= maxEquipments，势力 <= maxFactions，成就 <= maxAchievements，副职业 <= maxSubProfessions，任务 <= maxQuests，剧情 <= maxPlot`;
 
 const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】
 {{userMessage}}
@@ -114,6 +114,10 @@ const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】
 - 总数不超过 {{maxPick}} 条
 - 人物条目不超过 {{maxCharacters}} 条
 - 装备条目不超过 {{maxEquipments}} 条
+- 势力条目不超过 {{maxFactions}} 条
+- 成就条目不超过 {{maxAchievements}} 条
+- 副职业条目不超过 {{maxSubProfessions}} 条
+- 任务条目不超过 {{maxQuests}} 条
 - 剧情条目不超过 {{maxPlot}} 条
 
 请从候选中选出与当前剧情最相关的条目，优先选择：与当前提到的人物/装备相关的条目、时间较久远的相关剧情。仅输出 JSON。`;
@@ -448,6 +452,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 分类最大索引数
   wiTriggerMaxCharacters: 2, // 最多索引多少个人物条目
   wiTriggerMaxEquipments: 2, // 最多索引多少个装备条目
+  wiTriggerMaxFactions: 2,
+  wiTriggerMaxAchievements: 2,
+  wiTriggerMaxSubProfessions: 2,
+  wiTriggerMaxQuests: 2,
   wiTriggerMaxPlot: 3,       // 最多索引多少个剧情条目（优先较久远的）
   // 相关度阈值（0~1，越大越严格）
   wiTriggerMinScore: 0.08,
@@ -7154,6 +7162,52 @@ function getBlueIndexEntriesFast() {
   return (Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : []);
 }
 
+function detectIndexEntryTypeByTitle(title, settings) {
+  const s = settings || ensureSettings();
+  const t = String(title || '').trim();
+  if (!t) return 'plot';
+  const prefixes = [
+    { type: 'character', prefix: String(s.characterEntryPrefix || '人物') },
+    { type: 'equipment', prefix: String(s.equipmentEntryPrefix || '装备') },
+    { type: 'faction', prefix: String(s.factionEntryPrefix || '势力') },
+    { type: 'achievement', prefix: String(s.achievementEntryPrefix || '成就') },
+    { type: 'subProfession', prefix: String(s.subProfessionEntryPrefix || '副职业') },
+    { type: 'quest', prefix: String(s.questEntryPrefix || '任务') },
+  ];
+  for (const p of prefixes) {
+    const pref = String(p.prefix || '').trim();
+    if (!pref) continue;
+    if (t.startsWith(`${pref}｜`) || t.includes(`${pref}｜`)) return p.type;
+  }
+  return 'plot';
+}
+
+function addStructuredIndexCandidates(out, entriesCache, prefix, type, seen) {
+  for (const entry of Object.values(entriesCache || {})) {
+    if (!entry || entry.targetType !== 'green') continue;
+    if (!entry.name || !entry.indexId) continue;
+    const key = buildStructuredEntryKey(prefix, entry.name, entry.indexId);
+    const kws = [key];
+    if (Array.isArray(entry.aliases)) {
+      for (const a of entry.aliases) {
+        const alias = String(a || '').trim();
+        if (!alias) continue;
+        if (kws.length >= 6) break;
+        kws.push(alias);
+      }
+    }
+    const dedupKey = `${prefix}__${entry.name}__${entry.indexId}`;
+    if (seen && seen.has(dedupKey)) continue;
+    if (seen) seen.add(dedupKey);
+    out.push({
+      title: `${prefix}｜${entry.name}`,
+      summary: String(entry.content || '').trim(),
+      keywords: kws,
+      type,
+    });
+  }
+}
+
 function collectBlueIndexCandidates() {
   const s = ensureSettings();
   const meta = getSummaryMeta();
@@ -7169,7 +7223,7 @@ function collectBlueIndexCandidates() {
     const key = `${title}__${summary.slice(0, 24)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'), summary, keywords });
+    out.push({ title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'), summary, keywords, type: 'plot' });
   }
 
   const fromImported = getBlueIndexEntriesFast();
@@ -7181,9 +7235,73 @@ function collectBlueIndexCandidates() {
     const key = `${title}__${summary.slice(0, 24)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'), summary, keywords });
+    out.push({
+      title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'),
+      summary,
+      keywords,
+      type: detectIndexEntryTypeByTitle(title, s),
+    });
   }
 
+  addStructuredIndexCandidates(out, meta.characterEntries, String(s.characterEntryPrefix || '人物'), 'character', seen);
+  addStructuredIndexCandidates(out, meta.equipmentEntries, String(s.equipmentEntryPrefix || '装备'), 'equipment', seen);
+  addStructuredIndexCandidates(out, meta.factionEntries, String(s.factionEntryPrefix || '势力'), 'faction', seen);
+  addStructuredIndexCandidates(out, meta.achievementEntries, String(s.achievementEntryPrefix || '成就'), 'achievement', seen);
+  addStructuredIndexCandidates(out, meta.subProfessionEntries, String(s.subProfessionEntryPrefix || '副职业'), 'subProfession', seen);
+  addStructuredIndexCandidates(out, meta.questEntries, String(s.questEntryPrefix || '任务'), 'quest', seen);
+
+  return out;
+}
+
+function getIndexTypeLimits(settings) {
+  const s = settings || ensureSettings();
+  return {
+    maxCharacters: clampInt(s.wiTriggerMaxCharacters, 0, 10, 2),
+    maxEquipments: clampInt(s.wiTriggerMaxEquipments, 0, 10, 2),
+    maxFactions: clampInt(s.wiTriggerMaxFactions, 0, 10, 2),
+    maxAchievements: clampInt(s.wiTriggerMaxAchievements, 0, 10, 2),
+    maxSubProfessions: clampInt(s.wiTriggerMaxSubProfessions, 0, 10, 2),
+    maxQuests: clampInt(s.wiTriggerMaxQuests, 0, 10, 2),
+    maxPlot: clampInt(s.wiTriggerMaxPlot, 0, 10, 3),
+  };
+}
+
+function normalizeIndexEntryType(entry, settings) {
+  if (entry?.type) return entry.type;
+  return detectIndexEntryTypeByTitle(entry?.title || '', settings);
+}
+
+function applyIndexTypeLimits(picked, settings, maxEntries) {
+  const limits = getIndexTypeLimits(settings);
+  const counts = {
+    character: 0,
+    equipment: 0,
+    faction: 0,
+    achievement: 0,
+    subProfession: 0,
+    quest: 0,
+    plot: 0,
+  };
+  const maxByType = {
+    character: limits.maxCharacters,
+    equipment: limits.maxEquipments,
+    faction: limits.maxFactions,
+    achievement: limits.maxAchievements,
+    subProfession: limits.maxSubProfessions,
+    quest: limits.maxQuests,
+    plot: limits.maxPlot,
+  };
+
+  const out = [];
+  for (const item of picked) {
+    const e = item?.e || item;
+    const type = normalizeIndexEntryType(e, settings);
+    const maxAllowed = maxByType[type] ?? maxEntries;
+    if (Number.isFinite(maxAllowed) && maxAllowed >= 0 && counts[type] >= maxAllowed) continue;
+    counts[type] += 1;
+    out.push(item);
+    if (out.length >= maxEntries) break;
+  }
   return out;
 }
 
@@ -7205,28 +7323,43 @@ function pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, 
     if (score >= minScore) scored.push({ e, score });
   }
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, maxEntries);
+  return applyIndexTypeLimits(scored, ensureSettings(), maxEntries);
 }
 
 function buildIndexPromptMessages(recentText, userText, candidatesForModel, maxPick) {
   const s = ensureSettings();
+  const maxCharacters = clampInt(s.wiTriggerMaxCharacters, 0, 10, 2);
+  const maxEquipments = clampInt(s.wiTriggerMaxEquipments, 0, 10, 2);
+  const maxFactions = clampInt(s.wiTriggerMaxFactions, 0, 10, 2);
+  const maxAchievements = clampInt(s.wiTriggerMaxAchievements, 0, 10, 2);
+  const maxSubProfessions = clampInt(s.wiTriggerMaxSubProfessions, 0, 10, 2);
+  const maxQuests = clampInt(s.wiTriggerMaxQuests, 0, 10, 2);
+  const maxPlot = clampInt(s.wiTriggerMaxPlot, 0, 10, 3);
+
   const sys = String(s.wiIndexSystemPrompt || DEFAULT_INDEX_SYSTEM_PROMPT).trim() || DEFAULT_INDEX_SYSTEM_PROMPT;
   const tmpl = String(s.wiIndexUserTemplate || DEFAULT_INDEX_USER_TEMPLATE).trim() || DEFAULT_INDEX_USER_TEMPLATE;
 
   const candidatesJson = JSON.stringify(candidatesForModel, null, 0);
-
-  const user = tmpl
+  const replaceTokens = (str) => String(str || '')
     .replaceAll('{{userMessage}}', String(userText || ''))
     .replaceAll('{{recentText}}', String(recentText || ''))
     .replaceAll('{{candidates}}', candidatesJson)
-    .replaceAll('{{maxPick}}', String(maxPick));
+    .replaceAll('{{maxPick}}', String(maxPick))
+    .replaceAll('{{maxCharacters}}', String(maxCharacters))
+    .replaceAll('{{maxEquipments}}', String(maxEquipments))
+    .replaceAll('{{maxFactions}}', String(maxFactions))
+    .replaceAll('{{maxAchievements}}', String(maxAchievements))
+    .replaceAll('{{maxSubProfessions}}', String(maxSubProfessions))
+    .replaceAll('{{maxQuests}}', String(maxQuests))
+    .replaceAll('{{maxPlot}}', String(maxPlot));
 
+  const user = replaceTokens(tmpl);
   const enforced = user + `
 
 ` + INDEX_JSON_REQUIREMENT.replaceAll('maxPick', String(maxPick));
 
   return [
-    { role: 'system', content: sys },
+    { role: 'system', content: replaceTokens(sys) },
     { role: 'user', content: enforced },
   ];
 }
@@ -7255,7 +7388,7 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
     const summary0 = String(e.summary || '').trim();
     const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '…') : summary0;
     const kws = Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : [];
-    return { id: i, title: title || '条目', summary, keywords: kws };
+    return { id: i, title: title || '条目', summary, keywords: kws, type: normalizeIndexEntryType(e, s) };
   });
 
   const messages = buildIndexPromptMessages(recentText, userText, candidatesForModel, maxEntries);
@@ -7311,7 +7444,7 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
     if (origin) picked.push({ e: origin, score: Number(shortlist[id]?.score || 0) });
     if (picked.length >= maxEntries) break;
   }
-  return picked;
+  return applyIndexTypeLimits(picked, s, maxEntries);
 }
 
 
@@ -10123,6 +10256,26 @@ function buildModalHtml() {
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
+                  <label>最多索引势力数</label>
+                  <input id="sg_wiTriggerMaxFactions" type="number" min="0" max="10" placeholder="2">
+                </div>
+                <div class="sg-field">
+                  <label>最多索引成就数</label>
+                  <input id="sg_wiTriggerMaxAchievements" type="number" min="0" max="10" placeholder="2">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>最多索引副职业数</label>
+                  <input id="sg_wiTriggerMaxSubProfessions" type="number" min="0" max="10" placeholder="2">
+                </div>
+                <div class="sg-field">
+                  <label>最多索引任务数</label>
+                  <input id="sg_wiTriggerMaxQuests" type="number" min="0" max="10" placeholder="2">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
                   <label>最多索引剧情数（优先久远）</label>
                   <input id="sg_wiTriggerMaxPlot" type="number" min="0" max="10" placeholder="3">
                 </div>
@@ -10164,11 +10317,11 @@ function buildModalHtml() {
   </div>
   <div class="sg-field">
     <label>索引模板（User，可选）</label>
-    <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="支持占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}"></textarea>
+    <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="支持占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}"></textarea>
   </div>
   <div class="sg-row sg-inline">
     <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示词</button>
-    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}}。插件会强制要求输出 JSON：{pickedIds:number[]}。</div>
+    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}。插件会强制要求输出 JSON：{pickedIds:number[]}。</div>
   </div>
 
   <div class="sg-card sg-subcard" id="sg_index_custom_block" style="display:none">
@@ -11049,6 +11202,14 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
+  $('#sg_wiTriggerMaxFactions, #sg_wiTriggerMaxAchievements, #sg_wiTriggerMaxSubProfessions, #sg_wiTriggerMaxQuests').on('input change', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryInfoLabel();
+    updateBlueIndexInfoLabel();
+    updateSummaryManualRangeHint(false);
+  });
+
   $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_imageGenProfilesEnabled, #sg_imageGenCustomFemalePrompt1, #sg_imageGenCustomFemalePrompt2, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt, #sg_imageGenProfiles').on('input change', () => {
     pullUiToSettings();
     saveSettings();
@@ -11850,6 +12011,10 @@ function pullSettingsToUi() {
   $('#sg_wiTriggerMaxEntries').val(s.wiTriggerMaxEntries || 4);
   $('#sg_wiTriggerMaxCharacters').val(s.wiTriggerMaxCharacters ?? 2);
   $('#sg_wiTriggerMaxEquipments').val(s.wiTriggerMaxEquipments ?? 2);
+  $('#sg_wiTriggerMaxFactions').val(s.wiTriggerMaxFactions ?? 2);
+  $('#sg_wiTriggerMaxAchievements').val(s.wiTriggerMaxAchievements ?? 2);
+  $('#sg_wiTriggerMaxSubProfessions').val(s.wiTriggerMaxSubProfessions ?? 2);
+  $('#sg_wiTriggerMaxQuests').val(s.wiTriggerMaxQuests ?? 2);
   $('#sg_wiTriggerMaxPlot').val(s.wiTriggerMaxPlot ?? 3);
   $('#sg_wiTriggerMinScore').val(s.wiTriggerMinScore ?? 0.08);
   $('#sg_wiTriggerMaxKeywords').val(s.wiTriggerMaxKeywords || 24);
@@ -12374,6 +12539,10 @@ function pullUiToSettings() {
   s.wiTriggerMaxEntries = clampInt($('#sg_wiTriggerMaxEntries').val(), 1, 20, s.wiTriggerMaxEntries || 4);
   s.wiTriggerMaxCharacters = clampInt($('#sg_wiTriggerMaxCharacters').val(), 0, 10, s.wiTriggerMaxCharacters ?? 2);
   s.wiTriggerMaxEquipments = clampInt($('#sg_wiTriggerMaxEquipments').val(), 0, 10, s.wiTriggerMaxEquipments ?? 2);
+  s.wiTriggerMaxFactions = clampInt($('#sg_wiTriggerMaxFactions').val(), 0, 10, s.wiTriggerMaxFactions ?? 2);
+  s.wiTriggerMaxAchievements = clampInt($('#sg_wiTriggerMaxAchievements').val(), 0, 10, s.wiTriggerMaxAchievements ?? 2);
+  s.wiTriggerMaxSubProfessions = clampInt($('#sg_wiTriggerMaxSubProfessions').val(), 0, 10, s.wiTriggerMaxSubProfessions ?? 2);
+  s.wiTriggerMaxQuests = clampInt($('#sg_wiTriggerMaxQuests').val(), 0, 10, s.wiTriggerMaxQuests ?? 2);
   s.wiTriggerMaxPlot = clampInt($('#sg_wiTriggerMaxPlot').val(), 0, 10, s.wiTriggerMaxPlot ?? 3);
   s.wiTriggerMinScore = clampFloat($('#sg_wiTriggerMinScore').val(), 0, 1, (s.wiTriggerMinScore ?? 0.08));
   s.wiTriggerMaxKeywords = clampInt($('#sg_wiTriggerMaxKeywords').val(), 1, 200, s.wiTriggerMaxKeywords || 24);
