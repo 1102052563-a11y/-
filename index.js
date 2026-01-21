@@ -1332,7 +1332,7 @@ function renderQuickOptionsHtml(context = 'inline') {
   const buttons = options.map((opt, i) => {
     const label = escapeHtml(opt.label || `选项${i + 1} `);
     const prompt = escapeHtml(opt.prompt || '');
-    return `<button class="sg-quick-option" data - sg - prompt="${prompt}" title= "${prompt}" > ${label}</button> `;
+    return `<button class="sg-quick-option" data-sg-prompt="${prompt}" title="${prompt}">${label}</button>`;
   }).join('');
 
   return `<div class="sg-quick-options" > ${buttons}</div> `;
@@ -1357,7 +1357,7 @@ function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
 
     const escapedText = escapeHtml(cleaned);
     // 按钮直接显示完整选项内容，点击后输入到聊天框
-    return `<button class="sg-quick-option sg-dynamic-option" data - sg - prompt="${escapedText}" title= "点击输入到聊天框" > ${escapedText}</button> `;
+    return `<button class="sg-quick-option sg-dynamic-option" data-sg-prompt="${escapedText}" title="点击输入到聊天框">${escapedText}</button>`;
   }).filter(Boolean).join('');
 
   if (!buttons) return '';
