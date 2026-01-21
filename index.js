@@ -2341,8 +2341,8 @@ async function onChatSwitched() {
 
   // 如果已经创建过绑定（即使 greenWI 为空也尝试恢复）
   if (autoBindCreated || greenWI || blueWI) {
-    console.log('[StoryGuide] 恢复已有绑定');
-    await applyBoundWorldInfoToSettings();
+    console.log('[StoryGuide] 已检测到绑定，但已禁用自动覆盖世界书设置');
+    return;
   } else {
     // 不再自动为新聊天创建世界书（用户反馈：每次新对话都会创建）
     console.log('[StoryGuide] 新聊天，跳过自动创建世界书');
