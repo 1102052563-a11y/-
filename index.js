@@ -367,6 +367,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryReadStatData: false,
   summaryStatVarName: 'stat_data',
 
+  // 结构化条目频率（按楼层计数）
+  structuredEntriesEvery: 1,
+  structuredEntriesCountMode: 'assistant',
+
   // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
   summaryTemperature: 0.4,
@@ -377,6 +381,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   megaSummarySystemPrompt: '',
   megaSummaryUserTemplate: '',
   megaSummaryCommentPrefix: '大总结',
+  megaSummaryIndexPrefix: 'R-',
+  megaSummaryIndexPad: 3,
+  megaSummaryIndexStart: 1,
 
   // 自定义总结提示词（可选）
   // - system：决定总结风格/重点
@@ -512,7 +519,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   customSystemPreamble: '',     // 附加在默认 system 之后
   customConstraints: '',        // 附加在默认 constraints 之后
 
-  // ===== 结构化世界书条目（人物/装备/势力/成就/副职业/任务） =====
+  // ===== 结构化世界书条目（人物/装备/物品栏/势力/成就/副职业/任务） =====
   structuredEntriesEnabled: true,
   characterEntriesEnabled: true,
   equipmentEntriesEnabled: true,
@@ -685,7 +692,9 @@ let lastSummaryText = '';
 let refreshTimer = null;
 let appendTimer = null;
 let summaryTimer = null;
+let structuredTimer = null;
 let isSummarizing = false;
+let isStructuring = false;
 let summaryCancelled = false;
 let sgToastTimer = null;
 
@@ -1419,8 +1428,11 @@ function getDefaultSummaryMeta() {
   return {
     lastFloor: 0,
     lastChatLen: 0,
+    lastStructuredFloor: 0,
+    lastStructuredChatLen: 0,
     // 用于“索引编号触发”（A-001/A-002…）的递增计数器（按聊天存储）
     nextIndex: 1,
+    nextMegaIndex: 1,
     megaSummaryCount: 0,
     history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
     wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
@@ -3965,23 +3977,24 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
   let keywords = modelKeywords;
 
   if (String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId') {
-    if (!Number.isFinite(Number(meta.nextIndex))) {
+    if (!Number.isFinite(Number(meta.nextMegaIndex))) {
       let maxN = 0;
-      const pref = String(s.summaryIndexPrefix || 'A-');
+      const pref = String(s.megaSummaryIndexPrefix || 'R-');
       const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
       for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
+        if (!h?.isMega) continue;
         const id0 = String(h?.indexId || '').trim();
         const m = id0.match(re);
         if (m) maxN = Math.max(maxN, Number.parseInt(m[1], 10) || 0);
       }
-      meta.nextIndex = Math.max(clampInt(s.summaryIndexStart, 1, 1000000, 1), maxN + 1);
+      meta.nextMegaIndex = Math.max(clampInt(s.megaSummaryIndexStart, 1, 1000000, 1), maxN + 1);
     }
-    const pref = String(s.summaryIndexPrefix || 'A-');
-    const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
-    const n = clampInt(meta.nextIndex, 1, 100000000, 1);
+    const pref = String(s.megaSummaryIndexPrefix || 'R-');
+    const pad = clampInt(s.megaSummaryIndexPad, 1, 12, 3);
+    const n = clampInt(meta.nextMegaIndex, 1, 100000000, 1);
     indexId = `${pref}${String(n).padStart(pad, '0')}`;
     keywords = [indexId];
-    meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
+    meta.nextMegaIndex = clampInt(Number(meta.nextMegaIndex) + 1, 1, 1000000000, Number(meta.nextMegaIndex) + 1);
   }
 
   const range = {
@@ -4442,6 +4455,112 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
     deletedSubProfessions: Array.isArray(parsed.deletedSubProfessions) ? parsed.deletedSubProfessions : [],
     deletedQuests: Array.isArray(parsed.deletedQuests) ? parsed.deletedQuests : [],
   };
+}
+
+async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta, settings, statData = null) {
+  const s = settings || ensureSettings();
+  if (!chunkText) return false;
+  if (!s.structuredEntriesEnabled) return false;
+  if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) return false;
+
+  const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, statData);
+  if (!structuredResult) return false;
+
+  // 写入/更新人物条目（去重由 writeOrUpdate 内部处理）
+  if (s.characterEntriesEnabled && structuredResult.characters?.length) {
+    console.log(`[StoryGuide] Processing ${structuredResult.characters.length} character(s)`);
+    for (const char of structuredResult.characters) {
+      await writeOrUpdateCharacterEntry(char, meta, s);
+    }
+  }
+  // 写入/更新装备条目
+  if (s.equipmentEntriesEnabled && structuredResult.equipments?.length) {
+    console.log(`[StoryGuide] Processing ${structuredResult.equipments.length} equipment(s)`);
+    for (const equip of structuredResult.equipments) {
+      await writeOrUpdateEquipmentEntry(equip, meta, s);
+    }
+  }
+  if (s.inventoryEntriesEnabled && structuredResult.inventories?.length) {
+    console.log(`[StoryGuide] Processing ${structuredResult.inventories.length} inventory item(s)`);
+    for (const item of structuredResult.inventories) {
+      await writeOrUpdateInventoryEntry(item, meta, s);
+    }
+  }
+  // 写入/更新势力条目
+  if (s.factionEntriesEnabled && structuredResult.factions?.length) {
+    console.log(`[StoryGuide] Processing ${structuredResult.factions.length} faction(s)`);
+    for (const faction of structuredResult.factions) {
+      await writeOrUpdateFactionEntry(faction, meta, s);
+    }
+  }
+  // 写入/更新成就条目
+  if (s.achievementEntriesEnabled && structuredResult.achievements?.length) {
+    console.log(`[StoryGuide] Processing ${structuredResult.achievements.length} achievement(s)`);
+    for (const achievement of structuredResult.achievements) {
+      await writeOrUpdateAchievementEntry(achievement, meta, s);
+    }
+  }
+  // 写入/更新副职业条目
+  if (s.subProfessionEntriesEnabled && structuredResult.subProfessions?.length) {
+    console.log(`[StoryGuide] Processing ${structuredResult.subProfessions.length} sub profession(s)`);
+    for (const subProfession of structuredResult.subProfessions) {
+      await writeOrUpdateSubProfessionEntry(subProfession, meta, s);
+    }
+  }
+  // 写入/更新任务条目
+  if (s.questEntriesEnabled && structuredResult.quests?.length) {
+    console.log(`[StoryGuide] Processing ${structuredResult.quests.length} quest(s)`);
+    for (const quest of structuredResult.quests) {
+      await writeOrUpdateQuestEntry(quest, meta, s);
+    }
+  }
+
+  // 处理删除的条目
+  if (structuredResult.deletedCharacters?.length) {
+    console.log(`[StoryGuide] Deleting ${structuredResult.deletedCharacters.length} character(s)`);
+    for (const charName of structuredResult.deletedCharacters) {
+      await deleteCharacterEntry(charName, meta, s);
+    }
+  }
+  if (structuredResult.deletedEquipments?.length) {
+    console.log(`[StoryGuide] Deleting ${structuredResult.deletedEquipments.length} equipment(s)`);
+    for (const equipName of structuredResult.deletedEquipments) {
+      await deleteEquipmentEntry(equipName, meta, s);
+    }
+  }
+  if (structuredResult.deletedInventories?.length) {
+    console.log(`[StoryGuide] Deleting ${structuredResult.deletedInventories.length} inventory item(s)`);
+    for (const itemName of structuredResult.deletedInventories) {
+      await deleteInventoryEntry(itemName, meta, s);
+    }
+  }
+  if (structuredResult.deletedFactions?.length) {
+    console.log(`[StoryGuide] Deleting ${structuredResult.deletedFactions.length} faction(s)`);
+    for (const factionName of structuredResult.deletedFactions) {
+      await deleteFactionEntry(factionName, meta, s);
+    }
+  }
+  if (structuredResult.deletedAchievements?.length) {
+    console.log(`[StoryGuide] Deleting ${structuredResult.deletedAchievements.length} achievement(s)`);
+    for (const achievementName of structuredResult.deletedAchievements) {
+      await deleteAchievementEntry(achievementName, meta, s);
+    }
+  }
+  if (structuredResult.deletedSubProfessions?.length) {
+    console.log(`[StoryGuide] Deleting ${structuredResult.deletedSubProfessions.length} sub profession(s)`);
+    for (const subProfessionName of structuredResult.deletedSubProfessions) {
+      await deleteSubProfessionEntry(subProfessionName, meta, s);
+    }
+  }
+  if (structuredResult.deletedQuests?.length) {
+    console.log(`[StoryGuide] Deleting ${structuredResult.deletedQuests.length} quest(s)`);
+    for (const questName of structuredResult.deletedQuests) {
+      await deleteQuestEntry(questName, meta, s);
+    }
+  }
+
+  await setSummaryMeta(meta);
+  return true;
 }
 
 // 构建条目的 key（用于世界书触发词和去重）
@@ -5795,106 +5914,13 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
       try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
 
-      // 生成结构化世界书条目（人物/装备/势力/成就/副职业/任务 - 与剧情总结同一事务）
+      // 生成结构化世界书条目（人物/装备/物品栏/势力/成就/副职业/任务 - 与剧情总结同一事务）
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         try {
-          const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
-          console.log('[StoryGuide] Structured entries result:', structuredResult);
-          if (structuredResult) {
-            // 写入/更新人物条目（去重由 writeOrUpdate 内部处理）
-            if (s.characterEntriesEnabled && structuredResult.characters?.length) {
-              console.log(`[StoryGuide] Processing ${structuredResult.characters.length} character(s)`);
-              for (const char of structuredResult.characters) {
-                await writeOrUpdateCharacterEntry(char, meta, s);
-              }
-            }
-            // 写入/更新装备条目
-            if (s.equipmentEntriesEnabled && structuredResult.equipments?.length) {
-              console.log(`[StoryGuide] Processing ${structuredResult.equipments.length} equipment(s)`);
-              for (const equip of structuredResult.equipments) {
-                await writeOrUpdateEquipmentEntry(equip, meta, s);
-              }
-            }
-            if (s.inventoryEntriesEnabled && structuredResult.inventories?.length) {
-              console.log(`[StoryGuide] Processing ${structuredResult.inventories.length} inventory item(s)`);
-              for (const item of structuredResult.inventories) {
-                await writeOrUpdateInventoryEntry(item, meta, s);
-              }
-            }
-            // 写入/更新势力条目
-            if (s.factionEntriesEnabled && structuredResult.factions?.length) {
-              console.log(`[StoryGuide] Processing ${structuredResult.factions.length} faction(s)`);
-              for (const faction of structuredResult.factions) {
-                await writeOrUpdateFactionEntry(faction, meta, s);
-              }
-            }
-            // 写入/更新成就条目
-            if (s.achievementEntriesEnabled && structuredResult.achievements?.length) {
-              console.log(`[StoryGuide] Processing ${structuredResult.achievements.length} achievement(s)`);
-              for (const achievement of structuredResult.achievements) {
-                await writeOrUpdateAchievementEntry(achievement, meta, s);
-              }
-            }
-            // 写入/更新副职业条目
-            if (s.subProfessionEntriesEnabled && structuredResult.subProfessions?.length) {
-              console.log(`[StoryGuide] Processing ${structuredResult.subProfessions.length} sub profession(s)`);
-              for (const subProfession of structuredResult.subProfessions) {
-                await writeOrUpdateSubProfessionEntry(subProfession, meta, s);
-              }
-            }
-            // 写入/更新任务条目
-            if (s.questEntriesEnabled && structuredResult.quests?.length) {
-              console.log(`[StoryGuide] Processing ${structuredResult.quests.length} quest(s)`);
-              for (const quest of structuredResult.quests) {
-                await writeOrUpdateQuestEntry(quest, meta, s);
-              }
-            }
-
-            // 处理删除的条目
-            if (structuredResult.deletedCharacters?.length) {
-              console.log(`[StoryGuide] Deleting ${structuredResult.deletedCharacters.length} character(s)`);
-              for (const charName of structuredResult.deletedCharacters) {
-                await deleteCharacterEntry(charName, meta, s);
-              }
-            }
-            if (structuredResult.deletedEquipments?.length) {
-              console.log(`[StoryGuide] Deleting ${structuredResult.deletedEquipments.length} equipment(s)`);
-              for (const equipName of structuredResult.deletedEquipments) {
-                await deleteEquipmentEntry(equipName, meta, s);
-              }
-            }
-            if (structuredResult.deletedInventories?.length) {
-              console.log(`[StoryGuide] Deleting ${structuredResult.deletedInventories.length} inventory item(s)`);
-              for (const itemName of structuredResult.deletedInventories) {
-                await deleteInventoryEntry(itemName, meta, s);
-              }
-            }
-            if (structuredResult.deletedFactions?.length) {
-              console.log(`[StoryGuide] Deleting ${structuredResult.deletedFactions.length} faction(s)`);
-              for (const factionName of structuredResult.deletedFactions) {
-                await deleteFactionEntry(factionName, meta, s);
-              }
-            }
-            if (structuredResult.deletedAchievements?.length) {
-              console.log(`[StoryGuide] Deleting ${structuredResult.deletedAchievements.length} achievement(s)`);
-              for (const achievementName of structuredResult.deletedAchievements) {
-                await deleteAchievementEntry(achievementName, meta, s);
-              }
-            }
-            if (structuredResult.deletedSubProfessions?.length) {
-              console.log(`[StoryGuide] Deleting ${structuredResult.deletedSubProfessions.length} sub profession(s)`);
-              for (const subProfessionName of structuredResult.deletedSubProfessions) {
-                await deleteSubProfessionEntry(subProfessionName, meta, s);
-              }
-            }
-            if (structuredResult.deletedQuests?.length) {
-              console.log(`[StoryGuide] Deleting ${structuredResult.deletedQuests.length} quest(s)`);
-              for (const questName of structuredResult.deletedQuests) {
-                await deleteQuestEntry(questName, meta, s);
-              }
-            }
-
-            await setSummaryMeta(meta);
+          const structuredOk = await processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
+          if (structuredOk && affectsProgress) {
+            meta.lastStructuredFloor = toFloor;
+            meta.lastStructuredChatLen = chat.length;
           }
         } catch (e) {
           console.warn('[StoryGuide] Structured entries generation failed:', e);
@@ -6053,6 +6079,116 @@ async function maybeAutoSummary(reason = '') {
   if (floorNow <= last) return;
 
   await runSummary({ reason: 'auto' });
+}
+
+function scheduleAutoStructuredEntries(reason = '') {
+  const s = ensureSettings();
+  if (!s.enabled) return;
+  if (!s.structuredEntriesEnabled) return;
+  if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) return;
+  const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
+  if (structuredTimer) clearTimeout(structuredTimer);
+  structuredTimer = setTimeout(() => {
+    structuredTimer = null;
+    maybeAutoStructuredEntries(reason).catch(() => void 0);
+  }, delay);
+}
+
+async function maybeAutoStructuredEntries(reason = '') {
+  const s = ensureSettings();
+  if (!s.enabled) return;
+  if (!s.structuredEntriesEnabled) return;
+  if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) return;
+  if (isStructuring || isSummarizing) return;
+
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+  const every = clampInt(s.structuredEntriesEvery, 1, 200, 1);
+  const floorNow = computeFloorCount(chat, mode);
+  if (floorNow <= 0) return;
+  if (floorNow % every !== 0) return;
+
+  const meta = getSummaryMeta();
+  const last = Number(meta?.lastStructuredFloor || 0);
+  if (floorNow <= last) return;
+
+  await runStructuredEntries({ reason: 'auto' });
+}
+
+async function runStructuredEntries({ reason = 'auto' } = {}) {
+  const s = ensureSettings();
+  if (!s.enabled) return 0;
+  if (!s.structuredEntriesEnabled) return 0;
+  if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) return 0;
+  if (isStructuring) return 0;
+
+  isStructuring = true;
+  try {
+    const ctx = SillyTavern.getContext();
+    const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+    if (!chat.length) return 0;
+
+    const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+    const every = clampInt(s.structuredEntriesEvery, 1, 200, 1);
+    const floorNow = computeFloorCount(chat, mode);
+
+    let meta = getSummaryMeta();
+    if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
+
+    const segments = [];
+    if (reason === 'auto' && meta.lastStructuredChatLen > 0 && meta.lastStructuredChatLen < chat.length) {
+      const startIdx = meta.lastStructuredChatLen;
+      const fromFloor = Math.max(1, Number(meta.lastStructuredFloor || 0) + 1);
+      const toFloor = floorNow;
+      const endIdx = Math.max(0, chat.length - 1);
+      segments.push({ startIdx, endIdx, fromFloor, toFloor, floorNow });
+    } else {
+      const startIdx = findStartIndexForLastNFloors(chat, mode, every);
+      const fromFloor = Math.max(1, floorNow - every + 1);
+      const toFloor = floorNow;
+      const endIdx = Math.max(0, chat.length - 1);
+      segments.push({ startIdx, endIdx, fromFloor, toFloor, floorNow });
+    }
+
+    if (!segments.length) return 0;
+
+    let summaryStatData = null;
+    if (s.summaryReadStatData) {
+      try {
+        const statSettings = {
+          ...s,
+          wiRollStatVarName: s.summaryStatVarName || 'stat_data'
+        };
+        const { statData } = await resolveStatDataComprehensive(chat, statSettings);
+        if (statData) summaryStatData = statData;
+      } catch (e) {
+        console.warn('[StoryGuide] Structured entries read stat_data failed:', e);
+      }
+    }
+
+    let processed = 0;
+    for (const seg of segments) {
+      const chunkText = buildSummaryChunkTextRange(chat, seg.startIdx, seg.endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
+      if (!chunkText) continue;
+      const ok = await processStructuredEntriesChunk(chunkText, seg.fromFloor, seg.toFloor, meta, s, summaryStatData);
+      if (ok) processed += 1;
+    }
+
+    if (processed > 0) {
+      const lastSeg = segments[segments.length - 1];
+      meta.lastStructuredFloor = lastSeg.toFloor;
+      meta.lastStructuredChatLen = chat.length;
+      await setSummaryMeta(meta);
+    }
+
+    return processed;
+  } catch (e) {
+    console.warn('[StoryGuide] Structured entries run failed:', e);
+    return 0;
+  } finally {
+    isStructuring = false;
+  }
 }
 
 // -------------------- 蓝灯索引 → 绿灯触发（发送消息时注入触发词） --------------------
@@ -10141,6 +10277,16 @@ function buildModalHtml() {
                 <label class="sg-check"><input type="checkbox" id="sg_inventoryEntriesEnabled">物品栏</label>
                 <label class="sg-check"><input type="checkbox" id="sg_factionEntriesEnabled">势力</label>
               </div>
+              <div class="sg-row sg-inline" style="margin-top:6px">
+                <span>更新频率</span>
+                <span>每</span>
+                <input id="sg_structuredEntriesEvery" type="number" min="1" max="200" style="width:90px">
+                <span>层</span>
+                <select id="sg_structuredEntriesCountMode">
+                  <option value="assistant">按 AI 回复计数</option>
+                  <option value="all">按全部消息计数</option>
+                </select>
+              </div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_structuredReenableEntriesEnabled">自动重新启用人物/势力</label>
               </div>
@@ -11305,6 +11451,13 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
+  $('#sg_structuredEntriesEvery, #sg_structuredEntriesCountMode').on('input change', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryInfoLabel();
+    updateBlueIndexInfoLabel();
+    updateSummaryManualRangeHint(false);
+  });
   $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
     saveSettings();
@@ -12067,6 +12220,8 @@ function pullSettingsToUi() {
   $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || DEFAULT_SUMMARY_USER_TEMPLATE));
   $('#sg_summaryReadStatData').prop('checked', !!s.summaryReadStatData);
   $('#sg_summaryStatVarName').val(String(s.summaryStatVarName || 'stat_data'));
+  $('#sg_structuredEntriesEvery').val(s.structuredEntriesEvery ?? 1);
+  $('#sg_structuredEntriesCountMode').val(String(s.structuredEntriesCountMode || 'assistant'));
   $('#sg_megaSummaryEnabled').prop('checked', !!s.megaSummaryEnabled);
   $('#sg_megaSummaryEvery').val(s.megaSummaryEvery || 40);
   $('#sg_megaSummaryCommentPrefix').val(String(s.megaSummaryCommentPrefix || '大总结'));
@@ -12601,6 +12756,8 @@ function pullUiToSettings() {
   s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || DEFAULT_SUMMARY_USER_TEMPLATE;
   s.summaryReadStatData = $('#sg_summaryReadStatData').is(':checked');
   s.summaryStatVarName = String($('#sg_summaryStatVarName').val() || 'stat_data').trim() || 'stat_data';
+  s.structuredEntriesEvery = clampInt($('#sg_structuredEntriesEvery').val(), 1, 200, s.structuredEntriesEvery || 1);
+  s.structuredEntriesCountMode = String($('#sg_structuredEntriesCountMode').val() || 'assistant');
   s.megaSummaryEnabled = $('#sg_megaSummaryEnabled').is(':checked');
   s.megaSummaryEvery = clampInt($('#sg_megaSummaryEvery').val(), 5, 5000, s.megaSummaryEvery || 40);
   s.megaSummaryCommentPrefix = String($('#sg_megaSummaryCommentPrefix').val() || '大总结').trim() || '大总结';
@@ -12884,6 +13041,7 @@ function setupEventListeners() {
       scheduleReapplyAll('msg_received');
       // 自动总结（独立功能）
       scheduleAutoSummary('msg_received');
+      scheduleAutoStructuredEntries('msg_received');
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
@@ -12893,6 +13051,7 @@ function setupEventListeners() {
       // 蓝灯索引 → 绿灯触发（尽量在生成前完成）
       maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
       scheduleAutoSummary('msg_sent');
+      scheduleAutoStructuredEntries('msg_sent');
     });
   });
 }
