@@ -11737,6 +11737,10 @@ function ensureModal() {
 }
 
 function showSettingsPage(page) {
+  if (document.getElementById('sg_modal_backdrop')) {
+    pullUiToSettings();
+    saveSettings();
+  }
   const p = String(page || 'guide');
   $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image').removeClass('active');
   $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image').removeClass('active');
@@ -12513,7 +12517,10 @@ function pullUiToSettings() {
   s.summaryIndexStart = clampInt($('#sg_summaryIndexStart').val(), 1, 1000000, s.summaryIndexStart ?? 1);
   s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
-  s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
+  const $summaryBlueWorldInfoFile = $('#sg_summaryBlueWorldInfoFile');
+  if ($summaryBlueWorldInfoFile.length) {
+    s.summaryBlueWorldInfoFile = String($summaryBlueWorldInfoFile.val() || '').trim();
+  }
 
   // 地图功能
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
@@ -12616,7 +12623,10 @@ function pullUiToSettings() {
   s.wiIndexCustomStream = $('#sg_wiIndexCustomStream').is(':checked');
 
   s.wiBlueIndexMode = String($('#sg_wiBlueIndexMode').val() || s.wiBlueIndexMode || 'live');
-  s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
+  const $wiBlueIndexFile = $('#sg_wiBlueIndexFile');
+  if ($wiBlueIndexFile.length) {
+    s.wiBlueIndexFile = String($wiBlueIndexFile.val() || '').trim();
+  }
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
   s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
 }
