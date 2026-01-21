@@ -28,7 +28,6 @@
 const SG_VERSION = '0.10.0';
 
 const MODULE_NAME = 'storyguide';
-const BLUE_INDEX_PERSIST_KEY = `${MODULE_NAME}__blue_index_persist`;
 const EXT_BASE_URL = (() => {
   const src = document.currentScript?.src || '';
   if (!src) return '';
@@ -750,32 +749,6 @@ function getStRequestHeadersCompat() {
 
 function clone(obj) { try { return structuredClone(obj); } catch { return JSON.parse(JSON.stringify(obj)); } }
 
-function loadBlueIndexPersist() {
-  try {
-    const raw = localStorage.getItem(BLUE_INDEX_PERSIST_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return null;
-    const mode = typeof parsed.mode === 'string' ? parsed.mode : '';
-    const file = typeof parsed.file === 'string' ? parsed.file : '';
-    return { mode, file };
-  } catch {
-    return null;
-  }
-}
-
-function saveBlueIndexPersist(settings) {
-  try {
-    const payload = {
-      mode: String(settings?.wiBlueIndexMode || 'live'),
-      file: String(settings?.wiBlueIndexFile || '')
-    };
-    localStorage.setItem(BLUE_INDEX_PERSIST_KEY, JSON.stringify(payload));
-  } catch {
-    // ignore storage errors
-  }
-}
-
 function ensureSettings() {
   const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
   if (!extensionSettings[MODULE_NAME]) {
@@ -840,12 +813,6 @@ function ensureSettings() {
   if (!batchRaw || isOldBatch) {
     extensionSettings[MODULE_NAME].imageGenBatchPatterns = DEFAULT_SETTINGS.imageGenBatchPatterns;
     saveSettingsDebounced();
-  }
-
-  const bluePersist = loadBlueIndexPersist();
-  if (bluePersist) {
-    if (bluePersist.mode) extensionSettings[MODULE_NAME].wiBlueIndexMode = bluePersist.mode;
-    if (typeof bluePersist.file === 'string') extensionSettings[MODULE_NAME].wiBlueIndexFile = bluePersist.file;
   }
 
   // 迁移：结构化提取模板补充更多条目列表
@@ -12650,7 +12617,6 @@ function pullUiToSettings() {
 
   s.wiBlueIndexMode = String($('#sg_wiBlueIndexMode').val() || s.wiBlueIndexMode || 'live');
   s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
-  saveBlueIndexPersist(s);
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
   s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
 }
