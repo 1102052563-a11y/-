@@ -3796,9 +3796,23 @@ async function maybeGenerateMegaSummary(meta, settings) {
 
   const every = clampInt(s.megaSummaryEvery, 5, 5000, 40);
   let created = 0;
+  const sourcePrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const indexPrefix = String(s.summaryIndexPrefix || 'A-');
+  const indexRe = new RegExp('^' + escapeRegExp(indexPrefix) + '(\\d+)$');
+  const parseIndex = (id) => {
+    const m = String(id || '').trim().match(indexRe);
+    return m ? (Number.parseInt(m[1], 10) || 0) : 0;
+  };
 
   while (true) {
-    const pending = (Array.isArray(meta.history) ? meta.history : []).filter(h => h && !h.isMega && !h.megaArchived);
+    const pending = (Array.isArray(meta.history) ? meta.history : [])
+      .filter(h => h && !h.isMega && !h.megaArchived && String(h.commentPrefix || '').trim() === sourcePrefix)
+      .sort((a, b) => {
+        const ai = parseIndex(a.indexId);
+        const bi = parseIndex(b.indexId);
+        if (ai && bi) return ai - bi;
+        return (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0);
+      });
     if (pending.length < every) break;
 
     const slice = pending.slice(0, every);
