@@ -503,6 +503,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   characterEntriesEnabled: true,
   equipmentEntriesEnabled: true,
   factionEntriesEnabled: false, // 默认关闭
+  structuredReenableEntriesEnabled: false,
   achievementEntriesEnabled: false,
   subProfessionEntriesEnabled: false,
   questEntriesEnabled: false,
@@ -3706,6 +3707,395 @@ function buildMegaSummaryPromptMessages(items, settings) {
   ];
 }
 
+function parseSummaryIndexInput(input, settings) {
+  const s = settings || ensureSettings();
+  const raw = String(input || '').trim();
+  if (!raw) return 0;
+  const num = Number.parseInt(raw, 10);
+  if (Number.isFinite(num)) return num;
+  const prefix = String(s.summaryIndexPrefix || 'A-');
+  const re = new RegExp('^' + escapeRegExp(prefix) + '(\\d+)$', 'i');
+  const m = raw.match(re);
+  return m ? (Number.parseInt(m[1], 10) || 0) : 0;
+}
+
+function extractWorldbookEntriesDetailed(rawJson) {
+  if (!rawJson) return [];
+  let data = rawJson;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { return []; }
+  }
+  for (let i = 0; i < 4; i++) {
+    if (!data || typeof data !== 'object') break;
+    const wrappers = ['data', 'world_info', 'worldInfo', 'lorebook', 'book', 'worldbook', 'worldBook', 'payload', 'result'];
+    let changed = false;
+    for (const k of wrappers) {
+      const v = data?.[k];
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (t && (t.startsWith('{') || t.startsWith('['))) {
+          try { data = JSON.parse(t); changed = true; break; } catch { /* ignore */ }
+        }
+      } else if (v && typeof v === 'object') {
+        if (v.entries || v.world_info || v.worldInfo || v.lorebook || v.items) {
+          data = v;
+          changed = true;
+          break;
+        }
+        if (typeof v.data === 'string') {
+          const t2 = String(v.data || '').trim();
+          if (t2 && (t2.startsWith('{') || t2.startsWith('['))) {
+            try { data = JSON.parse(t2); changed = true; break; } catch { /* ignore */ }
+          }
+        }
+      }
+    }
+    if (!changed) break;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch { break; }
+    }
+  }
+
+  function toArray(maybe) {
+    if (!maybe) return null;
+    if (Array.isArray(maybe)) return maybe;
+    if (typeof maybe === 'object') {
+      const vals = Object.values(maybe);
+      if (vals.length && vals.every(v => typeof v === 'object')) return vals;
+    }
+    return null;
+  }
+
+  const candidates = [
+    data?.entries,
+    data?.world_info?.entries,
+    data?.worldInfo?.entries,
+    data?.lorebook?.entries,
+    data?.data?.entries,
+    data?.items,
+    data?.world_info,
+    data?.worldInfo,
+    data?.lorebook,
+    Array.isArray(data) ? data : null,
+  ].filter(Boolean);
+
+  let entries = null;
+  for (const c of candidates) {
+    const arr = toArray(c);
+    if (arr && arr.length) { entries = arr; break; }
+    if (c && typeof c === 'object') {
+      const inner = toArray(c.entries);
+      if (inner && inner.length) { entries = inner; break; }
+    }
+  }
+  if (!entries) return [];
+
+  function splitKeys(str) {
+    return String(str || '')
+      .split(/[\n,，;；\|]+/g)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  const norm = [];
+  for (const e of entries) {
+    if (!e || typeof e !== 'object') continue;
+    const comment = String(e.comment ?? e.title ?? e.name ?? e.uid ?? e.id ?? '').trim();
+    const title = comment || (Array.isArray(e.keys) && e.keys[0] ? `条目：${e.keys[0]}` : '条目');
+    const kRaw =
+      e.keys ??
+      e.key ??
+      e.keywords ??
+      e.trigger ??
+      e.triggers ??
+      e.pattern ??
+      e.match ??
+      e.tags ??
+      e.primary_key ??
+      e.primaryKey ??
+      e.keyprimary ??
+      e.keyPrimary ??
+      null;
+    const k2Raw =
+      e.keysecondary ??
+      e.keySecondary ??
+      e.secondary_keys ??
+      e.secondaryKeys ??
+      e.keys_secondary ??
+      e.keysSecondary ??
+      null;
+    let keys = [];
+    if (Array.isArray(kRaw)) keys = kRaw.map(x => String(x || '').trim()).filter(Boolean);
+    else if (typeof kRaw === 'string') keys = splitKeys(kRaw);
+    if (Array.isArray(k2Raw)) keys = keys.concat(k2Raw.map(x => String(x || '').trim()).filter(Boolean));
+    else if (typeof k2Raw === 'string') keys = keys.concat(splitKeys(k2Raw));
+    keys = Array.from(new Set(keys)).filter(Boolean);
+
+    const content = String(
+      e.content ?? e.entry ?? e.text ?? e.description ?? e.desc ?? e.body ?? e.value ?? e.prompt ?? ''
+    ).trim();
+    if (!content) continue;
+
+    const disabledRaw = e.disable ?? e.disabled ?? e.isDisabled ?? e.disable_entry ?? e.disabled_entry;
+    const disabled = disabledRaw === true || String(disabledRaw) === '1';
+
+    norm.push({ title, comment, keys, content, disabled });
+  }
+  return norm;
+}
+
+function extractIndexFromText(text, settings) {
+  const s = settings || ensureSettings();
+  const prefix = String(s.summaryIndexPrefix || 'A-');
+  const re = new RegExp(escapeRegExp(prefix) + '(\\d+)', 'i');
+  const m = String(text || '').match(re);
+  return m ? `${prefix}${String(m[1]).padStart(3, '0')}` : '';
+}
+
+function extractIndexIdFromEntry(entry, settings) {
+  const s = settings || ensureSettings();
+  if (Array.isArray(entry.keys)) {
+    for (const k of entry.keys) {
+      const id = extractIndexFromText(k, s);
+      if (id) return id;
+    }
+  }
+  return extractIndexFromText(entry.comment || entry.title || '', s);
+}
+
+async function fetchBlueSummarySourceEntries(settings) {
+  const s = settings || ensureSettings();
+  const file = String(s.summaryBlueWorldInfoFile || '').trim();
+  if (!file) return [];
+  const prefix = String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const raw = await fetchWorldInfoFileJsonCompat(file);
+  const entries = extractWorldbookEntriesDetailed(raw);
+  return entries
+    .filter(e => e && e.content)
+    .filter(e => !e.disabled)
+    .filter(e => !String(e.comment || '').startsWith('[已汇总]'))
+    .filter(e => !String(e.comment || '').startsWith('[已删除]'))
+    .filter(e => {
+      if (!prefix) return true;
+      return String(e.comment || e.title || '').includes(prefix);
+    })
+    .map(e => {
+      const indexId = extractIndexIdFromEntry(e, s);
+      return {
+        title: String(e.title || '').trim(),
+        summary: String(e.content || '').trim(),
+        keywords: Array.isArray(e.keys) ? e.keys : [],
+        indexId,
+        sourceComment: String(e.comment || e.title || '').trim(),
+        sourcePrefix: prefix,
+      };
+    });
+}
+
+function filterMegaSummaryCandidates(meta, settings) {
+  const s = settings || ensureSettings();
+  const sourcePrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const indexPrefix = String(s.summaryIndexPrefix || 'A-');
+  const indexRe = new RegExp('^' + escapeRegExp(indexPrefix) + '(\\d+)$');
+  const parseIndex = (id) => {
+    const m = String(id || '').trim().match(indexRe);
+    return m ? (Number.parseInt(m[1], 10) || 0) : 0;
+  };
+  return (Array.isArray(meta.history) ? meta.history : [])
+    .filter(h => h && !h.isMega && !h.megaArchived && String(h.commentPrefix || '').trim() === sourcePrefix)
+    .sort((a, b) => {
+      const ai = parseIndex(a.indexId);
+      const bi = parseIndex(b.indexId);
+      if (ai && bi) return ai - bi;
+      return (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0);
+    });
+}
+
+async function createMegaSummaryForSlice(slice, meta, settings) {
+  const s = settings || ensureSettings();
+  if (!slice.length) return false;
+
+  const messages = buildMegaSummaryPromptMessages(slice, s);
+  const schema = getSummarySchema();
+
+  let jsonText = '';
+  if (String(s.summaryProvider || 'st') === 'custom') {
+    jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream);
+    const parsedTry = safeJsonParse(jsonText);
+    if (!parsedTry || !parsedTry.summary) {
+      try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream); }
+      catch { /* ignore */ }
+    }
+  } else {
+    jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature);
+    if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+    const parsedTry = safeJsonParse(jsonText);
+    if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
+  }
+
+  const parsed = safeJsonParse(jsonText);
+  if (!parsed || !parsed.summary) return false;
+
+  const megaPrefix = String(s.megaSummaryCommentPrefix || '大总结').trim() || '大总结';
+  const rawTitle = String(parsed.title || '').trim();
+  const summary = String(parsed.summary || '').trim();
+  const modelKeywords = sanitizeKeywords(parsed.keywords);
+  let indexId = '';
+  let keywords = modelKeywords;
+
+  if (String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId') {
+    if (!Number.isFinite(Number(meta.nextIndex))) {
+      let maxN = 0;
+      const pref = String(s.summaryIndexPrefix || 'A-');
+      const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
+      for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
+        const id0 = String(h?.indexId || '').trim();
+        const m = id0.match(re);
+        if (m) maxN = Math.max(maxN, Number.parseInt(m[1], 10) || 0);
+      }
+      meta.nextIndex = Math.max(clampInt(s.summaryIndexStart, 1, 1000000, 1), maxN + 1);
+    }
+    const pref = String(s.summaryIndexPrefix || 'A-');
+    const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
+    const n = clampInt(meta.nextIndex, 1, 100000000, 1);
+    indexId = `${pref}${String(n).padStart(pad, '0')}`;
+    keywords = [indexId];
+    meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
+  }
+
+  const range = {
+    fromFloor: slice[0]?.range?.fromFloor ?? 0,
+    toFloor: slice[slice.length - 1]?.range?.toFloor ?? 0,
+  };
+  const rec = {
+    title: rawTitle || megaPrefix,
+    summary,
+    keywords,
+    indexId: indexId || undefined,
+    modelKeywords: (String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId') ? modelKeywords : undefined,
+    createdAt: Date.now(),
+    range,
+    isMega: true,
+    megaSourceCount: slice.length,
+    commentPrefix: megaPrefix,
+    commentPrefixBlue: megaPrefix,
+  };
+
+  meta.history = Array.isArray(meta.history) ? meta.history : [];
+  meta.history.push(rec);
+  meta.megaSummaryCount = clampInt(Number(meta.megaSummaryCount || 0) + 1, 0, 1000000, Number(meta.megaSummaryCount || 0) + 1);
+  await setSummaryMeta(meta);
+
+  if (s.summaryToWorldInfo) {
+    try {
+      await writeSummaryToWorldInfoEntry(rec, meta, {
+        target: String(s.summaryWorldInfoTarget || 'chatbook'),
+        file: String(s.summaryWorldInfoFile || ''),
+        commentPrefix: megaPrefix,
+        constant: 0,
+      });
+    } catch (e) {
+      console.warn('[StoryGuide] write mega summary (green) failed:', e);
+    }
+  }
+  if (s.summaryToBlueWorldInfo) {
+    try {
+      await writeSummaryToWorldInfoEntry(rec, meta, {
+        target: 'file',
+        file: String(s.summaryBlueWorldInfoFile || ''),
+        commentPrefix: megaPrefix,
+        constant: 1,
+      });
+    } catch (e) {
+      console.warn('[StoryGuide] write mega summary (blue) failed:', e);
+    }
+  }
+
+  const hist = Array.isArray(meta.history) ? meta.history : [];
+  for (const h of slice) {
+    const histHit = h.indexId ? hist.find(x => x && x.indexId === h.indexId && !x.isMega) : null;
+    if (histHit) {
+      histHit.megaArchived = true;
+      histHit.megaArchivedAt = Date.now();
+    }
+
+    const blueComment = String(h.sourceComment || '').trim();
+    const bluePrefix = String(h.sourcePrefix || s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim();
+    const greenPrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim();
+    let greenComment = blueComment;
+    if (blueComment && bluePrefix && greenPrefix && blueComment.startsWith(bluePrefix)) {
+      greenComment = greenPrefix + blueComment.slice(bluePrefix.length);
+    }
+
+    const blueFile = String(s.summaryBlueWorldInfoFile || '').trim();
+    if (blueComment && blueFile) {
+      try {
+        await disableWorldInfoEntryByComment(blueComment, s, {
+          target: 'file',
+          file: blueFile,
+        });
+      } catch (e) {
+        console.warn('[StoryGuide] disable summary entry (blue) failed:', e);
+      }
+    }
+    if (greenComment) {
+      try {
+        await disableWorldInfoEntryByComment(greenComment, s, {
+          target: String(s.summaryWorldInfoTarget || 'chatbook'),
+          file: String(s.summaryWorldInfoFile || ''),
+        });
+      } catch (e) {
+        console.warn('[StoryGuide] disable summary entry failed:', e);
+      }
+    }
+  }
+
+  await setSummaryMeta(meta);
+  return true;
+}
+
+async function runMegaSummaryManual(fromIndex, toIndex) {
+  const s = ensureSettings();
+  const meta = getSummaryMeta();
+  const fromNum = parseSummaryIndexInput(fromIndex, s);
+  const toNum = parseSummaryIndexInput(toIndex, s);
+  if (!fromNum || !toNum || fromNum > toNum) {
+    setStatus('大总结范围无效，请填写正确索引号', 'warn');
+    return 0;
+  }
+
+  let candidates = [];
+  try {
+    candidates = await fetchBlueSummarySourceEntries(s);
+  } catch (e) {
+    setStatus(`读取蓝灯世界书失败：${e?.message ?? e}`, 'err');
+    return 0;
+  }
+  candidates = candidates.filter(h => {
+    const idx = parseSummaryIndexInput(h.indexId, s);
+    return idx >= fromNum && idx <= toNum;
+  });
+  if (!candidates.length) {
+    setStatus('大总结范围内无可用条目', 'warn');
+    return 0;
+  }
+
+  const every = clampInt(s.megaSummaryEvery, 5, 5000, 40);
+  let created = 0;
+  for (let i = 0; i < candidates.length; i += every) {
+    const slice = candidates.slice(i, i + every);
+    const ok = await createMegaSummaryForSlice(slice, meta, s);
+    if (!ok) break;
+    created += 1;
+  }
+
+  renderSummaryPaneFromMeta();
+  if (created > 0) {
+    setStatus(`已生成大总结 ${created} 条 ✅`, 'ok');
+  }
+  return created;
+}
+
 function buildSummaryComment(rec, settings, commentPrefix = '') {
   const s = settings || ensureSettings();
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
@@ -3740,9 +4130,16 @@ async function disableSummaryWorldInfoEntry(rec, settings, {
   const s = settings || ensureSettings();
   const comment = buildSummaryComment(rec, s, commentPrefix || rec?.commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结');
   if (!comment) return null;
+  return disableWorldInfoEntryByComment(comment, settings, { target, file });
+}
 
-  let targetMode = String(target || 'file');
-  let fileName = String(file || '').trim();
+async function disableWorldInfoEntryByComment(comment, settings, {
+  target = 'file',
+  file = '',
+} = {}) {
+  const s = settings || ensureSettings();
+  const targetMode = String(target || 'file');
+  const fileName = String(file || '').trim();
   if (targetMode === 'file' && !fileName) return null;
 
   let findExpr;
@@ -3796,150 +4193,25 @@ async function maybeGenerateMegaSummary(meta, settings) {
 
   const every = clampInt(s.megaSummaryEvery, 5, 5000, 40);
   let created = 0;
-  const sourcePrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
-  const indexPrefix = String(s.summaryIndexPrefix || 'A-');
-  const indexRe = new RegExp('^' + escapeRegExp(indexPrefix) + '(\\d+)$');
-  const parseIndex = (id) => {
-    const m = String(id || '').trim().match(indexRe);
-    return m ? (Number.parseInt(m[1], 10) || 0) : 0;
-  };
-
   while (true) {
-    const pending = (Array.isArray(meta.history) ? meta.history : [])
-      .filter(h => h && !h.isMega && !h.megaArchived && String(h.commentPrefix || '').trim() === sourcePrefix)
-      .sort((a, b) => {
-        const ai = parseIndex(a.indexId);
-        const bi = parseIndex(b.indexId);
-        if (ai && bi) return ai - bi;
-        return (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0);
-      });
+    let pending = [];
+    try {
+      pending = await fetchBlueSummarySourceEntries(s);
+    } catch (e) {
+      console.warn('[StoryGuide] read blue world info for mega summary failed:', e);
+      break;
+    }
     if (pending.length < every) break;
 
-    const slice = pending.slice(0, every);
-    const messages = buildMegaSummaryPromptMessages(slice, s);
-    const schema = getSummarySchema();
-
-    let jsonText = '';
-    if (String(s.summaryProvider || 'st') === 'custom') {
-      jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream);
-      const parsedTry = safeJsonParse(jsonText);
-      if (!parsedTry || !parsedTry.summary) {
-        try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream); }
-        catch { /* ignore */ }
-      }
-    } else {
-      jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature);
-      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-      const parsedTry = safeJsonParse(jsonText);
-      if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
-    }
-
-    const parsed = safeJsonParse(jsonText);
-    if (!parsed || !parsed.summary) break;
-
-    const megaPrefix = String(s.megaSummaryCommentPrefix || '大总结').trim() || '大总结';
-    const rawTitle = String(parsed.title || '').trim();
-    const summary = String(parsed.summary || '').trim();
-    const modelKeywords = sanitizeKeywords(parsed.keywords);
-    let indexId = '';
-    let keywords = modelKeywords;
-
-    if (String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId') {
-      if (!Number.isFinite(Number(meta.nextIndex))) {
-        let maxN = 0;
-        const pref = String(s.summaryIndexPrefix || 'A-');
-        const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
-        for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
-          const id0 = String(h?.indexId || '').trim();
-          const m = id0.match(re);
-          if (m) maxN = Math.max(maxN, Number.parseInt(m[1], 10) || 0);
-        }
-        meta.nextIndex = Math.max(clampInt(s.summaryIndexStart, 1, 1000000, 1), maxN + 1);
-      }
-      const pref = String(s.summaryIndexPrefix || 'A-');
-      const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
-      const n = clampInt(meta.nextIndex, 1, 100000000, 1);
-      indexId = `${pref}${String(n).padStart(pad, '0')}`;
-      keywords = [indexId];
-      meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
-    }
-
-    const range = {
-      fromFloor: slice[0]?.range?.fromFloor ?? 0,
-      toFloor: slice[slice.length - 1]?.range?.toFloor ?? 0,
-    };
-    const rec = {
-      title: rawTitle || megaPrefix,
-      summary,
-      keywords,
-      indexId: indexId || undefined,
-      modelKeywords: (String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId') ? modelKeywords : undefined,
-      createdAt: Date.now(),
-      range,
-      isMega: true,
-      megaSourceCount: slice.length,
-      commentPrefix: megaPrefix,
-      commentPrefixBlue: megaPrefix,
-    };
-
-    meta.history = Array.isArray(meta.history) ? meta.history : [];
-    meta.history.push(rec);
-    meta.megaSummaryCount = clampInt(Number(meta.megaSummaryCount || 0) + 1, 0, 1000000, Number(meta.megaSummaryCount || 0) + 1);
-    await setSummaryMeta(meta);
-
-    if (s.summaryToWorldInfo) {
-      try {
-        await writeSummaryToWorldInfoEntry(rec, meta, {
-          target: String(s.summaryWorldInfoTarget || 'chatbook'),
-          file: String(s.summaryWorldInfoFile || ''),
-          commentPrefix: megaPrefix,
-          constant: 0,
-        });
-      } catch (e) {
-        console.warn('[StoryGuide] write mega summary (green) failed:', e);
-      }
-    }
-    if (s.summaryToBlueWorldInfo) {
-      try {
-        await writeSummaryToWorldInfoEntry(rec, meta, {
-          target: 'file',
-          file: String(s.summaryBlueWorldInfoFile || ''),
-          commentPrefix: megaPrefix,
-          constant: 1,
-        });
-      } catch (e) {
-        console.warn('[StoryGuide] write mega summary (blue) failed:', e);
-      }
-    }
-
-    for (const h of slice) {
-      h.megaArchived = true;
-      h.megaArchivedAt = Date.now();
-      if (s.summaryToWorldInfo) {
-        try {
-          await disableSummaryWorldInfoEntry(h, s, {
-            target: String(s.summaryWorldInfoTarget || 'chatbook'),
-            file: String(s.summaryWorldInfoFile || ''),
-            commentPrefix: h.commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结',
-          });
-        } catch (e) {
-          console.warn('[StoryGuide] disable summary entry failed:', e);
-        }
-      }
-      if (s.summaryToBlueWorldInfo) {
-        try {
-          await disableSummaryWorldInfoEntry(h, s, {
-            target: 'file',
-            file: String(s.summaryBlueWorldInfoFile || ''),
-            commentPrefix: h.commentPrefixBlue || s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结',
-          });
-        } catch (e) {
-          console.warn('[StoryGuide] disable summary entry (blue) failed:', e);
-        }
-      }
-    }
-
-    await setSummaryMeta(meta);
+    const sorted = pending.sort((a, b) => {
+      const ai = parseSummaryIndexInput(a.indexId, s);
+      const bi = parseSummaryIndexInput(b.indexId, s);
+      if (ai && bi) return ai - bi;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+    const slice = sorted.slice(0, every);
+    const ok = await createMegaSummaryForSlice(slice, meta, s);
+    if (!ok) break;
     created += 1;
   }
 
@@ -4332,7 +4604,8 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     try {
       // 使用 /findentry 通过 comment 字段查找条目 UID
       // comment 格式为: "人物｜角色名｜CHA-001"
-      const searchPattern = `${prefix}｜${entryName}`;
+      const searchName = String(cached?.name || entryName).trim() || entryName;
+      const searchPattern = `${prefix}｜${searchName}`;
 
       // 构建查找脚本
       let findParts = [];
@@ -4400,14 +4673,30 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         let updateParts = [];
         const updateFileVar = '__sg_update_file';
 
+        const shouldReenable = !!settings.structuredReenableEntriesEnabled && (entryType === 'character' || entryType === 'faction');
+        const commentName = String(cached?.name || entryName).trim() || entryName;
+        const indexSuffix = cached?.indexId ? `｜${cached.indexId}` : '';
+        const newComment = `${prefix}｜${commentName}${indexSuffix}`;
+        const newKey = cached?.indexId ? buildStructuredEntryKey(prefix, commentName, cached.indexId) : '';
+
         if (target === 'chatbook') {
           // chatbook 模式需要先获取文件名
           updateParts.push('/getchatbook');
           updateParts.push(`/setvar key=${updateFileVar}`);
           updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=content ${quoteSlashValue(content)}`);
+          if (shouldReenable) {
+            updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=disable 0`);
+            updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=comment ${quoteSlashValue(newComment)}`);
+            if (newKey) updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=key ${quoteSlashValue(newKey)}`);
+          }
           updateParts.push(`/flushvar ${updateFileVar}`);
         } else {
           updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=content ${quoteSlashValue(content)}`);
+          if (shouldReenable) {
+            updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=disable 0`);
+            updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=comment ${quoteSlashValue(newComment)}`);
+            if (newKey) updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=key ${quoteSlashValue(newKey)}`);
+          }
         }
 
         await execSlash(updateParts.join(' | '));
@@ -9618,6 +9907,9 @@ function buildModalHtml() {
                 <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">装备</label>
                 <label class="sg-check"><input type="checkbox" id="sg_factionEntriesEnabled">势力</label>
               </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_structuredReenableEntriesEnabled">自动重新启用人物/势力</label>
+              </div>
 
               <div class="sg-card sg-subcard">
                 <div class="sg-card-title">大总结（汇总多条剧情总结）</div>
@@ -10006,6 +10298,15 @@ function buildModalHtml() {
               <input id="sg_summaryManualTo" type="number" min="1" style="width:110px" placeholder="结束层">
               <button class="menu_button sg-btn" id="sg_summarizeRange">立即总结该范围</button>
               <div class="sg-hint" id="sg_summaryManualHint" style="margin-left:auto">（可选范围：1-0）</div>
+            </div>
+
+            <div class="sg-row sg-inline" style="margin-top:6px;">
+              <label>手动大总结范围</label>
+              <input id="sg_megaSummaryFrom" type="text" style="width:120px" placeholder="A-001">
+              <span> - </span>
+              <input id="sg_megaSummaryTo" type="text" style="width:120px" placeholder="A-080">
+              <button class="menu_button sg-btn" id="sg_megaSummarizeRange">生成大总结</button>
+              <div class="sg-hint" style="margin-left:auto">按索引号范围汇总，步长=大总结阈值</div>
             </div>
 
             <div class="sg-row sg-inline" style="margin-top:6px;">
@@ -10674,7 +10975,7 @@ function ensureModal() {
     saveSettings();
     updateSummaryManualRangeHint(false);
   });
-  $('#sg_summaryManualFrom, #sg_summaryManualTo, #sg_summaryEvery, #sg_summaryCountMode').on('input change', () => {
+  $('#sg_summaryManualFrom, #sg_summaryManualTo, #sg_summaryEvery, #sg_summaryCountMode, #sg_megaSummaryFrom, #sg_megaSummaryTo').on('input change', () => {
     // count mode / every affects the computed floor range and split pieces
     updateSummaryManualRangeHint(false);
   });
@@ -10707,6 +11008,18 @@ function ensureModal() {
     }
   });
 
+  $('#sg_megaSummarizeRange').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      const from = String($('#sg_megaSummaryFrom').val() || '').trim();
+      const to = String($('#sg_megaSummaryTo').val() || '').trim();
+      await runMegaSummaryManual(from, to);
+    } catch (e) {
+      setStatus(`手动大总结失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
   $('#sg_resetSummaryState').on('click', async () => {
     try {
       const meta = getDefaultSummaryMeta();
@@ -10728,7 +11041,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_factionEntriesEnabled, #sg_factionEntryPrefix, #sg_structuredFactionPrompt, #sg_achievementEntriesEnabled, #sg_achievementEntryPrefix, #sg_structuredAchievementPrompt, #sg_subProfessionEntriesEnabled, #sg_subProfessionEntryPrefix, #sg_structuredSubProfessionPrompt, #sg_questEntriesEnabled, #sg_questEntryPrefix, #sg_structuredQuestPrompt, #sg_megaSummaryEnabled, #sg_megaSummaryEvery, #sg_megaSummarySystemPrompt, #sg_megaSummaryUserTemplate, #sg_megaSummaryCommentPrefix').on('input change', () => {
+  $('#sg_factionEntriesEnabled, #sg_factionEntryPrefix, #sg_structuredFactionPrompt, #sg_structuredReenableEntriesEnabled, #sg_achievementEntriesEnabled, #sg_achievementEntryPrefix, #sg_structuredAchievementPrompt, #sg_subProfessionEntriesEnabled, #sg_subProfessionEntryPrefix, #sg_structuredSubProfessionPrompt, #sg_questEntriesEnabled, #sg_questEntryPrefix, #sg_structuredQuestPrompt, #sg_megaSummaryEnabled, #sg_megaSummaryEvery, #sg_megaSummarySystemPrompt, #sg_megaSummaryUserTemplate, #sg_megaSummaryCommentPrefix').on('input change', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -11483,6 +11796,7 @@ function pullSettingsToUi() {
   $('#sg_characterEntriesEnabled').prop('checked', !!s.characterEntriesEnabled);
   $('#sg_equipmentEntriesEnabled').prop('checked', !!s.equipmentEntriesEnabled);
   $('#sg_factionEntriesEnabled').prop('checked', !!s.factionEntriesEnabled);
+  $('#sg_structuredReenableEntriesEnabled').prop('checked', !!s.structuredReenableEntriesEnabled);
   $('#sg_achievementEntriesEnabled').prop('checked', !!s.achievementEntriesEnabled);
   $('#sg_subProfessionEntriesEnabled').prop('checked', !!s.subProfessionEntriesEnabled);
   $('#sg_questEntriesEnabled').prop('checked', !!s.questEntriesEnabled);
@@ -12009,6 +12323,7 @@ function pullUiToSettings() {
   s.characterEntriesEnabled = $('#sg_characterEntriesEnabled').is(':checked');
   s.equipmentEntriesEnabled = $('#sg_equipmentEntriesEnabled').is(':checked');
   s.factionEntriesEnabled = $('#sg_factionEntriesEnabled').is(':checked');
+  s.structuredReenableEntriesEnabled = $('#sg_structuredReenableEntriesEnabled').is(':checked');
   s.achievementEntriesEnabled = $('#sg_achievementEntriesEnabled').is(':checked');
   s.subProfessionEntriesEnabled = $('#sg_subProfessionEntriesEnabled').is(':checked');
   s.questEntriesEnabled = $('#sg_questEntriesEnabled').is(':checked');
