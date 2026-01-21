@@ -68,6 +68,14 @@ const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记�
 
 const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\n\n【对话片段】\n{{chunk}}`;
 
+const DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情大总结”助手。
+
+任务：
+1) 阅读多条剧情总结，输出一段更高层级的归纳（中文，200~600字，强调阶段性进展/主线变化/关键转折）。
+2) 提取 8~16 个关键词（人物/地点/势力/事件/关系等），用于世界书条目触发词。
+3) 只输出 JSON。`;
+const DEFAULT_MEGA_SUMMARY_USER_TEMPLATE = `【待汇总条目】\n{{items}}`;
+
 // 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
 const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
@@ -352,6 +360,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
   summaryTemperature: 0.4,
+
+  // ===== 大总结 =====
+  megaSummaryEnabled: false,
+  megaSummaryEvery: 40,
+  megaSummarySystemPrompt: '',
+  megaSummaryUserTemplate: '',
+  megaSummaryCommentPrefix: '大总结',
 
   // 自定义总结提示词（可选）
   // - system：决定总结风格/重点
@@ -1388,6 +1403,7 @@ function getDefaultSummaryMeta() {
     lastChatLen: 0,
     // 用于“索引编号触发”（A-001/A-002…）的递增计数器（按聊天存储）
     nextIndex: 1,
+    megaSummaryCount: 0,
     history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
     wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
     rollLogs: [], // [{ts, action, summary, final, success, userText}]
@@ -3657,6 +3673,265 @@ function getSummarySchema() {
   };
 }
 
+function buildMegaSummaryItemsText(items) {
+  return items.map((h, idx) => {
+    const title = String(h.title || '').trim() || `条目${idx + 1}`;
+    const range = h?.range ? `（${h.range.fromFloor}-${h.range.toFloor}）` : '';
+    const kws = Array.isArray(h.keywords) ? h.keywords.filter(Boolean) : [];
+    const summary = String(h.summary || '').trim();
+    const lines = [`【${idx + 1}】${title}${range}`];
+    if (kws.length) lines.push(`关键词：${kws.join('、')}`);
+    if (summary) lines.push(`摘要：${summary}`);
+    return lines.join('\n');
+  }).join('\n\n');
+}
+
+function buildMegaSummaryPromptMessages(items, settings) {
+  const s = settings || ensureSettings();
+  let sys = String(s.megaSummarySystemPrompt || '').trim();
+  if (!sys) sys = DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT;
+  sys = sys + '\n\n' + SUMMARY_JSON_REQUIREMENT;
+
+  const itemsText = buildMegaSummaryItemsText(items);
+  let tpl = String(s.megaSummaryUserTemplate || '').trim();
+  if (!tpl) tpl = DEFAULT_MEGA_SUMMARY_USER_TEMPLATE;
+
+  let user = renderTemplate(tpl, { items: itemsText });
+  if (!/{{\s*items\s*}}/i.test(tpl) && !String(user).includes(itemsText.slice(0, 12))) {
+    user = String(user || '').trim() + `\n\n【待汇总条目】\n${itemsText}`;
+  }
+  return [
+    { role: 'system', content: sys },
+    { role: 'user', content: user },
+  ];
+}
+
+function buildSummaryComment(rec, settings, commentPrefix = '') {
+  const s = settings || ensureSettings();
+  const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
+  const prefix = String(commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const rawTitle = String(rec.title || '').trim();
+  const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
+  const indexId = String(rec?.indexId || '').trim();
+  const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
+
+  let commentTitle = rawTitle;
+  if (prefix) {
+    if (!commentTitle) commentTitle = prefix;
+    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
+  }
+  if (indexInComment) {
+    if (!commentTitle.includes(indexId)) {
+      if (commentTitle === prefix) commentTitle = `${prefix}｜${indexId}`;
+      else if (commentTitle.startsWith(`${prefix}｜`)) commentTitle = commentTitle.replace(`${prefix}｜`, `${prefix}｜${indexId}｜`);
+      else commentTitle = `${prefix}｜${indexId}｜${commentTitle}`;
+      commentTitle = commentTitle.replace(/｜｜+/g, '｜');
+    }
+  }
+  if (!commentTitle) commentTitle = prefix || '剧情总结';
+  return `${commentTitle}${range ? `（${range}）` : ''}`;
+}
+
+async function disableSummaryWorldInfoEntry(rec, settings, {
+  target = 'file',
+  file = '',
+  commentPrefix = '',
+} = {}) {
+  const s = settings || ensureSettings();
+  const comment = buildSummaryComment(rec, s, commentPrefix || rec?.commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结');
+  if (!comment) return null;
+
+  let targetMode = String(target || 'file');
+  let fileName = String(file || '').trim();
+  if (targetMode === 'file' && !fileName) return null;
+
+  let findExpr;
+  const findFileVar = 'sgTmpFindSummaryFile';
+  if (targetMode === 'chatbook') {
+    await execSlash(`/getchatbook | /setvar key=${findFileVar}`);
+    findExpr = `/findentry file={{getvar::${findFileVar}}} field=comment ${quoteSlashValue(comment)}`;
+  } else {
+    findExpr = `/findentry file=${quoteSlashValue(fileName)} field=comment ${quoteSlashValue(comment)}`;
+  }
+
+  const findResult = await execSlash(findExpr);
+  const findText = slashOutputToText(findResult);
+
+  if (targetMode === 'chatbook') {
+    await execSlash(`/flushvar ${findFileVar}`);
+  }
+
+  let uid = null;
+  if (findText && findText !== 'null' && findText !== 'undefined') {
+    const parsed = safeJsonParse(findText);
+    if (parsed && parsed.uid) uid = parsed.uid;
+    else if (/^\d+$/.test(findText.trim())) uid = findText.trim();
+  }
+  if (!uid) return null;
+
+  let fileExpr;
+  const fileVar = 'sgTmpDisableSummaryFile';
+  if (targetMode === 'chatbook') {
+    await execSlash(`/getchatbook | /setvar key=${fileVar}`);
+    fileExpr = `{{getvar::${fileVar}}}`;
+  } else {
+    fileExpr = quoteSlashValue(fileName);
+  }
+
+  await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=disable 1`);
+  const archivedComment = `[已汇总] ${comment}`;
+  await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=comment ${quoteSlashValue(archivedComment)}`);
+  await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=key ""`);
+
+  if (targetMode === 'chatbook') {
+    await execSlash(`/flushvar ${fileVar}`);
+  }
+
+  return { uid };
+}
+
+async function maybeGenerateMegaSummary(meta, settings) {
+  const s = settings || ensureSettings();
+  if (!s.megaSummaryEnabled) return 0;
+
+  const every = clampInt(s.megaSummaryEvery, 5, 5000, 40);
+  let created = 0;
+
+  while (true) {
+    const pending = (Array.isArray(meta.history) ? meta.history : []).filter(h => h && !h.isMega && !h.megaArchived);
+    if (pending.length < every) break;
+
+    const slice = pending.slice(0, every);
+    const messages = buildMegaSummaryPromptMessages(slice, s);
+    const schema = getSummarySchema();
+
+    let jsonText = '';
+    if (String(s.summaryProvider || 'st') === 'custom') {
+      jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream);
+      const parsedTry = safeJsonParse(jsonText);
+      if (!parsedTry || !parsedTry.summary) {
+        try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream); }
+        catch { /* ignore */ }
+      }
+    } else {
+      jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature);
+      if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+      const parsedTry = safeJsonParse(jsonText);
+      if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
+    }
+
+    const parsed = safeJsonParse(jsonText);
+    if (!parsed || !parsed.summary) break;
+
+    const megaPrefix = String(s.megaSummaryCommentPrefix || '大总结').trim() || '大总结';
+    const rawTitle = String(parsed.title || '').trim();
+    const summary = String(parsed.summary || '').trim();
+    const modelKeywords = sanitizeKeywords(parsed.keywords);
+    let indexId = '';
+    let keywords = modelKeywords;
+
+    if (String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId') {
+      if (!Number.isFinite(Number(meta.nextIndex))) {
+        let maxN = 0;
+        const pref = String(s.summaryIndexPrefix || 'A-');
+        const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
+        for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
+          const id0 = String(h?.indexId || '').trim();
+          const m = id0.match(re);
+          if (m) maxN = Math.max(maxN, Number.parseInt(m[1], 10) || 0);
+        }
+        meta.nextIndex = Math.max(clampInt(s.summaryIndexStart, 1, 1000000, 1), maxN + 1);
+      }
+      const pref = String(s.summaryIndexPrefix || 'A-');
+      const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
+      const n = clampInt(meta.nextIndex, 1, 100000000, 1);
+      indexId = `${pref}${String(n).padStart(pad, '0')}`;
+      keywords = [indexId];
+      meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
+    }
+
+    const range = {
+      fromFloor: slice[0]?.range?.fromFloor ?? 0,
+      toFloor: slice[slice.length - 1]?.range?.toFloor ?? 0,
+    };
+    const rec = {
+      title: rawTitle || megaPrefix,
+      summary,
+      keywords,
+      indexId: indexId || undefined,
+      modelKeywords: (String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId') ? modelKeywords : undefined,
+      createdAt: Date.now(),
+      range,
+      isMega: true,
+      megaSourceCount: slice.length,
+      commentPrefix: megaPrefix,
+      commentPrefixBlue: megaPrefix,
+    };
+
+    meta.history = Array.isArray(meta.history) ? meta.history : [];
+    meta.history.push(rec);
+    meta.megaSummaryCount = clampInt(Number(meta.megaSummaryCount || 0) + 1, 0, 1000000, Number(meta.megaSummaryCount || 0) + 1);
+    await setSummaryMeta(meta);
+
+    if (s.summaryToWorldInfo) {
+      try {
+        await writeSummaryToWorldInfoEntry(rec, meta, {
+          target: String(s.summaryWorldInfoTarget || 'chatbook'),
+          file: String(s.summaryWorldInfoFile || ''),
+          commentPrefix: megaPrefix,
+          constant: 0,
+        });
+      } catch (e) {
+        console.warn('[StoryGuide] write mega summary (green) failed:', e);
+      }
+    }
+    if (s.summaryToBlueWorldInfo) {
+      try {
+        await writeSummaryToWorldInfoEntry(rec, meta, {
+          target: 'file',
+          file: String(s.summaryBlueWorldInfoFile || ''),
+          commentPrefix: megaPrefix,
+          constant: 1,
+        });
+      } catch (e) {
+        console.warn('[StoryGuide] write mega summary (blue) failed:', e);
+      }
+    }
+
+    for (const h of slice) {
+      h.megaArchived = true;
+      h.megaArchivedAt = Date.now();
+      if (s.summaryToWorldInfo) {
+        try {
+          await disableSummaryWorldInfoEntry(h, s, {
+            target: String(s.summaryWorldInfoTarget || 'chatbook'),
+            file: String(s.summaryWorldInfoFile || ''),
+            commentPrefix: h.commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结',
+          });
+        } catch (e) {
+          console.warn('[StoryGuide] disable summary entry failed:', e);
+        }
+      }
+      if (s.summaryToBlueWorldInfo) {
+        try {
+          await disableSummaryWorldInfoEntry(h, s, {
+            target: 'file',
+            file: String(s.summaryBlueWorldInfoFile || ''),
+            commentPrefix: h.commentPrefixBlue || s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结',
+          });
+        } catch (e) {
+          console.warn('[StoryGuide] disable summary entry (blue) failed:', e);
+        }
+      }
+    }
+
+    await setSummaryMeta(meta);
+    created += 1;
+  }
+
+  return created;
+}
+
 function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = null) {
   const s = ensureSettings();
 
@@ -4839,31 +5114,8 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   constant = 0,
 } = {}) {
   const kws = sanitizeKeywords(rec.keywords);
-  const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
-  const prefix = String(commentPrefix || '剧情总结').trim() || '剧情总结';
-  const rawTitle = String(rec.title || '').trim();
-
   const s = ensureSettings();
-  const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
-  const indexId = String(rec?.indexId || '').trim();
-  const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
-  // comment 字段通常就是世界书列表里的"标题"。这里保证 prefix 始终在最前，避免"前缀设置无效"。
-  let commentTitle = rawTitle;
-  if (prefix) {
-    if (!commentTitle) commentTitle = prefix;
-    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
-  }
-  // 若启用“索引编号触发”：把 A-001 写进 comment，便于在世界书列表里一眼定位。
-  if (indexInComment) {
-    if (!commentTitle.includes(indexId)) {
-      if (commentTitle === prefix) commentTitle = `${prefix}｜${indexId}`;
-      else if (commentTitle.startsWith(`${prefix}｜`)) commentTitle = commentTitle.replace(`${prefix}｜`, `${prefix}｜${indexId}｜`);
-      else commentTitle = `${prefix}｜${indexId}｜${commentTitle}`;
-      commentTitle = commentTitle.replace(/｜｜+/g, '｜');
-    }
-  }
-  if (!commentTitle) commentTitle = '剧情总结';
-  const comment = `${commentTitle}${range ? `（${range}）` : ''}`;
+  const comment = buildSummaryComment(rec, s, commentPrefix || rec?.commentPrefix || '剧情总结');
 
   // normalize content and make it safe for slash parser (avoid accidental pipe split)
   const content = String(rec.summary || '')
@@ -5123,6 +5375,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         modelKeywords: (keyMode === 'indexId') ? modelKeywords : undefined,
         createdAt: Date.now(),
         range: { fromFloor, toFloor, fromIdx: startIdx, toIdx: endIdx },
+        commentPrefix: prefix,
+        commentPrefixBlue: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
       };
 
       if (keyMode === 'indexId') {
@@ -5254,20 +5508,30 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           }
         }
 
-        if (s.summaryToBlueWorldInfo) {
-          try {
-            await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: 'file',
-              file: String(s.summaryBlueWorldInfoFile || ''),
-              commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
-              constant: 1,
-            });
-            wroteBlueOk += 1;
-          } catch (e) {
-            console.warn('[StoryGuide] write blue world info failed:', e);
-            writeErrs.push(`${fromFloor}-${toFloor} 蓝灯：${e?.message ?? e}`);
-          }
+      if (s.summaryToBlueWorldInfo) {
+        try {
+          await writeSummaryToWorldInfoEntry(rec, meta, {
+            target: 'file',
+            file: String(s.summaryBlueWorldInfoFile || ''),
+            commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
+            constant: 1,
+          });
+          wroteBlueOk += 1;
+        } catch (e) {
+          console.warn('[StoryGuide] write blue world info failed:', e);
+          writeErrs.push(`${fromFloor}-${toFloor} 蓝灯：${e?.message ?? e}`);
         }
+      }
+
+      // 生成大总结（到达阈值时自动触发）
+      try {
+        const megaCreated = await maybeGenerateMegaSummary(meta, s);
+        if (megaCreated > 0) {
+          console.log(`[StoryGuide] Mega summary created: ${megaCreated}`);
+        }
+      } catch (e) {
+        console.warn('[StoryGuide] Mega summary generation failed:', e);
+      }
       }
     }
 
@@ -9310,15 +9574,15 @@ function buildModalHtml() {
               </div>
             </div>
 
-            <div class="sg-card sg-subcard">
-              <div class="sg-field">
-                <label>自定义总结提示词（System，可选）</label>
-                <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON）"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>对话片段模板（User，可选）</label>
-                <textarea id="sg_summaryUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
-              </div>
+              <div class="sg-card sg-subcard">
+                <div class="sg-field">
+                  <label>自定义总结提示词（System，可选）</label>
+                  <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON）"></textarea>
+                </div>
+                <div class="sg-field">
+                  <label>对话片段模板（User，可选）</label>
+                  <textarea id="sg_summaryUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
+                </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示词</button>
                 <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{statData}}。插件会强制要求输出 JSON：{title, summary, keywords[]}。</div>
@@ -9339,6 +9603,30 @@ function buildModalHtml() {
                 <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">人物</label>
                 <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">装备</label>
                 <label class="sg-check"><input type="checkbox" id="sg_factionEntriesEnabled">势力</label>
+              </div>
+
+              <div class="sg-card sg-subcard">
+                <div class="sg-card-title">大总结（汇总多条剧情总结）</div>
+                <div class="sg-row sg-inline">
+                  <label class="sg-check"><input type="checkbox" id="sg_megaSummaryEnabled">启用大总结</label>
+                  <div class="sg-field" style="margin-left:8px">
+                    <label style="margin-right:6px">每</label>
+                    <input id="sg_megaSummaryEvery" type="number" min="5" max="5000" style="width:80px">
+                    <span class="sg-hint" style="margin-left:6px">条剧情总结生成一次</span>
+                  </div>
+                </div>
+                <div class="sg-field">
+                  <label>大总结前缀</label>
+                  <input id="sg_megaSummaryCommentPrefix" type="text" placeholder="大总结">
+                </div>
+                <div class="sg-field">
+                  <label>大总结提示词（System，可选）</label>
+                  <textarea id="sg_megaSummarySystemPrompt" rows="5" placeholder="例如：强调阶段性转折/主线推进…（仍需输出 JSON）"></textarea>
+                </div>
+                <div class="sg-field">
+                  <label>大总结模板（User，可选）</label>
+                  <textarea id="sg_megaSummaryUserTemplate" rows="4" placeholder="支持占位符：{{items}}"></textarea>
+                </div>
               </div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_achievementEntriesEnabled">成就</label>
@@ -10426,7 +10714,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_factionEntriesEnabled, #sg_factionEntryPrefix, #sg_structuredFactionPrompt, #sg_achievementEntriesEnabled, #sg_achievementEntryPrefix, #sg_structuredAchievementPrompt, #sg_subProfessionEntriesEnabled, #sg_subProfessionEntryPrefix, #sg_structuredSubProfessionPrompt, #sg_questEntriesEnabled, #sg_questEntryPrefix, #sg_structuredQuestPrompt').on('input change', () => {
+  $('#sg_factionEntriesEnabled, #sg_factionEntryPrefix, #sg_structuredFactionPrompt, #sg_achievementEntriesEnabled, #sg_achievementEntryPrefix, #sg_structuredAchievementPrompt, #sg_subProfessionEntriesEnabled, #sg_subProfessionEntryPrefix, #sg_structuredSubProfessionPrompt, #sg_questEntriesEnabled, #sg_questEntryPrefix, #sg_structuredQuestPrompt, #sg_megaSummaryEnabled, #sg_megaSummaryEvery, #sg_megaSummarySystemPrompt, #sg_megaSummaryUserTemplate, #sg_megaSummaryCommentPrefix').on('input change', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -11172,6 +11460,11 @@ function pullSettingsToUi() {
   $('#sg_summaryUserTemplate').val(String(s.summaryUserTemplate || DEFAULT_SUMMARY_USER_TEMPLATE));
   $('#sg_summaryReadStatData').prop('checked', !!s.summaryReadStatData);
   $('#sg_summaryStatVarName').val(String(s.summaryStatVarName || 'stat_data'));
+  $('#sg_megaSummaryEnabled').prop('checked', !!s.megaSummaryEnabled);
+  $('#sg_megaSummaryEvery').val(s.megaSummaryEvery || 40);
+  $('#sg_megaSummaryCommentPrefix').val(String(s.megaSummaryCommentPrefix || '大总结'));
+  $('#sg_megaSummarySystemPrompt').val(String(s.megaSummarySystemPrompt || DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT));
+  $('#sg_megaSummaryUserTemplate').val(String(s.megaSummaryUserTemplate || DEFAULT_MEGA_SUMMARY_USER_TEMPLATE));
   $('#sg_structuredEntriesEnabled').prop('checked', !!s.structuredEntriesEnabled);
   $('#sg_characterEntriesEnabled').prop('checked', !!s.characterEntriesEnabled);
   $('#sg_equipmentEntriesEnabled').prop('checked', !!s.equipmentEntriesEnabled);
@@ -11693,6 +11986,11 @@ function pullUiToSettings() {
   s.summaryUserTemplate = String($('#sg_summaryUserTemplate').val() || '').trim() || DEFAULT_SUMMARY_USER_TEMPLATE;
   s.summaryReadStatData = $('#sg_summaryReadStatData').is(':checked');
   s.summaryStatVarName = String($('#sg_summaryStatVarName').val() || 'stat_data').trim() || 'stat_data';
+  s.megaSummaryEnabled = $('#sg_megaSummaryEnabled').is(':checked');
+  s.megaSummaryEvery = clampInt($('#sg_megaSummaryEvery').val(), 5, 5000, s.megaSummaryEvery || 40);
+  s.megaSummaryCommentPrefix = String($('#sg_megaSummaryCommentPrefix').val() || '大总结').trim() || '大总结';
+  s.megaSummarySystemPrompt = String($('#sg_megaSummarySystemPrompt').val() || '').trim() || DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT;
+  s.megaSummaryUserTemplate = String($('#sg_megaSummaryUserTemplate').val() || '').trim() || DEFAULT_MEGA_SUMMARY_USER_TEMPLATE;
   s.structuredEntriesEnabled = $('#sg_structuredEntriesEnabled').is(':checked');
   s.characterEntriesEnabled = $('#sg_characterEntriesEnabled').is(':checked');
   s.equipmentEntriesEnabled = $('#sg_equipmentEntriesEnabled').is(':checked');
