@@ -422,10 +422,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryBlueWorldInfoFile: '',
   summaryBlueWorldInfoCommentPrefix: '剧情总结',
 
-  // —— 自动绑定世界书（每个聊天自动生成专属世界书）——
-  autoBindWorldInfo: false,
-  autoBindWorldInfoPrefix: 'SG',
-
   // —— 蓝灯索引 → 绿灯触发 ——
   wiTriggerEnabled: false,
 
@@ -679,9 +675,6 @@ const META_KEYS = Object.freeze({
   world: 'storyguide_world_setup',
   summaryMeta: 'storyguide_summary_meta',
   staticModulesCache: 'storyguide_static_modules_cache',
-  boundGreenWI: 'storyguide_bound_green_wi',
-  boundBlueWI: 'storyguide_bound_blue_wi',
-  autoBindCreated: 'storyguide_auto_bind_created',
   mapData: 'storyguide_map_data',
 });
 
@@ -2095,259 +2088,6 @@ async function clearStructuredEntriesCache() {
   await setSummaryMeta(meta);
 }
 
-// -------------------- 自动绑定世界书（每个聊天专属世界书） --------------------
-// 生成唯一的世界书文件名
-function generateBoundWorldInfoName(type) {
-  const ctx = SillyTavern.getContext();
-  const charName = String(ctx.characterId || ctx.name2 || ctx.name || 'UnknownChar')
-    .replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '')
-    .slice(0, 20);
-  const ts = Date.now().toString(36);
-  const prefix = ensureSettings().autoBindWorldInfoPrefix || 'SG';
-  return `${prefix}_${charName}_${ts}_${type}`;
-}
-
-// 检查并确保当前聊天启用了自动绑定（使用 chatbook 模式）
-async function ensureBoundWorldInfo(opts = {}) {
-  const s = ensureSettings();
-  if (!s.autoBindWorldInfo) return false;
-
-  const alreadyApplied = !!getChatMetaValue(META_KEYS.autoBindCreated);
-
-  // 如果已经应用过，只需重新应用设置
-  if (alreadyApplied) {
-    await applyBoundWorldInfoToSettings();
-    return false;
-  }
-
-  // 首次启用：设置标记并应用
-  await setChatMetaValue(META_KEYS.autoBindCreated, '1');
-
-  // 显示用户提示
-  showToast(`已启用自动写入世界书\n绿灯总结将写入聊天绑定的世界书\n（由 SillyTavern 自动创建和管理）`, {
-    kind: 'ok', spinner: false, sticky: false, duration: 3500
-  });
-
-  // 应用设置
-  await applyBoundWorldInfoToSettings();
-  return true;
-}
-
-// 创建世界书文件（通过多种方法尝试）
-async function createWorldInfoFile(fileName, initialContent = '初始化条目') {
-  if (!fileName) throw new Error('文件名为空');
-
-  console.log('[StoryGuide] 尝试创建世界书文件:', fileName);
-
-  // 方法1: 尝试使用 SillyTavern 内部的 world_info 模块
-  try {
-    const worldInfoModule = await import('/scripts/world-info.js');
-    if (worldInfoModule && typeof worldInfoModule.createNewWorldInfo === 'function') {
-      await worldInfoModule.createNewWorldInfo(fileName);
-      console.log('[StoryGuide] 使用内部模块创建成功:', fileName);
-      return true;
-    }
-  } catch (e) {
-    console.log('[StoryGuide] 内部模块方法失败:', e?.message || e);
-  }
-
-  // 方法2: 尝试使用导入 API (模拟文件上传)
-  try {
-    const headers = getStRequestHeadersCompat();
-    const worldInfoData = {
-      entries: {
-        0: {
-          uid: 0,
-          key: ['__SG_INIT__'],
-          keysecondary: [],
-          comment: '由 StoryGuide 自动创建',
-          content: initialContent,
-          constant: false,
-          disable: false,
-          order: 100,
-          position: 0,
-        }
-      }
-    };
-
-    // 创建一个 Blob 作为 JSON 文件
-    const blob = new Blob([JSON.stringify(worldInfoData)], { type: 'application/json' });
-    const formData = new FormData();
-    formData.append('avatar', blob, `${fileName}.json`);
-
-    const res = await fetch('/api/worldinfo/import', {
-      method: 'POST',
-      headers: { ...headers },
-      body: formData,
-    });
-
-    if (res.ok) {
-      console.log('[StoryGuide] 使用导入 API 创建成功:', fileName);
-      return true;
-    }
-    console.log('[StoryGuide] 导入 API 响应:', res.status);
-  } catch (e) {
-    console.log('[StoryGuide] 导入 API 方法失败:', e?.message || e);
-  }
-
-  // 方法3: 尝试直接 POST 到 /api/worldinfo/edit (编辑/创建)
-  try {
-    const headers = {
-      'Content-Type': 'application/json',
-      ...getStRequestHeadersCompat(),
-    };
-
-    const res = await fetch('/api/worldinfo/edit', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        name: fileName,
-        data: {
-          entries: {
-            0: {
-              uid: 0,
-              key: ['__SG_INIT__'],
-              content: initialContent,
-              comment: '由 StoryGuide 自动创建',
-            }
-          }
-        }
-      }),
-    });
-
-    if (res.ok) {
-      console.log('[StoryGuide] 使用 edit API 创建成功:', fileName);
-      return true;
-    }
-    console.log('[StoryGuide] edit API 响应:', res.status);
-  } catch (e) {
-    console.log('[StoryGuide] edit API 方法失败:', e?.message || e);
-  }
-
-  // 方法4: 最后尝试 STscript (可能需要文件已存在)
-  try {
-    const safeFileName = quoteSlashValue(fileName);
-    const safeKey = quoteSlashValue('__SG_INIT__');
-    const safeContent = quoteSlashValue(initialContent);
-    const cmd = `/ createentry file = ${safeFileName} key = ${safeKey} ${safeContent} `;
-    await execSlash(cmd);
-    console.log('[StoryGuide] STscript 方式可能成功');
-    return true;
-  } catch (e) {
-    console.log('[StoryGuide] STscript 方式失败:', e?.message || e);
-  }
-
-  // 所有方法都失败 - 显示警告但不阻断
-  console.warn('[StoryGuide] 无法自动创建世界书文件，请手动创建:', fileName);
-  return false;
-}
-
-// 解析当前聊天绑定的 chatbook 文件名（用于持久绑定）
-async function resolveChatbookFileName() {
-  const varName = '__sg_chatbook_name';
-  try {
-    const out = await execSlash(`/ getchatbook | /setvar key=${varName} | /getvar ${varName} | /flushvar ${varName}`);
-    const raw = slashOutputToText(out).trim();
-    if (!raw) return '';
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const name = lines[lines.length - 1] || '';
-    return name.replace(/^"+|"+$/g, '');
-  } catch (e) {
-    console.warn('[StoryGuide] resolveChatbookFileName failed:', e?.message || e);
-    return '';
-  }
-}
-
-// 将绑定的世界书应用到设置
-async function applyBoundWorldInfoToSettings() {
-  const s = ensureSettings();
-  if (!s.autoBindWorldInfo) return;
-
-  console.log('[StoryGuide] 应用自动绑定设置（使用 chatbook 模式）');
-
-  let greenWI = String(getChatMetaValue(META_KEYS.boundGreenWI) || '').trim();
-  if (!greenWI) {
-    greenWI = await resolveChatbookFileName();
-    if (greenWI) await setChatMetaValue(META_KEYS.boundGreenWI, greenWI);
-  }
-
-  // 绿灯世界书：优先使用已解析的绑定文件名，避免切换/刷新后产生新文件
-  s.summaryToWorldInfo = true;
-  if (greenWI) {
-    s.summaryWorldInfoTarget = 'file';
-    s.summaryWorldInfoFile = greenWI;
-    console.log('[StoryGuide] 绿灯设置: file（绑定文件）', greenWI);
-  } else {
-    s.summaryWorldInfoTarget = 'chatbook';
-    s.summaryWorldInfoFile = '';
-    console.log('[StoryGuide] 绿灯设置: chatbook（将使用聊天绑定的世界书）');
-  }
-
-  // 蓝灯世界书：暂时禁用（因为无法自动创建独立文件）
-  // 用户如需蓝灯功能，需要手动创建世界书文件并在设置中指定
-  s.summaryToBlueWorldInfo = false;
-  console.log('[StoryGuide] 蓝灯设置: 禁用（无法自动创建独立文件）');
-
-  // 更新 UI（如果面板已打开）
-  updateAutoBindUI();
-  saveSettings();
-}
-
-// 更新自动绑定UI显示
-function updateAutoBindUI() {
-  const s = ensureSettings();
-  const $info = $('#sg_autoBindInfo');
-
-  if ($info.length) {
-    if (s.autoBindWorldInfo) {
-      $info.html(`<span style="color: var(--SmartThemeQuoteColor)">✅ 已启用：总结将写入聊天绑定的世界书</span>`);
-      $info.show();
-    } else {
-      $info.hide();
-    }
-  }
-}
-
-// 聊天切换时的处理（带提示）
-async function onChatSwitched() {
-  const s = ensureSettings();
-
-  console.log('[StoryGuide] onChatSwitched 被调用, autoBindWorldInfo =', s.autoBindWorldInfo);
-
-  if (!s.autoBindWorldInfo) {
-    console.log('[StoryGuide] autoBindWorldInfo 未开启，跳过自动绑定');
-    return;
-  }
-
-  // 等待 chatMetadata 加载完成（增加重试机制）
-  let retries = 0;
-  const maxRetries = 5;
-  while (retries < maxRetries) {
-    await new Promise(r => setTimeout(r, 200));
-    const { chatMetadata } = SillyTavern.getContext();
-    if (chatMetadata && Object.keys(chatMetadata).length > 0) {
-      console.log('[StoryGuide] chatMetadata 已加载，keys:', Object.keys(chatMetadata).length);
-      break;
-    }
-    retries++;
-    console.log(`[StoryGuide] 等待 chatMetadata 加载... (${retries}/${maxRetries})`);
-  }
-
-  const greenWI = getChatMetaValue(META_KEYS.boundGreenWI);
-  const blueWI = getChatMetaValue(META_KEYS.boundBlueWI);
-  const autoBindCreated = getChatMetaValue(META_KEYS.autoBindCreated);
-
-  console.log('[StoryGuide] 当前聊天绑定信息:', { greenWI, blueWI, autoBindCreated });
-
-  // 如果已经创建过绑定（即使 greenWI 为空也尝试恢复）
-  if (autoBindCreated || greenWI || blueWI) {
-    console.log('[StoryGuide] 已检测到绑定，但已禁用自动覆盖世界书设置');
-    return;
-  } else {
-    // 不再自动为新聊天创建世界书（用户反馈：每次新对话都会创建）
-    console.log('[StoryGuide] 新聊天，跳过自动创建世界书');
-  }
-}
 
 function setStatus(text, kind = '') {
   const $s = $('#sg_status');
@@ -10438,15 +10178,6 @@ function buildModalHtml() {
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
             </div>
 
-            <div class="sg-card sg-subcard" style="background: var(--SmartThemeBlurTintColor); margin-top: 8px; display: none;">
-              <div class="sg-row sg-inline" style="align-items: center;">
-                <label class="sg-check"><input type="checkbox" id="sg_autoBindWorldInfo">📒 自动绑定世界书（每个聊天生成专属世界书）</label>
-                <input id="sg_autoBindWorldInfoPrefix" type="text" placeholder="前缀" style="width: 80px;" title="世界书文件名前缀，默认 SG">
-              </div>
-              <div class="sg-hint" style="margin-top: 4px;">开启后，每个聊天会自动创建专属的绿灯/蓝灯世界书，切换聊天时自动加载。</div>
-              <div id="sg_autoBindInfo" class="sg-hint" style="margin-top: 6px; display: none; font-size: 12px;"></div>
-            </div>
-
             <div class="sg-hint" style="margin-top: 8px; color: var(--SmartThemeQuoteColor);">
               💡 请手动创建世界书文件，然后在上方填写文件名。绿灯选择「写入指定世界书文件名」模式。
             </div>
@@ -11971,22 +11702,6 @@ function ensureModal() {
     }
   });
 
-  // 自动绑定世界书事件
-  $('#sg_autoBindWorldInfo').on('change', async () => {
-    pullUiToSettings();
-    saveSettings();
-    const s = ensureSettings();
-    if (s.autoBindWorldInfo) {
-      await ensureBoundWorldInfo();
-    }
-    updateAutoBindUI();
-  });
-
-  $('#sg_autoBindWorldInfoPrefix').on('input', () => {
-    pullUiToSettings();
-    saveSettings();
-  });
-
   // 快捷选项按钮事件
   $('#sg_resetQuickOptions').on('click', () => {
     const defaultOptions = JSON.stringify([
@@ -12269,11 +11984,6 @@ function pullSettingsToUi() {
   $('#sg_summaryIndexInComment').prop('checked', !!s.summaryIndexInComment);
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
-
-  // 自动绑定世界书
-  $('#sg_autoBindWorldInfo').prop('checked', !!s.autoBindWorldInfo);
-  $('#sg_autoBindWorldInfoPrefix').val(String(s.autoBindWorldInfoPrefix || 'SG'));
-  updateAutoBindUI();
 
   // 地图功能
   $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
@@ -12804,10 +12514,6 @@ function pullUiToSettings() {
   s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
   s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
-
-  // 自动绑定世界书
-  s.autoBindWorldInfo = $('#sg_autoBindWorldInfo').is(':checked');
-  s.autoBindWorldInfoPrefix = String($('#sg_autoBindWorldInfoPrefix').val() || 'SG').trim() || 'SG';
 
   // 地图功能
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
@@ -13955,29 +13661,6 @@ function init() {
       e.stopPropagation();
       openImagePreviewModal(src, $img.attr('alt') || 'Image preview');
     });
-  });
-
-  // 聊天切换时自动绑定世界书
-  eventSource.on(event_types.CHAT_CHANGED, async () => {
-    console.log('[StoryGuide] CHAT_CHANGED 事件触发');
-
-    const ctx = SillyTavern.getContext();
-    const hasChat = ctx.chat && Array.isArray(ctx.chat);
-    const chatLength = hasChat ? ctx.chat.length : 0;
-
-    console.log('[StoryGuide] 聊天状态:', { hasChat, chatLength, chatMetadata: !!ctx.chatMetadata });
-
-    // 放宽检查：只要有 chatMetadata 就尝试运行
-    if (!ctx.chatMetadata) {
-      console.log('[StoryGuide] 没有 chatMetadata，跳过自动绑定');
-      return;
-    }
-
-    try {
-      await onChatSwitched();
-    } catch (e) {
-      console.warn('[StoryGuide] 自动绑定世界书失败:', e);
-    }
   });
 
   globalThis.StoryGuide = {
