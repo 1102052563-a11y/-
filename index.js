@@ -678,6 +678,11 @@ const META_KEYS = Object.freeze({
   mapData: 'storyguide_map_data',
 });
 
+const LOCAL_STORAGE_KEYS = Object.freeze({
+  summaryBlueFile: `${MODULE_NAME}_summaryBlueWorldInfoFile`,
+  wiBlueIndexFile: `${MODULE_NAME}_wiBlueIndexFile`,
+});
+
 let lastReport = null;
 let lastJsonText = '';
 let lastSummary = null; // { title, summary, keywords, ... }
@@ -748,6 +753,14 @@ function getStRequestHeadersCompat() {
 // -------------------- utils --------------------
 
 function clone(obj) { try { return structuredClone(obj); } catch { return JSON.parse(JSON.stringify(obj)); } }
+
+function readLocalStorageString(key) {
+  try { return String(localStorage.getItem(key) || '').trim(); } catch { return ''; }
+}
+
+function writeLocalStorageString(key, value) {
+  try { localStorage.setItem(key, String(value || '')); } catch { }
+}
 
 function ensureSettings() {
   const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
@@ -824,6 +837,17 @@ function ensureSettings() {
   );
   if (isLegacyStructuredTpl) {
     extensionSettings[MODULE_NAME].structuredEntriesUserTemplate = DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
+    saveSettingsDebounced();
+  }
+
+  const lsSummaryBlueFile = readLocalStorageString(LOCAL_STORAGE_KEYS.summaryBlueFile);
+  if (!extensionSettings[MODULE_NAME].summaryBlueWorldInfoFile && lsSummaryBlueFile) {
+    extensionSettings[MODULE_NAME].summaryBlueWorldInfoFile = lsSummaryBlueFile;
+    saveSettingsDebounced();
+  }
+  const lsWiBlueIndexFile = readLocalStorageString(LOCAL_STORAGE_KEYS.wiBlueIndexFile);
+  if (!extensionSettings[MODULE_NAME].wiBlueIndexFile && lsWiBlueIndexFile) {
+    extensionSettings[MODULE_NAME].wiBlueIndexFile = lsWiBlueIndexFile;
     saveSettingsDebounced();
   }
 
@@ -12520,6 +12544,7 @@ function pullUiToSettings() {
   const $summaryBlueWorldInfoFile = $('#sg_summaryBlueWorldInfoFile');
   if ($summaryBlueWorldInfoFile.length) {
     s.summaryBlueWorldInfoFile = String($summaryBlueWorldInfoFile.val() || '').trim();
+    writeLocalStorageString(LOCAL_STORAGE_KEYS.summaryBlueFile, s.summaryBlueWorldInfoFile);
   }
 
   // 地图功能
@@ -12626,6 +12651,7 @@ function pullUiToSettings() {
   const $wiBlueIndexFile = $('#sg_wiBlueIndexFile');
   if ($wiBlueIndexFile.length) {
     s.wiBlueIndexFile = String($wiBlueIndexFile.val() || '').trim();
+    writeLocalStorageString(LOCAL_STORAGE_KEYS.wiBlueIndexFile, s.wiBlueIndexFile);
   }
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
   s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
