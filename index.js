@@ -2173,9 +2173,11 @@ function updateCharacterCustomRows() {
   const raceVal = String($('#sg_char_race').val() || '');
   const talentVal = String($('#sg_char_talent').val() || '');
   $('#sg_char_park_custom_row').toggle(parkVal === 'CUSTOM');
-  $('#sg_char_park_traits_row').toggle(parkVal === 'CUSTOM');
+  $('#sg_char_park_traits_row').toggle(parkVal === 'CUSTOM' || !!$('#sg_char_park_traits').val());
   $('#sg_char_race_custom_row').toggle(raceVal === 'CUSTOM');
+  $('#sg_char_race_desc_row').toggle(raceVal === 'CUSTOM' || !!$('#sg_char_race_desc').val());
   $('#sg_char_talent_custom_row').toggle(talentVal === 'CUSTOM');
+  $('#sg_char_talent_desc_row').toggle(talentVal === 'CUSTOM' || !!$('#sg_char_talent_desc').val());
 }
 
 function getCharacterDifficulty() {
@@ -2373,29 +2375,68 @@ async function randomizeCharacterWithLLM() {
       return String(val || '');
     };
 
+    const getDesc = (val) => {
+      if (typeof val === 'object' && val !== null) {
+        if (val.desc) return String(val.desc);
+        // Construct desc from talent fields if available
+        let parts = [];
+        if (val.mechanism) parts.push(`机制：${val.mechanism}`);
+        if (val.benefit) parts.push(`收益：${val.benefit}`);
+        if (val.cost) parts.push(`代价：${val.cost}`);
+        if (val.trigger) parts.push(`触发：${val.trigger}`);
+        if (val.growth) parts.push(`成长：${val.growth}`);
+        if (parts.length) return parts.join('\n');
+      }
+      return '';
+    };
+
     // Fill UI
     $('#sg_char_park').val('CUSTOM');
     $('#sg_char_park_custom').val(sanitize(data.park));
+    // If park is object with desc, fill traits
+    if (typeof data.park === 'object' && data.park.desc) {
+      $('#sg_char_park_traits').val(String(data.park.desc));
+    }
 
     $('#sg_char_race').val('CUSTOM');
     $('#sg_char_race_custom').val(sanitize(data.race));
+    $('#sg_char_race_desc').val(getDesc(data.race));
 
     $('#sg_char_talent').val('CUSTOM');
     $('#sg_char_talent_custom').val(sanitize(data.talent));
+    $('#sg_char_talent_desc').val(getDesc(data.talent));
 
-    $('#sg_char_difficulty').val('30');
+    // Difficulty
+    let diffVal = '30';
+    if (data.difficulty) {
+      if (typeof data.difficulty === 'object') diffVal = String(data.difficulty.value || '30');
+      else diffVal = String(data.difficulty);
+    }
+    $('#sg_char_difficulty').val(diffVal);
 
-    $('#sg_char_attr_con').val(data.attrs.con || 0);
-    $('#sg_char_attr_int').val(data.attrs.int || 0);
-    $('#sg_char_attr_cha').val(data.attrs.cha || 0);
-    $('#sg_char_attr_str').val(data.attrs.str || 0);
-    $('#sg_char_attr_agi').val(data.attrs.agi || 0);
-    $('#sg_char_attr_luk').val(data.attrs.luk || 0);
+    // Attributes
+    const attrs = data.attrs || {};
+    $('#sg_char_attr_con').val(attrs.con || 0);
+    $('#sg_char_attr_int').val(attrs.int || 0);
+    $('#sg_char_attr_cha').val(attrs.cha || 0);
+    $('#sg_char_attr_str').val(attrs.str || 0);
+    $('#sg_char_attr_agi').val(attrs.agi || 0);
+    $('#sg_char_attr_luk').val(attrs.luk || 0);
 
-    // Generate random contract ID
-    $('#sg_char_contract').val(`R-${Math.floor(Math.random() * 9000) + 1000}`);
+    // Contract ID (Stage if present, or generate)
+    if (data.stage && !data.contractId) {
+      // Just keep existing or random? 
+    }
+    if (data.contractId) $('#sg_char_contract').val(data.contractId);
+    else if (!$('#sg_char_contract').val()) {
+      $('#sg_char_contract').val(`R-${Math.floor(Math.random() * 9000) + 1000}`);
+    }
 
-    updateCharacterForm();
+    updateCharacterForm(); // Will handle visibility of custom rows
+
+    // Explicitly show desc rows if they have content
+    if ($('#sg_char_race_desc').val()) $('#sg_char_race_desc_row').show();
+    if ($('#sg_char_talent_desc').val()) $('#sg_char_talent_desc_row').show();
     setCharacterStatus('· AI 随机设定已完成 ·', 'ok');
 
   } catch (e) {
@@ -2411,7 +2452,9 @@ function buildCharacterPayload() {
   const parkCustom = String($('#sg_char_park_custom').val() || '').trim();
   const parkTraits = String($('#sg_char_park_traits').val() || '').trim();
   const raceCustom = String($('#sg_char_race_custom').val() || '').trim();
+  const raceDesc = String($('#sg_char_race_desc').val() || '').trim();
   const talentCustom = String($('#sg_char_talent_custom').val() || '').trim();
+  const talentDesc = String($('#sg_char_talent_desc').val() || '').trim();
   const contractId = String($('#sg_char_contract').val() || '').trim();
 
   const park = parkValue === 'CUSTOM' ? parkCustom : parkValue;
@@ -2431,7 +2474,9 @@ function buildCharacterPayload() {
     park,
     parkTraits,
     race,
+    raceDesc,
     talent,
+    talentDesc,
     contractId,
     difficulty,
     attrs,
@@ -2449,6 +2494,8 @@ async function generateCharacterText() {
 
   const attributeText = `体质${payload.attrs.con} 智力${payload.attrs.int} 魅力${payload.attrs.cha} 力量${payload.attrs.str} 敏捷${payload.attrs.agi} 幸运${payload.attrs.luk}`;
   const parkTraits = payload.parkTraits ? payload.parkTraits : '未登记';
+  const raceDesc = payload.raceDesc ? payload.raceDesc : '未详细描述';
+  const talentDesc = payload.talentDesc ? payload.talentDesc : '未详细描述';
   const contractId = payload.contractId || '随机分配中';
 
   const customOpeningPrompt = String(s.characterOpeningPrompt || '').trim();
@@ -2459,7 +2506,9 @@ async function generateCharacterText() {
     `- 所属乐园：${payload.park}\n` +
     `- 乐园特点：${parkTraits}\n` +
     `- 种族：${payload.race}\n` +
+    `- 种族描述：${raceDesc}\n` +
     `- 初始天赋：${payload.talent}\n` +
+    `- 天赋详情：${talentDesc}\n` +
     `- 契约者编号：${contractId}\n` +
     `- 六维属性：${attributeText}（总计${payload.total}/${payload.difficulty}，单项<=20）\n` +
     `要求：必须包含一段系统提示块（Markdown 引用 >），其中列出乐园/种族/天赋/编号/六维属性/乐园特点。最后以“触碰印记”作为收束。`;
@@ -11664,6 +11713,10 @@ function buildModalHtml() {
                   <label>自定义种族</label>
                   <input id="sg_char_race_custom" type="text" placeholder="输入种族名称，例如：灰雾族">
                 </div>
+                <div class="sg-field sg-character-full" id="sg_char_race_desc_row" style="display:none;">
+                  <label>种族描述</label>
+                  <textarea id="sg_char_race_desc" rows="2" placeholder="种族详细设定..."></textarea>
+                </div>
 
                 <div class="sg-field">
                   <label>天赋</label>
@@ -11687,6 +11740,10 @@ function buildModalHtml() {
                 <div class="sg-field" id="sg_char_talent_custom_row" style="display:none;">
                   <label>自定义天赋</label>
                   <input id="sg_char_talent_custom" type="text" placeholder="输入天赋名称，例如：灰雾行旅者">
+                </div>
+                <div class="sg-field sg-character-full" id="sg_char_talent_desc_row" style="display:none;">
+                  <label>天赋详情</label>
+                  <textarea id="sg_char_talent_desc" rows="3" placeholder="天赋机制、收益、代价..."></textarea>
                 </div>
 
                 <div class="sg-field sg-character-full">
@@ -13118,8 +13175,12 @@ function pullSettingsToUi() {
   $('#sg_char_park_traits').val(String(s.characterParkTraits || ''));
   const raceValue = s.characterRace === 'CUSTOM' ? s.characterRaceCustom : s.characterRace;
   applyCharacterSelectValue($('#sg_char_race'), raceValue, $('#sg_char_race_custom'));
+  $('#sg_char_race_desc').val(String(s.characterRaceDesc || ''));
+
   const talentValue = s.characterTalent === 'CUSTOM' ? s.characterTalentCustom : s.characterTalent;
   applyCharacterSelectValue($('#sg_char_talent'), talentValue, $('#sg_char_talent_custom'));
+  $('#sg_char_talent_desc').val(String(s.characterTalentDesc || ''));
+
   $('#sg_char_contract').val(String(s.characterContractId || ''));
   $('#sg_char_difficulty').val(String(s.characterDifficulty || 30));
   $('#sg_char_random_llm').prop('checked', !!s.characterRandomLLM);
@@ -13664,8 +13725,10 @@ function pullUiToSettings() {
   s.characterParkTraits = String($('#sg_char_park_traits').val() || '').trim();
   s.characterRace = String($('#sg_char_race').val() || '');
   s.characterRaceCustom = String($('#sg_char_race_custom').val() || '').trim();
+  s.characterRaceDesc = String($('#sg_char_race_desc').val() || '').trim();
   s.characterTalent = String($('#sg_char_talent').val() || '');
   s.characterTalentCustom = String($('#sg_char_talent_custom').val() || '').trim();
+  s.characterTalentDesc = String($('#sg_char_talent_desc').val() || '').trim();
   s.characterContractId = String($('#sg_char_contract').val() || '').trim();
   s.characterDifficulty = getCharacterDifficulty();
   s.characterRandomLLM = $('#sg_char_random_llm').is(':checked');
