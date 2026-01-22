@@ -2294,6 +2294,83 @@ function randomizeCharacterLocal() {
   setCharacterStatus('· 已随机生成，可继续调整后生成文本 ·', 'ok');
 }
 
+
+async function randomizeCharacterWithLLM() {
+  const s = ensureSettings();
+  setCharacterStatus('· 正在请求 AI 随机设定… ·', 'warn');
+
+  // Construct prompt
+  const userPrompt = `请为“轮回乐园”设计一个全新的契约者角色。
+要求：
+1. 随机选择一个乐园（轮回/圣域/守望/圣光/死亡/天启）。
+2. 随机选择一个种族（人类/精灵/兽人/半魔/机巧/异界）。
+3. 随机设计一个初始天赋（名字+简述）。
+4. 设定难度为"30"（灰雾常阶）。
+5. 分配30点属性（体质/智力/魅力/力量/敏捷/幸运），每项0-20，总和必须等于30。
+6. 输出 JSON 格式：
+{
+  "park": "乐园名",
+  "race": "种族名",
+  "talent": "天赋名",
+  "attrs": { "con": 5, "int": 5, "cha": 5, "str": 5, "agi": 5, "luk": 5 }
+}`;
+
+  try {
+    let result = '';
+    // Use the character provider settings (same as character text generation)
+    if (String(s.characterProvider || 'st') === 'custom') {
+      result = await callViaCustom(
+        s.characterCustomEndpoint,
+        s.characterCustomApiKey,
+        s.characterCustomModel,
+        [{ role: 'user', content: userPrompt }],
+        0.7,
+        1024,
+        0.95,
+        false
+      );
+    } else {
+      result = await callViaSillyTavern([{ role: 'user', content: userPrompt }], null, 0.7);
+    }
+
+    // Parse JSON
+    const jsonMatch = result.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('AI 未返回有效 JSON');
+    const data = JSON.parse(jsonMatch[0]);
+
+    if (!data.park || !data.race || !data.talent || !data.attrs) throw new Error('JSON 缺少必要字段');
+
+    // Fill UI
+    $('#sg_char_park').val('CUSTOM');
+    $('#sg_char_park_custom').val(data.park);
+
+    $('#sg_char_race').val('CUSTOM');
+    $('#sg_char_race_custom').val(data.race);
+
+    $('#sg_char_talent').val('CUSTOM');
+    $('#sg_char_talent_custom').val(data.talent);
+
+    $('#sg_char_difficulty').val('30');
+
+    $('#sg_char_attr_con').val(data.attrs.con || 0);
+    $('#sg_char_attr_int').val(data.attrs.int || 0);
+    $('#sg_char_attr_cha').val(data.attrs.cha || 0);
+    $('#sg_char_attr_str').val(data.attrs.str || 0);
+    $('#sg_char_attr_agi').val(data.attrs.agi || 0);
+    $('#sg_char_attr_luk').val(data.attrs.luk || 0);
+
+    // Generate random contract ID
+    $('#sg_char_contract').val(`R-${Math.floor(Math.random() * 9000) + 1000}`);
+
+    updateCharacterForm();
+    setCharacterStatus('· AI 随机设定已完成 ·', 'ok');
+
+  } catch (e) {
+    console.error('AI Random Failed:', e);
+    setCharacterStatus(`· AI 随机失败：${e.message} ·`, 'err');
+  }
+}
+
 function buildCharacterPayload() {
   const parkValue = String($('#sg_char_park').val() || '');
   const raceValue = String($('#sg_char_race').val() || '');
@@ -11531,6 +11608,9 @@ function buildModalHtml() {
                       </select>
                     </div>
                     <button class="menu_button sg-btn sg-character-mini" id="sg_char_random">随机设定</button>
+                    <label class="sg-check sg-character-mini" style="margin-left:8px; font-size:12px; height:28px;" title="勾选后使用 AI 生成设定（API）">
+                      <input type="checkbox" id="sg_char_random_llm">AI
+                    </label>
                   </div>
                 </div>
 
@@ -12631,8 +12711,12 @@ function setupCharacterPage() {
     autoSave();
   });
 
-  $('#sg_char_random').on('click', () => {
-    randomizeCharacterLocal();
+  $('#sg_char_random').on('click', async () => {
+    if ($('#sg_char_random_llm').is(':checked')) {
+      await randomizeCharacterWithLLM();
+    } else {
+      randomizeCharacterLocal();
+    }
     autoSave();
   });
 
