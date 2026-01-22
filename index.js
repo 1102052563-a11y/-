@@ -2300,7 +2300,9 @@ async function randomizeCharacterWithLLM() {
   setCharacterStatus('· 正在请求 AI 随机设定… ·', 'warn');
 
   // Construct prompt
-  const userPrompt = `请为“轮回乐园”设计一个全新的契约者角色。
+  const s = ensureSettings();
+  const customPrompt = String(s.characterRandomPrompt || '').trim();
+  const userPrompt = customPrompt || `请为“轮回乐园”设计一个全新的契约者角色。
 要求：
 1. 随机选择一个乐园（轮回/圣域/守望/圣光/死亡/天启）。
 2. 随机选择一个种族（人类/精灵/兽人/半魔/机巧/异界）。
@@ -2436,7 +2438,9 @@ async function generateCharacterText() {
   const parkTraits = payload.parkTraits ? payload.parkTraits : '未登记';
   const contractId = payload.contractId || '随机分配中';
 
-  const systemPrompt = '你是“轮回乐园”世界观的开场文本写作助手。只输出正文文本，不要 JSON，不要代码块。';
+  const customOpeningPrompt = String(s.characterOpeningPrompt || '').trim();
+  const systemPrompt = customOpeningPrompt || '你是“轮回乐园”世界观的开场文本写作助手。只输出正文文本，不要 JSON，不要代码块。';
+
   const userPrompt =
     `根据以下设定生成开场文本，中文，约 500~900 字：\n` +
     `- 所属乐园：${payload.park}\n` +
@@ -10015,9 +10019,61 @@ async function refreshModels() {
     s.customModelsCache = ids;
     saveSettings();
     fillModelSelect(ids, s.customModel);
-    setStatus(`已刷新模型：${ids.length} 个（直连 fallback）`, 'ok');
+    setStatus(`已刷新模型：${ids.length} 个`, 'ok');
   } catch (e) {
-    setStatus(`刷新模型失败：${e?.message ?? e}`, 'err');
+    const status = e?.status;
+    if (!(status === 404 || status === 405)) {
+      setStatus(`刷新失败：${e?.message ?? e}`, 'err');
+      return;
+    }
+
+    // Fallback: direct /models
+    console.warn('[StoryGuide] custom character status check failed; fallback to direct /models', e);
+    try {
+      const modelsUrl = (function (base) {
+        const u = normalizeBaseUrl(base);
+        if (!u) return '';
+        if (/\/v1$/.test(u)) return u + '/models';
+        if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+        return u + '/v1/models';
+      })(apiBase);
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+      const res = await fetch(modelsUrl, { method: 'GET', headers });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      }
+
+      const data = await res.json().catch(() => ({}));
+      let modelsList = [];
+      if (Array.isArray(data?.models)) modelsList = data.models;
+      else if (Array.isArray(data?.data)) modelsList = data.data;
+      else if (Array.isArray(data)) modelsList = data;
+
+      let ids = [];
+      if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+      ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+      if (!ids.length) {
+        setStatus('刷新成功，但未解析到模型列表', 'warn');
+        return;
+      }
+
+      s.customModelsCache = ids;
+      saveSettings();
+      const $dl = $('#sg_char_model_list');
+      $dl.empty();
+      ids.forEach(id => {
+        $dl.append($('<option>').val(id));
+      });
+      setStatus(`已刷新模型（直连）：${ids.length} 个`, 'ok');
+
+    } catch (e2) {
+      setStatus(`刷新失败：${e2?.message ?? e2}`, 'err');
+    }
   }
 }
 
@@ -11720,6 +11776,17 @@ function buildModalHtml() {
                     </div>
                   </div>
                 </div>
+                <div class="sg-card sg-subcard sg-character-provider">
+                 <div class="sg-card-title">提示词设置</div>
+                 <div class="sg-field">
+                   <label>自定义随机设定提示词（留空使用默认）</label>
+                   <textarea id="sg_char_prompt_random" rows="3" placeholder="默认：请为“轮回乐园”设计一个全新的契约者角色..."></textarea>
+                 </div>
+                 <div class="sg-field">
+                   <label>自定义开场白提示词（留空使用默认）</label>
+                   <textarea id="sg_char_prompt_opening" rows="3" placeholder="默认：请根据以上人物设定写一段开场剧情..."></textarea>
+                 </div>
+              </div>
               </div>
 
               <div class="sg-actions-row">
@@ -12725,6 +12792,7 @@ function setupCharacterPage() {
   });
 
   $('#sg_char_temperature, #sg_char_customEndpoint, #sg_char_customApiKey, #sg_char_customModel, #sg_char_customMaxTokens, #sg_char_customStream').on('input change', autoSave);
+  $('#sg_char_prompt_random, #sg_char_prompt_opening').on('input change', autoSave);
 
   $('#sg_char_refreshModels').on('click', async () => {
     autoSave();
@@ -13565,6 +13633,8 @@ function pullUiToSettings() {
   s.characterCustomModel = String($('#sg_char_customModel').val() || '').trim() || 'gpt-4o-mini';
   s.characterCustomMaxTokens = clampInt($('#sg_char_customMaxTokens').val(), 256, 200000, s.characterCustomMaxTokens || 2048);
   s.characterCustomStream = $('#sg_char_customStream').is(':checked');
+  s.characterRandomPrompt = String($('#sg_char_prompt_random').val() || '').trim();
+  s.characterOpeningPrompt = String($('#sg_char_prompt_opening').val() || '').trim();
 
   s.characterPark = String($('#sg_char_park').val() || '');
   s.characterParkCustom = String($('#sg_char_park_custom').val() || '').trim();
