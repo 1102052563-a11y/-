@@ -2209,7 +2209,11 @@ function updateCharacterForm() {
 
 function applyCharacterSelectValue($select, value, $customInput) {
   const val = String(value || '').trim();
-  const hasOption = val && $select.find(`option[value="${val}"]`).length > 0;
+  // Safe filtering that handles quotes correctly
+  const hasOption = val && $select.find('option').filter(function () {
+    return this.value === val;
+  }).length > 0;
+
   if (hasOption) {
     $select.val(val);
     if ($customInput) $customInput.val('');
@@ -2452,7 +2456,7 @@ function validateAndNormalizeModules(raw) {
     const type = String(m.type || 'text').trim();
     if (type !== 'text' && type !== 'list') return { ok: false, error: `模块 ${key} 的 type 必须是 "text" 或 "list"`, modules: null };
 
-    const title= String(m.title || key).trim();
+    const title = String(m.title || key).trim();
     const prompt = String(m.prompt || '').trim();
 
     const required = m.required !== false; // default true
@@ -2512,7 +2516,7 @@ function getImageGenPresetSnapshot() {
     imageGenCharacterProfiles: s.imageGenCharacterProfiles,
     imageGenCustomFemalePrompt1: s.imageGenCustomFemalePrompt1,
     imageGenCustomFemalePrompt2: s.imageGenCustomFemalePrompt2,
-  imageGenProfilesExpanded: s.imageGenProfilesExpanded
+    imageGenProfilesExpanded: s.imageGenProfilesExpanded
 
 
   };
@@ -2756,7 +2760,7 @@ function parseWorldbookJson(rawText) {
     if (!e || typeof e !== 'object') continue;
 
     const comment = String(e.comment ?? '').trim();
-    const title= String(e.title ?? e.name ?? e.comment ?? e.uid ?? e.id ?? '').trim();
+    const title = String(e.title ?? e.name ?? e.comment ?? e.uid ?? e.id ?? '').trim();
 
     // keys can be stored in many variants in ST exports
     const kRaw =
@@ -4059,12 +4063,12 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
       if (!greenTarget.file) {
         console.warn('[StoryGuide] Green world info file missing, skip mega summary write');
       } else {
-      await writeSummaryToWorldInfoEntry(rec, meta, {
-        target: greenTarget.target,
-        file: greenTarget.file,
-        commentPrefix: megaPrefix,
-        constant: 0,
-      });
+        await writeSummaryToWorldInfoEntry(rec, meta, {
+          target: greenTarget.target,
+          file: greenTarget.file,
+          commentPrefix: megaPrefix,
+          constant: 0,
+        });
       }
     } catch (e) {
       console.warn('[StoryGuide] write mega summary (green) failed:', e);
@@ -4481,7 +4485,7 @@ function appendToBlueIndexCache(rec) {
     range: rec?.range ?? undefined,
   };
   if (!item.summary) return;
-  if (!item.title) item.title= item.keywords?.[0] ? `条目：${item.keywords[0]}` : '条目';
+  if (!item.title) item.title = item.keywords?.[0] ? `条目：${item.keywords[0]}` : '条目';
   const arr = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
   // de-dup (only check recent items)
   for (let i = arr.length - 1; i >= 0 && i >= arr.length - 10; i--) {
@@ -6146,7 +6150,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         keywords = [indexId];
       }
 
-      const title= rawTitle || `${prefix}`;
+      const title = rawTitle || `${prefix}`;
 
       const rec = {
         title,
@@ -6213,30 +6217,30 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           }
         }
 
-      if (s.summaryToBlueWorldInfo) {
-        try {
-          await writeSummaryToWorldInfoEntry(rec, meta, {
-            target: 'file',
-            file: String(s.summaryBlueWorldInfoFile || ''),
-            commentPrefix: ensureMvuPlotPrefix(String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结')),
-            constant: 1,
-          });
-          wroteBlueOk += 1;
-        } catch (e) {
-          console.warn('[StoryGuide] write blue world info failed:', e);
-          writeErrs.push(`${fromFloor}-${toFloor} 蓝灯：${e?.message ?? e}`);
+        if (s.summaryToBlueWorldInfo) {
+          try {
+            await writeSummaryToWorldInfoEntry(rec, meta, {
+              target: 'file',
+              file: String(s.summaryBlueWorldInfoFile || ''),
+              commentPrefix: ensureMvuPlotPrefix(String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结')),
+              constant: 1,
+            });
+            wroteBlueOk += 1;
+          } catch (e) {
+            console.warn('[StoryGuide] write blue world info failed:', e);
+            writeErrs.push(`${fromFloor}-${toFloor} 蓝灯：${e?.message ?? e}`);
+          }
         }
-      }
 
-      // 生成大总结（到达阈值时自动触发）
-      try {
-        const megaCreated = await maybeGenerateMegaSummary(meta, s);
-        if (megaCreated > 0) {
-          console.log(`[StoryGuide] Mega summary created: ${megaCreated}`);
+        // 生成大总结（到达阈值时自动触发）
+        try {
+          const megaCreated = await maybeGenerateMegaSummary(meta, s);
+          if (megaCreated > 0) {
+            console.log(`[StoryGuide] Mega summary created: ${megaCreated}`);
+          }
+        } catch (e) {
+          console.warn('[StoryGuide] Mega summary generation failed:', e);
         }
-      } catch (e) {
-        console.warn('[StoryGuide] Mega summary generation failed:', e);
-      }
       }
     }
 
@@ -6474,7 +6478,7 @@ function stripTriggerInjection(text, tag = 'SG_WI_TRIGGERS') {
   return t.replace(reComment, '').replace(rePlain, '').trimEnd();
 }
 
-function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style= 'hidden') {
+function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden') {
   const kws = sanitizeKeywords(Array.isArray(keywords) ? keywords : []);
   if (!kws.length) return '';
   if (String(style || 'hidden') === 'plain') {
@@ -6771,7 +6775,7 @@ async function computeRollDecisionViaCustom(userText, statData, settings, random
   return res;
 }
 
-function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style= 'hidden') {
+function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style = 'hidden') {
   if (!res) return '';
   const action = String(res.actionLabel || res.action || '').trim();
   const formula = String(res.formula || '').trim();
@@ -7170,7 +7174,7 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
         userText: lastText,
       });
     }
-    const style= String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
+    const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
     const rollText = buildRollInjectionFromResult(res, rollTag, style);
     if (rollText) {
       const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', rollTag);
@@ -7271,7 +7275,7 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
     });
   }
   if (!res.random) res.random = { roll: randomRoll, weight: clampFloat(s.wiRollRandomWeight, 0, 1, 0.3) };
-  const style= String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
+  const style = String(s.wiRollInjectStyle || 'hidden').trim() || 'hidden';
   const rollText = buildRollInjectionFromResult(res, rollTag, style);
   if (rollText) logStatus?.('ROLL 已注入：判定完成', 'ok');
   return rollText || null;
@@ -7335,7 +7339,7 @@ async function buildTriggerInjectionForText(userText, chat, settings, logStatus)
   const keywords = Array.from(kwSet);
   if (!keywords.length) return null;
 
-  const style= String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
+  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
   const injected = buildTriggerInjection(keywords, tagForStrip, style);
   if (injected) logStatus?.(`索引已注入：${pickedNames.slice(0, 4).join('、')}${pickedNames.length > 4 ? '…' : ''}`, 'ok');
   return injected || null;
@@ -7720,7 +7724,7 @@ function collectBlueIndexCandidates() {
 
   const fromMeta = Array.isArray(meta?.history) ? meta.history : [];
   for (const r of fromMeta) {
-    const title= String(r?.title || '').trim();
+    const title = String(r?.title || '').trim();
     const summary = String(r?.summary || '').trim();
     const keywords = sanitizeKeywords(r?.keywords);
     if (!summary) continue;
@@ -7732,7 +7736,7 @@ function collectBlueIndexCandidates() {
 
   const fromImported = getBlueIndexEntriesFast();
   for (const r of fromImported) {
-    const title= String(r?.title || '').trim();
+    const title = String(r?.title || '').trim();
     const summary = String(r?.summary || '').trim();
     const keywords = sanitizeKeywords(r?.keywords);
     if (!summary) continue;
@@ -7888,7 +7892,7 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
 
   const candidatesForModel = shortlist.map((x, i) => {
     const e = x.e || x;
-    const title= String(e.title || '').trim();
+    const title = String(e.title || '').trim();
     const summary0 = String(e.summary || '').trim();
     const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '…') : summary0;
     const kws = Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : [];
@@ -8043,7 +8047,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   if (!keywords.length) return;
 
   const tag = tagForStrip;
-  const style= String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
+  const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
   const cleaned = stripTriggerInjection(last.mes ?? last.message ?? '', tag);
   const injected = cleaned + buildTriggerInjection(keywords, tag, style);
   last.mes = injected;
@@ -8105,7 +8109,7 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
 
     const hasKey = parsedJson && Object.hasOwn(parsedJson, m.key);
     const val = hasKey ? parsedJson[m.key] : undefined;
-    const title= m.title || m.key;
+    const title = m.title || m.key;
 
     if (m.type === 'list') {
       const arr = Array.isArray(val) ? val : [];
@@ -9939,7 +9943,7 @@ function createTopbarButton() {
   btn.id = 'sg_topbar_btn';
   btn.type = 'button';
   btn.className = 'sg-topbar-btn';
-  btn.title= '剧情指导 StoryGuide';
+  btn.title = '剧情指导 StoryGuide';
   btn.innerHTML = '<span class="sg-topbar-icon">📘</span>';
   btn.addEventListener('click', () => openModal());
 
@@ -13220,7 +13224,7 @@ function renderSummaryPaneFromMeta() {
   lastSummaryText = String(last?.summary || '');
 
   const md = hist.slice(-12).reverse().map((h, idx) => {
-    const title= String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '剧情总结'} #${hist.length - idx}`);
+    const title = String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '剧情总结'} #${hist.length - idx}`);
     const kws = Array.isArray(h.keywords) ? h.keywords : [];
     const when = h.createdAt ? new Date(h.createdAt).toLocaleString() : '';
     const range = h?.range ? `（${h.range.fromFloor}-${h.range.toFloor}）` : '';
@@ -13663,7 +13667,7 @@ function createFloatingButton() {
   btn.id = 'sg_floating_btn';
   btn.className = 'sg-floating-btn';
   btn.innerHTML = '📘';
-  btn.title= '剧情指导';
+  btn.title = '剧情指导';
   // Allow dragging but also clicking. We need to distinguish click from drag.
   btn.style.touchAction = 'none';
 
@@ -14430,7 +14434,7 @@ function injectFixedInputButton() {
     btn.style.padding = '5px 10px';
     btn.style.userSelect = 'none';
     btn.innerHTML = '📘 剧情';
-    btn.title= '打开剧情指导悬浮窗';
+    btn.title = '打开剧情指导悬浮窗';
     // Ensure height consistency
     btn.style.height = 'var(--input-height, auto)';
 
