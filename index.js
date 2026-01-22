@@ -2359,15 +2359,29 @@ async function randomizeCharacterWithLLM() {
 
     if (!data.park || !data.race || !data.talent || !data.attrs) throw new Error('JSON 缺少必要字段');
 
+    // Helper to sanitize
+    const sanitize = (val) => {
+      if (typeof val === 'string') return val;
+      if (Array.isArray(val) && val.length > 0) return sanitize(val[0]);
+      if (typeof val === 'object' && val !== null) {
+        if (val.name) return String(val.name);
+        if (val.title) return String(val.title);
+        if (val.value) return String(val.value);
+        // fallback to stringify
+        return JSON.stringify(val);
+      }
+      return String(val || '');
+    };
+
     // Fill UI
     $('#sg_char_park').val('CUSTOM');
-    $('#sg_char_park_custom').val(data.park);
+    $('#sg_char_park_custom').val(sanitize(data.park));
 
     $('#sg_char_race').val('CUSTOM');
-    $('#sg_char_race_custom').val(data.race);
+    $('#sg_char_race_custom').val(sanitize(data.race));
 
     $('#sg_char_talent').val('CUSTOM');
-    $('#sg_char_talent_custom').val(data.talent);
+    $('#sg_char_talent_custom').val(sanitize(data.talent));
 
     $('#sg_char_difficulty').val('30');
 
