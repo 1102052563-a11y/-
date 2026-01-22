@@ -76,9 +76,6 @@ const DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情大总结”助
 3) 只输出 JSON。`;
 const DEFAULT_MEGA_SUMMARY_USER_TEMPLATE = `【待汇总条目】\n{{items}}`;
 
-const SG_WI_GREEN_FILE_KEY = 'storyguide_summary_wi_green_file_v1';
-const SG_WI_BLUE_FILE_KEY = 'storyguide_summary_wi_blue_file_v1';
-
 // 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
 const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
@@ -681,6 +678,9 @@ const META_KEYS = Object.freeze({
   mapData: 'storyguide_map_data',
 });
 
+const SG_SUMMARY_WI_FILE_KEY = 'storyguide_summary_worldinfo_file_v1';
+const SG_SUMMARY_BLUE_WI_FILE_KEY = 'storyguide_summary_blue_worldinfo_file_v1';
+
 let lastReport = null;
 let lastJsonText = '';
 let lastSummary = null; // { title, summary, keywords, ... }
@@ -752,7 +752,7 @@ function getStRequestHeadersCompat() {
 
 function clone(obj) { try { return structuredClone(obj); } catch { return JSON.parse(JSON.stringify(obj)); } }
 
-function getLocalStorageString(key) {
+function readLocalStorageString(key) {
   try {
     const raw = localStorage.getItem(key);
     return raw == null ? '' : String(raw);
@@ -761,18 +761,10 @@ function getLocalStorageString(key) {
   }
 }
 
-function setLocalStorageString(key, value) {
+function writeLocalStorageString(key, value) {
   try {
-    const v = String(value || '').trim();
-    if (v) localStorage.setItem(key, v);
-    else localStorage.removeItem(key);
+    localStorage.setItem(key, String(value ?? ''));
   } catch { /* ignore */ }
-}
-
-function syncWorldInfoFileCache(settings) {
-  if (!settings) return;
-  setLocalStorageString(SG_WI_GREEN_FILE_KEY, settings.summaryWorldInfoFile);
-  setLocalStorageString(SG_WI_BLUE_FILE_KEY, settings.summaryBlueWorldInfoFile);
 }
 
 function ensureSettings() {
@@ -817,6 +809,14 @@ function ensureSettings() {
     saveSettingsDebounced();
   }
 
+  if (!String(extensionSettings[MODULE_NAME].summaryWorldInfoFile || '').trim()) {
+    const storedGreen = readLocalStorageString(SG_SUMMARY_WI_FILE_KEY).trim();
+    if (storedGreen) {
+      extensionSettings[MODULE_NAME].summaryWorldInfoFile = storedGreen;
+      saveSettingsDebounced();
+    }
+  }
+
   // 迁移：结构化条目从“能力”改为“势力”
   let factionSettingsMigrated = false;
   if (extensionSettings[MODULE_NAME].factionEntriesEnabled === undefined && extensionSettings[MODULE_NAME].abilityEntriesEnabled !== undefined) {
@@ -853,19 +853,10 @@ function ensureSettings() {
     saveSettingsDebounced();
   }
 
-  const cachedGreenFile = getLocalStorageString(SG_WI_GREEN_FILE_KEY).trim();
-  if (!extensionSettings[MODULE_NAME].summaryWorldInfoFile && cachedGreenFile) {
-    extensionSettings[MODULE_NAME].summaryWorldInfoFile = cachedGreenFile;
-    saveSettingsDebounced();
-  }
-
   return extensionSettings[MODULE_NAME];
 }
 
-function saveSettings() {
-  syncWorldInfoFileCache(ensureSettings());
-  SillyTavern.getContext().saveSettingsDebounced();
-}
+function saveSettings() { SillyTavern.getContext().saveSettingsDebounced(); }
 
 // 导出全局预设
 function exportPreset() {
@@ -12549,6 +12540,9 @@ function pullUiToSettings() {
   s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
   s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
+
+  writeLocalStorageString(SG_SUMMARY_WI_FILE_KEY, s.summaryWorldInfoFile);
+  writeLocalStorageString(SG_SUMMARY_BLUE_WI_FILE_KEY, s.summaryBlueWorldInfoFile);
 
   // 地图功能
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
