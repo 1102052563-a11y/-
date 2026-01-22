@@ -767,6 +767,14 @@ function writeLocalStorageString(key, value) {
   } catch { /* ignore */ }
 }
 
+function resolveGreenWorldInfoTarget(settings) {
+  const s = settings || ensureSettings();
+  const file = String(s.summaryWorldInfoFile || '').trim();
+  const targetRaw = String(s.summaryWorldInfoTarget || 'chatbook');
+  if (file) return { target: 'file', file };
+  return { target: targetRaw || 'chatbook', file: '' };
+}
+
 function ensureSettings() {
   const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
   if (!extensionSettings[MODULE_NAME]) {
@@ -3788,9 +3796,10 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
 
   if (s.summaryToWorldInfo) {
     try {
+      const greenTarget = resolveGreenWorldInfoTarget(s);
       await writeSummaryToWorldInfoEntry(rec, meta, {
-        target: String(s.summaryWorldInfoTarget || 'chatbook'),
-        file: String(s.summaryWorldInfoFile || ''),
+        target: greenTarget.target,
+        file: greenTarget.file,
         commentPrefix: megaPrefix,
         constant: 0,
       });
@@ -3840,9 +3849,10 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
     }
     if (greenComment) {
       try {
+        const greenTarget = resolveGreenWorldInfoTarget(s);
         await disableWorldInfoEntryByComment(greenComment, s, {
-          target: String(s.summaryWorldInfoTarget || 'chatbook'),
-          file: String(s.summaryWorldInfoFile || ''),
+          target: greenTarget.target,
+          file: greenTarget.file,
         });
       } catch (e) {
         console.warn('[StoryGuide] disable summary entry failed:', e);
@@ -4518,8 +4528,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     constant = 1; // 蓝灯=常开
     if (!file) return null; // 蓝灯必须指定文件名
   } else {
-    target = String(settings.summaryWorldInfoTarget || 'chatbook');
-    file = String(settings.summaryWorldInfoFile || '');
+    const greenTarget = resolveGreenWorldInfoTarget(settings);
+    target = greenTarget.target;
+    file = greenTarget.file;
     constant = 0; // 绿灯=触发词触发
   }
   const fileExprForQuery = (target === 'chatbook') ? '{{getchatbook}}' : file;
@@ -4932,11 +4943,9 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
       return null;
     }
   } else {
-    const t = String(settings.summaryWorldInfoTarget || 'chatbook');
-    if (t === 'file') {
-      target = 'file';
-      file = settings.summaryWorldInfoFile || '';
-    }
+    const greenTarget = resolveGreenWorldInfoTarget(settings);
+    target = greenTarget.target;
+    file = greenTarget.file;
   }
 
   // 使用 /findentry 查找条目 UID
@@ -5698,9 +5707,10 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
         if (s.summaryToWorldInfo) {
           try {
+            const greenTarget = resolveGreenWorldInfoTarget(s);
             await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: String(s.summaryWorldInfoTarget || 'chatbook'),
-              file: String(s.summaryWorldInfoFile || ''),
+              target: greenTarget.target,
+              file: greenTarget.file,
               commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
               constant: 0,
             });
