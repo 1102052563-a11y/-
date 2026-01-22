@@ -11437,6 +11437,7 @@ function buildModalHtml() {
               </div>
 
             </div>
+          </div>
           </div> <!-- sg_page_image -->
 
           <div class="sg-page" id="sg_page_character">
