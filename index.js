@@ -3817,12 +3817,16 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
   if (s.summaryToWorldInfo) {
     try {
       const greenTarget = resolveGreenWorldInfoTarget(s);
+      if (!greenTarget.file) {
+        console.warn('[StoryGuide] Green world info file missing, skip mega summary write');
+      } else {
       await writeSummaryToWorldInfoEntry(rec, meta, {
         target: greenTarget.target,
         file: greenTarget.file,
         commentPrefix: megaPrefix,
         constant: 0,
       });
+      }
     } catch (e) {
       console.warn('[StoryGuide] write mega summary (green) failed:', e);
     }
@@ -4650,6 +4654,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     target = greenTarget.target;
     file = greenTarget.file;
     constant = 0; // 绿灯=触发词触发
+    if (!file) return null; // 绿灯强制 file，无文件名直接跳过
   }
   const fileExprForQuery = (target === 'chatbook') ? '{{getchatbook}}' : file;
 
@@ -4667,7 +4672,8 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       // 使用 /findentry 通过 comment 字段查找条目 UID
       // comment 格式为: "人物｜角色名｜CHA-001"
       const searchName = String(cached?.name || entryName).trim() || entryName;
-      const searchPattern = `${prefix}｜${searchName}`;
+      const searchIndexSuffix = cached?.indexId ? `｜${cached.indexId}` : '';
+      const searchPattern = `${prefix}｜${searchName}${searchIndexSuffix}`;
 
       // 构建查找脚本
       let findParts = [];
@@ -5826,13 +5832,17 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         if (s.summaryToWorldInfo) {
           try {
             const greenTarget = resolveGreenWorldInfoTarget(s);
-            await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: greenTarget.target,
-              file: greenTarget.file,
-              commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
-              constant: 0,
-            });
-            wroteGreenOk += 1;
+            if (!greenTarget.file) {
+              console.warn('[StoryGuide] Green world info file missing, skip summary write');
+            } else {
+              await writeSummaryToWorldInfoEntry(rec, meta, {
+                target: greenTarget.target,
+                file: greenTarget.file,
+                commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
+                constant: 0,
+              });
+              wroteGreenOk += 1;
+            }
           } catch (e) {
             console.warn('[StoryGuide] write green world info failed:', e);
             writeErrs.push(`${fromFloor}-${toFloor} 绿灯：${e?.message ?? e}`);
