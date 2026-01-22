@@ -2510,6 +2510,7 @@ function parseWorldbookJson(rawText) {
   for (const e of entries) {
     if (!e || typeof e !== 'object') continue;
 
+    const comment = String(e.comment ?? '').trim();
     const title= String(e.title ?? e.name ?? e.comment ?? e.uid ?? e.id ?? '').trim();
 
     // keys can be stored in many variants in ST exports
@@ -2551,7 +2552,8 @@ function parseWorldbookJson(rawText) {
     ).trim();
 
     if (!content) continue;
-    norm.push({ title: title || (keys[0] ? `条目：${keys[0]}` : '条目'), keys, content });
+    const resolvedTitle = title || (keys[0] ? `条目：${keys[0]}` : '条目');
+    norm.push({ title: resolvedTitle, comment: comment || resolvedTitle, keys, content });
   }
   return norm;
 }
@@ -4000,6 +4002,107 @@ async function disableWorldInfoEntryByComment(comment, settings, {
   }
 
   return { uid };
+}
+
+function getWorldInfoEntryLabel(entry) {
+  return String(entry?.comment || entry?.title || '').trim();
+}
+
+function filterWorldInfoEntriesByPrefix(entries, prefix) {
+  const p = String(prefix || '').trim();
+  if (!p) return Array.isArray(entries) ? entries : [];
+  const list = Array.isArray(entries) ? entries : [];
+  const filtered = list.filter(e => getWorldInfoEntryLabel(e).includes(p));
+  return filtered.length ? filtered : list;
+}
+
+async function createWorldInfoEntryInFile(fileName, { keys = [], content = '', comment = '' }, {
+  constant = 0,
+  disable = 0,
+} = {}) {
+  const file = normalizeWorldInfoFileName(fileName);
+  if (!file) throw new Error('世界书文件名为空');
+
+  const keyValue = Array.isArray(keys) ? keys.filter(Boolean).join(',') : String(keys || '');
+  const safeContent = String(content || '').replace(/\|/g, '｜').trim();
+  const safeComment = String(comment || '').replace(/\|/g, '｜').trim();
+  const uidVar = '__sg_sync_uid';
+  const fileExpr = quoteSlashValue(file);
+  const constantVal = (Number(constant) === 1) ? 1 : 0;
+  const disableVal = (Number(disable) === 1) ? 1 : 0;
+
+  const parts = [];
+  parts.push(`/createentry file=${fileExpr} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(safeContent)}`);
+  parts.push(`/setvar key=${uidVar}`);
+  if (safeComment) parts.push(`/setentryfield file=${fileExpr} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(safeComment)}`);
+  parts.push(`/setentryfield file=${fileExpr} uid={{getvar::${uidVar}}} field=disable ${disableVal}`);
+  parts.push(`/setentryfield file=${fileExpr} uid={{getvar::${uidVar}}} field=constant ${constantVal}`);
+  if (keyValue) parts.push(`/setentryfield file=${fileExpr} uid={{getvar::${uidVar}}} field=key ${quoteSlashValue(keyValue)}`);
+  parts.push(`/flushvar ${uidVar}`);
+
+  const out = await execSlash(parts.join(' | '));
+  if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
+    throw new Error(`写入世界书失败（返回：${safeStringifyShort(out)}）`);
+  }
+}
+
+async function syncGreenWorldInfoFromBlue() {
+  const s = ensureSettings();
+  const greenTarget = resolveGreenWorldInfoTarget(s);
+  const greenFile = greenTarget.file;
+  const blueFile = normalizeWorldInfoFileName(s.summaryBlueWorldInfoFile);
+  if (!greenFile) {
+    setStatus('绿灯世界书文件名为空', 'warn');
+    return;
+  }
+  if (!blueFile) {
+    setStatus('蓝灯世界书文件名为空', 'warn');
+    return;
+  }
+
+  setStatus('正在对齐蓝灯→绿灯…', 'warn');
+  showToast('正在对齐绿灯世界书…', { kind: 'warn', spinner: true, sticky: true });
+
+  try {
+    const [blueJson, greenJson] = await Promise.all([
+      fetchWorldInfoFileJsonCompat(blueFile),
+      fetchWorldInfoFileJsonCompat(greenFile),
+    ]);
+
+    let blueEntries = parseWorldbookJson(JSON.stringify(blueJson || {}));
+    let greenEntries = parseWorldbookJson(JSON.stringify(greenJson || {}));
+
+    const prefix = String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '').trim();
+    blueEntries = filterWorldInfoEntriesByPrefix(blueEntries, prefix);
+
+    if (!blueEntries.length) {
+      setStatus('对齐完成 ✅（蓝灯世界书为空）', 'ok');
+      return;
+    }
+
+    const greenSet = new Set(greenEntries.map(getWorldInfoEntryLabel).filter(Boolean));
+    let created = 0;
+
+    for (const entry of blueEntries) {
+      const label = getWorldInfoEntryLabel(entry);
+      if (!label) continue;
+      if (greenSet.has(label)) continue;
+      await createWorldInfoEntryInFile(greenFile, {
+        keys: Array.isArray(entry.keys) ? entry.keys : [],
+        content: entry.content || '',
+        comment: label,
+      }, { constant: 0, disable: 0 });
+      greenSet.add(label);
+      created += 1;
+    }
+
+    if (created > 0) setStatus(`对齐完成 ✅（补全 ${created} 条）`, 'ok');
+    else setStatus('对齐完成 ✅（无缺失条目）', 'ok');
+  } catch (e) {
+    setStatus(`对齐失败：${e?.message ?? e}`, 'err');
+  } finally {
+    try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
+  }
 }
 
 async function maybeGenerateMegaSummary(meta, settings) {
@@ -10500,6 +10603,7 @@ function buildModalHtml() {
               <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
               <button class="menu_button sg-btn" id="sg_stopSummary" style="background: var(--SmartThemeBodyColor); color: var(--SmartThemeQuoteColor);">停止总结</button>
               <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
+              <button class="menu_button sg-btn" id="sg_syncGreenFromBlue">对齐蓝灯→绿灯</button>
               <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
             </div>
 
@@ -11171,6 +11275,16 @@ function ensureModal() {
       await runSummary({ reason: 'manual' });
     } catch (e) {
       setStatus(`总结失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_syncGreenFromBlue').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      await syncGreenWorldInfoFromBlue();
+    } catch (e) {
+      setStatus(`对齐失败：${e?.message ?? e}`, 'err');
     }
   });
 
