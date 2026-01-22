@@ -76,6 +76,9 @@ const DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情大总结”助
 3) 只输出 JSON。`;
 const DEFAULT_MEGA_SUMMARY_USER_TEMPLATE = `【待汇总条目】\n{{items}}`;
 
+const SG_WI_GREEN_FILE_KEY = 'storyguide_summary_wi_green_file_v1';
+const SG_WI_BLUE_FILE_KEY = 'storyguide_summary_wi_blue_file_v1';
+
 // 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
 const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
@@ -678,12 +681,6 @@ const META_KEYS = Object.freeze({
   mapData: 'storyguide_map_data',
 });
 
-const LOCAL_STORAGE_KEYS = Object.freeze({
-  summaryGreenFile: `${MODULE_NAME}_summaryWorldInfoFile`,
-  summaryBlueFile: `${MODULE_NAME}_summaryBlueWorldInfoFile`,
-  wiBlueIndexFile: `${MODULE_NAME}_wiBlueIndexFile`,
-});
-
 let lastReport = null;
 let lastJsonText = '';
 let lastSummary = null; // { title, summary, keywords, ... }
@@ -755,12 +752,27 @@ function getStRequestHeadersCompat() {
 
 function clone(obj) { try { return structuredClone(obj); } catch { return JSON.parse(JSON.stringify(obj)); } }
 
-function readLocalStorageString(key) {
-  try { return String(localStorage.getItem(key) || '').trim(); } catch { return ''; }
+function getLocalStorageString(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw == null ? '' : String(raw);
+  } catch {
+    return '';
+  }
 }
 
-function writeLocalStorageString(key, value) {
-  try { localStorage.setItem(key, String(value || '')); } catch { }
+function setLocalStorageString(key, value) {
+  try {
+    const v = String(value || '').trim();
+    if (v) localStorage.setItem(key, v);
+    else localStorage.removeItem(key);
+  } catch { /* ignore */ }
+}
+
+function syncWorldInfoFileCache(settings) {
+  if (!settings) return;
+  setLocalStorageString(SG_WI_GREEN_FILE_KEY, settings.summaryWorldInfoFile);
+  setLocalStorageString(SG_WI_BLUE_FILE_KEY, settings.summaryBlueWorldInfoFile);
 }
 
 function ensureSettings() {
@@ -841,26 +853,19 @@ function ensureSettings() {
     saveSettingsDebounced();
   }
 
-  const lsSummaryGreenFile = readLocalStorageString(LOCAL_STORAGE_KEYS.summaryGreenFile);
-  if (!extensionSettings[MODULE_NAME].summaryWorldInfoFile && lsSummaryGreenFile) {
-    extensionSettings[MODULE_NAME].summaryWorldInfoFile = lsSummaryGreenFile;
-    saveSettingsDebounced();
-  }
-  const lsSummaryBlueFile = readLocalStorageString(LOCAL_STORAGE_KEYS.summaryBlueFile);
-  if (!extensionSettings[MODULE_NAME].summaryBlueWorldInfoFile && lsSummaryBlueFile) {
-    extensionSettings[MODULE_NAME].summaryBlueWorldInfoFile = lsSummaryBlueFile;
-    saveSettingsDebounced();
-  }
-  const lsWiBlueIndexFile = readLocalStorageString(LOCAL_STORAGE_KEYS.wiBlueIndexFile);
-  if (!extensionSettings[MODULE_NAME].wiBlueIndexFile && lsWiBlueIndexFile) {
-    extensionSettings[MODULE_NAME].wiBlueIndexFile = lsWiBlueIndexFile;
+  const cachedGreenFile = getLocalStorageString(SG_WI_GREEN_FILE_KEY).trim();
+  if (!extensionSettings[MODULE_NAME].summaryWorldInfoFile && cachedGreenFile) {
+    extensionSettings[MODULE_NAME].summaryWorldInfoFile = cachedGreenFile;
     saveSettingsDebounced();
   }
 
   return extensionSettings[MODULE_NAME];
 }
 
-function saveSettings() { SillyTavern.getContext().saveSettingsDebounced(); }
+function saveSettings() {
+  syncWorldInfoFileCache(ensureSettings());
+  SillyTavern.getContext().saveSettingsDebounced();
+}
 
 // 导出全局预设
 function exportPreset() {
@@ -970,12 +975,6 @@ function clampFloat(v, min, max, fallback) {
   const n = Number.parseFloat(v);
   if (Number.isFinite(n)) return Math.min(max, Math.max(min, n));
   return fallback;
-}
-
-function normalizeSummaryWorldInfoTarget(settings) {
-  const raw = String(settings?.summaryWorldInfoTarget || '').trim();
-  if (raw === 'chatbook') return 'chatbook';
-  return 'file';
 }
 
 // 简易模板替换：支持 {{fromFloor}} / {{toFloor}} / {{chunk}} 等占位符
@@ -3799,7 +3798,7 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
   if (s.summaryToWorldInfo) {
     try {
       await writeSummaryToWorldInfoEntry(rec, meta, {
-        target: normalizeSummaryWorldInfoTarget(s),
+        target: String(s.summaryWorldInfoTarget || 'chatbook'),
         file: String(s.summaryWorldInfoFile || ''),
         commentPrefix: megaPrefix,
         constant: 0,
@@ -3851,7 +3850,7 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
     if (greenComment) {
       try {
         await disableWorldInfoEntryByComment(greenComment, s, {
-          target: normalizeSummaryWorldInfoTarget(s),
+          target: String(s.summaryWorldInfoTarget || 'chatbook'),
           file: String(s.summaryWorldInfoFile || ''),
         });
       } catch (e) {
@@ -4528,7 +4527,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     constant = 1; // 蓝灯=常开
     if (!file) return null; // 蓝灯必须指定文件名
   } else {
-    target = normalizeSummaryWorldInfoTarget(settings);
+    target = String(settings.summaryWorldInfoTarget || 'chatbook');
     file = String(settings.summaryWorldInfoFile || '');
     constant = 0; // 绿灯=触发词触发
   }
@@ -4942,7 +4941,7 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
       return null;
     }
   } else {
-    const t = normalizeSummaryWorldInfoTarget(settings);
+    const t = String(settings.summaryWorldInfoTarget || 'chatbook');
     if (t === 'file') {
       target = 'file';
       file = settings.summaryWorldInfoFile || '';
@@ -5709,7 +5708,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         if (s.summaryToWorldInfo) {
           try {
             await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: normalizeSummaryWorldInfoTarget(s),
+              target: String(s.summaryWorldInfoTarget || 'chatbook'),
               file: String(s.summaryWorldInfoFile || ''),
               commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
               constant: 0,
@@ -12010,10 +12009,7 @@ function pullSettingsToUi() {
   $('#sg_summaryCustomMaxTokens').val(s.summaryCustomMaxTokens || 2048);
   $('#sg_summaryCustomStream').prop('checked', !!s.summaryCustomStream);
   $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
-  const $summaryWorldInfoTarget = $('#sg_summaryWorldInfoTarget');
-  if ($summaryWorldInfoTarget.length) {
-    $summaryWorldInfoTarget.val(normalizeSummaryWorldInfoTarget(s));
-  }
+  $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
   $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
   $('#sg_summaryWorldInfoKeyMode').val(String(s.summaryWorldInfoKeyMode || 'keywords'));
@@ -12543,16 +12539,8 @@ function pullUiToSettings() {
   s.summaryCustomMaxTokens = clampInt($('#sg_summaryCustomMaxTokens').val(), 128, 200000, s.summaryCustomMaxTokens || 2048);
   s.summaryCustomStream = $('#sg_summaryCustomStream').is(':checked');
   s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
-  const $summaryWorldInfoTarget = $('#sg_summaryWorldInfoTarget');
-  if ($summaryWorldInfoTarget.length) {
-    const rawTarget = String($summaryWorldInfoTarget.val() || '').trim();
-    s.summaryWorldInfoTarget = (rawTarget === 'chatbook') ? 'chatbook' : 'file';
-  }
-  const $summaryWorldInfoFile = $('#sg_summaryWorldInfoFile');
-  if ($summaryWorldInfoFile.length) {
-    s.summaryWorldInfoFile = String($summaryWorldInfoFile.val() || '').trim();
-    writeLocalStorageString(LOCAL_STORAGE_KEYS.summaryGreenFile, s.summaryWorldInfoFile);
-  }
+  s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
+  s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
   s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
   s.summaryWorldInfoKeyMode = String($('#sg_summaryWorldInfoKeyMode').val() || 'keywords');
   s.summaryIndexPrefix = String($('#sg_summaryIndexPrefix').val() || 'A-').trim() || 'A-';
@@ -12560,11 +12548,7 @@ function pullUiToSettings() {
   s.summaryIndexStart = clampInt($('#sg_summaryIndexStart').val(), 1, 1000000, s.summaryIndexStart ?? 1);
   s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
-  const $summaryBlueWorldInfoFile = $('#sg_summaryBlueWorldInfoFile');
-  if ($summaryBlueWorldInfoFile.length) {
-    s.summaryBlueWorldInfoFile = String($summaryBlueWorldInfoFile.val() || '').trim();
-    writeLocalStorageString(LOCAL_STORAGE_KEYS.summaryBlueFile, s.summaryBlueWorldInfoFile);
-  }
+  s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
 
   // 地图功能
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
@@ -12667,11 +12651,7 @@ function pullUiToSettings() {
   s.wiIndexCustomStream = $('#sg_wiIndexCustomStream').is(':checked');
 
   s.wiBlueIndexMode = String($('#sg_wiBlueIndexMode').val() || s.wiBlueIndexMode || 'live');
-  const $wiBlueIndexFile = $('#sg_wiBlueIndexFile');
-  if ($wiBlueIndexFile.length) {
-    s.wiBlueIndexFile = String($wiBlueIndexFile.val() || '').trim();
-    writeLocalStorageString(LOCAL_STORAGE_KEYS.wiBlueIndexFile, s.wiBlueIndexFile);
-  }
+  s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
   s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
 }
