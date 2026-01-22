@@ -678,6 +678,12 @@ const META_KEYS = Object.freeze({
   mapData: 'storyguide_map_data',
 });
 
+const LOCAL_STORAGE_KEYS = Object.freeze({
+  summaryGreenFile: `${MODULE_NAME}_summaryWorldInfoFile`,
+  summaryBlueFile: `${MODULE_NAME}_summaryBlueWorldInfoFile`,
+  wiBlueIndexFile: `${MODULE_NAME}_wiBlueIndexFile`,
+});
+
 let lastReport = null;
 let lastJsonText = '';
 let lastSummary = null; // { title, summary, keywords, ... }
@@ -748,6 +754,14 @@ function getStRequestHeadersCompat() {
 // -------------------- utils --------------------
 
 function clone(obj) { try { return structuredClone(obj); } catch { return JSON.parse(JSON.stringify(obj)); } }
+
+function readLocalStorageString(key) {
+  try { return String(localStorage.getItem(key) || '').trim(); } catch { return ''; }
+}
+
+function writeLocalStorageString(key, value) {
+  try { localStorage.setItem(key, String(value || '')); } catch { }
+}
 
 function ensureSettings() {
   const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
@@ -824,6 +838,22 @@ function ensureSettings() {
   );
   if (isLegacyStructuredTpl) {
     extensionSettings[MODULE_NAME].structuredEntriesUserTemplate = DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
+    saveSettingsDebounced();
+  }
+
+  const lsSummaryGreenFile = readLocalStorageString(LOCAL_STORAGE_KEYS.summaryGreenFile);
+  if (!extensionSettings[MODULE_NAME].summaryWorldInfoFile && lsSummaryGreenFile) {
+    extensionSettings[MODULE_NAME].summaryWorldInfoFile = lsSummaryGreenFile;
+    saveSettingsDebounced();
+  }
+  const lsSummaryBlueFile = readLocalStorageString(LOCAL_STORAGE_KEYS.summaryBlueFile);
+  if (!extensionSettings[MODULE_NAME].summaryBlueWorldInfoFile && lsSummaryBlueFile) {
+    extensionSettings[MODULE_NAME].summaryBlueWorldInfoFile = lsSummaryBlueFile;
+    saveSettingsDebounced();
+  }
+  const lsWiBlueIndexFile = readLocalStorageString(LOCAL_STORAGE_KEYS.wiBlueIndexFile);
+  if (!extensionSettings[MODULE_NAME].wiBlueIndexFile && lsWiBlueIndexFile) {
+    extensionSettings[MODULE_NAME].wiBlueIndexFile = lsWiBlueIndexFile;
     saveSettingsDebounced();
   }
 
@@ -940,6 +970,12 @@ function clampFloat(v, min, max, fallback) {
   const n = Number.parseFloat(v);
   if (Number.isFinite(n)) return Math.min(max, Math.max(min, n));
   return fallback;
+}
+
+function normalizeSummaryWorldInfoTarget(settings) {
+  const raw = String(settings?.summaryWorldInfoTarget || '').trim();
+  if (raw === 'chatbook') return 'chatbook';
+  return 'file';
 }
 
 // 简易模板替换：支持 {{fromFloor}} / {{toFloor}} / {{chunk}} 等占位符
@@ -3763,7 +3799,7 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
   if (s.summaryToWorldInfo) {
     try {
       await writeSummaryToWorldInfoEntry(rec, meta, {
-        target: String(s.summaryWorldInfoTarget || 'chatbook'),
+        target: normalizeSummaryWorldInfoTarget(s),
         file: String(s.summaryWorldInfoFile || ''),
         commentPrefix: megaPrefix,
         constant: 0,
@@ -3815,7 +3851,7 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
     if (greenComment) {
       try {
         await disableWorldInfoEntryByComment(greenComment, s, {
-          target: String(s.summaryWorldInfoTarget || 'chatbook'),
+          target: normalizeSummaryWorldInfoTarget(s),
           file: String(s.summaryWorldInfoFile || ''),
         });
       } catch (e) {
@@ -4492,7 +4528,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     constant = 1; // 蓝灯=常开
     if (!file) return null; // 蓝灯必须指定文件名
   } else {
-    target = String(settings.summaryWorldInfoTarget || 'chatbook');
+    target = normalizeSummaryWorldInfoTarget(settings);
     file = String(settings.summaryWorldInfoFile || '');
     constant = 0; // 绿灯=触发词触发
   }
@@ -4906,7 +4942,7 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
       return null;
     }
   } else {
-    const t = String(settings.summaryWorldInfoTarget || 'chatbook');
+    const t = normalizeSummaryWorldInfoTarget(settings);
     if (t === 'file') {
       target = 'file';
       file = settings.summaryWorldInfoFile || '';
@@ -5673,7 +5709,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         if (s.summaryToWorldInfo) {
           try {
             await writeSummaryToWorldInfoEntry(rec, meta, {
-              target: String(s.summaryWorldInfoTarget || 'chatbook'),
+              target: normalizeSummaryWorldInfoTarget(s),
               file: String(s.summaryWorldInfoFile || ''),
               commentPrefix: String(s.summaryWorldInfoCommentPrefix || '剧情总结'),
               constant: 0,
@@ -11974,7 +12010,10 @@ function pullSettingsToUi() {
   $('#sg_summaryCustomMaxTokens').val(s.summaryCustomMaxTokens || 2048);
   $('#sg_summaryCustomStream').prop('checked', !!s.summaryCustomStream);
   $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
-  $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
+  const $summaryWorldInfoTarget = $('#sg_summaryWorldInfoTarget');
+  if ($summaryWorldInfoTarget.length) {
+    $summaryWorldInfoTarget.val(normalizeSummaryWorldInfoTarget(s));
+  }
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
   $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
   $('#sg_summaryWorldInfoKeyMode').val(String(s.summaryWorldInfoKeyMode || 'keywords'));
@@ -12504,8 +12543,16 @@ function pullUiToSettings() {
   s.summaryCustomMaxTokens = clampInt($('#sg_summaryCustomMaxTokens').val(), 128, 200000, s.summaryCustomMaxTokens || 2048);
   s.summaryCustomStream = $('#sg_summaryCustomStream').is(':checked');
   s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
-  s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
-  s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
+  const $summaryWorldInfoTarget = $('#sg_summaryWorldInfoTarget');
+  if ($summaryWorldInfoTarget.length) {
+    const rawTarget = String($summaryWorldInfoTarget.val() || '').trim();
+    s.summaryWorldInfoTarget = (rawTarget === 'chatbook') ? 'chatbook' : 'file';
+  }
+  const $summaryWorldInfoFile = $('#sg_summaryWorldInfoFile');
+  if ($summaryWorldInfoFile.length) {
+    s.summaryWorldInfoFile = String($summaryWorldInfoFile.val() || '').trim();
+    writeLocalStorageString(LOCAL_STORAGE_KEYS.summaryGreenFile, s.summaryWorldInfoFile);
+  }
   s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
   s.summaryWorldInfoKeyMode = String($('#sg_summaryWorldInfoKeyMode').val() || 'keywords');
   s.summaryIndexPrefix = String($('#sg_summaryIndexPrefix').val() || 'A-').trim() || 'A-';
@@ -12513,7 +12560,11 @@ function pullUiToSettings() {
   s.summaryIndexStart = clampInt($('#sg_summaryIndexStart').val(), 1, 1000000, s.summaryIndexStart ?? 1);
   s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
-  s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
+  const $summaryBlueWorldInfoFile = $('#sg_summaryBlueWorldInfoFile');
+  if ($summaryBlueWorldInfoFile.length) {
+    s.summaryBlueWorldInfoFile = String($summaryBlueWorldInfoFile.val() || '').trim();
+    writeLocalStorageString(LOCAL_STORAGE_KEYS.summaryBlueFile, s.summaryBlueWorldInfoFile);
+  }
 
   // 地图功能
   s.mapEnabled = $('#sg_mapEnabled').is(':checked');
@@ -12616,7 +12667,11 @@ function pullUiToSettings() {
   s.wiIndexCustomStream = $('#sg_wiIndexCustomStream').is(':checked');
 
   s.wiBlueIndexMode = String($('#sg_wiBlueIndexMode').val() || s.wiBlueIndexMode || 'live');
-  s.wiBlueIndexFile = String($('#sg_wiBlueIndexFile').val() || '').trim();
+  const $wiBlueIndexFile = $('#sg_wiBlueIndexFile');
+  if ($wiBlueIndexFile.length) {
+    s.wiBlueIndexFile = String($wiBlueIndexFile.val() || '').trim();
+    writeLocalStorageString(LOCAL_STORAGE_KEYS.wiBlueIndexFile, s.wiBlueIndexFile);
+  }
   s.summaryMaxCharsPerMessage = clampInt($('#sg_summaryMaxChars').val(), 200, 8000, s.summaryMaxCharsPerMessage || 4000);
   s.summaryMaxTotalChars = clampInt($('#sg_summaryMaxTotalChars').val(), 2000, 80000, s.summaryMaxTotalChars || 24000);
 }
