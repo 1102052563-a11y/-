@@ -13109,6 +13109,8 @@ function pullSettingsToUi() {
   $('#sg_char_customModel').val(String(s.characterCustomModel || 'gpt-4o-mini'));
   $('#sg_char_customMaxTokens').val(s.characterCustomMaxTokens || 2048);
   $('#sg_char_customStream').prop('checked', !!s.characterCustomStream);
+  $('#sg_char_prompt_random').val(s.characterRandomPrompt || '');
+  $('#sg_char_prompt_opening').val(s.characterOpeningPrompt || '');
   $('#sg_char_custom_block').toggle(String(s.characterProvider || 'st') === 'custom');
 
   const parkValue = s.characterPark === 'CUSTOM' ? s.characterParkCustom : s.characterPark;
