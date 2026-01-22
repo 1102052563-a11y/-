@@ -3559,8 +3559,16 @@ async function callViaCustomBackendProxy(apiBaseUrl, apiKey, model, messages, te
   }
 
   const data = await res.json().catch(() => ({}));
+
+  // Standard OpenAI
   if (data?.choices?.[0]?.message?.content) return String(data.choices[0].message.content);
+  // Flattened
   if (typeof data?.content === 'string') return data.content;
+  // Google Gemini (candidates) - sometimes leaks through proxy
+  if (data?.candidates?.[0]?.content?.parts?.[0]?.text) return String(data.candidates[0].content.parts[0].text);
+
+  if (!Object.keys(data).length) throw new Error('API 返回了空数据 ({})。请检查网络，或尝试取消勾选“流式返回”。');
+
   return JSON.stringify(data ?? '');
 }
 
