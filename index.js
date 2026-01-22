@@ -668,6 +668,25 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenCharacterProfilesEnabled: false,
   imageGenCharacterProfiles: [],
 
+  // ===== 自定义角色生成 =====
+  characterProvider: 'st',
+  characterTemperature: 0.7,
+  characterCustomEndpoint: '',
+  characterCustomApiKey: '',
+  characterCustomModel: 'gpt-4o-mini',
+  characterCustomMaxTokens: 2048,
+  characterCustomStream: false,
+  characterDifficulty: 30,
+  characterPark: '',
+  characterParkCustom: '',
+  characterParkTraits: '',
+  characterRace: '',
+  characterRaceCustom: '',
+  characterTalent: '',
+  characterTalentCustom: '',
+  characterContractId: '',
+  characterAttributes: { con: 0, int: 0, cha: 0, str: 0, agi: 0, luk: 0 },
+
 });
 
 const META_KEYS = Object.freeze({
@@ -2138,6 +2157,226 @@ function setStatus(text, kind = '') {
   const $s = $('#sg_status');
   $s.removeClass('ok err warn').addClass(kind || '');
   $s.text(text || '');
+}
+
+// -------------------- character builder --------------------
+
+function setCharacterStatus(text, kind = '') {
+  const $s = $('#sg_char_status');
+  if (!$s.length) return;
+  $s.removeClass('ok err warn').addClass(kind || '');
+  $s.text(text || '');
+}
+
+function updateCharacterCustomRows() {
+  const parkVal = String($('#sg_char_park').val() || '');
+  const raceVal = String($('#sg_char_race').val() || '');
+  const talentVal = String($('#sg_char_talent').val() || '');
+  $('#sg_char_park_custom_row').toggle(parkVal === 'CUSTOM');
+  $('#sg_char_park_traits_row').toggle(parkVal === 'CUSTOM');
+  $('#sg_char_race_custom_row').toggle(raceVal === 'CUSTOM');
+  $('#sg_char_talent_custom_row').toggle(talentVal === 'CUSTOM');
+}
+
+function getCharacterDifficulty() {
+  return clampInt($('#sg_char_difficulty').val(), 10, 50, 30);
+}
+
+function getCharacterAttributes() {
+  return {
+    con: clampInt($('#sg_char_attr_con').val(), 0, 20, 0),
+    int: clampInt($('#sg_char_attr_int').val(), 0, 20, 0),
+    cha: clampInt($('#sg_char_attr_cha').val(), 0, 20, 0),
+    str: clampInt($('#sg_char_attr_str').val(), 0, 20, 0),
+    agi: clampInt($('#sg_char_attr_agi').val(), 0, 20, 0),
+    luk: clampInt($('#sg_char_attr_luk').val(), 0, 20, 0),
+  };
+}
+
+function updateCharacterAttributeSummary() {
+  const max = getCharacterDifficulty();
+  const attrs = getCharacterAttributes();
+  const total = Object.values(attrs).reduce((sum, val) => sum + val, 0);
+  const remain = max - total;
+  $('#sg_char_attr_total').text(`已分配：${total}`);
+  $('#sg_char_attr_remain').text(`剩余：${remain}`).toggleClass('sg-character-over', remain < 0);
+}
+
+function updateCharacterForm() {
+  updateCharacterCustomRows();
+  updateCharacterAttributeSummary();
+}
+
+function applyCharacterSelectValue($select, value, $customInput) {
+  const val = String(value || '').trim();
+  const hasOption = val && $select.find(`option[value="${val}"]`).length > 0;
+  if (hasOption) {
+    $select.val(val);
+    if ($customInput) $customInput.val('');
+    return;
+  }
+  if (val) {
+    $select.val('CUSTOM');
+    if ($customInput) $customInput.val(val);
+    return;
+  }
+  $select.val('');
+  if ($customInput) $customInput.val('');
+}
+
+function randomChoice(items) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function randomSelectOption($select, allowCustom, customSetter) {
+  const values = $select.find('option').map((_, opt) => opt.value).get().filter(Boolean);
+  let pick = randomChoice(values);
+  if (allowCustom && Math.random() < 0.25) pick = 'CUSTOM';
+  $select.val(pick);
+  if (pick === 'CUSTOM' && typeof customSetter === 'function') customSetter();
+}
+
+function allocateRandomAttributes(maxPoints) {
+  const keys = ['con', 'int', 'cha', 'str', 'agi', 'luk'];
+  const values = Object.fromEntries(keys.map((key) => [key, 0]));
+  let remaining = Math.max(0, maxPoints);
+  while (remaining > 0) {
+    const available = keys.filter((key) => values[key] < 20);
+    if (!available.length) break;
+    const key = randomChoice(available);
+    values[key] += 1;
+    remaining -= 1;
+  }
+  $('#sg_char_attr_con').val(values.con);
+  $('#sg_char_attr_int').val(values.int);
+  $('#sg_char_attr_cha').val(values.cha);
+  $('#sg_char_attr_str').val(values.str);
+  $('#sg_char_attr_agi').val(values.agi);
+  $('#sg_char_attr_luk').val(values.luk);
+}
+
+function randomizeCharacterLocal() {
+  const parkCustomNames = ['灰雾乐园', '霜烬乐园', '星痕乐园', '寂潮乐园', '暮影乐园'];
+  const parkTraits = [
+    '规则偏向高风险试炼，奖励倾向增幅型契约。',
+    '惩罚与补偿并行，任务节奏偏向短而密集。',
+    '鼓励情报交换与团队协同，独行者收益衰减。',
+    '以存活为先，任务失败会触发连锁惩戒。',
+    '偏向潜行与智谋型任务，正面突破收益降低。'
+  ];
+  const raceCustomNames = ['灰雾族', '霜纹族', '星砂族', '赤潮裔', '幽烬裔'];
+  const talentCustomNames = ['雾行者', '刻印猎手', '逆光共鸣', '星幕行旅', '零度誓约'];
+
+  randomSelectOption($('#sg_char_park'), true, () => {
+    $('#sg_char_park_custom').val(randomChoice(parkCustomNames));
+    $('#sg_char_park_traits').val(randomChoice(parkTraits));
+  });
+
+  randomSelectOption($('#sg_char_race'), true, () => {
+    $('#sg_char_race_custom').val(randomChoice(raceCustomNames));
+  });
+
+  randomSelectOption($('#sg_char_talent'), true, () => {
+    $('#sg_char_talent_custom').val(randomChoice(talentCustomNames));
+  });
+
+  $('#sg_char_contract').val(`R-${Math.floor(Math.random() * 9000) + 1000}`);
+
+  const difficultyValues = ['10', '20', '30', '40', '50'];
+  $('#sg_char_difficulty').val(randomChoice(difficultyValues));
+  allocateRandomAttributes(getCharacterDifficulty());
+
+  updateCharacterForm();
+  setCharacterStatus('· 已随机生成，可继续调整后生成文本 ·', 'ok');
+}
+
+function buildCharacterPayload() {
+  const parkValue = String($('#sg_char_park').val() || '');
+  const raceValue = String($('#sg_char_race').val() || '');
+  const talentValue = String($('#sg_char_talent').val() || '');
+  const parkCustom = String($('#sg_char_park_custom').val() || '').trim();
+  const parkTraits = String($('#sg_char_park_traits').val() || '').trim();
+  const raceCustom = String($('#sg_char_race_custom').val() || '').trim();
+  const talentCustom = String($('#sg_char_talent_custom').val() || '').trim();
+  const contractId = String($('#sg_char_contract').val() || '').trim();
+
+  const park = parkValue === 'CUSTOM' ? parkCustom : parkValue;
+  const race = raceValue === 'CUSTOM' ? raceCustom : raceValue;
+  const talent = talentValue === 'CUSTOM' ? talentCustom : talentValue;
+  const difficulty = getCharacterDifficulty();
+  const attrs = getCharacterAttributes();
+  const total = Object.values(attrs).reduce((sum, val) => sum + val, 0);
+
+  if (!park) return { error: '请选择乐园或填写自定义乐园。' };
+  if (!race) return { error: '请选择种族或填写自定义种族。' };
+  if (!talent) return { error: '请选择天赋或填写自定义天赋。' };
+  if (total > difficulty) return { error: '属性点超出当前难度上限。' };
+  if (Object.values(attrs).some((v) => v > 20)) return { error: '单项属性不得超过20。' };
+
+  return {
+    park,
+    parkTraits,
+    race,
+    talent,
+    contractId,
+    difficulty,
+    attrs,
+    total
+  };
+}
+
+async function generateCharacterText() {
+  const s = ensureSettings();
+  const payload = buildCharacterPayload();
+  if (payload.error) {
+    setCharacterStatus(`· ${payload.error} ·`, 'warn');
+    return;
+  }
+
+  const attributeText = `体质${payload.attrs.con} 智力${payload.attrs.int} 魅力${payload.attrs.cha} 力量${payload.attrs.str} 敏捷${payload.attrs.agi} 幸运${payload.attrs.luk}`;
+  const parkTraits = payload.parkTraits ? payload.parkTraits : '未登记';
+  const contractId = payload.contractId || '随机分配中';
+
+  const systemPrompt = '你是“轮回乐园”世界观的开场文本写作助手。只输出正文文本，不要 JSON，不要代码块。';
+  const userPrompt =
+    `根据以下设定生成开场文本，中文，约 500~900 字：\n` +
+    `- 所属乐园：${payload.park}\n` +
+    `- 乐园特点：${parkTraits}\n` +
+    `- 种族：${payload.race}\n` +
+    `- 初始天赋：${payload.talent}\n` +
+    `- 契约者编号：${contractId}\n` +
+    `- 六维属性：${attributeText}（总计${payload.total}/${payload.difficulty}，单项<=20）\n` +
+    `要求：必须包含一段系统提示块（Markdown 引用 >），其中列出乐园/种族/天赋/编号/六维属性/乐园特点。最后以“触碰印记”作为收束。`;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ];
+
+  setCharacterStatus('· 正在生成开场文本… ·', 'warn');
+
+  try {
+    let text = '';
+    if (String(s.characterProvider || 'st') === 'custom') {
+      text = await callViaCustom(
+        s.characterCustomEndpoint,
+        s.characterCustomApiKey,
+        s.characterCustomModel,
+        messages,
+        s.characterTemperature,
+        s.characterCustomMaxTokens,
+        0.95,
+        s.characterCustomStream
+      );
+    } else {
+      text = await callViaSillyTavern(messages, null, s.characterTemperature);
+    }
+    $('#sg_char_output').val(String(text || '').trim());
+    setCharacterStatus('· 已生成：可复制或填入聊天输入框（不会自动发送） ·', 'ok');
+  } catch (e) {
+    console.error('[StoryGuide] 角色生成失败:', e);
+    setCharacterStatus(`· 生成失败：${e?.message ?? e} ·`, 'err');
+  }
 }
 
 
@@ -9993,6 +10232,7 @@ function buildModalHtml() {
             <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
             <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
             <button class="sg-pgtab" id="sg_pgtab_image">图像生成</button>
+            <button class="sg-pgtab" id="sg_pgtab_character">自定义角色</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
@@ -11195,6 +11435,192 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_image -->
 
+          <div class="sg-page" id="sg_page_character">
+            <div class="sg-card sg-character-card">
+              <div class="sg-card-title sg-character-title">轮回乐园 · 自定义角色</div>
+
+              <div class="sg-character-grid">
+                <div class="sg-field">
+                  <label>乐园</label>
+                  <select id="sg_char_park">
+                    <option value="">请选择所属乐园</option>
+                    <option value="轮回乐园">轮回乐园</option>
+                    <option value="圣域乐园">圣域乐园</option>
+                    <option value="守望乐园">守望乐园</option>
+                    <option value="圣光乐园">圣光乐园</option>
+                    <option value="死亡乐园">死亡乐园</option>
+                    <option value="天启乐园">天启乐园</option>
+                    <option value="CUSTOM">自定义乐园</option>
+                  </select>
+                </div>
+                <div class="sg-field" id="sg_char_park_custom_row" style="display:none;">
+                  <label>自定义乐园</label>
+                  <input id="sg_char_park_custom" type="text" placeholder="输入乐园名称，例如：灰雾乐园">
+                </div>
+                <div class="sg-field sg-character-full" id="sg_char_park_traits_row" style="display:none;">
+                  <label>乐园特点</label>
+                  <textarea id="sg_char_park_traits" rows="3" placeholder="可选：描述该乐园的规则倾向、奖惩逻辑、常见任务风格等"></textarea>
+                </div>
+
+                <div class="sg-field">
+                  <label>种族</label>
+                  <select id="sg_char_race">
+                    <option value="">请选择初始种族</option>
+                    <option value="人类">人类</option>
+                    <option value="精灵">精灵</option>
+                    <option value="兽人">兽人</option>
+                    <option value="半魔">半魔</option>
+                    <option value="机巧">机巧</option>
+                    <option value="异界">异界</option>
+                    <option value="CUSTOM">自定义种族</option>
+                  </select>
+                </div>
+                <div class="sg-field" id="sg_char_race_custom_row" style="display:none;">
+                  <label>自定义种族</label>
+                  <input id="sg_char_race_custom" type="text" placeholder="输入种族名称，例如：灰雾族">
+                </div>
+
+                <div class="sg-field">
+                  <label>天赋</label>
+                  <select id="sg_char_talent">
+                    <option value="">请选择初始天赋</option>
+                    <option value="刀术专精">刀术专精</option>
+                    <option value="重装精通">重装精通</option>
+                    <option value="雷霆亲和">雷霆亲和</option>
+                    <option value="死灵契印">死灵契印</option>
+                    <option value="狙击专精">狙击专精</option>
+                    <option value="元素疗愈">元素疗愈</option>
+                    <option value="符文锻刻">符文锻刻</option>
+                    <option value="幻象支配">幻象支配</option>
+                    <option value="时空敏锐">时空敏锐</option>
+                    <option value="违约追猎">违约追猎</option>
+                    <option value="血脉觉醒">血脉觉醒</option>
+                    <option value="机械改造">机械改造</option>
+                    <option value="CUSTOM">自定义天赋</option>
+                  </select>
+                </div>
+                <div class="sg-field" id="sg_char_talent_custom_row" style="display:none;">
+                  <label>自定义天赋</label>
+                  <input id="sg_char_talent_custom" type="text" placeholder="输入天赋名称，例如：灰雾行旅者">
+                </div>
+
+                <div class="sg-field sg-character-full">
+                  <label>契约者编号</label>
+                  <input id="sg_char_contract" type="text" placeholder="可选：自定义契约者编号，例如：R-1037">
+                </div>
+              </div>
+
+              <div class="sg-character-section-title">属性点分配</div>
+              <div class="sg-character-attr-panel">
+                <div class="sg-character-attr-header">
+                  <div class="sg-character-attr-title">六维基础属性</div>
+                  <div class="sg-character-attr-actions">
+                    <div class="sg-field sg-character-field-inline">
+                      <label>难度</label>
+                      <select id="sg_char_difficulty">
+                        <option value="10">烬火绝境（10）</option>
+                        <option value="20">断崖试炼（20）</option>
+                        <option value="30">灰雾常阶（30）</option>
+                        <option value="40">星辉晋阶（40）</option>
+                        <option value="50">曙光恩典（50）</option>
+                      </select>
+                    </div>
+                    <button class="menu_button sg-btn sg-character-mini" id="sg_char_random">随机设定</button>
+                  </div>
+                </div>
+
+                <div class="sg-character-attr-grid">
+                  <div class="sg-character-attr-row">
+                    <label>体质</label>
+                    <input id="sg_char_attr_con" type="number" min="0" max="20" value="0">
+                  </div>
+                  <div class="sg-character-attr-row">
+                    <label>智力</label>
+                    <input id="sg_char_attr_int" type="number" min="0" max="20" value="0">
+                  </div>
+                  <div class="sg-character-attr-row">
+                    <label>魅力</label>
+                    <input id="sg_char_attr_cha" type="number" min="0" max="20" value="0">
+                  </div>
+                  <div class="sg-character-attr-row">
+                    <label>力量</label>
+                    <input id="sg_char_attr_str" type="number" min="0" max="20" value="0">
+                  </div>
+                  <div class="sg-character-attr-row">
+                    <label>敏捷</label>
+                    <input id="sg_char_attr_agi" type="number" min="0" max="20" value="0">
+                  </div>
+                  <div class="sg-character-attr-row">
+                    <label>幸运</label>
+                    <input id="sg_char_attr_luk" type="number" min="0" max="20" value="0">
+                  </div>
+                </div>
+
+                <div class="sg-character-attr-meta">
+                  <span id="sg_char_attr_total">已分配：0</span>
+                  <span id="sg_char_attr_remain">剩余：30</span>
+                  <span class="sg-character-cap">单项上限：20</span>
+                </div>
+              </div>
+
+              <div class="sg-card sg-subcard sg-character-provider">
+                <div class="sg-card-title">生成设置</div>
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>生成API</label>
+                    <select id="sg_char_provider">
+                      <option value="st">使用当前 SillyTavern API（推荐）</option>
+                      <option value="custom">独立API（走酒馆后端代理）</option>
+                    </select>
+                  </div>
+                  <div class="sg-field">
+                    <label>temperature</label>
+                    <input id="sg_char_temperature" type="number" step="0.05" min="0" max="2">
+                  </div>
+                </div>
+
+                <div class="sg-card sg-subcard" id="sg_char_custom_block" style="display:none;">
+                  <div class="sg-card-title">独立API 设置（建议填 API基础URL）</div>
+                  <div class="sg-field">
+                    <label>API基础URL（例如 https://api.openai.com/v1 ）</label>
+                    <input id="sg_char_customEndpoint" type="text" placeholder="https://xxx.com/v1">
+                  </div>
+                  <div class="sg-grid2">
+                    <div class="sg-field">
+                      <label>API Key（可选）</label>
+                      <input id="sg_char_customApiKey" type="password" placeholder="可留空">
+                    </div>
+                    <div class="sg-field">
+                      <label>模型（可手填）</label>
+                      <input id="sg_char_customModel" type="text" placeholder="gpt-4o-mini">
+                    </div>
+                  </div>
+                  <div class="sg-row">
+                    <div class="sg-field sg-field-full">
+                      <label>最大回复token数</label>
+                      <input id="sg_char_customMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如：4096">
+                      <label class="sg-check" style="margin-top:8px;">
+                        <input type="checkbox" id="sg_char_customStream"> 使用流式返回（stream=true）
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sg-actions-row">
+                <button class="menu_button sg-btn-primary" id="sg_char_generate">生成开场文本</button>
+                <button class="menu_button sg-btn" id="sg_char_copy">复制</button>
+                <button class="menu_button sg-btn" id="sg_char_insert">填入聊天框</button>
+              </div>
+
+              <div class="sg-field" style="margin-top:10px;">
+                <label>开场文本（不会自动发送）</label>
+                <textarea id="sg_char_output" rows="10" spellcheck="false"></textarea>
+                <div class="sg-hint" id="sg_char_status">· 生成后可复制或填入聊天输入框 ·</div>
+              </div>
+            </div>
+          </div> <!-- sg_page_character -->
+
           <div class="sg-status" id="sg_status"></div>
         </div>
 
@@ -12038,8 +12464,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image, #sg_pgtab_character').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image, #sg_page_character').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -12053,6 +12479,9 @@ function showSettingsPage(page) {
   } else if (p === 'image') {
     $('#sg_pgtab_image').addClass('active');
     $('#sg_page_image').addClass('active');
+  } else if (p === 'character') {
+    $('#sg_pgtab_character').addClass('active');
+    $('#sg_page_character').addClass('active');
   } else {
     $('#sg_pgtab_guide').addClass('active');
     $('#sg_page_guide').addClass('active');
@@ -12081,6 +12510,9 @@ function setupSettingsPages() {
   $('#sg_pgtab_index').on('click', () => showSettingsPage('index'));
   $('#sg_pgtab_roll').on('click', () => showSettingsPage('roll'));
   $('#sg_pgtab_image').on('click', () => showSettingsPage('image'));
+  $('#sg_pgtab_character').on('click', () => showSettingsPage('character'));
+
+  setupCharacterPage();
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
@@ -12162,6 +12594,70 @@ function setupSettingsPages() {
   $('#sg_matchGalleryImage').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await matchGalleryImage();
+  });
+}
+
+function setupCharacterPage() {
+  const autoSave = () => {
+    pullUiToSettings();
+    saveSettings();
+  };
+
+  $('#sg_char_provider').on('change', () => {
+    const provider = String($('#sg_char_provider').val() || 'st');
+    $('#sg_char_custom_block').toggle(provider === 'custom');
+    autoSave();
+  });
+
+  $('#sg_char_park, #sg_char_race, #sg_char_talent').on('change', () => {
+    updateCharacterForm();
+    autoSave();
+  });
+  $('#sg_char_park_custom, #sg_char_park_traits, #sg_char_race_custom, #sg_char_talent_custom, #sg_char_contract').on('input', () => {
+    updateCharacterForm();
+    autoSave();
+  });
+  $('#sg_char_difficulty').on('change', () => {
+    updateCharacterAttributeSummary();
+    autoSave();
+  });
+  $('#sg_char_attr_con, #sg_char_attr_int, #sg_char_attr_cha, #sg_char_attr_str, #sg_char_attr_agi, #sg_char_attr_luk').on('input', () => {
+    updateCharacterAttributeSummary();
+    autoSave();
+  });
+
+  $('#sg_char_random').on('click', () => {
+    randomizeCharacterLocal();
+    autoSave();
+  });
+
+  $('#sg_char_generate').on('click', async () => {
+    autoSave();
+    await generateCharacterText();
+  });
+
+  $('#sg_char_copy').on('click', async () => {
+    const text = String($('#sg_char_output').val() || '').trim();
+    if (!text) {
+      setCharacterStatus('· 暂无可复制内容 ·', 'warn');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCharacterStatus('· 已复制到剪贴板 ·', 'ok');
+    } catch (e) {
+      setCharacterStatus(`· 复制失败：${e?.message ?? e} ·`, 'err');
+    }
+  });
+
+  $('#sg_char_insert').on('click', () => {
+    const text = String($('#sg_char_output').val() || '').trim();
+    if (!text) {
+      setCharacterStatus('· 暂无可填入内容 ·', 'warn');
+      return;
+    }
+    const ok = injectToUserInput(text);
+    setCharacterStatus(ok ? '· 已填入聊天输入框（未发送） ·' : '· 未找到聊天输入框 ·', ok ? 'ok' : 'err');
   });
 }
 
@@ -12380,6 +12876,34 @@ function pullSettingsToUi() {
   if (s.imageGalleryCache && s.imageGalleryCache.length > 0) {
     $('#sg_galleryInfo').text(`(已缓存 ${s.imageGalleryCache.length} 张)`);
   }
+
+  // 自定义角色设置
+  $('#sg_char_provider').val(String(s.characterProvider || 'st'));
+  $('#sg_char_temperature').val(s.characterTemperature ?? 0.7);
+  $('#sg_char_customEndpoint').val(String(s.characterCustomEndpoint || ''));
+  $('#sg_char_customApiKey').val(String(s.characterCustomApiKey || ''));
+  $('#sg_char_customModel').val(String(s.characterCustomModel || 'gpt-4o-mini'));
+  $('#sg_char_customMaxTokens').val(s.characterCustomMaxTokens || 2048);
+  $('#sg_char_customStream').prop('checked', !!s.characterCustomStream);
+  $('#sg_char_custom_block').toggle(String(s.characterProvider || 'st') === 'custom');
+
+  const parkValue = s.characterPark === 'CUSTOM' ? s.characterParkCustom : s.characterPark;
+  applyCharacterSelectValue($('#sg_char_park'), parkValue, $('#sg_char_park_custom'));
+  $('#sg_char_park_traits').val(String(s.characterParkTraits || ''));
+  const raceValue = s.characterRace === 'CUSTOM' ? s.characterRaceCustom : s.characterRace;
+  applyCharacterSelectValue($('#sg_char_race'), raceValue, $('#sg_char_race_custom'));
+  const talentValue = s.characterTalent === 'CUSTOM' ? s.characterTalentCustom : s.characterTalent;
+  applyCharacterSelectValue($('#sg_char_talent'), talentValue, $('#sg_char_talent_custom'));
+  $('#sg_char_contract').val(String(s.characterContractId || ''));
+  $('#sg_char_difficulty').val(String(s.characterDifficulty || 30));
+
+  $('#sg_char_attr_con').val(s.characterAttributes?.con ?? 0);
+  $('#sg_char_attr_int').val(s.characterAttributes?.int ?? 0);
+  $('#sg_char_attr_cha').val(s.characterAttributes?.cha ?? 0);
+  $('#sg_char_attr_str').val(s.characterAttributes?.str ?? 0);
+  $('#sg_char_attr_agi').val(s.characterAttributes?.agi ?? 0);
+  $('#sg_char_attr_luk').val(s.characterAttributes?.luk ?? 0);
+  updateCharacterForm();
 
   // 角色标签世界书设置
   $('#sg_imageGenProfilesEnabled').prop('checked', !!s.imageGenCharacterProfilesEnabled);
@@ -12896,6 +13420,26 @@ function pullUiToSettings() {
 
   s.imageGalleryEnabled = $('#sg_imageGalleryEnabled').is(':checked');
   s.imageGalleryUrl = String($('#sg_imageGalleryUrl').val() || '').trim();
+
+  // 自定义角色设置
+  s.characterProvider = String($('#sg_char_provider').val() || 'st');
+  s.characterTemperature = clampFloat($('#sg_char_temperature').val(), 0, 2, s.characterTemperature ?? 0.7);
+  s.characterCustomEndpoint = String($('#sg_char_customEndpoint').val() || '').trim();
+  s.characterCustomApiKey = String($('#sg_char_customApiKey').val() || '');
+  s.characterCustomModel = String($('#sg_char_customModel').val() || '').trim() || 'gpt-4o-mini';
+  s.characterCustomMaxTokens = clampInt($('#sg_char_customMaxTokens').val(), 256, 200000, s.characterCustomMaxTokens || 2048);
+  s.characterCustomStream = $('#sg_char_customStream').is(':checked');
+
+  s.characterPark = String($('#sg_char_park').val() || '');
+  s.characterParkCustom = String($('#sg_char_park_custom').val() || '').trim();
+  s.characterParkTraits = String($('#sg_char_park_traits').val() || '').trim();
+  s.characterRace = String($('#sg_char_race').val() || '');
+  s.characterRaceCustom = String($('#sg_char_race_custom').val() || '').trim();
+  s.characterTalent = String($('#sg_char_talent').val() || '');
+  s.characterTalentCustom = String($('#sg_char_talent_custom').val() || '').trim();
+  s.characterContractId = String($('#sg_char_contract').val() || '').trim();
+  s.characterDifficulty = getCharacterDifficulty();
+  s.characterAttributes = getCharacterAttributes();
 
   // 角色标签世界书设置
   s.imageGenCharacterProfilesEnabled = $('#sg_imageGenProfilesEnabled').is(':checked');
