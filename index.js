@@ -773,6 +773,12 @@ function normalizeWorldInfoFileName(fileName) {
   return raw.endsWith('.json') ? raw.slice(0, -5) : raw;
 }
 
+function ensureMvuPlotPrefix(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '[mvu_plot]';
+  return raw.startsWith('[mvu_plot]') ? raw : `[mvu_plot]${raw}`;
+}
+
 function resolveGreenWorldInfoTarget(settings) {
   const s = settings || ensureSettings();
   const file = normalizeWorldInfoFileName(s.summaryWorldInfoFile);
@@ -3819,7 +3825,7 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
       await writeSummaryToWorldInfoEntry(rec, meta, {
         target: 'file',
         file: String(s.summaryBlueWorldInfoFile || ''),
-        commentPrefix: megaPrefix,
+        commentPrefix: ensureMvuPlotPrefix(megaPrefix),
         constant: 1,
       });
     } catch (e) {
@@ -4071,9 +4077,6 @@ async function syncGreenWorldInfoFromBlue() {
 
     let blueEntries = parseWorldbookJson(JSON.stringify(blueJson || {}));
     let greenEntries = parseWorldbookJson(JSON.stringify(greenJson || {}));
-
-    const prefix = String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '').trim();
-    blueEntries = filterWorldInfoEntriesByPrefix(blueEntries, prefix);
 
     if (!blueEntries.length) {
       setStatus('对齐完成 ✅（蓝灯世界书为空）', 'ok');
@@ -5834,7 +5837,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           await writeSummaryToWorldInfoEntry(rec, meta, {
             target: 'file',
             file: String(s.summaryBlueWorldInfoFile || ''),
-            commentPrefix: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
+            commentPrefix: ensureMvuPlotPrefix(String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结')),
             constant: 1,
           });
           wroteBlueOk += 1;
