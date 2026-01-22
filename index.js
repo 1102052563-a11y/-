@@ -2300,7 +2300,6 @@ async function randomizeCharacterWithLLM() {
   setCharacterStatus('· 正在请求 AI 随机设定… ·', 'warn');
 
   // Construct prompt
-  const s = ensureSettings();
   const customPrompt = String(s.characterRandomPrompt || '').trim();
   const userPrompt = customPrompt || `请为“轮回乐园”设计一个全新的契约者角色。
 要求：
