@@ -2320,12 +2320,10 @@ async function randomizeCharacterWithLLM() {
     // Use the character provider settings (same as character text generation)
     if (String(s.characterProvider || 'st') === 'custom') {
       result = await callViaCustom(
-        s.characterCustomEndpoint,
-        s.characterCustomApiKey,
         s.characterCustomModel,
         [{ role: 'user', content: userPrompt }],
         0.7,
-        1024,
+        s.characterCustomMaxTokens || 2048,
         0.95,
         false
       );
@@ -2334,9 +2332,27 @@ async function randomizeCharacterWithLLM() {
     }
 
     // Parse JSON
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('AI 未返回有效 JSON');
-    const data = JSON.parse(jsonMatch[0]);
+    // 1. Try to find JSON block code
+    let text = result;
+    const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
+    if (codeBlockMatch) {
+      text = codeBlockMatch[1];
+    } else {
+      // 2. Fallback: match first { to last }
+      const braceMatch = text.match(/\{[\s\S]*\}/);
+      if (braceMatch) text = braceMatch[0];
+    }
+
+    // 3. Cleanup comments if any (simple)
+    // text = text.replace(/\/\/.*$/gm, ''); // risky if url contains //
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      console.error('JSON Parse Error:', err, text);
+      throw new Error('AI 返回数据格式错误（非标准 JSON）');
+    }
 
     if (!data.park || !data.race || !data.talent || !data.attrs) throw new Error('JSON 缺少必要字段');
 
@@ -9947,6 +9963,14 @@ async function refreshModels() {
     s.customModelsCache = ids;
     saveSettings();
     fillModelSelect(ids, s.customModel);
+
+    // Update character model datalist
+    const $dl = $('#sg_char_model_list');
+    $dl.empty();
+    ids.forEach(id => {
+      $dl.append($('<option>').val(id));
+    });
+
     setStatus(`已刷新模型：${ids.length} 个（后端代理）`, 'ok');
     return;
   } catch (e) {
@@ -11678,7 +11702,8 @@ function buildModalHtml() {
                     <div class="sg-field">
                       <label>模型（可手填）</label>
                       <div class="sg-row sg-inline" style="gap:4px;">
-                        <input id="sg_char_customModel" type="text" placeholder="gpt-4o-mini" style="flex:1;">
+                        <input id="sg_char_customModel" type="text" placeholder="gpt-4o-mini" style="flex:1;" list="sg_char_model_list">
+                        <datalist id="sg_char_model_list"></datalist>
                         <button class="menu_button sg-btn sg-character-mini" id="sg_char_refreshModels" title="刷新模型列表（仅 Custom）">🔄</button>
                       </div>
                     </div>
@@ -12794,6 +12819,13 @@ function pullSettingsToUi() {
   $('#sg_customModel').val(s.customModel);
 
   fillModelSelect(Array.isArray(s.customModelsCache) ? s.customModelsCache : [], s.customModel);
+
+  // Character model datalist
+  const $charDl = $('#sg_char_model_list');
+  $charDl.empty();
+  (Array.isArray(s.customModelsCache) ? s.customModelsCache : []).forEach(id => {
+    $charDl.append($('<option>').val(id));
+  });
 
   $('#sg_worldText').val(getChatMetaValue(META_KEYS.world));
   $('#sg_canonText').val(getChatMetaValue(META_KEYS.canon));
