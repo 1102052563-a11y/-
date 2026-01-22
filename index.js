@@ -767,12 +767,17 @@ function writeLocalStorageString(key, value) {
   } catch { /* ignore */ }
 }
 
+function normalizeWorldInfoFileName(fileName) {
+  const raw = String(fileName || '').trim();
+  if (!raw) return '';
+  return raw.endsWith('.json') ? raw.slice(0, -5) : raw;
+}
+
 function resolveGreenWorldInfoTarget(settings) {
   const s = settings || ensureSettings();
-  const file = String(s.summaryWorldInfoFile || '').trim();
-  const targetRaw = String(s.summaryWorldInfoTarget || 'chatbook');
+  const file = normalizeWorldInfoFileName(s.summaryWorldInfoFile);
   if (file) return { target: 'file', file };
-  return { target: targetRaw || 'chatbook', file: '' };
+  return { target: 'file', file: '' };
 }
 
 function ensureSettings() {
@@ -820,7 +825,7 @@ function ensureSettings() {
   if (!String(extensionSettings[MODULE_NAME].summaryWorldInfoFile || '').trim()) {
     const storedGreen = readLocalStorageString(SG_SUMMARY_WI_FILE_KEY).trim();
     if (storedGreen) {
-      extensionSettings[MODULE_NAME].summaryWorldInfoFile = storedGreen;
+      extensionSettings[MODULE_NAME].summaryWorldInfoFile = normalizeWorldInfoFileName(storedGreen);
       saveSettingsDebounced();
     }
   }
@@ -3949,7 +3954,7 @@ async function disableWorldInfoEntryByComment(comment, settings, {
 } = {}) {
   const s = settings || ensureSettings();
   const targetMode = String(target || 'file');
-  const fileName = String(file || '').trim();
+  const fileName = normalizeWorldInfoFileName(file || '');
   if (targetMode === 'file' && !fileName) return null;
 
   let findExpr;
@@ -4524,7 +4529,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   let target, file, constant;
   if (targetType === 'blue') {
     target = 'file';
-    file = String(settings.summaryBlueWorldInfoFile || '');
+    file = normalizeWorldInfoFileName(settings.summaryBlueWorldInfoFile);
     constant = 1; // 蓝灯=常开
     if (!file) return null; // 蓝灯必须指定文件名
   } else {
@@ -4937,7 +4942,7 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
   let file = '';
   if (targetType === 'blue') {
     target = 'file';
-    file = settings.summaryBlueWorldInfoFile || '';
+    file = normalizeWorldInfoFileName(settings.summaryBlueWorldInfoFile);
     if (!file) {
       console.warn(`[StoryGuide] No blue world info file configured for deletion`);
       return null;
@@ -5418,7 +5423,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
     .replace(/\|/g, '｜');
 
   const t = String(target || 'file');
-  const f = String(file || '').trim();
+  const f = normalizeWorldInfoFileName(file || '');
   if (t === 'file' && !f) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
 
   // We purposely avoid parsing UID in JS, because some ST builds return only a status object
@@ -12541,7 +12546,7 @@ function pullUiToSettings() {
   s.summaryCustomStream = $('#sg_summaryCustomStream').is(':checked');
   s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
   s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
-  s.summaryWorldInfoFile = String($('#sg_summaryWorldInfoFile').val() || '').trim();
+  s.summaryWorldInfoFile = normalizeWorldInfoFileName($('#sg_summaryWorldInfoFile').val());
   s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
   s.summaryWorldInfoKeyMode = String($('#sg_summaryWorldInfoKeyMode').val() || 'keywords');
   s.summaryIndexPrefix = String($('#sg_summaryIndexPrefix').val() || 'A-').trim() || 'A-';
@@ -12549,7 +12554,7 @@ function pullUiToSettings() {
   s.summaryIndexStart = clampInt($('#sg_summaryIndexStart').val(), 1, 1000000, s.summaryIndexStart ?? 1);
   s.summaryIndexInComment = $('#sg_summaryIndexInComment').is(':checked');
   s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
-  s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
+  s.summaryBlueWorldInfoFile = normalizeWorldInfoFileName($('#sg_summaryBlueWorldInfoFile').val());
 
   writeLocalStorageString(SG_SUMMARY_WI_FILE_KEY, s.summaryWorldInfoFile);
   writeLocalStorageString(SG_SUMMARY_BLUE_WI_FILE_KEY, s.summaryBlueWorldInfoFile);
