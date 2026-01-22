@@ -2320,6 +2320,8 @@ async function randomizeCharacterWithLLM() {
     // Use the character provider settings (same as character text generation)
     if (String(s.characterProvider || 'st') === 'custom') {
       result = await callViaCustom(
+        s.characterCustomEndpoint,
+        s.characterCustomApiKey,
         s.characterCustomModel,
         [{ role: 'user', content: userPrompt }],
         0.7,
@@ -12726,11 +12728,7 @@ function setupCharacterPage() {
 
   $('#sg_char_refreshModels').on('click', async () => {
     autoSave();
-    await refreshModels();
-    // Re-fill if needed, though refreshModels usually updates caches. 
-    // For character page, we might want to check if it's using a select or input.
-    // Currently it's a text input, so we mostly refresh the cache for autocomplete if we add datalist later.
-    // For now just show status.
+    await refreshCharacterModels();
   });
 
   $('#sg_char_park, #sg_char_race, #sg_char_talent').on('change', () => {
