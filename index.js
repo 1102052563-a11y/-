@@ -11677,7 +11677,10 @@ function buildModalHtml() {
                     </div>
                     <div class="sg-field">
                       <label>模型（可手填）</label>
-                      <input id="sg_char_customModel" type="text" placeholder="gpt-4o-mini">
+                      <div class="sg-row sg-inline" style="gap:4px;">
+                        <input id="sg_char_customModel" type="text" placeholder="gpt-4o-mini" style="flex:1;">
+                        <button class="menu_button sg-btn sg-character-mini" id="sg_char_refreshModels" title="刷新模型列表（仅 Custom）">🔄</button>
+                      </div>
                     </div>
                   </div>
                   <div class="sg-row">
@@ -12694,6 +12697,17 @@ function setupCharacterPage() {
     autoSave();
   });
 
+  $('#sg_char_temperature, #sg_char_customEndpoint, #sg_char_customApiKey, #sg_char_customModel, #sg_char_customMaxTokens, #sg_char_customStream').on('input change', autoSave);
+
+  $('#sg_char_refreshModels').on('click', async () => {
+    autoSave();
+    await refreshModels();
+    // Re-fill if needed, though refreshModels usually updates caches. 
+    // For character page, we might want to check if it's using a select or input.
+    // Currently it's a text input, so we mostly refresh the cache for autocomplete if we add datalist later.
+    // For now just show status.
+  });
+
   $('#sg_char_park, #sg_char_race, #sg_char_talent').on('change', () => {
     updateCharacterForm();
     autoSave();
@@ -12710,6 +12724,8 @@ function setupCharacterPage() {
     updateCharacterAttributeSummary();
     autoSave();
   });
+
+  $('#sg_char_random_llm').on('change', autoSave);
 
   $('#sg_char_random').on('click', async () => {
     if ($('#sg_char_random_llm').is(':checked')) {
@@ -12985,6 +13001,7 @@ function pullSettingsToUi() {
   applyCharacterSelectValue($('#sg_char_talent'), talentValue, $('#sg_char_talent_custom'));
   $('#sg_char_contract').val(String(s.characterContractId || ''));
   $('#sg_char_difficulty').val(String(s.characterDifficulty || 30));
+  $('#sg_char_random_llm').prop('checked', !!s.characterRandomLLM);
 
   $('#sg_char_attr_con').val(s.characterAttributes?.con ?? 0);
   $('#sg_char_attr_int').val(s.characterAttributes?.int ?? 0);
@@ -13528,6 +13545,7 @@ function pullUiToSettings() {
   s.characterTalentCustom = String($('#sg_char_talent_custom').val() || '').trim();
   s.characterContractId = String($('#sg_char_contract').val() || '').trim();
   s.characterDifficulty = getCharacterDifficulty();
+  s.characterRandomLLM = $('#sg_char_random_llm').is(':checked');
   s.characterAttributes = getCharacterAttributes();
 
   // 角色标签世界书设置
