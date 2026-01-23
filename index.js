@@ -13940,18 +13940,9 @@ function updateSgVh() {
 }
 
 updateSgVh();
-window.addEventListener('resize', () => {
-  updateSgVh();
-  syncFloatingForViewport();
-});
-window.addEventListener('orientationchange', () => {
-  updateSgVh();
-  syncFloatingForViewport();
-});
-window.visualViewport?.addEventListener('resize', () => {
-  updateSgVh();
-  syncFloatingForViewport();
-});
+window.addEventListener('resize', updateSgVh);
+window.addEventListener('orientationchange', updateSgVh);
+window.visualViewport?.addEventListener('resize', updateSgVh);
 
 // 检测移动端/平板竖屏模式（禁用自定义定位，使用 CSS 底部弹出样式）
 // 匹配 CSS 媒体查询: (max-width: 768px), (max-aspect-ratio: 1/1)
@@ -13962,28 +13953,7 @@ function isMobilePortrait() {
   return window.innerWidth <= 768 || (window.innerHeight >= window.innerWidth);
 }
 
-function isMobileViewport() {
-  if (window.matchMedia) {
-    return window.matchMedia('(max-width: 900px), (max-aspect-ratio: 1/1)').matches;
-  }
-  return window.innerWidth <= 900 || (window.innerHeight >= window.innerWidth);
-}
-
-function syncFloatingForViewport() {
-  if (isMobileViewport()) {
-    const btn = document.getElementById('sg_floating_btn');
-    if (btn) btn.remove();
-    return;
-  }
-  createFloatingButton();
-}
-
 function createFloatingButton() {
-  if (isMobileViewport()) {
-    const btn = document.getElementById('sg_floating_btn');
-    if (btn) btn.remove();
-    return;
-  }
   if (document.getElementById('sg_floating_btn')) return;
 
   const btn = document.createElement('div');
@@ -14822,7 +14792,7 @@ function init() {
     ensureChatActionButtons();
     installCardZoomDelegation();
     installQuickOptionsClickHandler();
-    syncFloatingForViewport();
+    createFloatingButton();
     injectFixedInputButton();
     installRollPreSendHook();
 
