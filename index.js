@@ -5657,10 +5657,8 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         cached.content = content;
         cached.lastUpdated = Date.now();
         console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${foundUid}`);
-        const commentName = String(cached?.name || entryName).trim() || entryName;
-        const indexSuffix = cached?.indexId ? `｜${cached.indexId}` : '';
-        const comment = `${prefix}｜${commentName}${indexSuffix}`;
-        const key = cached?.indexId ? buildStructuredEntryKey(prefix, commentName, cached.indexId) : '';
+        const comment = newComment;
+        const key = newKey;
         return {
           updated: true,
           name: entryName,
