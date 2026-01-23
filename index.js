@@ -5379,8 +5379,10 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       if (searchIndexSuffix) searchPatterns.push(`${prefix}｜${searchName}`);
 
       let foundUid = cached?.__foundUid || null;
+      let lastSearchPattern = searchPatterns[0] || '';
       if (!foundUid) {
         for (const searchPattern of searchPatterns) {
+          lastSearchPattern = searchPattern;
           // 构建查找脚本
           let findParts = [];
           const findUidVar = '__sg_find_uid';
@@ -5456,7 +5458,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${foundUid}`);
         return { updated: true, name: entryName, targetType, uid: foundUid };
       } else {
-        console.log(`[StoryGuide] Entry not found via /findentry: ${searchPattern}, skipping update`);
+        console.log(`[StoryGuide] Entry not found via /findentry: ${lastSearchPattern}, skipping update`);
         // 未找到条目（可能被手动删除），只更新缓存
         cached.content = content;
         cached.lastUpdated = Date.now();
