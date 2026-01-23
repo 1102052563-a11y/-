@@ -4918,7 +4918,9 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = nu
   ];
 }
 
-function sanitizeKeywords(kws) {
+function sanitizeKeywords(kws, opts = {}) {
+  const minLen = clampInt(opts.minLen ?? 2, 1, 64, 2);
+  const maxLen = clampInt(opts.maxLen ?? 24, 2, 200, 24);
   const out = [];
   const seen = new Set();
   for (const k of (Array.isArray(kws) ? kws : [])) {
@@ -4928,8 +4930,8 @@ function sanitizeKeywords(kws) {
     // split by common delimiters
     const split = t.split(/[,，、;；/|]+/g).map(x => x.trim()).filter(Boolean);
     for (const s of split) {
-      if (s.length < 2) continue;
-      if (s.length > 24) continue;
+      if (s.length < minLen) continue;
+      if (s.length > maxLen) continue;
       if (seen.has(s)) continue;
       seen.add(s);
       out.push(s);
@@ -7367,7 +7369,7 @@ function stripTriggerInjection(text, tag = 'SG_WI_TRIGGERS') {
 }
 
 function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden') {
-  const kws = sanitizeKeywords(Array.isArray(keywords) ? keywords : []);
+  const kws = sanitizeKeywords(Array.isArray(keywords) ? keywords : [], { maxLen: 120 });
   if (!kws.length) return '';
   if (String(style || 'hidden') === 'plain') {
     // Visible but most reliable for world-info scan.
