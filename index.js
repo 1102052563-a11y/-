@@ -524,6 +524,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   structuredReenableEntriesEnabled: false,
   structuredEntriesUseWorldbook: false,
   structuredEntriesWorldbookSource: 'imported', // imported | live
+  structuredWorldbookMode: 'active', // active=只读未禁用 | all=包含禁用
   achievementEntriesEnabled: false,
   subProfessionEntriesEnabled: false,
   questEntriesEnabled: false,
@@ -3227,7 +3228,7 @@ function computeWorldbookInjection(options = {}) {
     injectedEntries: 0,
     injectedChars: 0,
     injectedTokens: 0,
-    mode: String(s.worldbookMode || 'active'),
+    mode: String(options.modeOverride || s.worldbookMode || 'active'),
     text: ''
   };
 
@@ -3258,7 +3259,7 @@ function computeWorldbookInjection(options = {}) {
   const recentText = pickedMsgs.reverse().join('\n');
 
   let use = entries;
-  if (result.mode === 'active') {
+  if (result.mode === 'active' && !options.skipActiveFilter) {
     const act = selectActiveWorldbookEntries(entries, recentText);
     use = act.length ? act : [];
   }
@@ -3302,13 +3303,17 @@ async function buildStructuredWorldbookBlock() {
   const s = ensureSettings();
   if (!s.structuredEntriesUseWorldbook) return '';
   const source = String(s.structuredEntriesWorldbookSource || 'imported');
+  const mode = String(s.structuredWorldbookMode || 'active');
   if (source === 'live') {
     const entries = await ensureStructuredWorldbookLive(false);
-    const info = computeWorldbookInjection({ enabledOverride: true, entries });
+    const filtered = (mode === 'active') ? entries.filter(e => !e?.disabled) : entries;
+    const info = computeWorldbookInjection({ enabledOverride: true, entries: filtered, modeOverride: mode, skipActiveFilter: true });
     if (!info.text) return '';
     return `【世界书/World Info（结构化条目，实时读取：${info.importedEntries}条，本次注入：${info.injectedEntries}条，约${info.injectedTokens} tokens）】\n${info.text}`;
   }
-  const info = computeWorldbookInjection({ enabledOverride: true });
+  const rawEntries = parseWorldbookJson(String(s.worldbookJson || '').trim());
+  const filtered = (mode === 'active') ? rawEntries.filter(e => !e?.disabled) : rawEntries;
+  const info = computeWorldbookInjection({ enabledOverride: true, entries: filtered, modeOverride: mode, skipActiveFilter: true });
   if (!info.text) return '';
   return `【世界书/World Info（结构化条目，已导入：${info.importedEntries}条，本次注入：${info.injectedEntries}条，约${info.injectedTokens} tokens）】\n${info.text}`;
 }
@@ -10936,8 +10941,8 @@ function buildModalHtml() {
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesUseWorldbook">结构化条目注入世界书</label>
                 <select id="sg_structuredWorldbookMode">
-                  <option value="active">active（仅注入可能激活条目）</option>
-                  <option value="all">all（注入全部条目）</option>
+                  <option value="active">active（只读未禁用条目）</option>
+                  <option value="all">all（包含已禁用条目）</option>
                 </select>
                 <select id="sg_structuredWorldbookSource">
                   <option value="imported">使用已导入世界书JSON</option>
@@ -12329,7 +12334,7 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_structuredEntriesUseWorldbook, #sg_structuredWorldbookSource, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_structuredEntriesUseWorldbook, #sg_structuredWorldbookMode, #sg_structuredWorldbookSource, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -12749,11 +12754,6 @@ function ensureModal() {
 
   // 自动保存：世界书相关设置变更时立刻写入
   $('#sg_worldbookEnabled, #sg_worldbookMode').on('change', () => {
-    const mode = String($('#sg_worldbookMode').val() || 'active');
-    const $structuredMode = $('#sg_structuredWorldbookMode');
-    if ($structuredMode.length && String($structuredMode.val() || '') !== mode) {
-      $structuredMode.val(mode);
-    }
     pullUiToSettings();
     saveSettings();
     updateWorldbookInfoLabel();
@@ -12761,14 +12761,8 @@ function ensureModal() {
   });
 
   $('#sg_structuredWorldbookMode').on('change', () => {
-    const mode = String($('#sg_structuredWorldbookMode').val() || 'active');
-    const $mainMode = $('#sg_worldbookMode');
-    if ($mainMode.length && String($mainMode.val() || '') !== mode) {
-      $mainMode.val(mode);
-    }
     pullUiToSettings();
     saveSettings();
-    updateWorldbookInfoLabel();
     updateStructuredWorldbookInfoLabel().catch(() => void 0);
   });
 
@@ -13173,7 +13167,7 @@ function pullSettingsToUi() {
   $('#sg_worldbookMode').val(String(s.worldbookMode || 'active'));
   $('#sg_worldbookMaxChars').val(s.worldbookMaxChars);
   $('#sg_worldbookWindowMessages').val(s.worldbookWindowMessages);
-  $('#sg_structuredWorldbookMode').val(String(s.worldbookMode || 'active'));
+  $('#sg_structuredWorldbookMode').val(String(s.structuredWorldbookMode || 'active'));
 
   updateWorldbookInfoLabel();
   updateStructuredWorldbookInfoLabel().catch(() => void 0);
@@ -13770,6 +13764,8 @@ function pullUiToSettings() {
   s.structuredEntriesUseWorldbook = $('#sg_structuredEntriesUseWorldbook').is(':checked');
   const wbSource = String($('#sg_structuredWorldbookSource').val() || 'imported');
   s.structuredEntriesWorldbookSource = (wbSource === 'live') ? 'live' : 'imported';
+  const wbMode = String($('#sg_structuredWorldbookMode').val() || 'active');
+  s.structuredWorldbookMode = (wbMode === 'all') ? 'all' : 'active';
   s.megaSummaryEnabled = $('#sg_megaSummaryEnabled').is(':checked');
   s.megaSummaryEvery = clampInt($('#sg_megaSummaryEvery').val(), 5, 5000, s.megaSummaryEvery || 40);
   s.megaSummaryCommentPrefix = String($('#sg_megaSummaryCommentPrefix').val() || '大总结').trim() || '大总结';
@@ -14691,6 +14687,7 @@ async function updateStructuredWorldbookInfoLabel() {
   }
 
   const source = String(s.structuredEntriesWorldbookSource || 'imported');
+  const mode = String(s.structuredWorldbookMode || 'active');
   let entries = [];
   let liveMeta = '';
 
@@ -14706,19 +14703,20 @@ async function updateStructuredWorldbookInfoLabel() {
     if (raw) entries = parseWorldbookJson(raw);
   }
 
-  if (!entries.length) {
-    $info.text(source === 'live' ? `（实时读取无条目${liveMeta}）` : '（未导入世界书）');
+  const filtered = (mode === 'active') ? entries.filter(e => !e?.disabled) : entries;
+  if (!filtered.length) {
+    if (entries.length && mode === 'active') {
+      $info.text(`（active 下无可用条目${liveMeta}）`);
+    } else {
+      $info.text(source === 'live' ? `（实时读取无条目${liveMeta}）` : '（未导入世界书）');
+    }
     return;
   }
 
-  const totalTokens = estimateWorldbookEntriesTokens(entries);
-  const info = computeWorldbookInjection({ enabledOverride: true, entries });
-  const base = `${source === 'live' ? '实时读取' : '已导入'}世界书：${entries.length} 条｜总 tokens：${totalTokens}`;
-  if (info.mode === 'active' && info.selectedEntries === 0) {
-    $info.text(`${base}${liveMeta}｜模式：active｜本次无条目命中（0 条）`);
-    return;
-  }
-  $info.text(`${base}${liveMeta}｜模式：${info.mode}｜本次注入：${info.injectedEntries} 条｜注入 tokens：${info.injectedTokens}`);
+  const totalTokens = estimateWorldbookEntriesTokens(filtered);
+  const info = computeWorldbookInjection({ enabledOverride: true, entries: filtered, modeOverride: mode, skipActiveFilter: true });
+  const base = `${source === 'live' ? '实时读取' : '已导入'}世界书：${filtered.length} 条｜总 tokens：${totalTokens}`;
+  $info.text(`${base}${liveMeta}｜模式：${mode}｜本次注入：${info.injectedEntries} 条｜注入 tokens：${info.injectedTokens}`);
 }
 
 function showFloatingPanel() {
