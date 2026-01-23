@@ -1502,6 +1502,12 @@ body.sg-zoom-lock {
   transform: scale(0.95);
 }
 
+@media (max-width: 900px), (max-aspect-ratio: 1/1) {
+  #sg_floating_btn {
+    display: none;
+  }
+}
+
 .sg-floating-panel {
   position: fixed;
   right: 22px;
@@ -2117,7 +2123,7 @@ body.sg-image-preview-open {
 /* ===== 手机端/平板竖屏优化 ===== */
 /* 扩大匹配范围：768px 以下宽度，或窄高比（竖屏） */
 @media (max-width: 768px),
-(max-aspect-ratio: 1/1) {
+(max-aspect-ratio: 1/1) and (max-width: 900px) {
 
   /* 悬浮面板全屏底部弹出 */
 
