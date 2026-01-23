@@ -369,6 +369,8 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // 结构化条目频率（按楼层计数）
   structuredEntriesEvery: 1,
+  // 结构化条目读取楼层（最多读取最近 N 层）
+  structuredEntriesReadFloors: 1,
   structuredEntriesCountMode: 'assistant',
   // 结构化条目读取蓝灯世界书（与索引设置一致）
   structuredWorldbookEnabled: false,
@@ -817,8 +819,13 @@ function ensureSettings() {
     extensionSettings[MODULE_NAME].modulesJson = JSON.stringify(DEFAULT_MODULES, null, 2);
     saveSettingsDebounced();
   } else {
+    const hasStructuredReadFloors = Object.hasOwn(extensionSettings[MODULE_NAME], 'structuredEntriesReadFloors');
     for (const k of Object.keys(DEFAULT_SETTINGS)) {
       if (!Object.hasOwn(extensionSettings[MODULE_NAME], k)) extensionSettings[MODULE_NAME][k] = DEFAULT_SETTINGS[k];
+    }
+    if (!hasStructuredReadFloors) {
+      extensionSettings[MODULE_NAME].structuredEntriesReadFloors = extensionSettings[MODULE_NAME].structuredEntriesEvery ?? DEFAULT_SETTINGS.structuredEntriesReadFloors;
+      saveSettingsDebounced();
     }
     // 兼容旧版：若 modulesJson 为空，补默认
     if (!extensionSettings[MODULE_NAME].modulesJson) {
@@ -4536,6 +4543,135 @@ async function disableWorldInfoEntryByComment(comment, settings, {
   return { uid };
 }
 
+async function deleteWorldInfoEntryByComment(comment, settings, {
+  target = 'file',
+  file = '',
+} = {}) {
+  const s = settings || ensureSettings();
+  const targetMode = String(target || 'file');
+  const fileName = normalizeWorldInfoFileName(file || '');
+  if (targetMode === 'file' && !fileName) return null;
+
+  let findExpr;
+  const findFileVar = 'sgTmpFindSummaryFile';
+  if (targetMode === 'chatbook') {
+    await execSlash(`/getchatbook | /setvar key=${findFileVar}`);
+    findExpr = `/findentry file={{getvar::${findFileVar}}} field=comment ${quoteSlashValue(comment)}`;
+  } else {
+    findExpr = `/findentry file=${quoteSlashValue(fileName)} field=comment ${quoteSlashValue(comment)}`;
+  }
+
+  const findResult = await execSlash(findExpr);
+  const findText = slashOutputToText(findResult);
+
+  if (targetMode === 'chatbook') {
+    await execSlash(`/flushvar ${findFileVar}`);
+  }
+
+  let uid = null;
+  if (findText && findText !== 'null' && findText !== 'undefined') {
+    const parsed = safeJsonParse(findText);
+    if (parsed && parsed.uid) uid = parsed.uid;
+    else if (/^\d+$/.test(findText.trim())) uid = findText.trim();
+  }
+  if (!uid) return null;
+
+  let fileExpr;
+  const fileVar = 'sgTmpDeleteSummaryFile';
+  if (targetMode === 'chatbook') {
+    await execSlash(`/getchatbook | /setvar key=${fileVar}`);
+    fileExpr = `{{getvar::${fileVar}}}`;
+  } else {
+    fileExpr = quoteSlashValue(fileName);
+  }
+
+  await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=disable 1`);
+  const deletedComment = `[已删除] ${comment}`;
+  await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=comment ${quoteSlashValue(deletedComment)}`);
+  await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=key ""`);
+  await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=content ""`);
+
+  if (targetMode === 'chatbook') {
+    await execSlash(`/flushvar ${fileVar}`);
+  }
+
+  return { uid };
+}
+
+async function updateWorldInfoEntryByComment(comment, settings, {
+  target = 'file',
+  file = '',
+  newComment = undefined,
+  key = undefined,
+  content = undefined,
+  disable = undefined,
+  constant = undefined,
+} = {}) {
+  const targetMode = String(target || 'file');
+  const fileName = normalizeWorldInfoFileName(file || '');
+  if (targetMode === 'file' && !fileName) return null;
+
+  const safeFindComment = String(comment || '').replace(/\|/g, '｜').trim();
+  if (!safeFindComment) return null;
+
+  let findExpr;
+  const findFileVar = 'sgTmpUpdateFindFile';
+  if (targetMode === 'chatbook') {
+    await execSlash(`/getchatbook | /setvar key=${findFileVar}`);
+    findExpr = `/findentry file={{getvar::${findFileVar}}} field=comment ${quoteSlashValue(safeFindComment)}`;
+  } else {
+    findExpr = `/findentry file=${quoteSlashValue(fileName)} field=comment ${quoteSlashValue(safeFindComment)}`;
+  }
+
+  const findResult = await execSlash(findExpr);
+  const uid = parseFindEntryUid(findResult);
+
+  if (targetMode === 'chatbook') {
+    await execSlash(`/flushvar ${findFileVar}`);
+  }
+
+  if (!uid) return null;
+
+  let fileExpr;
+  const fileVar = 'sgTmpUpdateSummaryFile';
+  if (targetMode === 'chatbook') {
+    await execSlash(`/getchatbook | /setvar key=${fileVar}`);
+    fileExpr = `{{getvar::${fileVar}}}`;
+  } else {
+    fileExpr = quoteSlashValue(fileName);
+  }
+
+  const parts = [];
+  if (content !== undefined) {
+    const safeContent = String(content ?? '').replace(/\|/g, '｜');
+    parts.push(`/setentryfield file=${fileExpr} uid=${uid} field=content ${quoteSlashValue(safeContent)}`);
+  }
+  if (key !== undefined) {
+    const safeKey = String(key ?? '');
+    parts.push(`/setentryfield file=${fileExpr} uid=${uid} field=key ${quoteSlashValue(safeKey)}`);
+  }
+  if (newComment !== undefined) {
+    const safeComment = String(newComment ?? '').replace(/\|/g, '｜').trim();
+    parts.push(`/setentryfield file=${fileExpr} uid=${uid} field=comment ${quoteSlashValue(safeComment)}`);
+  }
+  if (disable !== undefined) {
+    const disableVal = (Number(disable) === 1) ? 1 : 0;
+    parts.push(`/setentryfield file=${fileExpr} uid=${uid} field=disable ${disableVal}`);
+  }
+  if (constant !== undefined) {
+    const constantVal = (Number(constant) === 1) ? 1 : 0;
+    parts.push(`/setentryfield file=${fileExpr} uid=${uid} field=constant ${constantVal}`);
+  }
+
+  if (parts.length) await execSlash(parts.join(' | '));
+
+  if (targetMode === 'chatbook') {
+    await execSlash(`/flushvar ${fileVar}`);
+  }
+
+  return { uid };
+}
+
 function getWorldInfoEntryLabel(entry) {
   return String(entry?.comment || entry?.title || '').trim();
 }
@@ -4592,6 +4728,46 @@ async function createWorldInfoEntryInFile(fileName, { keys = [], content = '', c
   parts.push(`/setentryfield file=${fileExpr} uid={{getvar::${uidVar}}} field=constant ${constantVal}`);
   if (keyValue) parts.push(`/setentryfield file=${fileExpr} uid={{getvar::${uidVar}}} field=key ${quoteSlashValue(keyValue)}`);
   parts.push(`/flushvar ${uidVar}`);
+
+  const out = await execSlash(parts.join(' | '));
+  if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
+    throw new Error(`写入世界书失败（返回：${safeStringifyShort(out)}）`);
+  }
+}
+
+async function createWorldInfoEntryInTarget(targetMode, fileName, { key = '', content = '', comment = '' }, {
+  constant = 0,
+  disable = 0,
+} = {}) {
+  const mode = String(targetMode || 'file');
+  if (mode === 'file') {
+    await createWorldInfoEntryInFile(fileName, {
+      keys: key,
+      content,
+      comment,
+    }, { constant, disable });
+    return;
+  }
+
+  const uidVar = '__sg_create_uid';
+  const fileVar = '__sg_create_wbfile';
+  const keyValue = String(key || '');
+  const safeContent = String(content || '').replace(/\|/g, '｜').trim();
+  const safeComment = String(comment || '').replace(/\|/g, '｜').trim();
+  const constantVal = (Number(constant) === 1) ? 1 : 0;
+  const disableVal = (Number(disable) === 1) ? 1 : 0;
+
+  const parts = [];
+  parts.push('/getchatbook');
+  parts.push(`/setvar key=${fileVar}`);
+  parts.push(`/createentry file={{getvar::${fileVar}}} key=${quoteSlashValue(keyValue)} ${quoteSlashValue(safeContent)}`);
+  parts.push(`/setvar key=${uidVar}`);
+  if (safeComment) parts.push(`/setentryfield file={{getvar::${fileVar}}} uid={{getvar::${uidVar}}} field=comment ${quoteSlashValue(safeComment)}`);
+  parts.push(`/setentryfield file={{getvar::${fileVar}}} uid={{getvar::${uidVar}}} field=disable ${disableVal}`);
+  parts.push(`/setentryfield file={{getvar::${fileVar}}} uid={{getvar::${uidVar}}} field=constant ${constantVal}`);
+  if (keyValue) parts.push(`/setentryfield file={{getvar::${fileVar}}} uid={{getvar::${uidVar}}} field=key ${quoteSlashValue(keyValue)}`);
+  parts.push(`/flushvar ${uidVar}`);
+  parts.push(`/flushvar ${fileVar}`);
 
   const out = await execSlash(parts.join(' | '));
   if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
@@ -4903,11 +5079,36 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
   };
 }
 
-async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta, settings, statData = null) {
+async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta, settings, statData = null, changeLog = null) {
   const s = settings || ensureSettings();
   if (!chunkText) return false;
   if (!s.structuredEntriesEnabled) return false;
   if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) return false;
+
+  const recordChange = (results) => {
+    if (!changeLog) return;
+    const list = Array.isArray(results) ? results : (results ? [results] : []);
+    for (const r of list) {
+      if (!r) continue;
+      if (r.deleted && r.source === 'cache_only') continue;
+      if (!(r.created || r.updated || r.deleted)) continue;
+      const action = r.created ? 'create' : (r.updated ? 'update' : 'delete');
+      changeLog.push({
+        action,
+        entryType: r.entryType,
+        targetType: r.targetType,
+        name: r.name,
+        indexId: r.indexId,
+        comment: r.comment,
+        key: r.key,
+        content: r.content,
+        prevContent: r.prevContent,
+        cacheKey: r.cacheKey,
+        prevCacheEntry: r.prevCacheEntry,
+        cacheEntry: r.cacheEntry,
+      });
+    }
+  };
 
   const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, statData);
   if (!structuredResult) return false;
@@ -4916,48 +5117,55 @@ async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta
   if (s.characterEntriesEnabled && structuredResult.characters?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.characters.length} character(s)`);
     for (const char of structuredResult.characters) {
-      await writeOrUpdateCharacterEntry(char, meta, s);
+      const r = await writeOrUpdateCharacterEntry(char, meta, s);
+      recordChange(r);
     }
   }
   // 写入/更新装备条目
   if (s.equipmentEntriesEnabled && structuredResult.equipments?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.equipments.length} equipment(s)`);
     for (const equip of structuredResult.equipments) {
-      await writeOrUpdateEquipmentEntry(equip, meta, s);
+      const r = await writeOrUpdateEquipmentEntry(equip, meta, s);
+      recordChange(r);
     }
   }
   if (s.inventoryEntriesEnabled && structuredResult.inventories?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.inventories.length} inventory item(s)`);
     for (const item of structuredResult.inventories) {
-      await writeOrUpdateInventoryEntry(item, meta, s);
+      const r = await writeOrUpdateInventoryEntry(item, meta, s);
+      recordChange(r);
     }
   }
   // 写入/更新势力条目
   if (s.factionEntriesEnabled && structuredResult.factions?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.factions.length} faction(s)`);
     for (const faction of structuredResult.factions) {
-      await writeOrUpdateFactionEntry(faction, meta, s);
+      const r = await writeOrUpdateFactionEntry(faction, meta, s);
+      recordChange(r);
     }
   }
   // 写入/更新成就条目
   if (s.achievementEntriesEnabled && structuredResult.achievements?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.achievements.length} achievement(s)`);
     for (const achievement of structuredResult.achievements) {
-      await writeOrUpdateAchievementEntry(achievement, meta, s);
+      const r = await writeOrUpdateAchievementEntry(achievement, meta, s);
+      recordChange(r);
     }
   }
   // 写入/更新副职业条目
   if (s.subProfessionEntriesEnabled && structuredResult.subProfessions?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.subProfessions.length} sub profession(s)`);
     for (const subProfession of structuredResult.subProfessions) {
-      await writeOrUpdateSubProfessionEntry(subProfession, meta, s);
+      const r = await writeOrUpdateSubProfessionEntry(subProfession, meta, s);
+      recordChange(r);
     }
   }
   // 写入/更新任务条目
   if (s.questEntriesEnabled && structuredResult.quests?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.quests.length} quest(s)`);
     for (const quest of structuredResult.quests) {
-      await writeOrUpdateQuestEntry(quest, meta, s);
+      const r = await writeOrUpdateQuestEntry(quest, meta, s);
+      recordChange(r);
     }
   }
 
@@ -4965,43 +5173,50 @@ async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta
   if (structuredResult.deletedCharacters?.length) {
     console.log(`[StoryGuide] Deleting ${structuredResult.deletedCharacters.length} character(s)`);
     for (const charName of structuredResult.deletedCharacters) {
-      await deleteCharacterEntry(charName, meta, s);
+      const r = await deleteCharacterEntry(charName, meta, s);
+      recordChange(r);
     }
   }
   if (structuredResult.deletedEquipments?.length) {
     console.log(`[StoryGuide] Deleting ${structuredResult.deletedEquipments.length} equipment(s)`);
     for (const equipName of structuredResult.deletedEquipments) {
-      await deleteEquipmentEntry(equipName, meta, s);
+      const r = await deleteEquipmentEntry(equipName, meta, s);
+      recordChange(r);
     }
   }
   if (structuredResult.deletedInventories?.length) {
     console.log(`[StoryGuide] Deleting ${structuredResult.deletedInventories.length} inventory item(s)`);
     for (const itemName of structuredResult.deletedInventories) {
-      await deleteInventoryEntry(itemName, meta, s);
+      const r = await deleteInventoryEntry(itemName, meta, s);
+      recordChange(r);
     }
   }
   if (structuredResult.deletedFactions?.length) {
     console.log(`[StoryGuide] Deleting ${structuredResult.deletedFactions.length} faction(s)`);
     for (const factionName of structuredResult.deletedFactions) {
-      await deleteFactionEntry(factionName, meta, s);
+      const r = await deleteFactionEntry(factionName, meta, s);
+      recordChange(r);
     }
   }
   if (structuredResult.deletedAchievements?.length) {
     console.log(`[StoryGuide] Deleting ${structuredResult.deletedAchievements.length} achievement(s)`);
     for (const achievementName of structuredResult.deletedAchievements) {
-      await deleteAchievementEntry(achievementName, meta, s);
+      const r = await deleteAchievementEntry(achievementName, meta, s);
+      recordChange(r);
     }
   }
   if (structuredResult.deletedSubProfessions?.length) {
     console.log(`[StoryGuide] Deleting ${structuredResult.deletedSubProfessions.length} sub profession(s)`);
     for (const subProfessionName of structuredResult.deletedSubProfessions) {
-      await deleteSubProfessionEntry(subProfessionName, meta, s);
+      const r = await deleteSubProfessionEntry(subProfessionName, meta, s);
+      recordChange(r);
     }
   }
   if (structuredResult.deletedQuests?.length) {
     console.log(`[StoryGuide] Deleting ${structuredResult.deletedQuests.length} quest(s)`);
     for (const questName of structuredResult.deletedQuests) {
-      await deleteQuestEntry(questName, meta, s);
+      const r = await deleteQuestEntry(questName, meta, s);
+      recordChange(r);
     }
   }
 
@@ -5012,6 +5227,24 @@ async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta
 // 构建条目的 key（用于世界书触发词和去重）
 function buildStructuredEntryKey(prefix, name, indexId) {
   return `${prefix}｜${name}｜${indexId}`;
+}
+
+const STRUCTURED_ENTRY_CACHE_FIELDS = Object.freeze({
+  character: 'characterEntries',
+  equipment: 'equipmentEntries',
+  inventory: 'inventoryEntries',
+  faction: 'factionEntries',
+  achievement: 'achievementEntries',
+  subProfession: 'subProfessionEntries',
+  quest: 'questEntries',
+});
+
+function getStructuredEntriesCache(meta, entryType) {
+  if (!meta || typeof meta !== 'object') return null;
+  const key = STRUCTURED_ENTRY_CACHE_FIELDS[entryType];
+  if (!key) return null;
+  if (!meta[key] || typeof meta[key] !== 'object') meta[key] = {};
+  return meta[key];
 }
 
 const STRUCTURED_ENTRY_META_KEYS = new Set([
@@ -5338,10 +5571,11 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
   // 去重和更新检查：如果本地缓存已有此条目
   if (cached) {
+    const prevCacheEntry = clone(cached);
     // 内容相同 -> 跳过
     if (cached.content === content) {
       console.log(`[StoryGuide] Skip unchanged ${entryType} (${targetType}): ${entryName}`);
-      return { skipped: true, name: entryName, targetType, reason: 'unchanged' };
+      return { skipped: true, name: entryName, entryType, targetType, cacheKey, reason: 'unchanged' };
     }
 
     // 内容不同 -> 尝试使用 /findentry 查找并更新
@@ -5423,20 +5657,37 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         cached.content = content;
         cached.lastUpdated = Date.now();
         console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${foundUid}`);
-        return { updated: true, name: entryName, targetType, uid: foundUid };
+        const commentName = String(cached?.name || entryName).trim() || entryName;
+        const indexSuffix = cached?.indexId ? `｜${cached.indexId}` : '';
+        const comment = `${prefix}｜${commentName}${indexSuffix}`;
+        const key = cached?.indexId ? buildStructuredEntryKey(prefix, commentName, cached.indexId) : '';
+        return {
+          updated: true,
+          name: entryName,
+          entryType,
+          targetType,
+          uid: foundUid,
+          indexId: cached?.indexId,
+          comment,
+          key,
+          prevContent: prevCacheEntry?.content,
+          content,
+          cacheKey,
+          prevCacheEntry,
+        };
       } else {
         console.log(`[StoryGuide] Entry not found via /findentry: ${searchPattern}, skipping update`);
         // 未找到条目（可能被手动删除），只更新缓存
         cached.content = content;
         cached.lastUpdated = Date.now();
-        return { skipped: true, name: entryName, targetType, reason: 'entry_not_found' };
+        return { skipped: true, name: entryName, entryType, targetType, cacheKey, reason: 'entry_not_found' };
       }
     } catch (e) {
       console.warn(`[StoryGuide] Update ${entryType} (${targetType}) via /findentry failed:`, e);
       // 更新失败，只更新缓存
       cached.content = content;
       cached.lastUpdated = Date.now();
-      return { skipped: true, name: entryName, targetType, reason: 'update_failed' };
+      return { skipped: true, name: entryName, entryType, targetType, cacheKey, reason: 'update_failed' };
     }
   }
 
@@ -5492,7 +5743,17 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       meta[nextIndexKey] = (meta[nextIndexKey] || 1) + 1;
     }
     console.log(`[StoryGuide] Created ${entryType} (${targetType}): ${entryName} -> ${indexId}`);
-    return { created: true, name: entryName, indexId, targetType };
+    return {
+      created: true,
+      name: entryName,
+      entryType,
+      indexId,
+      targetType,
+      comment,
+      key: keyValue,
+      content,
+      cacheKey,
+    };
   } catch (e) {
     console.warn(`[StoryGuide] Create ${entryType} (${targetType}) entry failed:`, e);
     return null;
@@ -5704,9 +5965,11 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     console.log(`[StoryGuide] Delete ${entryType} (${targetType}): ${entryName} not found in cache`);
     return null;
   }
+  const cacheEntry = clone(cached);
 
   // 构建 comment 用于查找世界书条目
   const comment = `${prefix}｜${cached.name}｜${cached.indexId}`;
+  const key = cached?.indexId ? buildStructuredEntryKey(prefix, cached.name, cached.indexId) : '';
 
   // 确定目标世界书
   let target = 'chatbook';
@@ -5759,7 +6022,18 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
       console.log(`[StoryGuide] Delete ${entryType} (${targetType}): ${entryName} not found in world book`);
       // 仍然从缓存中删除
       delete entriesCache[cacheKey];
-      return { deleted: true, name: entryName, source: 'cache_only' };
+      return {
+        deleted: true,
+        name: entryName,
+        entryType,
+        targetType,
+        source: 'cache_only',
+        comment,
+        key,
+        content: cacheEntry?.content,
+        cacheKey,
+        cacheEntry,
+      };
     }
 
     // SillyTavern 没有 /delentry 命令，改为禁用条目并标记为已删除
@@ -5798,7 +6072,18 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     delete entriesCache[cacheKey];
 
     console.log(`[StoryGuide] Disabled ${entryType} (${targetType}): ${entryName} (UID: ${uid})`);
-    return { deleted: true, name: entryName, uid, targetType };
+    return {
+      deleted: true,
+      name: entryName,
+      entryType,
+      uid,
+      targetType,
+      comment,
+      key,
+      content: cacheEntry?.content,
+      cacheKey,
+      cacheEntry,
+    };
   } catch (e) {
     console.warn(`[StoryGuide] Delete ${entryType} (${targetType}) failed:`, e);
     // 仍然从缓存中删除（避免下次再次尝试）
@@ -6251,6 +6536,245 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   return { file: (t === 'file') ? f : 'chatbook', uid: null };
 }
 
+function removeSummaryFromBlueIndexCache(rec) {
+  const s = ensureSettings();
+  const arr = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
+  if (!arr.length) return 0;
+  const title = String(rec?.title || '').trim();
+  const summary = String(rec?.summary || '').trim();
+  let removed = 0;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const it = arr[i] || {};
+    if (String(it.summary || '').trim() !== summary) continue;
+    if (title && String(it.title || '').trim() !== title) continue;
+    arr.splice(i, 1);
+    removed = 1;
+    break;
+  }
+  if (removed) {
+    s.summaryBlueIndex = arr;
+    saveSettings();
+    updateBlueIndexInfoLabel();
+  }
+  return removed;
+}
+
+function buildSummaryDeleteComments(rec, settings, prefix) {
+  const s = settings || ensureSettings();
+  const out = [];
+  const base = buildSummaryComment(rec, s, prefix);
+  if (base) out.push(base);
+  const noIndex = buildSummaryComment(rec, { ...s, summaryWorldInfoKeyMode: 'keywords', summaryIndexInComment: false }, prefix);
+  if (noIndex) out.push(noIndex);
+  if (rec?.indexId) {
+    const withIndex = buildSummaryComment(rec, { ...s, summaryWorldInfoKeyMode: 'indexId', summaryIndexInComment: true }, prefix);
+    if (withIndex) out.push(withIndex);
+  }
+  return Array.from(new Set(out)).filter(Boolean);
+}
+
+async function rollbackLastSummary() {
+  const s = ensureSettings();
+  const meta = getSummaryMeta();
+  const hist = Array.isArray(meta.history) ? meta.history : [];
+
+  let idx = hist.length - 1;
+  while (idx >= 0 && hist[idx] && hist[idx].isMega) idx--;
+  if (idx < 0) {
+    setStatus('没有可撤销的总结', 'warn');
+    return;
+  }
+
+  const rec = hist[idx];
+  setStatus('正在撤销最近一次总结…', 'warn');
+  showToast('正在撤销最近一次总结…', { kind: 'warn', spinner: true, sticky: true });
+
+  const errors = [];
+  let greenOk = false;
+  let blueOk = false;
+  let structuredRolled = 0;
+
+  const greenPrefix = String(rec.commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const greenTarget = resolveGreenWorldInfoTarget(s);
+  if (greenTarget.file) {
+    try {
+      const comments = buildSummaryDeleteComments(rec, s, greenPrefix);
+      for (const c of comments) {
+        const r = await deleteWorldInfoEntryByComment(c, s, {
+          target: greenTarget.target,
+          file: greenTarget.file,
+        });
+        if (r) { greenOk = true; break; }
+      }
+      if (!greenOk) errors.push('绿灯：未找到条目');
+    } catch (e) {
+      errors.push(`绿灯：${e?.message ?? e}`);
+    }
+  } else {
+    errors.push('绿灯：世界书文件名为空');
+  }
+
+  const blueFile = String(s.summaryBlueWorldInfoFile || '').trim();
+  if (blueFile) {
+    const bluePrefixBase = String(rec.commentPrefixBlue || s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+    const bluePrefix = ensureMvuPlotPrefix(bluePrefixBase);
+    try {
+      const comments = buildSummaryDeleteComments(rec, s, bluePrefix);
+      for (const c of comments) {
+        const r = await deleteWorldInfoEntryByComment(c, s, {
+          target: 'file',
+          file: blueFile,
+        });
+        if (r) { blueOk = true; break; }
+      }
+      if (!blueOk) errors.push('蓝灯：未找到条目');
+    } catch (e) {
+      errors.push(`蓝灯：${e?.message ?? e}`);
+    }
+  } else {
+    errors.push('蓝灯：世界书文件名为空');
+  }
+
+  const structuredChanges = Array.isArray(rec?.structuredChanges) ? rec.structuredChanges : [];
+  if (structuredChanges.length) {
+    const updateStructuredCache = (change) => {
+      if (!change?.cacheKey) return;
+      const entriesCache = getStructuredEntriesCache(meta, change.entryType);
+      if (!entriesCache) return;
+      if (change.action === 'create') {
+        delete entriesCache[change.cacheKey];
+      } else if (change.action === 'update') {
+        if (change.prevCacheEntry) entriesCache[change.cacheKey] = change.prevCacheEntry;
+      } else if (change.action === 'delete') {
+        if (change.cacheEntry) entriesCache[change.cacheKey] = change.cacheEntry;
+      }
+    };
+
+    for (const change of [...structuredChanges].reverse()) {
+      if (!change || !change.action) continue;
+      const targetInfo = (change.targetType === 'blue')
+        ? { target: 'file', file: String(s.summaryBlueWorldInfoFile || '').trim() }
+        : greenTarget;
+      if (!targetInfo?.file) {
+        errors.push(`结构化：${change.entryType || '条目'}（${change.targetType || 'green'}）世界书文件名为空`);
+        continue;
+      }
+
+      const comment = String(change.comment || '').trim();
+      const key = (change.key !== undefined) ? String(change.key) : '';
+      const content = (change.content !== undefined) ? String(change.content) : '';
+      const prevContent = (change.prevContent !== undefined) ? String(change.prevContent) : '';
+      let ok = false;
+
+      if (change.action === 'create') {
+        const r = await deleteWorldInfoEntryByComment(comment, s, {
+          target: targetInfo.target,
+          file: targetInfo.file,
+        });
+        ok = !!r;
+      } else if (change.action === 'update') {
+        const r = await updateWorldInfoEntryByComment(comment, s, {
+          target: targetInfo.target,
+          file: targetInfo.file,
+          content: prevContent,
+        });
+        ok = !!r;
+      } else if (change.action === 'delete') {
+        const commentVariants = [
+          comment,
+          comment ? `[已删除] ${comment}` : '',
+          comment ? `[已汇总] ${comment}` : '',
+        ].filter(Boolean);
+        let restored = null;
+        for (const c of commentVariants) {
+          restored = await updateWorldInfoEntryByComment(c, s, {
+            target: targetInfo.target,
+            file: targetInfo.file,
+            content,
+            key,
+            newComment: comment,
+            disable: 0,
+          });
+          if (restored) break;
+        }
+        if (!restored) {
+          try {
+            await createWorldInfoEntryInTarget(targetInfo.target, targetInfo.file, {
+              key,
+              content,
+              comment,
+            }, {
+              constant: (change.targetType === 'blue') ? 1 : 0,
+              disable: 0,
+            });
+            restored = { created: true };
+          } catch (e) {
+            errors.push(`结构化：${change.entryType || '条目'}恢复失败（${e?.message ?? e}）`);
+          }
+        }
+        ok = !!restored;
+      }
+
+      if (ok) {
+        structuredRolled += 1;
+        updateStructuredCache(change);
+      } else {
+        if (change.action !== 'delete') {
+          errors.push(`结构化：${change.entryType || '条目'}回滚失败`);
+        }
+      }
+    }
+  }
+
+  hist.splice(idx, 1);
+  meta.history = hist;
+
+  if (rec?.indexId) {
+    const idNum = parseSummaryIndexInput(rec.indexId, s);
+    if (idNum && Number(meta.nextIndex) === idNum + 1) {
+      meta.nextIndex = idNum;
+    }
+  }
+
+  const prev = [...hist].reverse().find(h => h && !h.isMega);
+  meta.lastFloor = prev?.range?.toFloor ? Number(prev.range.toFloor) : 0;
+  if (prev?.range?.toIdx !== undefined && prev?.range?.toIdx !== null) {
+    meta.lastChatLen = Number(prev.range.toIdx) + 1;
+  } else {
+    meta.lastChatLen = 0;
+  }
+  if (structuredChanges.length) {
+    const recToFloor = Number(rec?.range?.toFloor || 0);
+    const recChatLen = (rec?.range?.toIdx !== undefined && rec?.range?.toIdx !== null)
+      ? Number(rec.range.toIdx) + 1
+      : null;
+    if (recToFloor && Number(meta.lastStructuredFloor || 0) === recToFloor
+      && recChatLen !== null && Number(meta.lastStructuredChatLen || 0) === recChatLen) {
+      const prevStructured = [...hist].reverse().find(h => h && !h.isMega);
+      meta.lastStructuredFloor = prevStructured?.range?.toFloor ? Number(prevStructured.range.toFloor) : 0;
+      if (prevStructured?.range?.toIdx !== undefined && prevStructured?.range?.toIdx !== null) {
+        meta.lastStructuredChatLen = Number(prevStructured.range.toIdx) + 1;
+      } else {
+        meta.lastStructuredChatLen = 0;
+      }
+    }
+  }
+  await setSummaryMeta(meta);
+
+  removeSummaryFromBlueIndexCache(rec);
+  renderSummaryPaneFromMeta();
+  updateSummaryInfoLabel();
+
+  try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
+
+  if (errors.length) {
+    setStatus(`撤销完成（${errors[0]}）`, 'warn');
+  } else {
+    const structuredPart = structuredChanges.length ? `｜结构化 ${structuredRolled}/${structuredChanges.length}` : '';
+    setStatus(`已撤销最近一次总结 ✅（绿灯${greenOk ? '已删' : '未删'}｜蓝灯${blueOk ? '已删' : '未删'}${structuredPart}）`, 'ok');
+  }
+}
+
 function stopSummary() {
   if (isSummarizing) {
     summaryCancelled = true;
@@ -6467,11 +6991,23 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
       // 生成结构化世界书条目（人物/装备/物品栏/势力/成就/副职业/任务 - 与剧情总结同一事务）
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
+        const structuredChanges = [];
         try {
-          const structuredOk = await processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta, s, summaryStatData);
-          if (structuredOk && affectsProgress) {
-            meta.lastStructuredFloor = toFloor;
-            meta.lastStructuredChatLen = chat.length;
+          const structuredOk = await processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta, s, summaryStatData, structuredChanges);
+          if (structuredOk) {
+            if (structuredChanges.length) {
+              rec.structuredChanges = structuredChanges;
+              if (Array.isArray(meta.history) && meta.history.length) {
+                meta.history[meta.history.length - 1] = rec;
+              }
+            }
+            if (affectsProgress) {
+              meta.lastStructuredFloor = toFloor;
+              meta.lastStructuredChatLen = chat.length;
+            }
+            if (structuredChanges.length || affectsProgress) {
+              await setSummaryMeta(meta);
+            }
           }
         } catch (e) {
           console.warn('[StoryGuide] Structured entries generation failed:', e);
@@ -6687,24 +7223,21 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
 
     const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
     const every = clampInt(s.structuredEntriesEvery, 1, 200, 1);
-  const floorNow = computeFloorCount(chat, mode, true, true);
+    const readFloors = clampInt(s.structuredEntriesReadFloors || every, 1, 200, every);
+    const floorNow = computeFloorCount(chat, mode, true, true);
 
     let meta = getSummaryMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
 
     const segments = [];
+    const readFromFloor = Math.max(1, floorNow - readFloors + 1);
     if (reason === 'auto' && meta.lastStructuredChatLen > 0 && meta.lastStructuredChatLen < chat.length) {
-      const startIdx = meta.lastStructuredChatLen;
-      const fromFloor = Math.max(1, Number(meta.lastStructuredFloor || 0) + 1);
-      const toFloor = floorNow;
-      const endIdx = Math.max(0, chat.length - 1);
-      segments.push({ startIdx, endIdx, fromFloor, toFloor, floorNow });
+      const fromFloor = Math.max(readFromFloor, Number(meta.lastStructuredFloor || 0) + 1);
+      const resolved = resolveChatRangeByFloors(chat, mode, fromFloor, floorNow, true, true);
+      if (resolved) segments.push(resolved);
     } else {
-      const startIdx = findStartIndexForLastNFloors(chat, mode, every, true, true);
-      const fromFloor = Math.max(1, floorNow - every + 1);
-      const toFloor = floorNow;
-      const endIdx = Math.max(0, chat.length - 1);
-      segments.push({ startIdx, endIdx, fromFloor, toFloor, floorNow });
+      const resolved = resolveChatRangeByFloors(chat, mode, readFromFloor, floorNow, true, true);
+      if (resolved) segments.push(resolved);
     }
 
     if (!segments.length) return 0;
@@ -10912,6 +11445,12 @@ function buildModalHtml() {
                   <option value="all">按全部消息计数</option>
                 </select>
               </div>
+              <div class="sg-row sg-inline" style="margin-top:6px">
+                <span>读取楼层</span>
+                <span>最近</span>
+                <input id="sg_structuredEntriesReadFloors" type="number" min="1" max="200" style="width:90px">
+                <span>层</span>
+              </div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_structuredReenableEntriesEnabled">自动重新启用人物/势力</label>
               </div>
@@ -11344,6 +11883,7 @@ function buildModalHtml() {
               <button class="menu_button sg-btn" id="sg_summarizeNow">立即总结</button>
               <button class="menu_button sg-btn" id="sg_stopSummary" style="background: var(--SmartThemeBodyColor); color: var(--SmartThemeQuoteColor);">停止总结</button>
               <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
+              <button class="menu_button sg-btn" id="sg_undoLastSummary">撤销最近一次总结</button>
               <button class="menu_button sg-btn" id="sg_syncGreenFromBlue">对齐蓝灯→绿灯</button>
               <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
             </div>
@@ -12247,6 +12787,17 @@ function ensureModal() {
     setStatus('正在停止总结…', 'warn');
   });
 
+  $('#sg_undoLastSummary').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      if (!confirm('确认撤销最近一次总结？将同时删除绿灯/蓝灯条目。')) return;
+      await rollbackLastSummary();
+    } catch (e) {
+      setStatus(`撤销失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
   $('#sg_summarizeRange').on('click', async () => {
     try {
       pullUiToSettings();
@@ -12291,7 +12842,7 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
-  $('#sg_structuredEntriesEvery, #sg_structuredEntriesCountMode').on('input change', () => {
+  $('#sg_structuredEntriesEvery, #sg_structuredEntriesReadFloors, #sg_structuredEntriesCountMode').on('input change', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -13141,6 +13692,7 @@ function pullSettingsToUi() {
   $('#sg_summaryReadStatData').prop('checked', !!s.summaryReadStatData);
   $('#sg_summaryStatVarName').val(String(s.summaryStatVarName || 'stat_data'));
   $('#sg_structuredEntriesEvery').val(s.structuredEntriesEvery ?? 1);
+  $('#sg_structuredEntriesReadFloors').val(s.structuredEntriesReadFloors ?? s.structuredEntriesEvery ?? 1);
   $('#sg_structuredEntriesCountMode').val(String(s.structuredEntriesCountMode || 'assistant'));
   $('#sg_megaSummaryEnabled').prop('checked', !!s.megaSummaryEnabled);
   $('#sg_megaSummaryEvery').val(s.megaSummaryEvery || 40);
@@ -13736,6 +14288,7 @@ function pullUiToSettings() {
   s.summaryReadStatData = $('#sg_summaryReadStatData').is(':checked');
   s.summaryStatVarName = String($('#sg_summaryStatVarName').val() || 'stat_data').trim() || 'stat_data';
   s.structuredEntriesEvery = clampInt($('#sg_structuredEntriesEvery').val(), 1, 200, s.structuredEntriesEvery || 1);
+  s.structuredEntriesReadFloors = clampInt($('#sg_structuredEntriesReadFloors').val(), 1, 200, s.structuredEntriesEvery || 1);
   s.structuredEntriesCountMode = String($('#sg_structuredEntriesCountMode').val() || 'assistant');
   s.structuredWorldbookEnabled = $('#sg_structuredWorldbookEnabled').is(':checked');
   s.structuredWorldbookMode = String($('#sg_structuredWorldbookMode').val() || 'active');
