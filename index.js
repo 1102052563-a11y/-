@@ -8225,6 +8225,9 @@ async function buildTriggerInjectionForText(userText, chat, settings, logStatus)
       kwSet.add(kk);
       if (kwSet.size >= maxKeywords) break;
     }
+    if (kwSet.size < maxKeywords && name && !kwSet.has(name)) {
+      kwSet.add(name);
+    }
     if (kwSet.size >= maxKeywords) break;
   }
   const keywords = Array.from(kwSet);
@@ -13191,7 +13194,11 @@ function ensureModal() {
 
   $('#sg_wiIndexModelSelect').on('change', () => {
     const id = String($('#sg_wiIndexModelSelect').val() || '').trim();
-    if (id) $('#sg_wiIndexCustomModel').val(id);
+    if (id) {
+      $('#sg_wiIndexCustomModel').val(id);
+      pullUiToSettings();
+      saveSettings();
+    }
   });
 
   $('#sg_refreshRollModels').on('click', async () => {
