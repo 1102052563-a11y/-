@@ -3201,6 +3201,21 @@ function estimateTokens(text) {
   return cjk + Math.ceil(other / 4);
 }
 
+function estimateWorldbookEntriesTokens(entries) {
+  if (!Array.isArray(entries) || !entries.length) return 0;
+  let total = 0;
+  for (const e of entries) {
+    if (!e) continue;
+    const title = String(e.title || '').trim();
+    const keys = Array.isArray(e.keys) ? e.keys : [];
+    const content = String(e.content || '').trim();
+    if (!content) continue;
+    const head = `- 【${title || '条目'}】${keys.length ? `（触发：${keys.slice(0, 6).join(' / ')}）` : ''}\n`;
+    total += estimateTokens(head + content);
+  }
+  return total;
+}
+
 function computeWorldbookInjection(options = {}) {
   const s = ensureSettings();
   const enabled = (options.enabledOverride !== undefined) ? !!options.enabledOverride : !!s.worldbookEnabled;
@@ -10920,13 +10935,17 @@ function buildModalHtml() {
               </div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesUseWorldbook">结构化条目注入世界书</label>
+                <select id="sg_structuredWorldbookMode">
+                  <option value="active">active（仅注入可能激活条目）</option>
+                  <option value="all">all（注入全部条目）</option>
+                </select>
                 <select id="sg_structuredWorldbookSource">
                   <option value="imported">使用已导入世界书JSON</option>
                   <option value="live">实时读取蓝灯世界书（同索引设置）</option>
                 </select>
                 <button class="menu_button sg-btn" id="sg_structuredImportWorldbook">导入世界书JSON</button>
-                <div class="sg-hint" style="margin-left:auto">active/all 与字数窗口沿用“预设与世界书”配置；实时读取使用“索引设置”的蓝灯文件名/刷新间隔</div>
               </div>
+              <div class="sg-hint" id="sg_structuredWorldbookInfo">（结构化世界书：未启用）</div>
 
               <div class="sg-card sg-subcard">
                 <div class="sg-card-title">大总结（汇总多条剧情总结）</div>
@@ -12697,6 +12716,7 @@ function ensureModal() {
       saveSettings();
 
       updateWorldbookInfoLabel();
+      updateStructuredWorldbookInfoLabel().catch(() => void 0);
       setStatus('世界书已导入 ✅', entries.length ? 'ok' : 'warn');
     } catch (e) {
       setStatus(`导入世界书失败：${e?.message ?? e}`, 'err');
@@ -12711,6 +12731,7 @@ function ensureModal() {
     s.worldbookJson = '';
     saveSettings();
     updateWorldbookInfoLabel();
+    updateStructuredWorldbookInfoLabel().catch(() => void 0);
     setStatus('已清空世界书', 'ok');
   });
 
@@ -12719,6 +12740,7 @@ function ensureModal() {
       pullUiToSettings();
       saveSettings();
       updateWorldbookInfoLabel();
+      updateStructuredWorldbookInfoLabel().catch(() => void 0);
       setStatus('世界书设置已保存 ✅', 'ok');
     } catch (e) {
       setStatus(`保存世界书设置失败：${e?.message ?? e}`, 'err');
@@ -12727,9 +12749,33 @@ function ensureModal() {
 
   // 自动保存：世界书相关设置变更时立刻写入
   $('#sg_worldbookEnabled, #sg_worldbookMode').on('change', () => {
+    const mode = String($('#sg_worldbookMode').val() || 'active');
+    const $structuredMode = $('#sg_structuredWorldbookMode');
+    if ($structuredMode.length && String($structuredMode.val() || '') !== mode) {
+      $structuredMode.val(mode);
+    }
     pullUiToSettings();
     saveSettings();
     updateWorldbookInfoLabel();
+    updateStructuredWorldbookInfoLabel().catch(() => void 0);
+  });
+
+  $('#sg_structuredWorldbookMode').on('change', () => {
+    const mode = String($('#sg_structuredWorldbookMode').val() || 'active');
+    const $mainMode = $('#sg_worldbookMode');
+    if ($mainMode.length && String($mainMode.val() || '') !== mode) {
+      $mainMode.val(mode);
+    }
+    pullUiToSettings();
+    saveSettings();
+    updateWorldbookInfoLabel();
+    updateStructuredWorldbookInfoLabel().catch(() => void 0);
+  });
+
+  $('#sg_structuredEntriesUseWorldbook, #sg_structuredWorldbookSource').on('change', () => {
+    pullUiToSettings();
+    saveSettings();
+    updateStructuredWorldbookInfoLabel().catch(() => void 0);
   });
 
   // 地图功能事件处理
@@ -13127,8 +13173,10 @@ function pullSettingsToUi() {
   $('#sg_worldbookMode').val(String(s.worldbookMode || 'active'));
   $('#sg_worldbookMaxChars').val(s.worldbookMaxChars);
   $('#sg_worldbookWindowMessages').val(s.worldbookWindowMessages);
+  $('#sg_structuredWorldbookMode').val(String(s.worldbookMode || 'active'));
 
   updateWorldbookInfoLabel();
+  updateStructuredWorldbookInfoLabel().catch(() => void 0);
 
   try {
     const count = parseWorldbookJson(String(s.worldbookJson || '')).length;
@@ -14630,6 +14678,47 @@ function updateFloatingPanelLayoutForViewport(panel) {
   } else {
     clearMobileFloatingPanelStyles(panel);
   }
+}
+
+async function updateStructuredWorldbookInfoLabel() {
+  const s = ensureSettings();
+  const $info = $('#sg_structuredWorldbookInfo');
+  if (!$info.length) return;
+
+  if (!s.structuredEntriesUseWorldbook) {
+    $info.text('（结构化世界书：未启用）');
+    return;
+  }
+
+  const source = String(s.structuredEntriesWorldbookSource || 'imported');
+  let entries = [];
+  let liveMeta = '';
+
+  if (source === 'live') {
+    entries = await ensureStructuredWorldbookLive(false);
+    const file = structuredWorldbookLiveCache.file || pickBlueIndexFileName() || '未设置';
+    const ts = structuredWorldbookLiveCache.loadedAt ? new Date(Number(structuredWorldbookLiveCache.loadedAt)).toLocaleTimeString() : '';
+    const err = String(structuredWorldbookLiveCache.lastError || '').trim();
+    const errShort = err ? (err.length > 60 ? `${err.slice(0, 60)}…` : err) : '';
+    liveMeta = `｜实时：${file}${ts ? `｜更新：${ts}` : ''}${errShort ? `｜读取失败：${errShort}` : ''}`;
+  } else {
+    const raw = String(s.worldbookJson || '').trim();
+    if (raw) entries = parseWorldbookJson(raw);
+  }
+
+  if (!entries.length) {
+    $info.text(source === 'live' ? `（实时读取无条目${liveMeta}）` : '（未导入世界书）');
+    return;
+  }
+
+  const totalTokens = estimateWorldbookEntriesTokens(entries);
+  const info = computeWorldbookInjection({ enabledOverride: true, entries });
+  const base = `${source === 'live' ? '实时读取' : '已导入'}世界书：${entries.length} 条｜总 tokens：${totalTokens}`;
+  if (info.mode === 'active' && info.selectedEntries === 0) {
+    $info.text(`${base}${liveMeta}｜模式：active｜本次无条目命中（0 条）`);
+    return;
+  }
+  $info.text(`${base}${liveMeta}｜模式：${info.mode}｜本次注入：${info.injectedEntries} 条｜注入 tokens：${info.injectedTokens}`);
 }
 
 function showFloatingPanel() {
