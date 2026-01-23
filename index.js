@@ -8755,20 +8755,9 @@ function buildIndexPromptMessages(recentText, userText, candidatesForModel, maxP
 async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, maxEntries, includeUser, userWeight) {
   const s = ensureSettings();
 
-  const topK = clampInt(s.wiIndexPrefilterTopK, 5, 80, 24);
   const candMaxChars = clampInt(s.wiIndexCandidateMaxChars, 120, 2000, 420);
 
-  const pre = pickRelevantIndexEntries(
-    recentText,
-    userText,
-    candidates,
-    Math.max(topK, maxEntries),
-    0,
-    includeUser,
-    userWeight
-  );
-
-  const shortlist = (pre.length ? pre : candidates.map(e => ({ e, score: 0 }))).slice(0, topK);
+  const shortlist = candidates.map(e => ({ e, score: 0 }));
 
   const candidatesForModel = shortlist.map((x, i) => {
     const e = x.e || x;
