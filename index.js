@@ -3104,7 +3104,7 @@ function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
   const parsed = parseWorldbookJson(JSON.stringify(worldInfoJson || {}));
   const prefix = String(prefixFilter || '').trim();
 
-  const base = parsed.filter(e => e && e.content);
+  const base = parsed.filter(e => e && e.content && !e.disabled);
 
   // 蓝灯索引使用“全量条目”，以便结构化条目也能被索引命中
   const items = base
