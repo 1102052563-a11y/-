@@ -712,7 +712,6 @@ let isSummarizing = false;
 let isStructuring = false;
 let summaryCancelled = false;
 let sgToastTimer = null;
-let worldInfoFilesCache = [];
 
 // 图像生成批次状态（悬浮面板）
 let imageGenBatchPrompts = [];
@@ -3063,175 +3062,6 @@ async function fetchWorldInfoFileJsonCompat(fileName) {
   throw lastErr || new Error('读取世界书失败');
 }
 
-function buildWorldInfoFileNameVariants(fileName) {
-  const raw = String(fileName || '').trim();
-  if (!raw) return [];
-  return Array.from(new Set([
-    raw,
-    raw.endsWith('.json') ? raw.slice(0, -5) : (raw + '.json'),
-  ].filter(Boolean)));
-}
-
-function extractWorldInfoFileNames(raw) {
-  if (!raw) return [];
-  let data = raw;
-  if (typeof data === 'string') {
-    const t = data.trim();
-    if (t) {
-      try { data = JSON.parse(t); } catch { /* ignore */ }
-    }
-  }
-
-  function fromArray(arr) {
-    const out = [];
-    for (const it of arr) {
-      if (!it) continue;
-      if (typeof it === 'string') { out.push(it); continue; }
-      if (typeof it === 'object') {
-        const name =
-          it.name ??
-          it.file ??
-          it.filename ??
-          it.title ??
-          it.world ??
-          it.lorebook ??
-          it.book ??
-          it.worldbook;
-        if (name) out.push(String(name));
-      }
-    }
-    return out;
-  }
-
-  function dig(obj, depth = 0) {
-    if (!obj || depth > 4) return [];
-    if (Array.isArray(obj)) return fromArray(obj);
-    if (typeof obj !== 'object') return [];
-    const keys = ['data', 'world_info', 'worldInfo', 'lorebook', 'books', 'files', 'items', 'list', 'worlds', 'worldbook'];
-    for (const k of keys) {
-      if (Object.hasOwn(obj, k)) {
-        const r = dig(obj[k], depth + 1);
-        if (r.length) return r;
-      }
-    }
-    const vals = Object.values(obj);
-    for (const v of vals) {
-      const r = dig(v, depth + 1);
-      if (r.length) return r;
-    }
-    return [];
-  }
-
-  const list = Array.isArray(data) ? fromArray(data) : dig(data);
-  const norm = list
-    .map(s => normalizeWorldInfoFileName(s))
-    .filter(Boolean);
-  return Array.from(new Set(norm)).sort((a, b) => a.localeCompare(b, 'en'));
-}
-
-async function fetchWorldInfoFileNamesCompat() {
-  const tryList = [
-    { method: 'GET', url: '/api/worldinfo/list' },
-    { method: 'POST', url: '/api/worldinfo/list', body: {} },
-    { method: 'GET', url: '/api/worldinfo/getlist' },
-    { method: 'POST', url: '/api/worldinfo/getlist', body: {} },
-    { method: 'GET', url: '/api/worldinfo/names' },
-    { method: 'GET', url: '/api/worldinfo' },
-    { method: 'POST', url: '/api/worldinfo', body: {} },
-    { method: 'GET', url: '/api/worldinfo/all' },
-    { method: 'POST', url: '/api/worldinfo/all', body: {} },
-  ];
-  let lastErr = null;
-  for (const t of tryList) {
-    try {
-      const opt = { method: t.method };
-      if (t.method === 'POST') {
-        opt.headers = { 'Content-Type': 'application/json' };
-        opt.body = JSON.stringify(t.body || {});
-      }
-      const raw = await fetchJsonCompat(t.url, opt);
-      const names = extractWorldInfoFileNames(raw);
-      if (names.length) return names;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  if (lastErr) throw lastErr;
-  return [];
-}
-
-async function saveWorldInfoFileJsonCompat(fileName, data) {
-  const names = buildWorldInfoFileNameVariants(fileName);
-  const payload = data ?? { entries: [] };
-  const jsonText = JSON.stringify(payload);
-  const tryList = [];
-  for (const name of names) {
-    tryList.push(
-      { url: '/api/worldinfo/save', body: { name, data: payload } },
-      { url: '/api/worldinfo/save', body: { name, data: jsonText } },
-      { url: '/api/worldinfo/save', body: { file: name, data: jsonText } },
-      { url: '/api/worldinfo/save', body: { filename: name, data: jsonText } },
-      { url: '/api/worldinfo/update', body: { name, data: jsonText } },
-      { url: '/api/worldinfo/update', body: { file: name, data: jsonText } },
-      { url: '/api/worldinfo/set', body: { name, world_info: payload } },
-      { url: '/api/worldinfo/put', body: { name, entries: payload.entries || [] } },
-      { url: '/api/worldinfo/edit', body: { name, entries: payload.entries || [] } },
-    );
-  }
-  let lastErr = null;
-  for (const t of tryList) {
-    try {
-      await fetchJsonCompat(t.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(t.body || {}),
-      });
-      return true;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  if (lastErr) throw lastErr;
-  return false;
-}
-
-function resolveWorldInfoFileNameFromPayload(raw, fallback) {
-  const tried = new Set();
-  const pick = (v) => {
-    const s = String(v || '').trim();
-    if (!s) return '';
-    const n = normalizeWorldInfoFileName(s);
-    if (!n || tried.has(n)) return '';
-    tried.add(n);
-    return n;
-  };
-
-  const direct = [
-    raw?.name,
-    raw?.file,
-    raw?.filename,
-    raw?.world,
-    raw?.lorebook,
-    raw?.worldbook,
-    raw?.data?.name,
-    raw?.data?.file,
-    raw?.data?.filename,
-  ];
-  for (const v of direct) {
-    const n = pick(v);
-    if (n) return n;
-  }
-
-  if (raw && typeof raw === 'object') {
-    for (const v of Object.values(raw)) {
-      const n = pick(v);
-      if (n) return n;
-    }
-  }
-
-  return normalizeWorldInfoFileName(fallback);
-}
-
 function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
   // 复用 parseWorldbookJson 的“兼容解析”逻辑
   const parsed = parseWorldbookJson(JSON.stringify(worldInfoJson || {}));
@@ -4255,10 +4085,6 @@ function extractWorldbookEntriesDetailed(rawJson) {
     norm.push({ title, comment, keys, content, disabled });
   }
   return norm;
-}
-
-function extractWorldbookEntriesRaw(rawJson) {
-  return extractWorldbookEntriesDetailed(rawJson);
 }
 
 function extractIndexFromText(text, settings) {
@@ -11111,22 +10937,11 @@ function buildModalHtml() {
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用）</label>
               <input id="sg_summaryWorldInfoFile" type="text" placeholder="世界书文件名" style="flex:1; min-width: 220px;">
-              <select id="sg_summaryWorldInfoFileSelect" class="sg-model-select" style="min-width: 200px;">
-                <option value="">（选择现有世界书）</option>
-              </select>
             </div>
 
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo" checked>同时写入蓝灯世界书（常开索引）</label>
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
-              <select id="sg_summaryBlueWorldInfoFileSelect" class="sg-model-select" style="min-width: 220px;">
-                <option value="">（选择现有世界书）</option>
-              </select>
-            </div>
-
-            <div class="sg-row sg-inline" style="margin-top:6px;">
-              <button class="menu_button sg-btn" id="sg_refreshWorldInfoFiles">刷新世界书列表</button>
-              <button class="menu_button sg-btn" id="sg_clearSummaryWorldInfoEntries">一键清空绿/蓝世界书</button>
             </div>
 
             <div class="sg-hint" style="margin-top: 8px; color: var(--SmartThemeQuoteColor);">
@@ -12229,7 +12044,7 @@ function ensureModal() {
 
   $('#sg_summaryToBlueWorldInfo').on('change', () => {
     const checked = $('#sg_summaryToBlueWorldInfo').is(':checked');
-  $('#sg_summaryBlueWorldInfoFile, #sg_summaryBlueWorldInfoFileSelect').toggle(!!checked);
+    $('#sg_summaryBlueWorldInfoFile').toggle(!!checked);
     pullUiToSettings(); saveSettings();
     updateBlueIndexInfoLabel();
   });
@@ -12595,24 +12410,6 @@ function ensureModal() {
   $('#sg_summaryModelSelect').on('change', () => {
     const id = String($('#sg_summaryModelSelect').val() || '').trim();
     if (id) $('#sg_summaryCustomModel').val(id);
-  });
-
-  $('#sg_summaryWorldInfoFileSelect').on('change', () => {
-    const id = String($('#sg_summaryWorldInfoFileSelect').val() || '').trim();
-    if (id) $('#sg_summaryWorldInfoFile').val(id).trigger('input');
-  });
-
-  $('#sg_summaryBlueWorldInfoFileSelect').on('change', () => {
-    const id = String($('#sg_summaryBlueWorldInfoFileSelect').val() || '').trim();
-    if (id) $('#sg_summaryBlueWorldInfoFile').val(id).trigger('input');
-  });
-
-  $('#sg_refreshWorldInfoFiles').on('click', async () => {
-    await refreshWorldInfoFileList();
-  });
-
-  $('#sg_clearSummaryWorldInfoEntries').on('click', async () => {
-    await clearSummaryWorldInfoEntries();
   });
 
 
@@ -13268,7 +13065,6 @@ function pullSettingsToUi() {
   $('#sg_summaryIndexInComment').prop('checked', !!s.summaryIndexInComment);
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
-  fillWorldInfoFileSelects(worldInfoFilesCache);
 
   // 地图功能
   $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
@@ -13437,7 +13233,7 @@ function pullSettingsToUi() {
 
   $('#sg_summary_custom_block').toggle(String(s.summaryProvider || 'st') === 'custom');
   $('#sg_summaryWorldInfoFile').show();
-  $('#sg_summaryBlueWorldInfoFile, #sg_summaryBlueWorldInfoFileSelect').toggle(!!s.summaryToBlueWorldInfo);
+  $('#sg_summaryBlueWorldInfoFile').toggle(!!s.summaryToBlueWorldInfo);
   $('#sg_summaryIndexFormat').toggle(String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId');
 
   updateBlueIndexInfoLabel();
@@ -13626,85 +13422,6 @@ function updateWorldbookInfoLabel() {
     $info.text(`${base}｜模式：${stats.mode}｜本次注入：${stats.injectedEntries} 条｜字符：${stats.injectedChars}｜约 tokens：${stats.injectedTokens}`);
   } catch {
     $info.text('（世界书信息解析失败）');
-  }
-}
-
-function fillWorldInfoFileSelects(names) {
-  const s = ensureSettings();
-  const green = normalizeWorldInfoFileName(s.summaryWorldInfoFile);
-  const blue = normalizeWorldInfoFileName(s.summaryBlueWorldInfoFile);
-  const list = Array.isArray(names) ? [...names] : [];
-  if (green && !list.includes(green)) list.unshift(green);
-  if (blue && !list.includes(blue)) list.unshift(blue);
-  const opts = ['<option value="">（选择现有世界书）</option>'];
-  for (const n of list) {
-    const safe = escapeHtml(String(n || '').trim());
-    if (!safe) continue;
-    opts.push(`<option value="${safe}">${safe}</option>`);
-  }
-  $('#sg_summaryWorldInfoFileSelect').html(opts.join(''));
-  $('#sg_summaryBlueWorldInfoFileSelect').html(opts.join(''));
-
-  if (green) $('#sg_summaryWorldInfoFileSelect').val(green);
-  if (blue) $('#sg_summaryBlueWorldInfoFileSelect').val(blue);
-}
-
-async function refreshWorldInfoFileList() {
-  setStatus('正在读取世界书列表...', 'warn');
-  try {
-    const names = await fetchWorldInfoFileNamesCompat();
-    worldInfoFilesCache = Array.isArray(names) ? names : [];
-    fillWorldInfoFileSelects(worldInfoFilesCache);
-    if (worldInfoFilesCache.length) {
-      setStatus(`已读取世界书列表（${worldInfoFilesCache.length}）`, 'ok');
-    } else {
-      setStatus('世界书列表为空', 'warn');
-    }
-  } catch (e) {
-    const msg = String(e?.message ?? e);
-    if (e?.status === 404 || msg.includes('HTTP 404')) {
-      setStatus('当前版本不支持世界书列表接口，请手动填写文件名', 'warn');
-      return;
-    }
-    setStatus(`读取世界书列表失败：${msg}`, 'err');
-  }
-}
-
-async function clearWorldInfoEntriesInFile(fileName) {
-  const file = normalizeWorldInfoFileName(fileName);
-  if (!file) return { file: '', cleared: 0 };
-  const raw = await fetchWorldInfoFileJsonCompat(file);
-  const resolvedFile = resolveWorldInfoFileNameFromPayload(raw, file);
-  const entries = extractWorldbookEntriesRaw(raw);
-  await saveWorldInfoFileJsonCompat(resolvedFile, { entries: [] });
-  return { file: resolvedFile, cleared: Array.isArray(entries) ? entries.length : 0 };
-}
-
-async function clearSummaryWorldInfoEntries() {
-  const s = ensureSettings();
-  const green = normalizeWorldInfoFileName(s.summaryWorldInfoFile);
-  const blue = normalizeWorldInfoFileName(s.summaryBlueWorldInfoFile);
-  if (!green && !blue) {
-    setStatus('未配置世界书文件', 'warn');
-    return;
-  }
-  if (!confirm('将清空选中的绿/蓝世界书，使其变为空世界书。确定继续？')) return;
-
-  setStatus('正在清空世界书...', 'warn');
-  try {
-    let clearedGreen = 0;
-    let clearedBlue = 0;
-    if (green) {
-      const r = await clearWorldInfoEntriesInFile(green);
-      clearedGreen = r.cleared || 0;
-    }
-    if (blue) {
-      const r = await clearWorldInfoEntriesInFile(blue);
-      clearedBlue = r.cleared || 0;
-    }
-    setStatus(`已清空：绿 ${clearedGreen} / 蓝 ${clearedBlue}`, 'ok');
-  } catch (e) {
-    setStatus(`清空失败：${e?.message ?? e}`, 'err');
   }
 }
 
