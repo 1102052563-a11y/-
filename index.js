@@ -13971,11 +13971,8 @@ function isMobileViewport() {
 
 function syncFloatingForViewport() {
   if (isMobileViewport()) {
-    const panel = document.getElementById('sg_floating_panel');
-    if (panel) panel.remove();
     const btn = document.getElementById('sg_floating_btn');
     if (btn) btn.remove();
-    floatingPanelVisible = false;
     return;
   }
   createFloatingButton();
@@ -14111,12 +14108,6 @@ function createFloatingButton() {
 }
 
 function createFloatingPanel() {
-  if (isMobileViewport()) {
-    const panel = document.getElementById('sg_floating_panel');
-    if (panel) panel.remove();
-    floatingPanelVisible = false;
-    return;
-  }
   if (document.getElementById('sg_floating_panel')) return;
 
   const panel = document.createElement('div');
