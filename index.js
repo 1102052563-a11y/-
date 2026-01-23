@@ -1503,6 +1503,7 @@ function getDefaultSummaryMeta() {
     nextMegaIndex: 1,
     megaSummaryCount: 0,
     history: [], // [{title, summary, keywords, createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, worldInfo:{file,uid}}]
+    structuredHistory: [], // [{createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, structuredChanges:[]}]
     wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
     rollLogs: [], // [{ts, action, summary, final, success, userText}]
     // 结构化条目缓存（用于去重与更新 - 方案C混合策略）
@@ -1533,6 +1534,7 @@ function getSummaryMeta() {
       ...getDefaultSummaryMeta(),
       ...data,
       history: Array.isArray(data.history) ? data.history : [],
+      structuredHistory: Array.isArray(data.structuredHistory) ? data.structuredHistory : [],
       wiTriggerLogs: Array.isArray(data.wiTriggerLogs) ? data.wiTriggerLogs : [],
       rollLogs: Array.isArray(data.rollLogs) ? data.rollLogs : [],
     };
@@ -1550,6 +1552,30 @@ function getSummaryMeta() {
 
 async function setSummaryMeta(meta) {
   await setChatMetaValue(META_KEYS.summaryMeta, JSON.stringify(meta ?? getDefaultSummaryMeta()));
+}
+
+function appendStructuredHistory(meta, rec) {
+  if (!meta || typeof meta !== 'object') return;
+  meta.structuredHistory = Array.isArray(meta.structuredHistory) ? meta.structuredHistory : [];
+  if (rec && typeof rec === 'object') meta.structuredHistory.push(rec);
+  if (meta.structuredHistory.length > 160) meta.structuredHistory = meta.structuredHistory.slice(-160);
+}
+
+function updateStructuredProgressFromHistory(meta) {
+  if (!meta || typeof meta !== 'object') return;
+  const hist = Array.isArray(meta.structuredHistory) ? meta.structuredHistory : [];
+  const last = [...hist].reverse().find(h => h && h.range && h.affectsProgress !== false);
+  if (!last) {
+    meta.lastStructuredFloor = 0;
+    meta.lastStructuredChatLen = 0;
+    return;
+  }
+  meta.lastStructuredFloor = last.range?.toFloor ? Number(last.range.toFloor) : 0;
+  if (last.range?.toIdx !== undefined && last.range?.toIdx !== null) {
+    meta.lastStructuredChatLen = Number(last.range.toIdx) + 1;
+  } else {
+    meta.lastStructuredChatLen = 0;
+  }
 }
 
 // ===== 静态模块缓存（只在首次或手动刷新时生成的模块结果）=====
@@ -6571,6 +6597,110 @@ function buildSummaryDeleteComments(rec, settings, prefix) {
   return Array.from(new Set(out)).filter(Boolean);
 }
 
+async function rollbackStructuredChangesForRecord(rec, meta, settings, {
+  clearChanges = false,
+} = {}) {
+  const s = settings || ensureSettings();
+  const structuredChanges = Array.isArray(rec?.structuredChanges) ? rec.structuredChanges : [];
+  if (!structuredChanges.length) return { total: 0, rolled: 0, errors: [] };
+
+  const errors = [];
+  let rolled = 0;
+  const greenTarget = resolveGreenWorldInfoTarget(s);
+
+  const updateStructuredCache = (change) => {
+    if (!change?.cacheKey) return;
+    const entriesCache = getStructuredEntriesCache(meta, change.entryType);
+    if (!entriesCache) return;
+    if (change.action === 'create') {
+      delete entriesCache[change.cacheKey];
+    } else if (change.action === 'update') {
+      if (change.prevCacheEntry) entriesCache[change.cacheKey] = change.prevCacheEntry;
+    } else if (change.action === 'delete') {
+      if (change.cacheEntry) entriesCache[change.cacheKey] = change.cacheEntry;
+    }
+  };
+
+  for (const change of [...structuredChanges].reverse()) {
+    if (!change || !change.action) continue;
+    const targetInfo = (change.targetType === 'blue')
+      ? { target: 'file', file: String(s.summaryBlueWorldInfoFile || '').trim() }
+      : greenTarget;
+    if (!targetInfo?.file) {
+      errors.push(`结构化：${change.entryType || '条目'}（${change.targetType || 'green'}）世界书文件名为空`);
+      continue;
+    }
+
+    const comment = String(change.comment || '').trim();
+    const key = (change.key !== undefined) ? String(change.key) : '';
+    const content = (change.content !== undefined) ? String(change.content) : '';
+    const prevContent = (change.prevContent !== undefined) ? String(change.prevContent) : '';
+    let ok = false;
+
+    if (change.action === 'create') {
+      const r = await deleteWorldInfoEntryByComment(comment, s, {
+        target: targetInfo.target,
+        file: targetInfo.file,
+      });
+      ok = !!r;
+    } else if (change.action === 'update') {
+      const r = await updateWorldInfoEntryByComment(comment, s, {
+        target: targetInfo.target,
+        file: targetInfo.file,
+        content: prevContent,
+      });
+      ok = !!r;
+    } else if (change.action === 'delete') {
+      const commentVariants = [
+        comment,
+        comment ? `[已删除] ${comment}` : '',
+        comment ? `[已汇总] ${comment}` : '',
+      ].filter(Boolean);
+      let restored = null;
+      for (const c of commentVariants) {
+        restored = await updateWorldInfoEntryByComment(c, s, {
+          target: targetInfo.target,
+          file: targetInfo.file,
+          content,
+          key,
+          newComment: comment,
+          disable: 0,
+        });
+        if (restored) break;
+      }
+      if (!restored) {
+        try {
+          await createWorldInfoEntryInTarget(targetInfo.target, targetInfo.file, {
+            key,
+            content,
+            comment,
+          }, {
+            constant: (change.targetType === 'blue') ? 1 : 0,
+            disable: 0,
+          });
+          restored = { created: true };
+        } catch (e) {
+          errors.push(`结构化：${change.entryType || '条目'}恢复失败（${e?.message ?? e}）`);
+        }
+      }
+      ok = !!restored;
+    }
+
+    if (ok) {
+      rolled += 1;
+      updateStructuredCache(change);
+    } else if (change.action !== 'delete') {
+      errors.push(`结构化：${change.entryType || '条目'}回滚失败`);
+    }
+  }
+
+  if (rolled === structuredChanges.length && clearChanges) {
+    rec.structuredChanges = [];
+  }
+
+  return { total: structuredChanges.length, rolled, errors };
+}
+
 async function rollbackLastSummary() {
   const s = ensureSettings();
   const meta = getSummaryMeta();
@@ -6590,7 +6720,6 @@ async function rollbackLastSummary() {
   const errors = [];
   let greenOk = false;
   let blueOk = false;
-  let structuredRolled = 0;
 
   const greenPrefix = String(rec.commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
   const greenTarget = resolveGreenWorldInfoTarget(s);
@@ -6633,97 +6762,6 @@ async function rollbackLastSummary() {
     errors.push('蓝灯：世界书文件名为空');
   }
 
-  const structuredChanges = Array.isArray(rec?.structuredChanges) ? rec.structuredChanges : [];
-  if (structuredChanges.length) {
-    const updateStructuredCache = (change) => {
-      if (!change?.cacheKey) return;
-      const entriesCache = getStructuredEntriesCache(meta, change.entryType);
-      if (!entriesCache) return;
-      if (change.action === 'create') {
-        delete entriesCache[change.cacheKey];
-      } else if (change.action === 'update') {
-        if (change.prevCacheEntry) entriesCache[change.cacheKey] = change.prevCacheEntry;
-      } else if (change.action === 'delete') {
-        if (change.cacheEntry) entriesCache[change.cacheKey] = change.cacheEntry;
-      }
-    };
-
-    for (const change of [...structuredChanges].reverse()) {
-      if (!change || !change.action) continue;
-      const targetInfo = (change.targetType === 'blue')
-        ? { target: 'file', file: String(s.summaryBlueWorldInfoFile || '').trim() }
-        : greenTarget;
-      if (!targetInfo?.file) {
-        errors.push(`结构化：${change.entryType || '条目'}（${change.targetType || 'green'}）世界书文件名为空`);
-        continue;
-      }
-
-      const comment = String(change.comment || '').trim();
-      const key = (change.key !== undefined) ? String(change.key) : '';
-      const content = (change.content !== undefined) ? String(change.content) : '';
-      const prevContent = (change.prevContent !== undefined) ? String(change.prevContent) : '';
-      let ok = false;
-
-      if (change.action === 'create') {
-        const r = await deleteWorldInfoEntryByComment(comment, s, {
-          target: targetInfo.target,
-          file: targetInfo.file,
-        });
-        ok = !!r;
-      } else if (change.action === 'update') {
-        const r = await updateWorldInfoEntryByComment(comment, s, {
-          target: targetInfo.target,
-          file: targetInfo.file,
-          content: prevContent,
-        });
-        ok = !!r;
-      } else if (change.action === 'delete') {
-        const commentVariants = [
-          comment,
-          comment ? `[已删除] ${comment}` : '',
-          comment ? `[已汇总] ${comment}` : '',
-        ].filter(Boolean);
-        let restored = null;
-        for (const c of commentVariants) {
-          restored = await updateWorldInfoEntryByComment(c, s, {
-            target: targetInfo.target,
-            file: targetInfo.file,
-            content,
-            key,
-            newComment: comment,
-            disable: 0,
-          });
-          if (restored) break;
-        }
-        if (!restored) {
-          try {
-            await createWorldInfoEntryInTarget(targetInfo.target, targetInfo.file, {
-              key,
-              content,
-              comment,
-            }, {
-              constant: (change.targetType === 'blue') ? 1 : 0,
-              disable: 0,
-            });
-            restored = { created: true };
-          } catch (e) {
-            errors.push(`结构化：${change.entryType || '条目'}恢复失败（${e?.message ?? e}）`);
-          }
-        }
-        ok = !!restored;
-      }
-
-      if (ok) {
-        structuredRolled += 1;
-        updateStructuredCache(change);
-      } else {
-        if (change.action !== 'delete') {
-          errors.push(`结构化：${change.entryType || '条目'}回滚失败`);
-        }
-      }
-    }
-  }
-
   hist.splice(idx, 1);
   meta.history = hist;
 
@@ -6741,22 +6779,6 @@ async function rollbackLastSummary() {
   } else {
     meta.lastChatLen = 0;
   }
-  if (structuredChanges.length) {
-    const recToFloor = Number(rec?.range?.toFloor || 0);
-    const recChatLen = (rec?.range?.toIdx !== undefined && rec?.range?.toIdx !== null)
-      ? Number(rec.range.toIdx) + 1
-      : null;
-    if (recToFloor && Number(meta.lastStructuredFloor || 0) === recToFloor
-      && recChatLen !== null && Number(meta.lastStructuredChatLen || 0) === recChatLen) {
-      const prevStructured = [...hist].reverse().find(h => h && !h.isMega);
-      meta.lastStructuredFloor = prevStructured?.range?.toFloor ? Number(prevStructured.range.toFloor) : 0;
-      if (prevStructured?.range?.toIdx !== undefined && prevStructured?.range?.toIdx !== null) {
-        meta.lastStructuredChatLen = Number(prevStructured.range.toIdx) + 1;
-      } else {
-        meta.lastStructuredChatLen = 0;
-      }
-    }
-  }
   await setSummaryMeta(meta);
 
   removeSummaryFromBlueIndexCache(rec);
@@ -6768,8 +6790,54 @@ async function rollbackLastSummary() {
   if (errors.length) {
     setStatus(`撤销完成（${errors[0]}）`, 'warn');
   } else {
-    const structuredPart = structuredChanges.length ? `｜结构化 ${structuredRolled}/${structuredChanges.length}` : '';
-    setStatus(`已撤销最近一次总结 ✅（绿灯${greenOk ? '已删' : '未删'}｜蓝灯${blueOk ? '已删' : '未删'}${structuredPart}）`, 'ok');
+    setStatus(`已撤销最近一次总结 ✅（绿灯${greenOk ? '已删' : '未删'}｜蓝灯${blueOk ? '已删' : '未删'}）`, 'ok');
+  }
+}
+
+async function rollbackLastStructuredEntries() {
+  const s = ensureSettings();
+  const meta = getSummaryMeta();
+  const hist = Array.isArray(meta.structuredHistory) ? meta.structuredHistory : [];
+
+  let idx = hist.length - 1;
+  while (idx >= 0) {
+    const rec = hist[idx];
+    if (Array.isArray(rec?.structuredChanges) && rec.structuredChanges.length) break;
+    idx--;
+  }
+
+  if (idx < 0) {
+    setStatus('没有可撤销的结构化条目', 'warn');
+    return;
+  }
+
+  const rec = hist[idx];
+  setStatus('正在撤销最近一次结构化条目…', 'warn');
+  showToast('正在撤销最近一次结构化条目…', { kind: 'warn', spinner: true, sticky: true });
+
+  const result = await rollbackStructuredChangesForRecord(rec, meta, s, { clearChanges: true });
+  if (result.total && result.rolled === result.total) {
+    hist.splice(idx, 1);
+  } else {
+    hist[idx] = rec;
+  }
+  meta.structuredHistory = hist;
+  updateStructuredProgressFromHistory(meta);
+  await setSummaryMeta(meta);
+
+  renderSummaryPaneFromMeta();
+  updateSummaryInfoLabel();
+
+  try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
+
+  if (!result.total) {
+    setStatus('没有可撤销的结构化条目', 'warn');
+    return;
+  }
+  if (result.errors.length) {
+    setStatus(`结构化撤销完成（${result.errors[0]}）`, 'warn');
+  } else {
+    setStatus(`已撤销最近一次结构化条目 ✅（${result.rolled}/${result.total}）`, 'ok');
   }
 }
 
@@ -6995,6 +7063,12 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           if (structuredOk) {
             if (structuredChanges.length) {
               rec.structuredChanges = structuredChanges;
+              appendStructuredHistory(meta, {
+                createdAt: rec.createdAt || Date.now(),
+                range: rec.range,
+                structuredChanges,
+                affectsProgress,
+              });
               if (Array.isArray(meta.history) && meta.history.length) {
                 meta.history[meta.history.length - 1] = rec;
               }
@@ -7258,7 +7332,16 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
     for (const seg of segments) {
       const chunkText = buildSummaryChunkTextRange(chat, seg.startIdx, seg.endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars, true, true);
       if (!chunkText) continue;
-      const ok = await processStructuredEntriesChunk(chunkText, seg.fromFloor, seg.toFloor, meta, s, summaryStatData);
+      const structuredChanges = [];
+      const ok = await processStructuredEntriesChunk(chunkText, seg.fromFloor, seg.toFloor, meta, s, summaryStatData, structuredChanges);
+      if (ok && structuredChanges.length) {
+        appendStructuredHistory(meta, {
+          createdAt: Date.now(),
+          range: { fromFloor: seg.fromFloor, toFloor: seg.toFloor, fromIdx: seg.startIdx, toIdx: seg.endIdx },
+          structuredChanges,
+          affectsProgress: true,
+        });
+      }
       if (ok) processed += 1;
     }
 
@@ -11882,6 +11965,7 @@ function buildModalHtml() {
               <button class="menu_button sg-btn" id="sg_stopSummary" style="background: var(--SmartThemeBodyColor); color: var(--SmartThemeQuoteColor);">停止总结</button>
               <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
               <button class="menu_button sg-btn" id="sg_undoLastSummary">撤销最近一次总结</button>
+              <button class="menu_button sg-btn" id="sg_undoLastStructured">撤销最近一次结构化条目</button>
               <button class="menu_button sg-btn" id="sg_syncGreenFromBlue">对齐蓝灯→绿灯</button>
               <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
             </div>
@@ -12789,8 +12873,19 @@ function ensureModal() {
     try {
       pullUiToSettings();
       saveSettings();
-      if (!confirm('确认撤销最近一次总结？将同时删除绿灯/蓝灯条目。')) return;
+      if (!confirm('确认撤销最近一次总结？将同时删除绿灯/蓝灯条目（不回滚结构化条目）。')) return;
       await rollbackLastSummary();
+    } catch (e) {
+      setStatus(`撤销失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
+  $('#sg_undoLastStructured').on('click', async () => {
+    try {
+      pullUiToSettings();
+      saveSettings();
+      if (!confirm('确认撤销最近一次结构化条目？不会删除剧情总结。')) return;
+      await rollbackLastStructuredEntries();
     } catch (e) {
       setStatus(`撤销失败：${e?.message ?? e}`, 'err');
     }
