@@ -14437,8 +14437,61 @@ function bindFloatingPanelResizeGuard() {
     if (!floatingPanelVisible) return;
     const panel = document.getElementById('sg_floating_panel');
     if (!panel) return;
-    requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
+    requestAnimationFrame(() => {
+      updateFloatingPanelLayoutForViewport(panel);
+      ensureFloatingPanelInViewport(panel);
+    });
   });
+}
+
+function applyMobileFloatingPanelStyles(panel) {
+  if (!panel) return;
+  panel.dataset.sgMobileSheet = '1';
+  panel.style.position = 'fixed';
+  panel.style.top = '0';
+  panel.style.bottom = '0';
+  panel.style.left = '0';
+  panel.style.right = '0';
+  panel.style.width = '100%';
+  panel.style.maxWidth = '100%';
+  panel.style.height = 'calc(var(--sg-vh, 1vh) * 100)';
+  panel.style.maxHeight = 'calc(var(--sg-vh, 1vh) * 100)';
+  panel.style.borderRadius = '0';
+  panel.style.resize = 'none';
+  panel.style.transform = 'none';
+  panel.style.transition = 'none';
+  panel.style.opacity = '1';
+  panel.style.visibility = 'visible';
+  panel.style.display = 'flex';
+}
+
+function clearMobileFloatingPanelStyles(panel) {
+  if (!panel || panel.dataset.sgMobileSheet !== '1') return;
+  panel.style.position = '';
+  panel.style.top = '';
+  panel.style.bottom = '';
+  panel.style.left = '';
+  panel.style.right = '';
+  panel.style.width = '';
+  panel.style.maxWidth = '';
+  panel.style.height = '';
+  panel.style.maxHeight = '';
+  panel.style.borderRadius = '';
+  panel.style.resize = '';
+  panel.style.transform = '';
+  panel.style.transition = '';
+  panel.style.opacity = '';
+  panel.style.visibility = '';
+  panel.style.display = '';
+  delete panel.dataset.sgMobileSheet;
+}
+
+function updateFloatingPanelLayoutForViewport(panel) {
+  if (isMobilePortrait()) {
+    applyMobileFloatingPanelStyles(panel);
+  } else {
+    clearMobileFloatingPanelStyles(panel);
+  }
 }
 
 function showFloatingPanel() {
@@ -14447,23 +14500,9 @@ function showFloatingPanel() {
   if (panel) {
     // 移动端/平板：强制使用底部弹出样式
     if (isMobilePortrait()) {
-      panel.style.position = 'fixed';
-      panel.style.top = '0';
-      panel.style.bottom = '0';
-      panel.style.left = '0';
-      panel.style.right = '0';
-      panel.style.width = '100%';
-      panel.style.maxWidth = '100%';
-      panel.style.height = 'calc(var(--sg-vh, 1vh) * 100)';
-      panel.style.maxHeight = 'calc(var(--sg-vh, 1vh) * 100)';
-      panel.style.borderRadius = '0';
-      panel.style.resize = 'none';
-      panel.style.transform = 'none';
-      panel.style.transition = 'none';
-      panel.style.opacity = '1';
-      panel.style.visibility = 'visible';
-      panel.style.display = 'flex';
+      applyMobileFloatingPanelStyles(panel);
     } else if (window.innerWidth < 1200) {
+      clearMobileFloatingPanelStyles(panel);
       // 桌面端小窗口：清除可能的内联样式，使用 CSS
       panel.style.left = '';
       panel.style.top = '';
@@ -14479,6 +14518,7 @@ function showFloatingPanel() {
       panel.style.transition = '';
       panel.style.borderRadius = '';
     } else {
+      clearMobileFloatingPanelStyles(panel);
       panel.style.display = 'flex';
     }
 
