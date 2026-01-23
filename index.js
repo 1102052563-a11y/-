@@ -3195,6 +3195,43 @@ async function saveWorldInfoFileJsonCompat(fileName, data) {
   return false;
 }
 
+function resolveWorldInfoFileNameFromPayload(raw, fallback) {
+  const tried = new Set();
+  const pick = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return '';
+    const n = normalizeWorldInfoFileName(s);
+    if (!n || tried.has(n)) return '';
+    tried.add(n);
+    return n;
+  };
+
+  const direct = [
+    raw?.name,
+    raw?.file,
+    raw?.filename,
+    raw?.world,
+    raw?.lorebook,
+    raw?.worldbook,
+    raw?.data?.name,
+    raw?.data?.file,
+    raw?.data?.filename,
+  ];
+  for (const v of direct) {
+    const n = pick(v);
+    if (n) return n;
+  }
+
+  if (raw && typeof raw === 'object') {
+    for (const v of Object.values(raw)) {
+      const n = pick(v);
+      if (n) return n;
+    }
+  }
+
+  return normalizeWorldInfoFileName(fallback);
+}
+
 function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
   // 复用 parseWorldbookJson 的“兼容解析”逻辑
   const parsed = parseWorldbookJson(JSON.stringify(worldInfoJson || {}));
@@ -13624,7 +13661,12 @@ async function refreshWorldInfoFileList() {
       setStatus('世界书列表为空', 'warn');
     }
   } catch (e) {
-    setStatus(`读取世界书列表失败：${e?.message ?? e}`, 'err');
+    const msg = String(e?.message ?? e);
+    if (e?.status === 404 || msg.includes('HTTP 404')) {
+      setStatus('当前版本不支持世界书列表接口，请手动填写文件名', 'warn');
+      return;
+    }
+    setStatus(`读取世界书列表失败：${msg}`, 'err');
   }
 }
 
@@ -13632,9 +13674,10 @@ async function clearWorldInfoEntriesInFile(fileName) {
   const file = normalizeWorldInfoFileName(fileName);
   if (!file) return { file: '', cleared: 0 };
   const raw = await fetchWorldInfoFileJsonCompat(file);
+  const resolvedFile = resolveWorldInfoFileNameFromPayload(raw, file);
   const entries = extractWorldbookEntriesRaw(raw);
-  await saveWorldInfoFileJsonCompat(file, { entries: [] });
-  return { file, cleared: Array.isArray(entries) ? entries.length : 0 };
+  await saveWorldInfoFileJsonCompat(resolvedFile, { entries: [] });
+  return { file: resolvedFile, cleared: Array.isArray(entries) ? entries.length : 0 };
 }
 
 async function clearSummaryWorldInfoEntries() {
