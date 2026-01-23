@@ -54,52 +54,34 @@ const EXT_BASE_URL = (() => {
  */
 
 const DEFAULT_MODULES = Object.freeze([
-  { key: 'world_summary', title: '涓栫晫绠€浠?, type: 'text', prompt: '1~3鍙ユ鎷笘鐣屼笌灞€鍔?, required: true, panel: true, inline: true, static: true },
-  { key: 'key_plot_points', title: '閲嶈鍓ф儏鐐?, type: 'list', prompt: '3~8鏉″叧閿墽鎯呯偣锛堢煭鍙ワ級', maxItems: 8, required: true, panel: true, inline: false, static: true },
-  { key: 'current_scene', title: '褰撳墠鏃堕棿鐐?路 鍏蜂綋鍓ф儏', type: 'text', prompt: '鎻忚堪褰撳墠鍙戠敓浜嗕粈涔堬紙鍦扮偣/浜虹墿鍔ㄦ満/鍐茬獊/鎮康锛?, required: true, panel: true, inline: true },
-  { key: 'next_events', title: '鍚庣画灏嗕細鍙戠敓鐨勪簨', type: 'list', prompt: '鎺ヤ笅鏉ユ渶鍙兘鍙戠敓鐨勪簨锛堟潯鐩級', maxItems: 6, required: true, panel: true, inline: true },
-  { key: 'protagonist_impact', title: '涓昏琛屼负閫犳垚鐨勫奖鍝?, type: 'text', prompt: '涓昏琛屼负瀵瑰墽鎯?鍏崇郴/椋庨櫓閫犳垚鐨勬敼鍙?, required: true, panel: true, inline: false },
-  { key: 'tips', title: '缁欎富瑙掔殑鎻愮ず锛堝熀浜庡師钁楀悗缁?澶х翰锛?, type: 'list', prompt: '缁欏嚭鍙墽琛屾彁绀猴紙灏介噺鍏蜂綋锛?, maxItems: 4, required: true, panel: true, inline: true },
-  { key: 'quick_actions', title: '蹇嵎閫夐」', type: 'list', prompt: '鏍规嵁褰撳墠鍓ф儏璧板悜锛岀粰鍑?~6涓帺瀹跺彲浠ュ彂閫佺殑鍏蜂綋琛屽姩閫夐」锛堟瘡椤?5~40瀛楋紝鍙洿鎺ヤ綔涓哄璇濊緭鍏ュ彂閫侊級', maxItems: 6, required: true, panel: true, inline: true },
+  { key: 'world_summary', title: 'World summary', type: 'text', prompt: 'Summarize the world and current situation in 1-3 sentences.', required: true, panel: true, inline: true, static: true },
+  { key: 'key_plot_points', title: 'Key plot points', type: 'list', prompt: '3-8 key plot points (short phrases).', maxItems: 8, required: true, panel: true, inline: false, static: true },
+  { key: 'current_scene', title: 'Current scene', type: 'text', prompt: 'Describe what just happened (place/characters/motive/conflict).', required: true, panel: true, inline: true },
+  { key: 'next_events', title: 'Likely next events', type: 'list', prompt: 'Most likely next events (list).', maxItems: 6, required: true, panel: true, inline: true },
+  { key: 'protagonist_impact', title: 'Protagonist impact', type: 'text', prompt: 'How the protagonist actions changed the situation.', required: true, panel: true, inline: false },
+  { key: 'tips', title: 'Tips for the protagonist', type: 'list', prompt: 'Actionable tips for next steps.', maxItems: 4, required: true, panel: true, inline: true },
+  { key: 'quick_actions', title: 'Quick actions', type: 'list', prompt: '4-6 concrete actions the user can send (5-40 chars each).', maxItems: 6, required: true, panel: true, inline: true },
 ]);
 
 // ===== 鎬荤粨鎻愮ず璇嶉粯璁ゅ€硷紙鍙湪闈㈡澘涓嚜瀹氫箟锛?=====
-const DEFAULT_SUMMARY_SYSTEM_PROMPT = `浣犳槸涓€涓€滃墽鎯呮€荤粨/涓栫晫涔﹁蹇嗏€濆姪鎵嬨€俓n\n浠诲姟锛歕n1) 闃呰鐢ㄦ埛涓嶢I瀵硅瘽鐗囨锛岀敓鎴愪竴娈电畝娲佹憳瑕侊紙涓枃锛?50~400瀛楋紝灏介噺鍖呭惈锛氫富瑕佷汉鐗?鐩爣/鍐茬獊/鍏抽敭鐗╁搧/鍦扮偣/鍏崇郴鍙樺寲/鏈В鍐崇殑鎮康锛夈€俓n2) 鎻愬彇 6~14 涓叧閿瘝锛堜腑鏂囦紭鍏堬紝浜虹墿/鍦扮偣/鍔垮姏/鐗╁搧/浜嬩欢/鍏崇郴绛夛級锛岀敤浜庝笘鐣屼功鏉＄洰瑙﹀彂璇嶃€傚叧閿瘝灏介噺鍘婚噸銆佷笉瑕佸お娉涳紙濡傗€滅劧鍚庘€濃€滃ソ鐨勨€濓級銆俙;
+const DEFAULT_SUMMARY_SYSTEM_PROMPT = `You are a story summary assistant.
 
-const DEFAULT_SUMMARY_USER_TEMPLATE = `銆愭ゼ灞傝寖鍥淬€憑{fromFloor}}-{{toFloor}}\n\n銆愬璇濈墖娈点€慭n{{chunk}}`;
+Task:
+1) Read the dialogue segment and produce a concise summary (150-400 Chinese characters preferred, include key characters/goal/conflict/items/locations/relationship changes/unresolved hooks).
+2) Extract 6-14 keywords (people/places/factions/items/events/relations), deduped and specific.`;
 
-const DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT = `浣犳槸涓€涓€滃墽鎯呭ぇ鎬荤粨鈥濆姪鎵嬨€?
+const DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT = `You are a high-level summary assistant.
 
-浠诲姟锛?
-1) 闃呰澶氭潯鍓ф儏鎬荤粨锛岃緭鍑轰竴娈垫洿楂樺眰绾х殑褰掔撼锛堜腑鏂囷紝200~600瀛楋紝寮鸿皟闃舵鎬ц繘灞?涓荤嚎鍙樺寲/鍏抽敭杞姌锛夈€?
-2) 鎻愬彇 8~16 涓叧閿瘝锛堜汉鐗?鍦扮偣/鍔垮姏/浜嬩欢/鍏崇郴绛夛級锛岀敤浜庝笘鐣屼功鏉＄洰瑙﹀彂璇嶃€?
-3) 鍙緭鍑?JSON銆俙;
-const DEFAULT_MEGA_SUMMARY_USER_TEMPLATE = `銆愬緟姹囨€绘潯鐩€慭n{{items}}`;
+Task:
+1) Read multiple summaries and produce a higher-level digest (200-600 Chinese characters, highlight major arcs/turning points).
+2) Extract 8-16 keywords (people/places/factions/items/events/relations).
+3) Output strict JSON only.`;
 
 // 鏃犺鐢ㄦ埛鎬庝箞鑷畾涔夋彁绀鸿瘝锛屼粛浼氬己鍒惰拷鍔?JSON 杈撳嚭缁撴瀯瑕佹眰锛岄伩鍏嶅啓鍏ヤ笘鐣屼功澶辫触
-const SUMMARY_JSON_REQUIREMENT = `杈撳嚭瑕佹眰锛歕n- 鍙緭鍑轰弗鏍?JSON锛屼笉瑕?Markdown銆佷笉瑕佷唬鐮佸潡銆佷笉瑕佷换浣曞浣欐枃瀛椼€俓n- JSON 缁撴瀯蹇呴』涓猴細{"title": string, "summary": string, "keywords": string[]}銆俓n- keywords 涓?6~14 涓瘝/鐭锛屽敖閲忓幓閲嶃€侀伩鍏嶆硾璇嶃€俙;
-
-
-// ===== 绱㈠紩鎻愮ず璇嶉粯璁ゅ€硷紙鍙湪闈㈡澘涓嚜瀹氫箟锛涚敤浜?LLM 缁煎悎鍒ゆ柇"妯″紡锛?=====
-const DEFAULT_INDEX_SYSTEM_PROMPT = `浣犳槸涓€涓?鍓ф儏绱㈠紩鍖归厤"鍔╂墜銆?
-
-銆愪换鍔°€?
-- 杈撳叆鍖呭惈锛氭渶杩戝墽鎯呮鏂囷紙鑺傞€夛級銆佺敤鎴峰綋鍓嶈緭鍏ャ€佷互鍙婅嫢骞插€欓€夌储寮曟潯鐩紙鍚爣棰?鎽樿/瑙﹀彂璇?绫诲瀷锛夈€?
-- 浣犵殑鐩爣鏄細缁煎悎鍒ゆ柇鍝簺鍊欓€夋潯鐩笌"褰撳墠鍓ф儏"鏈€鐩稿叧锛屽苟杩斿洖杩欎簺鍊欓€夌殑 id銆?
-
-銆愰€夋嫨浼樺厛绾с€?
-1. **浜虹墿鐩稿叧**锛氬綋鍓嶅墽鎯呮秹鍙婃煇涓狽PC鏃讹紝浼樺厛绱㈠紩璇PC鐨勬。妗堟潯鐩?
-2. **瑁呭鐩稿叧**锛氬綋鍓嶅墽鎯呮秹鍙婃煇浠惰澶囨椂锛屼紭鍏堢储寮曡瑁呭鐨勬潯鐩?
-3. **鍘嗗彶鍓ф儏**锛氫紭鍏堥€夋嫨鏃堕棿杈冧箙杩滀絾涓庡綋鍓嶅墽鎯呯浉鍏崇殑鏉＄洰锛堥伩鍏嶇储寮曟渶杩戝凡鍦ㄤ笂涓嬫枃涓殑鍓ф儏锛?
-4. **鍥犳灉鍏宠仈**锛氬綋鍓嶄簨浠剁殑鍓嶅洜銆佷紡绗斻€佹湭瑙ｆ偓蹇?
-
-銆愰伩鍏嶃€?
-- 涓嶈閫夋嫨鍒氬垰鍙戠敓鐨勫墽鎯咃紙鏈€杩?灞備互鍐呯殑鍐呭閫氬父宸插湪涓婁笅鏂囦腑锛?
-- 閬垮厤閫夋嫨鏄庢樉鏃犲叧鎴栬繃浜庢硾娉涚殑鏉＄洰
-
-銆愯繑鍥炶姹傘€?
-- 杩斿洖鏉＄洰鏁伴噺搴?<= maxPick
-- 鍒嗙被鎺у埗锛氫汉鐗?<= maxCharacters锛岃澶?<= maxEquipments锛屽娍鍔?<= maxFactions锛屾垚灏?<= maxAchievements锛屽壇鑱屼笟 <= maxSubProfessions锛屼换鍔?<= maxQuests锛屽墽鎯?<= maxPlot`;
+const SUMMARY_JSON_REQUIREMENT = `输出要求：
+- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。
+- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。
+- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
 const DEFAULT_INDEX_USER_TEMPLATE = `銆愮敤鎴峰綋鍓嶈緭鍏ャ€?
 {{userMessage}}
