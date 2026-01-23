@@ -3119,10 +3119,10 @@ function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
   return items;
 }
 
-async function ensureBlueIndexLive(force = false) {
+async function ensureBlueIndexLive(force = false, forceRead = false) {
   const s = ensureSettings();
   const mode = String(s.wiBlueIndexMode || 'live');
-  if (mode !== 'live') {
+  if (mode !== 'live' && !forceRead) {
     const arr = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
     return arr;
   }
@@ -8205,6 +8205,9 @@ async function buildTriggerInjectionForText(userText, chat, settings, logStatus)
       console.warn('[StoryGuide] index LLM failed; fallback to local similarity', e);
       picked = pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, minScore, includeUser, userWeight);
     }
+    if (!picked.length) {
+      picked = pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, minScore, includeUser, userWeight);
+    }
   } else {
     picked = pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, minScore, includeUser, userWeight);
   }
@@ -8537,10 +8540,20 @@ function buildRecentChatText(chat, lookback, excludeLast = true, stripTags = '')
 function getBlueIndexEntriesFast() {
   const s = ensureSettings();
   const mode = String(s.wiBlueIndexMode || 'live');
-  if (mode !== 'live') return (Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : []);
+  const cached = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
+  const live = Array.isArray(blueIndexLiveCache.entries) ? blueIndexLiveCache.entries : [];
+  if (mode !== 'live') {
+    const file = pickBlueIndexFileName();
+    if (!cached.length && file) {
+      ensureBlueIndexLive(false, true).catch(() => void 0);
+    }
+    if (cached.length) return cached;
+    if (live.length) return live;
+    return cached;
+  }
 
   const file = pickBlueIndexFileName();
-  if (!file) return (Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : []);
+  if (!file) return cached;
 
   const minSec = clampInt(s.wiBlueIndexMinRefreshSec, 5, 600, 20);
   const now = Date.now();
@@ -8553,9 +8566,8 @@ function getBlueIndexEntriesFast() {
     ensureBlueIndexLive(false).catch(() => void 0);
   }
 
-  const live = Array.isArray(blueIndexLiveCache.entries) ? blueIndexLiveCache.entries : [];
   if (live.length) return live;
-  return (Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : []);
+  return cached;
 }
 
 function detectIndexEntryTypeByTitle(title, settings) {
@@ -8580,7 +8592,7 @@ function detectIndexEntryTypeByTitle(title, settings) {
 
 function addStructuredIndexCandidates(out, entriesCache, prefix, type, seen) {
   for (const entry of Object.values(entriesCache || {})) {
-    if (!entry || entry.targetType !== 'green') continue;
+    if (!entry) continue;
     if (!entry.name || !entry.indexId) continue;
     const key = buildStructuredEntryKey(prefix, entry.name, entry.indexId);
     const kws = [key];
