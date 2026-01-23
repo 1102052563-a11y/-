@@ -3779,37 +3779,39 @@ async function runAnalysis() {
 
 // -------------------- summary (auto + world info) --------------------
 
-function isCountableMessage(m) {
+function isCountableMessage(m, includeHidden = false) {
   if (!m) return false;
   if (m.is_system === true) return false;
-  if (m.is_hidden === true) return false;
+  if (!includeHidden && m.is_hidden === true) return false;
   const txt = String(m.mes ?? '').trim();
   return Boolean(txt);
 }
 
-function isCountableAssistantMessage(m) {
-  return isCountableMessage(m) && m.is_user !== true;
+function isCountableAssistantMessage(m, includeHidden = false) {
+  return isCountableMessage(m, includeHidden) && m.is_user !== true;
 }
 
-function computeFloorCount(chat, mode) {
+function computeFloorCount(chat, mode, includeHidden = false) {
   const arr = Array.isArray(chat) ? chat : [];
   let c = 0;
   for (const m of arr) {
     if (mode === 'assistant') {
-      if (isCountableAssistantMessage(m)) c++;
+      if (isCountableAssistantMessage(m, includeHidden)) c++;
     } else {
-      if (isCountableMessage(m)) c++;
+      if (isCountableMessage(m, includeHidden)) c++;
     }
   }
   return c;
 }
 
-function findStartIndexForLastNFloors(chat, mode, n) {
+function findStartIndexForLastNFloors(chat, mode, n, includeHidden = false) {
   const arr = Array.isArray(chat) ? chat : [];
   let remaining = Math.max(1, Number(n) || 1);
   for (let i = arr.length - 1; i >= 0; i--) {
     const m = arr[i];
-    const hit = (mode === 'assistant') ? isCountableAssistantMessage(m) : isCountableMessage(m);
+    const hit = (mode === 'assistant')
+      ? isCountableAssistantMessage(m, includeHidden)
+      : isCountableMessage(m, includeHidden);
     if (!hit) continue;
     remaining -= 1;
     if (remaining <= 0) return i;
@@ -3817,7 +3819,7 @@ function findStartIndexForLastNFloors(chat, mode, n) {
   return 0;
 }
 
-function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars) {
+function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars, includeHidden = false) {
   const arr = Array.isArray(chat) ? chat : [];
   const start = Math.max(0, Math.min(arr.length, Number(startIdx) || 0));
   const perMsg = clampInt(maxCharsPerMessage, 200, 8000, 4000);
@@ -3827,7 +3829,7 @@ function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars
   let total = 0;
   for (let i = start; i < arr.length; i++) {
     const m = arr[i];
-    if (!isCountableMessage(m)) continue;
+    if (!isCountableMessage(m, includeHidden)) continue;
     const who = m.is_user === true ? '用户' : (m.name || 'AI');
     let txt = stripHtml(m.mes || '');
     if (!txt) continue;
@@ -3841,13 +3843,15 @@ function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars
 }
 
 // 手动楼层范围总结：按 floor 号定位到聊天索引
-function findChatIndexByFloor(chat, mode, floorNo) {
+function findChatIndexByFloor(chat, mode, floorNo, includeHidden = false) {
   const arr = Array.isArray(chat) ? chat : [];
   const target = Math.max(1, Number(floorNo) || 1);
   let c = 0;
   for (let i = 0; i < arr.length; i++) {
     const m = arr[i];
-    const hit = (mode === 'assistant') ? isCountableAssistantMessage(m) : isCountableMessage(m);
+    const hit = (mode === 'assistant')
+      ? isCountableAssistantMessage(m, includeHidden)
+      : isCountableMessage(m, includeHidden);
     if (!hit) continue;
     c += 1;
     if (c === target) return i;
@@ -3855,28 +3859,28 @@ function findChatIndexByFloor(chat, mode, floorNo) {
   return -1;
 }
 
-function resolveChatRangeByFloors(chat, mode, fromFloor, toFloor) {
-  const floorNow = computeFloorCount(chat, mode);
+function resolveChatRangeByFloors(chat, mode, fromFloor, toFloor, includeHidden = false) {
+  const floorNow = computeFloorCount(chat, mode, includeHidden);
   if (floorNow <= 0) return null;
   let a = clampInt(fromFloor, 1, floorNow, 1);
   let b = clampInt(toFloor, 1, floorNow, floorNow);
   if (b < a) { const t = a; a = b; b = t; }
 
-  let startIdx = findChatIndexByFloor(chat, mode, a);
-  let endIdx = findChatIndexByFloor(chat, mode, b);
+  let startIdx = findChatIndexByFloor(chat, mode, a, includeHidden);
+  let endIdx = findChatIndexByFloor(chat, mode, b, includeHidden);
   if (startIdx < 0 || endIdx < 0) return null;
 
   // 在 assistant 模式下，为了更贴近“回合”，把起始 assistant 楼层前一条用户消息也纳入（若存在）。
   if (mode === 'assistant' && startIdx > 0) {
     const prev = chat[startIdx - 1];
-    if (prev && prev.is_user === true && isCountableMessage(prev)) startIdx -= 1;
+    if (prev && prev.is_user === true && isCountableMessage(prev, includeHidden)) startIdx -= 1;
   }
 
   if (startIdx > endIdx) { const t = startIdx; startIdx = endIdx; endIdx = t; }
   return { fromFloor: a, toFloor: b, startIdx, endIdx, floorNow };
 }
 
-function buildSummaryChunkTextRange(chat, startIdx, endIdx, maxCharsPerMessage, maxTotalChars) {
+function buildSummaryChunkTextRange(chat, startIdx, endIdx, maxCharsPerMessage, maxTotalChars, includeHidden = false) {
   const arr = Array.isArray(chat) ? chat : [];
   const start = Math.max(0, Math.min(arr.length - 1, Number(startIdx) || 0));
   const end = Math.max(start, Math.min(arr.length - 1, Number(endIdx) || 0));
@@ -3887,7 +3891,7 @@ function buildSummaryChunkTextRange(chat, startIdx, endIdx, maxCharsPerMessage, 
   let total = 0;
   for (let i = start; i <= end; i++) {
     const m = arr[i];
-    if (!isCountableMessage(m)) continue;
+    if (!isCountableMessage(m, includeHidden)) continue;
     const who = m.is_user === true ? '用户' : (m.name || 'AI');
     let txt = stripHtml(m.mes || '');
     if (!txt) continue;
@@ -6158,7 +6162,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
   try {
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
     const mode = String(s.summaryCountMode || 'assistant');
-    const floorNow = computeFloorCount(chat, mode);
+    const floorNow = computeFloorCount(chat, mode, true);
 
     let meta = getSummaryMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
@@ -6167,7 +6171,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     const segments = [];
 
     if (reason === 'manual_range') {
-      const resolved0 = resolveChatRangeByFloors(chat, mode, manualFromFloor, manualToFloor);
+      const resolved0 = resolveChatRangeByFloors(chat, mode, manualFromFloor, manualToFloor, true);
       if (!resolved0) {
         setStatus('手动楼层范围无效（请检查起止层号）', 'warn');
         showToast('手动楼层范围无效（请检查起止层号）', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
@@ -6183,7 +6187,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         const b0 = resolved0.toFloor;
         for (let f = a0; f <= b0; f += every) {
           const g = Math.min(b0, f + every - 1);
-          const r = resolveChatRangeByFloors(chat, mode, f, g);
+          const r = resolveChatRangeByFloors(chat, mode, f, g, true);
           if (r) segments.push(r);
         }
         if (!segments.length) segments.push(resolved0);
@@ -6197,7 +6201,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       const endIdx = Math.max(0, chat.length - 1);
       segments.push({ startIdx, endIdx, fromFloor, toFloor, floorNow });
     } else {
-      const startIdx = findStartIndexForLastNFloors(chat, mode, every);
+      const startIdx = findStartIndexForLastNFloors(chat, mode, every, true);
       const fromFloor = Math.max(1, floorNow - every + 1);
       const toFloor = floorNow;
       const endIdx = Math.max(0, chat.length - 1);
@@ -6261,7 +6265,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       if (totalSeg > 1) setStatus(`手动分段总结中…（${i + 1}/${totalSeg}｜${fromFloor}-${toFloor}）`, 'warn');
       else setStatus('总结中…', 'warn');
 
-      const chunkText = buildSummaryChunkTextRange(chat, startIdx, endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
+      const chunkText = buildSummaryChunkTextRange(chat, startIdx, endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars, true);
       if (!chunkText) {
         runErrs.push(`${fromFloor}-${toFloor}：片段为空`);
         continue;
@@ -6511,7 +6515,7 @@ async function maybeAutoSummary(reason = '') {
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
   const mode = String(s.summaryCountMode || 'assistant');
   const every = clampInt(s.summaryEvery, 1, 200, 20);
-  const floorNow = computeFloorCount(chat, mode);
+  const floorNow = computeFloorCount(chat, mode, true);
   if (floorNow <= 0) return;
   if (floorNow % every !== 0) return;
 
@@ -6572,7 +6576,7 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
 
     const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
     const every = clampInt(s.structuredEntriesEvery, 1, 200, 1);
-    const floorNow = computeFloorCount(chat, mode);
+    const floorNow = computeFloorCount(chat, mode, true);
 
     let meta = getSummaryMeta();
     if (!meta || typeof meta !== 'object') meta = getDefaultSummaryMeta();
