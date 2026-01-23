@@ -3106,18 +3106,8 @@ function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
 
   const base = parsed.filter(e => e && e.content);
 
-  // 优先用“总结前缀”筛选（避免把其他世界书条目全塞进索引）
-  // 但如果因不同 ST 结构导致 title/comment 不一致而筛选到 0 条，则自动回退到全部条目，避免“明明有内容却显示 0 条”。
-  let picked = base;
-  if (prefix) {
-    picked = base.filter(e =>
-      String(e.title || '').includes(prefix) ||
-      String(e.content || '').includes(prefix)
-    );
-    if (!picked.length) picked = base;
-  }
-
-  const items = picked
+  // 蓝灯索引使用“全量条目”，以便结构化条目也能被索引命中
+  const items = base
     .map(e => ({
       title: String(e.title || '').trim() || (e.keys?.[0] ? `条目：${e.keys[0]}` : '条目'),
       summary: String(e.content || '').trim(),
@@ -7305,14 +7295,8 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
 
     const segments = [];
     const readFromFloor = Math.max(1, floorNow - readFloors + 1);
-    if (reason === 'auto' && meta.lastStructuredChatLen > 0 && meta.lastStructuredChatLen < chat.length) {
-      const fromFloor = Math.max(readFromFloor, Number(meta.lastStructuredFloor || 0) + 1);
-      const resolved = resolveChatRangeByFloors(chat, mode, fromFloor, floorNow, true, true);
-      if (resolved) segments.push(resolved);
-    } else {
-      const resolved = resolveChatRangeByFloors(chat, mode, readFromFloor, floorNow, true, true);
-      if (resolved) segments.push(resolved);
-    }
+    const resolved = resolveChatRangeByFloors(chat, mode, readFromFloor, floorNow, true, true);
+    if (resolved) segments.push(resolved);
 
     if (!segments.length) return 0;
 
