@@ -6550,7 +6550,7 @@ async function maybeAutoStructuredEntries(reason = '') {
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
   const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
   const every = clampInt(s.structuredEntriesEvery, 1, 200, 1);
-  const floorNow = computeFloorCount(chat, mode);
+  const floorNow = computeFloorCount(chat, mode, true);
   if (floorNow <= 0) return;
   if (floorNow % every !== 0) return;
 
@@ -6589,7 +6589,7 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
       const endIdx = Math.max(0, chat.length - 1);
       segments.push({ startIdx, endIdx, fromFloor, toFloor, floorNow });
     } else {
-      const startIdx = findStartIndexForLastNFloors(chat, mode, every);
+      const startIdx = findStartIndexForLastNFloors(chat, mode, every, true);
       const fromFloor = Math.max(1, floorNow - every + 1);
       const toFloor = floorNow;
       const endIdx = Math.max(0, chat.length - 1);
@@ -6614,7 +6614,7 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
 
     let processed = 0;
     for (const seg of segments) {
-      const chunkText = buildSummaryChunkTextRange(chat, seg.startIdx, seg.endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars);
+      const chunkText = buildSummaryChunkTextRange(chat, seg.startIdx, seg.endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars, true);
       if (!chunkText) continue;
       const ok = await processStructuredEntriesChunk(chunkText, seg.fromFloor, seg.toFloor, meta, s, summaryStatData);
       if (ok) processed += 1;
@@ -13453,7 +13453,7 @@ function updateSummaryManualRangeHint(setDefaults = false) {
     const ctx = SillyTavern.getContext();
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
     const mode = String(s.summaryCountMode || 'assistant');
-    const floorNow = computeFloorCount(chat, mode);
+    const floorNow = computeFloorCount(chat, mode, true);
     const every = clampInt(s.summaryEvery, 1, 200, 20);
 
     // Optional: show how many entries would be generated when manual split is enabled.
