@@ -84,8 +84,8 @@ const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不�
 const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个"剧情索引匹配"助手。
 
 【任务】
-- 输入包含：最近剧情正文（节选）、用户当前输入、以及若干候选索引条目（含标题/摘要/触发词/类型）。
-- 你的目标是：综合判断哪些候选条目与"当前剧情"最相关，并返回这些候选的 id。
+- 输入包含：最近剧情正文（节选）、用户当前输入、以及蓝灯世界书的全部候选条目（含名称/摘要/触发词/类型）。
+- 你的目标是：综合判断哪些候选条目与"当前剧情"最相关，并返回这些候选的名称。
 
 【选择优先级】
 1. **人物相关**：当前剧情涉及某个NPC时，优先索引该NPC的档案条目
@@ -107,7 +107,7 @@ const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】
 【最近剧情（节选）】
 {{recentText}}
 
-【候选索引条目（JSON）】
+【候选索引条目（JSON，来自蓝灯世界书全部条目）】
 {{candidates}}
 
 【选择限制】
@@ -124,9 +124,9 @@ const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】
 
 const INDEX_JSON_REQUIREMENT = `输出要求：
 - 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。
-- JSON 结构必须为：{"pickedIds": number[]}。
-- pickedIds 必须是候选列表里的 id（整数）。
-- 返回的 pickedIds 数量 <= maxPick。`;
+- JSON 结构必须为：{"pickedNames": string[]}。
+- pickedNames 必须是候选列表里的 name（即世界书条目名称，例如：[mvu_plot]成就｜弑星者｜ACH-001）。
+- 返回的 pickedNames 数量 <= maxPick。`;
 
 
 // ===== 结构化世界书条目提示词默认值 =====
@@ -3109,7 +3109,7 @@ function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
   // 蓝灯索引使用“全量条目”，以便结构化条目也能被索引命中
   const items = base
     .map(e => ({
-      title: String(e.title || '').trim() || (e.keys?.[0] ? `条目：${e.keys[0]}` : '条目'),
+      title: String(e.comment || e.title || '').trim() || (e.keys?.[0] ? `条目：${e.keys[0]}` : '条目'),
       summary: String(e.content || '').trim(),
       keywords: Array.isArray(e.keys) ? e.keys.slice(0, 120) : [],
       importedAt: Date.now(),
@@ -8618,21 +8618,8 @@ function addStructuredIndexCandidates(out, entriesCache, prefix, type, seen) {
 
 function collectBlueIndexCandidates() {
   const s = ensureSettings();
-  const meta = getSummaryMeta();
   const out = [];
   const seen = new Set();
-
-  const fromMeta = Array.isArray(meta?.history) ? meta.history : [];
-  for (const r of fromMeta) {
-    const title = String(r?.title || '').trim();
-    const summary = String(r?.summary || '').trim();
-    const keywords = sanitizeKeywords(r?.keywords);
-    if (!summary) continue;
-    const key = `${title}__${summary.slice(0, 24)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'), summary, keywords, type: 'plot' });
-  }
 
   const fromImported = getBlueIndexEntriesFast();
   for (const r of fromImported) {
@@ -8650,13 +8637,6 @@ function collectBlueIndexCandidates() {
       type: detectIndexEntryTypeByTitle(title, s),
     });
   }
-
-  addStructuredIndexCandidates(out, meta.characterEntries, String(s.characterEntryPrefix || '人物'), 'character', seen);
-  addStructuredIndexCandidates(out, meta.equipmentEntries, String(s.equipmentEntryPrefix || '装备'), 'equipment', seen);
-  addStructuredIndexCandidates(out, meta.factionEntries, String(s.factionEntryPrefix || '势力'), 'faction', seen);
-  addStructuredIndexCandidates(out, meta.achievementEntries, String(s.achievementEntryPrefix || '成就'), 'achievement', seen);
-  addStructuredIndexCandidates(out, meta.subProfessionEntries, String(s.subProfessionEntryPrefix || '副职业'), 'subProfession', seen);
-  addStructuredIndexCandidates(out, meta.questEntries, String(s.questEntryPrefix || '任务'), 'quest', seen);
 
   return out;
 }
@@ -8796,7 +8776,8 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
     const summary0 = String(e.summary || '').trim();
     const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '…') : summary0;
     const kws = Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : [];
-    return { id: i, title: title || '条目', summary, keywords: kws, type: normalizeIndexEntryType(e, s) };
+    const name = title || '条目';
+    return { id: i, name, title: name, summary, keywords: kws, type: normalizeIndexEntryType(e, s) };
   });
 
   const messages = buildIndexPromptMessages(recentText, userText, candidatesForModel, maxEntries);
@@ -8831,8 +8812,8 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
   } else {
     const schema = {
       type: 'object',
-      properties: { pickedIds: { type: 'array', items: { type: 'integer' } } },
-      required: ['pickedIds'],
+      properties: { pickedNames: { type: 'array', items: { type: 'string' } } },
+      required: ['pickedNames'],
     };
     jsonText = await callViaSillyTavern(messages, schema, clampFloat(s.wiIndexTemperature, 0, 2, 0.2));
     if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
@@ -8843,15 +8824,51 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
   }
 
   const parsed = safeJsonParse(jsonText);
+  const pickedNames = Array.isArray(parsed?.pickedNames) ? parsed.pickedNames : [];
   const pickedIds = Array.isArray(parsed?.pickedIds) ? parsed.pickedIds : [];
-  const uniq = Array.from(new Set(pickedIds.map(x => Number(x)).filter(n => Number.isFinite(n))));
+  const uniqIds = Array.from(new Set(pickedIds.map(x => Number(x)).filter(n => Number.isFinite(n))));
+
+  const nameToIndex = new Map();
+  for (let i = 0; i < shortlist.length; i++) {
+    const title = String(shortlist[i]?.e?.title || '').trim();
+    if (!title) continue;
+    const norm = title.toLowerCase();
+    if (!nameToIndex.has(norm)) nameToIndex.set(norm, i);
+  }
 
   const picked = [];
-  for (const id of uniq) {
-    const origin = shortlist[id]?.e || null;
-    if (origin) picked.push({ e: origin, score: Number(shortlist[id]?.score || 0) });
-    if (picked.length >= maxEntries) break;
+  const seenIdx = new Set();
+  const pushByIndex = (idx) => {
+    if (!Number.isFinite(idx)) return;
+    if (seenIdx.has(idx)) return;
+    const origin = shortlist[idx]?.e || null;
+    if (!origin) return;
+    seenIdx.add(idx);
+    picked.push({ e: origin, score: Number(shortlist[idx]?.score || 0) });
+  };
+
+  for (const name of pickedNames) {
+    const raw = String(name || '').trim();
+    if (!raw) continue;
+    const norm = raw.toLowerCase();
+    if (nameToIndex.has(norm)) {
+      pushByIndex(nameToIndex.get(norm));
+      if (picked.length >= maxEntries) break;
+      continue;
+    }
+    if (/^\d+$/.test(norm)) {
+      pushByIndex(Number(norm));
+      if (picked.length >= maxEntries) break;
+    }
   }
+
+  if (picked.length < maxEntries) {
+    for (const id of uniqIds) {
+      pushByIndex(id);
+      if (picked.length >= maxEntries) break;
+    }
+  }
+
   return applyIndexTypeLimits(picked, s, maxEntries);
 }
 
@@ -11816,7 +11833,7 @@ function buildModalHtml() {
   </div>
   <div class="sg-row sg-inline">
     <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示词</button>
-    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}。插件会强制要求输出 JSON：{pickedIds:number[]}。</div>
+    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}。插件会强制要求输出 JSON：{pickedNames:string[]}。</div>
   </div>
 
   <div class="sg-card sg-subcard" id="sg_index_custom_block" style="display:none">
