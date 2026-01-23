@@ -7288,6 +7288,8 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
   if (isStructuring) return 0;
 
   isStructuring = true;
+  setStatus('正在生成结构化条目…', 'warn');
+  showToast('正在生成结构化条目…', { kind: 'warn', spinner: true, sticky: true });
   try {
     const ctx = SillyTavern.getContext();
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -7352,11 +7354,15 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
       await setSummaryMeta(meta);
     }
 
+    if (processed > 0) setStatus(`结构化条目完成 ✅（${processed} 段）`, 'ok');
+    else setStatus('结构化条目未生成', 'warn');
     return processed;
   } catch (e) {
     console.warn('[StoryGuide] Structured entries run failed:', e);
+    setStatus(`结构化条目生成失败：${e?.message ?? e}`, 'err');
     return 0;
   } finally {
+    try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
     isStructuring = false;
   }
 }
