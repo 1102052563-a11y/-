@@ -175,27 +175,45 @@ const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管�
 const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V1 = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
 const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V2 = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}\\n【已知势力列表】\\n{{knownFactions}}`;
 const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}\\n【已知物品栏列表】\\n{{knownInventories}}\\n【已知势力列表】\\n{{knownFactions}}\\n【已知成就列表】\\n{{knownAchievements}}\\n【已知副职业列表】\\n{{knownSubProfessions}}\\n【已知任务列表】\\n{{knownQuests}}`;
+const DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE = `【人物】{{name}}
+别名：{{aliases}}
+阵营/身份：{{faction}}
+状态：{{status}}
+性格：{{personality}}
+背景：{{background}}
+六维属性：{{sixStats}}
+装备：{{equipment}}
+技能/天赋：{{skillsTalents}}
+物品栏：{{inventory}}
+性生活（仅女性）：{{sexLife}}
+【核心性格锚点】{{corePersonality}}
+【角色动机】{{motivation}}
+【关系阶段】{{relationshipStage}}
+与主角关系：{{relationToProtagonist}}
+关键事件：{{keyEvents}}
+{{extraFields}}`;
 const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。
 
-【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件
+【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件、六维属性、技能/天赋、当前装备、物品栏
+【仅女性字段】性生活（仅女性时填写 sexLife，非女性留空）
 
 【性格铆钉字段（重要）】
 - corePersonality：核心性格锚点，不会轻易改变的根本特质（如"傲慢"、"多疑"、"重义"），即使与主角关系改善也会保持
 - motivation：角色自己的独立目标/动机，不应为了主角而放弃
 - relationshipStage：与主角的关系阶段（陌生/初识/熟悉/信任/亲密），关系不应跳跃式发展
 
-若角色死亡/永久离开，将其名字加入 deletedCharacters。若有 statData，在 statInfo 中精简总结。信息不足写"待确认"。`;
+若角色死亡/永久离开，将其名字加入 deletedCharacters。若有 statData，请用于补全六维属性/装备/技能/物品栏。信息不足写"待确认"。`;
 const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备。若装备被卖掉/分解/丢弃/损坏，将其名字加入 deletedEquipments。若有 statData，精简总结其属性。`;
 const DEFAULT_STRUCTURED_INVENTORY_PROMPT = `记录主角物品栏中的重要道具/材料/消耗品（避免过度琐碎）。必须记录：数量、来源、当前状态/用途。若物品被消耗/丢弃/转移且不再持有，将其名字加入 deletedInventories。若有 statData，精简总结其属性。`;
 const DEFAULT_STRUCTURED_FACTION_PROMPT = `记录重要势力/组织/阵营。说明性质、范围、领导者、理念、与主角关系、当前状态。若势力解散/覆灭/被吞并，将其名字加入 deletedFactions。若有 statData，精简总结其数值。`;
 const DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT = `记录主角获得的成就。说明达成条件、影响、获得时间与当前状态。若成就被撤销/失效，将其名字加入 deletedAchievements。若有 statData，精简总结其数值。`;
 const DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT = `记录主角的副职业/第二职业。说明定位、等级/进度、核心技能、获得方式、当前状态。若副职业被放弃/失去，将其名字加入 deletedSubProfessions。若有 statData，精简总结其数值。`;
 const DEFAULT_STRUCTURED_QUEST_PROMPT = `记录任务/委托。说明目标、发布者、进度、奖励、期限/地点。若任务完成/失败/取消，将其名字加入 deletedQuests。若有 statData，精简总结其数值。`;
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。人物条目请使用 sixStats/skillsTalents 等字段，不输出 statInfo。
 
 结构：{"characters":[...],"equipments":[...],"inventories":[...],"factions":[...],"achievements":[...],"subProfessions":[...],"quests":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedInventories":[...],"deletedFactions":[...],"deletedAchievements":[...],"deletedSubProfessions":[...],"deletedQuests":[...]}
 
-characters 条目结构：{name,uid,aliases[],faction,status,personality,corePersonality:"核心性格锚点（不轻易改变）",motivation:"角色独立动机/目标",relationshipStage:"陌生|初识|熟悉|信任|亲密",background,relationToProtagonist,keyEvents[],statInfo,isNew,isUpdated}
+characters 条目结构：{name,uid,aliases[],gender,faction,status,personality,corePersonality:"核心性格锚点（不轻易改变）",motivation:"角色独立动机/目标",relationshipStage:"陌生|初识|熟悉|信任|亲密",background,relationToProtagonist,keyEvents[],sixStats,equipment,skillsTalents,inventory,sexLife(仅女性),isNew,isUpdated}
 
 equipments 条目结构：{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}
 
@@ -377,6 +395,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   structuredWorldbookMode: 'active', // active | all
   // 结构化条目内容格式
   structuredEntryContentFormat: 'markdown', // text | markdown
+  // Character entry template (optional)
+  structuredCharacterEntryTemplate: '',
 
   // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
@@ -5366,12 +5386,70 @@ function appendExtraFields(parts, data, knownKeys) {
 }
 
 // 构建条目内容（档案式描述）
+function formatTemplateField(value, mode) {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) {
+    const simple = value.every(v => v == null || ['string', 'number', 'boolean'].includes(typeof v));
+    if (simple) {
+      const items = value.map(v => String(v ?? '').trim()).filter(Boolean);
+      if (!items.length) return '';
+      if (mode === 'markdown') {
+        const list = items.map(item => `- ${item}`).join('\n');
+        return list ? `\n${list}` : '';
+      }
+      return items.join(', ');
+    }
+    const rendered = formatStructuredValue(value, mode);
+    if (mode === 'markdown' && rendered.includes('\n') && !rendered.startsWith('\n')) return `\n${rendered}`;
+    return rendered;
+  }
+  if (typeof value === 'object') {
+    const rendered = formatStructuredValue(value, mode);
+    if (mode === 'markdown' && rendered.includes('\n') && !rendered.startsWith('\n')) return `\n${rendered}`;
+    return rendered;
+  }
+  const text = String(value).trim();
+  return text;
+}
+
+function cleanupStructuredTemplateOutput(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const cleaned = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (/[:\uFF1A]\s*$/.test(trimmed)) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length && /^([-*]|\d+\.)/.test(lines[j].trim())) {
+        cleaned.push(line);
+      }
+      continue;
+    }
+    cleaned.push(line);
+  }
+  return cleaned.join('\n');
+}
+
+function isFemaleCharacter(char) {
+  const gender = String(char?.gender || '').trim().toLowerCase();
+  if (!gender) return false;
+  if (/\u5973/.test(gender)) return true;
+  if (gender === 'f') return true;
+  if (gender.includes('female') || gender.includes('woman') || gender.includes('girl')) return true;
+  return false;
+}
+
+// Build entry content (profile format)
 function buildCharacterContent(char) {
-  const parts = [];
-  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
+  const s = ensureSettings();
+  const mode = String(s.structuredEntryContentFormat || 'text');
+  const template = String(s.structuredCharacterEntryTemplate || '').trim() || DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE;
   const knownKeys = [
     'name',
     'aliases',
+    'gender',
     'faction',
     'status',
     'personality',
@@ -5381,26 +5459,38 @@ function buildCharacterContent(char) {
     'background',
     'relationToProtagonist',
     'keyEvents',
-    'statInfo',
+    'sixStats',
+    'equipment',
+    'skillsTalents',
+    'inventory',
+    'sexLife',
   ];
-  if (char.name) parts.push(`【人物】${char.name}`);
-  if (char.aliases?.length) parts.push(`别名：${char.aliases.join('、')}`);
-  if (char.faction) parts.push(`阵营/身份：${char.faction}`);
-  if (char.status) parts.push(`状态：${char.status}`);
-  if (char.personality) parts.push(`性格：${char.personality}`);
-
-  // 性格铆钉（用特殊格式突出显示）
-  if (char.corePersonality) parts.push(`【核心性格锚点】${char.corePersonality}（不会轻易改变）`);
-  if (char.motivation) parts.push(`【角色动机】${char.motivation}（独立于主角的目标）`);
-  if (char.relationshipStage) parts.push(`【关系阶段】${char.relationshipStage}`);
-
-  if (char.background) parts.push(`背景：${char.background}`);
-  if (char.relationToProtagonist) parts.push(`与主角关系：${char.relationToProtagonist}`);
-  if (char.keyEvents?.length) parts.push(`关键事件：${char.keyEvents.join('；')}`);
-  if (char.statInfo) pushStructuredLabel(parts, '属性数据', char.statInfo, mode);
+  const extraParts = [];
   knownKeys.__mode = mode;
-  appendExtraFields(parts, char, knownKeys);
-  return parts.join('\n');
+  appendExtraFields(extraParts, char, knownKeys);
+  const extraFields = extraParts.join('\n');
+  const vars = {
+    name: formatTemplateField(char?.name, mode),
+    aliases: formatTemplateField(char?.aliases, mode),
+    gender: formatTemplateField(char?.gender, mode),
+    faction: formatTemplateField(char?.faction, mode),
+    status: formatTemplateField(char?.status, mode),
+    personality: formatTemplateField(char?.personality, mode),
+    background: formatTemplateField(char?.background, mode),
+    sixStats: formatTemplateField(char?.sixStats, mode),
+    equipment: formatTemplateField(char?.equipment, mode),
+    skillsTalents: formatTemplateField(char?.skillsTalents, mode),
+    inventory: formatTemplateField(char?.inventory, mode),
+    sexLife: isFemaleCharacter(char) ? formatTemplateField(char?.sexLife, mode) : '',
+    corePersonality: formatTemplateField(char?.corePersonality, mode),
+    motivation: formatTemplateField(char?.motivation, mode),
+    relationshipStage: formatTemplateField(char?.relationshipStage, mode),
+    relationToProtagonist: formatTemplateField(char?.relationToProtagonist, mode),
+    keyEvents: formatTemplateField(char?.keyEvents, mode),
+    extraFields,
+  };
+  const output = renderTemplate(template, vars);
+  return cleanupStructuredTemplateOutput(output);
 }
 
 function buildEquipmentContent(equip) {
@@ -11710,6 +11800,11 @@ function buildModalHtml() {
                 <textarea id="sg_structuredCharacterPrompt" rows="3" placeholder="例如：优先记录阵营/关系/关键事件…"></textarea>
               </div>
               <div class="sg-field">
+                <label>人物条目模板（可配置）</label>
+                <textarea id="sg_structuredCharacterEntryTemplate" rows="8" placeholder="支持占位符：{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}"></textarea>
+                <div class="sg-hint">占位符：{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}</div>
+              </div>
+              <div class="sg-field">
                 <label>装备条目提示词（可选）</label>
                 <textarea id="sg_structuredEquipmentPrompt" rows="3" placeholder="例如：强调来源/稀有度/当前状态…"></textarea>
               </div>
@@ -12909,6 +13004,7 @@ function ensureModal() {
     $('#sg_structuredEntriesSystemPrompt').val(DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT);
     $('#sg_structuredEntriesUserTemplate').val(DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE);
     $('#sg_structuredCharacterPrompt').val(DEFAULT_STRUCTURED_CHARACTER_PROMPT);
+    $('#sg_structuredCharacterEntryTemplate').val(DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE);
     $('#sg_structuredEquipmentPrompt').val(DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
     $('#sg_structuredInventoryPrompt').val(DEFAULT_STRUCTURED_INVENTORY_PROMPT);
     $('#sg_structuredFactionPrompt').val(DEFAULT_STRUCTURED_FACTION_PROMPT);
@@ -13039,7 +13135,7 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_structuredWorldbookEnabled, #sg_structuredWorldbookMode, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_structuredWorldbookEnabled, #sg_structuredWorldbookMode, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredCharacterEntryTemplate, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -13915,6 +14011,7 @@ function pullSettingsToUi() {
   $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
   $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
+  $('#sg_structuredCharacterEntryTemplate').val(String(s.structuredCharacterEntryTemplate || DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE));
   $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
   $('#sg_structuredInventoryPrompt').val(String(s.structuredInventoryPrompt || DEFAULT_STRUCTURED_INVENTORY_PROMPT));
   $('#sg_structuredFactionPrompt').val(String(s.structuredFactionPrompt || DEFAULT_STRUCTURED_FACTION_PROMPT));
@@ -14512,6 +14609,7 @@ function pullUiToSettings() {
   s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
   s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
+  s.structuredCharacterEntryTemplate = String($('#sg_structuredCharacterEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE;
   s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
   s.structuredInventoryPrompt = String($('#sg_structuredInventoryPrompt').val() || '').trim() || DEFAULT_STRUCTURED_INVENTORY_PROMPT;
   s.structuredFactionPrompt = String($('#sg_structuredFactionPrompt').val() || '').trim() || DEFAULT_STRUCTURED_FACTION_PROMPT;
