@@ -375,6 +375,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 结构化条目读取蓝灯世界书（与索引设置一致）
   structuredWorldbookEnabled: false,
   structuredWorldbookMode: 'active', // active | all
+  // 结构化条目内容格式
+  structuredEntryContentFormat: 'markdown', // text | markdown
 
   // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
@@ -1565,6 +1567,23 @@ function updateStructuredProgressFromHistory(meta) {
   if (!meta || typeof meta !== 'object') return;
   const hist = Array.isArray(meta.structuredHistory) ? meta.structuredHistory : [];
   const last = [...hist].reverse().find(h => h && h.range && h.affectsProgress !== false);
+  if (!last) {
+    meta.lastStructuredFloor = 0;
+    meta.lastStructuredChatLen = 0;
+    return;
+  }
+  meta.lastStructuredFloor = last.range?.toFloor ? Number(last.range.toFloor) : 0;
+  if (last.range?.toIdx !== undefined && last.range?.toIdx !== null) {
+    meta.lastStructuredChatLen = Number(last.range.toIdx) + 1;
+  } else {
+    meta.lastStructuredChatLen = 0;
+  }
+}
+
+function updateStructuredProgressFromSummaryHistory(meta) {
+  if (!meta || typeof meta !== 'object') return;
+  const hist = Array.isArray(meta.history) ? meta.history : [];
+  const last = [...hist].reverse().find(h => h && h.range && Array.isArray(h.structuredChanges) && h.structuredChanges.length);
   if (!last) {
     meta.lastStructuredFloor = 0;
     meta.lastStructuredChatLen = 0;
@@ -5265,6 +5284,49 @@ function getStructuredEntriesCache(meta, entryType) {
   return meta[key];
 }
 
+function formatStructuredValue(value, mode = 'text', depth = 0) {
+  if (value === null || value === undefined) return '';
+  const t = typeof value;
+  if (t === 'string') return String(value).trim();
+  if (t === 'number' || t === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    const items = value.map(v => formatStructuredValue(v, mode, depth + 1)).filter(Boolean);
+    if (!items.length) return '';
+    if (mode === 'markdown') {
+      return items.map(v => `- ${v.replace(/\n/g, '\n  ')}`).join('\n');
+    }
+    return items.join('、');
+  }
+  if (t === 'object') {
+    const pairs = [];
+    for (const [k, v] of Object.entries(value)) {
+      const rendered = formatStructuredValue(v, mode, depth + 1);
+      if (!rendered) continue;
+      if (mode === 'markdown' && rendered.includes('\n')) {
+        pairs.push(`${k}：\n${rendered}`);
+      } else {
+        pairs.push(`${k}：${rendered}`);
+      }
+    }
+    if (!pairs.length) return '';
+    if (mode === 'markdown') {
+      return pairs.map(p => `- ${p.replace(/\n/g, '\n  ')}`).join('\n');
+    }
+    return pairs.join('；');
+  }
+  return String(value).trim();
+}
+
+function pushStructuredLabel(parts, label, value, mode) {
+  const rendered = formatStructuredValue(value, mode);
+  if (!rendered) return;
+  if (mode === 'markdown' && rendered.includes('\n')) {
+    parts.push(`${label}：\n${rendered}`);
+  } else {
+    parts.push(`${label}：${rendered}`);
+  }
+}
+
 const STRUCTURED_ENTRY_META_KEYS = new Set([
   'isNew',
   'isUpdated',
@@ -5284,6 +5346,7 @@ const STRUCTURED_ENTRY_META_KEYS = new Set([
 
 function appendExtraFields(parts, data, knownKeys) {
   if (!data || typeof data !== 'object') return;
+  const mode = String(knownKeys?.__mode || '').trim() || 'text';
   const known = new Set([...(knownKeys || []), ...STRUCTURED_ENTRY_META_KEYS]);
   for (const [key, value] of Object.entries(data)) {
     if (known.has(key)) continue;
@@ -5292,23 +5355,20 @@ function appendExtraFields(parts, data, knownKeys) {
     if (Array.isArray(value) && value.length === 0) continue;
     if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) continue;
 
-    let rendered = '';
-    if (Array.isArray(value)) {
-      const allPrimitive = value.every(v => ['string', 'number', 'boolean'].includes(typeof v));
-      rendered = allPrimitive ? value.map(v => String(v).trim()).filter(Boolean).join('、') : JSON.stringify(value, null, 2);
-    } else if (typeof value === 'object') {
-      rendered = JSON.stringify(value, null, 2);
-    } else {
-      rendered = String(value).trim();
-    }
+    const rendered = formatStructuredValue(value, mode);
     if (!rendered) continue;
-    parts.push(`${key}：${rendered}`);
+    if (mode === 'markdown' && rendered.includes('\n')) {
+      parts.push(`${key}：\n${rendered}`);
+    } else {
+      parts.push(`${key}：${rendered}`);
+    }
   }
 }
 
 // 构建条目内容（档案式描述）
 function buildCharacterContent(char) {
   const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'aliases',
@@ -5337,16 +5397,15 @@ function buildCharacterContent(char) {
   if (char.background) parts.push(`背景：${char.background}`);
   if (char.relationToProtagonist) parts.push(`与主角关系：${char.relationToProtagonist}`);
   if (char.keyEvents?.length) parts.push(`关键事件：${char.keyEvents.join('；')}`);
-  if (char.statInfo) {
-    const infoStr = typeof char.statInfo === 'object' ? JSON.stringify(char.statInfo, null, 2) : String(char.statInfo);
-    parts.push(`属性数据：${infoStr}`);
-  }
+  if (char.statInfo) pushStructuredLabel(parts, '属性数据', char.statInfo, mode);
+  knownKeys.__mode = mode;
   appendExtraFields(parts, char, knownKeys);
   return parts.join('\n');
 }
 
 function buildEquipmentContent(equip) {
   const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'aliases',
@@ -5365,17 +5424,16 @@ function buildEquipmentContent(equip) {
   if (equip.effects) parts.push(`效果：${equip.effects}`);
   if (equip.source) parts.push(`来源：${equip.source}`);
   if (equip.currentState) parts.push(`当前状态：${equip.currentState}`);
-  if (equip.statInfo) {
-    const infoStr = typeof equip.statInfo === 'object' ? JSON.stringify(equip.statInfo, null, 2) : String(equip.statInfo);
-    parts.push(`属性数据：${infoStr}`);
-  }
+  if (equip.statInfo) pushStructuredLabel(parts, '属性数据', equip.statInfo, mode);
   if (equip.boundEvents?.length) parts.push(`相关事件：${equip.boundEvents.join('；')}`);
+  knownKeys.__mode = mode;
   appendExtraFields(parts, equip, knownKeys);
   return parts.join('\n');
 }
 
 function buildInventoryContent(item) {
   const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'aliases',
@@ -5396,17 +5454,16 @@ function buildInventoryContent(item) {
   if (item.effects) parts.push(`效果：${item.effects}`);
   if (item.source) parts.push(`来源：${item.source}`);
   if (item.currentState) parts.push(`当前状态：${item.currentState}`);
-  if (item.statInfo) {
-    const infoStr = typeof item.statInfo === 'object' ? JSON.stringify(item.statInfo, null, 2) : String(item.statInfo);
-    parts.push(`属性数据：${infoStr}`);
-  }
+  if (item.statInfo) pushStructuredLabel(parts, '属性数据', item.statInfo, mode);
   if (item.boundEvents?.length) parts.push(`相关事件：${item.boundEvents.join('；')}`);
+  knownKeys.__mode = mode;
   appendExtraFields(parts, item, knownKeys);
   return parts.join('\n');
 }
 
 function buildFactionContent(faction) {
   const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'aliases',
@@ -5428,16 +5485,15 @@ function buildFactionContent(faction) {
   if (faction.relationToProtagonist) parts.push(`与主角关系：${faction.relationToProtagonist}`);
   if (faction.status) parts.push(`状态：${faction.status}`);
   if (faction.keyEvents?.length) parts.push(`关键事件：${faction.keyEvents.join('；')}`);
-  if (faction.statInfo) {
-    const infoStr = typeof faction.statInfo === 'object' ? JSON.stringify(faction.statInfo, null, 2) : String(faction.statInfo);
-    parts.push(`属性数据：${infoStr}`);
-  }
+  if (faction.statInfo) pushStructuredLabel(parts, '属性数据', faction.statInfo, mode);
+  knownKeys.__mode = mode;
   appendExtraFields(parts, faction, knownKeys);
   return parts.join('\n');
 }
 
 function buildAchievementContent(achievement) {
   const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'description',
@@ -5455,16 +5511,15 @@ function buildAchievementContent(achievement) {
   if (achievement.status) parts.push(`状态：${achievement.status}`);
   if (achievement.effects) parts.push(`影响：${achievement.effects}`);
   if (achievement.keyEvents?.length) parts.push(`关键事件：${achievement.keyEvents.join('；')}`);
-  if (achievement.statInfo) {
-    const infoStr = typeof achievement.statInfo === 'object' ? JSON.stringify(achievement.statInfo, null, 2) : String(achievement.statInfo);
-    parts.push(`属性数据：${infoStr}`);
-  }
+  if (achievement.statInfo) pushStructuredLabel(parts, '属性数据', achievement.statInfo, mode);
+  knownKeys.__mode = mode;
   appendExtraFields(parts, achievement, knownKeys);
   return parts.join('\n');
 }
 
 function buildSubProfessionContent(subProfession) {
   const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'role',
@@ -5484,16 +5539,15 @@ function buildSubProfessionContent(subProfession) {
   if (subProfession.source) parts.push(`获得方式：${subProfession.source}`);
   if (subProfession.status) parts.push(`状态：${subProfession.status}`);
   if (subProfession.keyEvents?.length) parts.push(`关键事件：${subProfession.keyEvents.join('；')}`);
-  if (subProfession.statInfo) {
-    const infoStr = typeof subProfession.statInfo === 'object' ? JSON.stringify(subProfession.statInfo, null, 2) : String(subProfession.statInfo);
-    parts.push(`属性数据：${infoStr}`);
-  }
+  if (subProfession.statInfo) pushStructuredLabel(parts, '属性数据', subProfession.statInfo, mode);
+  knownKeys.__mode = mode;
   appendExtraFields(parts, subProfession, knownKeys);
   return parts.join('\n');
 }
 
 function buildQuestContent(quest) {
   const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'goal',
@@ -5515,10 +5569,8 @@ function buildQuestContent(quest) {
   if (quest.deadline) parts.push(`期限：${quest.deadline}`);
   if (quest.location) parts.push(`地点：${quest.location}`);
   if (quest.keyEvents?.length) parts.push(`关键事件：${quest.keyEvents.join('；')}`);
-  if (quest.statInfo) {
-    const infoStr = typeof quest.statInfo === 'object' ? JSON.stringify(quest.statInfo, null, 2) : String(quest.statInfo);
-    parts.push(`属性数据：${infoStr}`);
-  }
+  if (quest.statInfo) pushStructuredLabel(parts, '属性数据', quest.statInfo, mode);
+  knownKeys.__mode = mode;
   appendExtraFields(parts, quest, knownKeys);
   return parts.join('\n');
 }
@@ -6798,23 +6850,48 @@ async function rollbackLastStructuredEntries() {
     idx--;
   }
 
+  let fromSummary = false;
+  let sumIdx = -1;
+  let sumRec = null;
   if (idx < 0) {
-    setStatus('没有可撤销的结构化条目', 'warn');
-    return;
+    const sumHist = Array.isArray(meta.history) ? meta.history : [];
+    sumIdx = sumHist.length - 1;
+    while (sumIdx >= 0) {
+      const rec = sumHist[sumIdx];
+      if (Array.isArray(rec?.structuredChanges) && rec.structuredChanges.length) { sumRec = rec; break; }
+      sumIdx--;
+    }
+    if (sumIdx >= 0 && sumRec) {
+      fromSummary = true;
+    }
   }
 
-  const rec = hist[idx];
+  if (idx < 0) {
+    if (!fromSummary) {
+      setStatus('没有可撤销的结构化条目', 'warn');
+      return;
+    }
+  }
+
+  const rec = fromSummary ? sumRec : hist[idx];
   setStatus('正在撤销最近一次结构化条目…', 'warn');
   showToast('正在撤销最近一次结构化条目…', { kind: 'warn', spinner: true, sticky: true });
 
   const result = await rollbackStructuredChangesForRecord(rec, meta, s, { clearChanges: true });
-  if (result.total && result.rolled === result.total) {
-    hist.splice(idx, 1);
+  if (fromSummary) {
+    const sumHist = Array.isArray(meta.history) ? meta.history : [];
+    if (sumIdx >= 0 && sumIdx < sumHist.length) sumHist[sumIdx] = rec;
+    meta.history = sumHist;
+    updateStructuredProgressFromSummaryHistory(meta);
   } else {
-    hist[idx] = rec;
+    if (result.total && result.rolled === result.total) {
+      hist.splice(idx, 1);
+    } else {
+      hist[idx] = rec;
+    }
+    meta.structuredHistory = hist;
+    updateStructuredProgressFromHistory(meta);
   }
-  meta.structuredHistory = hist;
-  updateStructuredProgressFromHistory(meta);
   await setSummaryMeta(meta);
 
   renderSummaryPaneFromMeta();
@@ -11545,6 +11622,13 @@ function buildModalHtml() {
                 <input id="sg_structuredEntriesReadFloors" type="number" min="1" max="200" style="width:90px">
                 <span>层</span>
               </div>
+              <div class="sg-row sg-inline" style="margin-top:6px">
+                <span>条目内容格式</span>
+                <select id="sg_structuredEntryContentFormat">
+                  <option value="text">简洁文本</option>
+                  <option value="markdown">Markdown</option>
+                </select>
+              </div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_structuredReenableEntriesEnabled">自动重新启用人物/势力</label>
               </div>
@@ -12948,7 +13032,7 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
-  $('#sg_structuredEntriesEvery, #sg_structuredEntriesReadFloors, #sg_structuredEntriesCountMode').on('input change', () => {
+  $('#sg_structuredEntriesEvery, #sg_structuredEntriesReadFloors, #sg_structuredEntriesCountMode, #sg_structuredEntryContentFormat').on('input change', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -13804,6 +13888,7 @@ function pullSettingsToUi() {
   $('#sg_structuredEntriesEvery').val(s.structuredEntriesEvery ?? 1);
   $('#sg_structuredEntriesReadFloors').val(s.structuredEntriesReadFloors ?? s.structuredEntriesEvery ?? 1);
   $('#sg_structuredEntriesCountMode').val(String(s.structuredEntriesCountMode || 'assistant'));
+  $('#sg_structuredEntryContentFormat').val(String(s.structuredEntryContentFormat || 'text'));
   $('#sg_megaSummaryEnabled').prop('checked', !!s.megaSummaryEnabled);
   $('#sg_megaSummaryEvery').val(s.megaSummaryEvery || 40);
   $('#sg_megaSummaryCommentPrefix').val(String(s.megaSummaryCommentPrefix || '大总结'));
@@ -14400,6 +14485,7 @@ function pullUiToSettings() {
   s.structuredEntriesEvery = clampInt($('#sg_structuredEntriesEvery').val(), 1, 200, s.structuredEntriesEvery || 1);
   s.structuredEntriesReadFloors = clampInt($('#sg_structuredEntriesReadFloors').val(), 1, 200, s.structuredEntriesEvery || 1);
   s.structuredEntriesCountMode = String($('#sg_structuredEntriesCountMode').val() || 'assistant');
+  s.structuredEntryContentFormat = String($('#sg_structuredEntryContentFormat').val() || 'text');
   s.structuredWorldbookEnabled = $('#sg_structuredWorldbookEnabled').is(':checked');
   s.structuredWorldbookMode = String($('#sg_structuredWorldbookMode').val() || 'active');
   s.megaSummaryEnabled = $('#sg_megaSummaryEnabled').is(':checked');
