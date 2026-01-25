@@ -4580,30 +4580,27 @@ async function runMegaSummaryManual(fromIndex, toIndex) {
   return created;
 }
 
+function buildSummaryCoreTitle(rawTitle, indexId, settings, commentPrefix = '', forceIndex = false) {
+  const s = settings || ensureSettings();
+  const prefix = String(commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const id = String(indexId || '').trim();
+  const includeIndex = (forceIndex || !!s.summaryIndexInComment) && id;
+
+  let name = String(rawTitle || '').trim();
+  if (name === prefix) name = '';
+
+  const parts = [prefix];
+  if (name) parts.push(name);
+  if (indexId && includeIndex) parts.push(indexId);
+
+  return parts.join('｜').replace(/｜｜+/g, '｜');
+}
+
 function buildSummaryComment(rec, settings, commentPrefix = '') {
   const s = settings || ensureSettings();
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
-  const prefix = String(commentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
-  const rawTitle = String(rec.title || '').trim();
-  const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
-  const indexId = String(rec?.indexId || '').trim();
-  const indexInComment = (keyMode === 'indexId') && !!s.summaryIndexInComment && !!indexId;
-
-  let commentTitle = rawTitle;
-  if (prefix) {
-    if (!commentTitle) commentTitle = prefix;
-    else if (!commentTitle.startsWith(prefix)) commentTitle = `${prefix}｜${commentTitle}`;
-  }
-  if (indexInComment) {
-    if (!commentTitle.includes(indexId)) {
-      if (commentTitle === prefix) commentTitle = `${prefix}｜${indexId}`;
-      else if (commentTitle.startsWith(`${prefix}｜`)) commentTitle = commentTitle.replace(`${prefix}｜`, `${prefix}｜${indexId}｜`);
-      else commentTitle = `${prefix}｜${indexId}｜${commentTitle}`;
-      commentTitle = commentTitle.replace(/｜｜+/g, '｜');
-    }
-  }
-  if (!commentTitle) commentTitle = prefix || '剧情总结';
-  return `${commentTitle}${range ? `（${range}）` : ''}`;
+  const base = buildSummaryCoreTitle(rec.title, rec.indexId, s, commentPrefix);
+  return `${base}${range ? `（${range}）` : ''}`;
 }
 
 async function disableSummaryWorldInfoEntry(rec, settings, {
@@ -6692,7 +6689,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const uidVar = '__sg_summary_uid';
   const fileVar = '__sg_summary_wbfile';
 
-  const keyValue = (kws.length ? kws.join(',') : prefix);
+  const keyValue = (kws.length ? kws.join(',') : (commentPrefix || '剧情总结'));
   const constantVal = (Number(constant) === 1) ? 1 : 0;
 
   const fileExpr = (t === 'chatbook') ? `{{getvar::${fileVar}}}` : f;
@@ -7203,7 +7200,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       let indexId = '';
       let keywords = modelKeywords;
 
-      if (keyMode === 'indexId') {
+      if (keyMode === 'indexId' || s.summaryIndexInComment) {
         // init nextIndex
         if (!Number.isFinite(Number(meta.nextIndex))) {
           let maxN = 0;
@@ -7221,7 +7218,11 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         const pad = clampInt(s.summaryIndexPad, 1, 12, 3);
         const n = clampInt(meta.nextIndex, 1, 100000000, 1);
         indexId = `${pref}${String(n).padStart(pad, '0')}`;
-        keywords = [indexId];
+
+        if (keyMode === 'indexId') {
+          // Keywords match Title (Structured style: Prefix｜Name｜Index)
+          keywords = [buildSummaryCoreTitle(rawTitle, indexId, s, prefix, true)];
+        }
       }
 
       const title = rawTitle || `${prefix}`;
@@ -7238,7 +7239,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         commentPrefixBlue: String(s.summaryBlueWorldInfoCommentPrefix || s.summaryWorldInfoCommentPrefix || '剧情总结'),
       };
 
-      if (keyMode === 'indexId') {
+      if (keyMode === 'indexId' || s.summaryIndexInComment) {
         meta.nextIndex = clampInt(Number(meta.nextIndex) + 1, 1, 1000000000, Number(meta.nextIndex) + 1);
       }
 
@@ -14621,14 +14622,15 @@ function renderSummaryPaneFromMeta() {
   lastSummaryText = String(last?.summary || '');
 
   const md = hist.slice(-12).reverse().map((h, idx) => {
-    const title = String(h.title || `${ensureSettings().summaryWorldInfoCommentPrefix || '剧情总结'} #${hist.length - idx}`);
+    const displayTitle = buildSummaryCoreTitle(h.title, h.indexId, ensureSettings(), h.commentPrefix, true);
     const kws = Array.isArray(h.keywords) ? h.keywords : [];
     const when = h.createdAt ? new Date(h.createdAt).toLocaleString() : '';
     const range = h?.range ? `（${h.range.fromFloor}-${h.range.toFloor}）` : '';
-    return `### ${title} ${range}\n\n- 时间：${when}\n- 关键词：${kws.join('、') || '（无）'}\n\n${h.summary || ''}`;
+    return `### ${displayTitle} ${range}\n\n- 时间：${when}\n- 关键词：${kws.join('、') || '（无）'}\n\n${h.summary || ''}`;
   }).join('\n\n---\n\n');
 
-  renderMarkdownInto($el, md);
+  const mdText = String(md || '');
+  renderMarkdownInto($el, mdText);
   updateButtonsEnabled();
 }
 
