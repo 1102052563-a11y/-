@@ -305,22 +305,6 @@
   outline: 2px solid rgba(120, 180, 255, 0.22);
 }
 
-.sg-template-tabs {
-  margin-top: 6px;
-}
-
-.sg-template-panels {
-  margin-top: 6px;
-}
-
-.sg-template-panel {
-  display: none;
-}
-
-.sg-template-panel.active {
-  display: block;
-}
-
 .sg-spacer {
   flex: 1;
 }

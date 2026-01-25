@@ -192,68 +192,6 @@ const DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE = `【人物】{{name}}
 与主角关系：{{relationToProtagonist}}
 关键事件：{{keyEvents}}
 {{extraFields}}`;
-const DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE = `【装备】{{name}}
-别名：{{aliases}}
-类型：{{type}}
-品质：{{rarity}}
-效果：{{effects}}
-来源：{{source}}
-当前状态：{{currentState}}
-属性数据：{{statInfo}}
-相关事件：{{boundEvents}}
-{{extraFields}}`;
-const DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE = `【物品栏】{{name}}
-别名：{{aliases}}
-类型：{{type}}
-品质：{{rarity}}
-数量：{{quantity}}
-效果：{{effects}}
-来源：{{source}}
-当前状态：{{currentState}}
-属性数据：{{statInfo}}
-相关事件：{{boundEvents}}
-{{extraFields}}`;
-const DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE = `【势力】{{name}}
-别名：{{aliases}}
-性质：{{type}}
-范围：{{scope}}
-领导者：{{leader}}
-理念：{{ideology}}
-与主角关系：{{relationToProtagonist}}
-状态：{{status}}
-关键事件：{{keyEvents}}
-属性数据：{{statInfo}}
-{{extraFields}}`;
-const DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE = `【成就】{{name}}
-描述：{{description}}
-达成条件：{{requirements}}
-获得时间：{{obtainedAt}}
-状态：{{status}}
-影响：{{effects}}
-关键事件：{{keyEvents}}
-属性数据：{{statInfo}}
-{{extraFields}}`;
-const DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE = `【副职业】{{name}}
-定位：{{role}}
-等级：{{level}}
-进度：{{progress}}
-核心技能：{{skills}}
-获得方式：{{source}}
-状态：{{status}}
-关键事件：{{keyEvents}}
-属性数据：{{statInfo}}
-{{extraFields}}`;
-const DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE = `【任务】{{name}}
-目标：{{goal}}
-进度：{{progress}}
-状态：{{status}}
-发布者：{{issuer}}
-奖励：{{reward}}
-期限：{{deadline}}
-地点：{{location}}
-关键事件：{{keyEvents}}
-属性数据：{{statInfo}}
-{{extraFields}}`;
 const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。
 
 【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件、六维属性、技能/天赋、当前装备、物品栏
@@ -459,12 +397,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   structuredEntryContentFormat: 'markdown', // text | markdown
   // Character entry template (optional)
   structuredCharacterEntryTemplate: '',
-  structuredEquipmentEntryTemplate: '',
-  structuredInventoryEntryTemplate: '',
-  structuredFactionEntryTemplate: '',
-  structuredAchievementEntryTemplate: '',
-  structuredSubProfessionEntryTemplate: '',
-  structuredQuestEntryTemplate: '',
 
   // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
@@ -5480,16 +5412,6 @@ function formatTemplateField(value, mode) {
   return text;
 }
 
-function formatTemplateList(value, mode, sep) {
-  if (mode === 'markdown') return formatTemplateField(value, mode);
-  if (Array.isArray(value)) {
-    const items = value.map(v => String(v ?? '').trim()).filter(Boolean);
-    if (!items.length) return '';
-    return items.join(sep || '、');
-  }
-  return formatTemplateField(value, mode);
-}
-
 function cleanupStructuredTemplateOutput(text) {
   const lines = String(text || '').split(/\r?\n/);
   const cleaned = [];
@@ -5572,9 +5494,8 @@ function buildCharacterContent(char) {
 }
 
 function buildEquipmentContent(equip) {
-  const s = ensureSettings();
-  const mode = String(s.structuredEntryContentFormat || 'text');
-  const template = String(s.structuredEquipmentEntryTemplate || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE;
+  const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'aliases',
@@ -5586,30 +5507,23 @@ function buildEquipmentContent(equip) {
     'statInfo',
     'boundEvents',
   ];
-  const extraParts = [];
+  if (equip.name) parts.push(`【装备】${equip.name}`);
+  if (equip.aliases?.length) parts.push(`别名：${equip.aliases.join('、')}`);
+  if (equip.type) parts.push(`类型：${equip.type}`);
+  if (equip.rarity) parts.push(`品质：${equip.rarity}`);
+  if (equip.effects) parts.push(`效果：${equip.effects}`);
+  if (equip.source) parts.push(`来源：${equip.source}`);
+  if (equip.currentState) parts.push(`当前状态：${equip.currentState}`);
+  if (equip.statInfo) pushStructuredLabel(parts, '属性数据', equip.statInfo, mode);
+  if (equip.boundEvents?.length) parts.push(`相关事件：${equip.boundEvents.join('；')}`);
   knownKeys.__mode = mode;
-  appendExtraFields(extraParts, equip, knownKeys);
-  const vars = {
-    name: formatTemplateField(equip?.name, mode),
-    aliases: formatTemplateList(equip?.aliases, mode, '?'),
-    type: formatTemplateField(equip?.type, mode),
-    rarity: formatTemplateField(equip?.rarity, mode),
-    effects: formatTemplateField(equip?.effects, mode),
-    source: formatTemplateField(equip?.source, mode),
-    currentState: formatTemplateField(equip?.currentState, mode),
-    statInfo: formatTemplateField(equip?.statInfo, mode),
-    boundEvents: formatTemplateList(equip?.boundEvents, mode, '?'),
-    extraFields: extraParts.join('
-'),
-  };
-  const output = renderTemplate(template, vars);
-  return cleanupStructuredTemplateOutput(output);
+  appendExtraFields(parts, equip, knownKeys);
+  return parts.join('\n');
 }
 
 function buildInventoryContent(item) {
-  const s = ensureSettings();
-  const mode = String(s.structuredEntryContentFormat || 'text');
-  const template = String(s.structuredInventoryEntryTemplate || '').trim() || DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE;
+  const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'aliases',
@@ -5622,31 +5536,24 @@ function buildInventoryContent(item) {
     'statInfo',
     'boundEvents',
   ];
-  const extraParts = [];
+  if (item.name) parts.push(`【物品栏】${item.name}`);
+  if (item.aliases?.length) parts.push(`别名：${item.aliases.join('、')}`);
+  if (item.type) parts.push(`类型：${item.type}`);
+  if (item.rarity) parts.push(`品质：${item.rarity}`);
+  if (item.quantity !== undefined && item.quantity !== null) parts.push(`数量：${item.quantity}`);
+  if (item.effects) parts.push(`效果：${item.effects}`);
+  if (item.source) parts.push(`来源：${item.source}`);
+  if (item.currentState) parts.push(`当前状态：${item.currentState}`);
+  if (item.statInfo) pushStructuredLabel(parts, '属性数据', item.statInfo, mode);
+  if (item.boundEvents?.length) parts.push(`相关事件：${item.boundEvents.join('；')}`);
   knownKeys.__mode = mode;
-  appendExtraFields(extraParts, item, knownKeys);
-  const vars = {
-    name: formatTemplateField(item?.name, mode),
-    aliases: formatTemplateList(item?.aliases, mode, '?'),
-    type: formatTemplateField(item?.type, mode),
-    rarity: formatTemplateField(item?.rarity, mode),
-    quantity: formatTemplateField(item?.quantity, mode),
-    effects: formatTemplateField(item?.effects, mode),
-    source: formatTemplateField(item?.source, mode),
-    currentState: formatTemplateField(item?.currentState, mode),
-    statInfo: formatTemplateField(item?.statInfo, mode),
-    boundEvents: formatTemplateList(item?.boundEvents, mode, '?'),
-    extraFields: extraParts.join('
-'),
-  };
-  const output = renderTemplate(template, vars);
-  return cleanupStructuredTemplateOutput(output);
+  appendExtraFields(parts, item, knownKeys);
+  return parts.join('\n');
 }
 
 function buildFactionContent(faction) {
-  const s = ensureSettings();
-  const mode = String(s.structuredEntryContentFormat || 'text');
-  const template = String(s.structuredFactionEntryTemplate || '').trim() || DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE;
+  const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'aliases',
@@ -5659,31 +5566,24 @@ function buildFactionContent(faction) {
     'keyEvents',
     'statInfo',
   ];
-  const extraParts = [];
+  if (faction.name) parts.push(`【势力】${faction.name}`);
+  if (faction.aliases?.length) parts.push(`别名：${faction.aliases.join('、')}`);
+  if (faction.type) parts.push(`性质：${faction.type}`);
+  if (faction.scope) parts.push(`范围：${faction.scope}`);
+  if (faction.leader) parts.push(`领袖：${faction.leader}`);
+  if (faction.ideology) parts.push(`理念：${faction.ideology}`);
+  if (faction.relationToProtagonist) parts.push(`与主角关系：${faction.relationToProtagonist}`);
+  if (faction.status) parts.push(`状态：${faction.status}`);
+  if (faction.keyEvents?.length) parts.push(`关键事件：${faction.keyEvents.join('；')}`);
+  if (faction.statInfo) pushStructuredLabel(parts, '属性数据', faction.statInfo, mode);
   knownKeys.__mode = mode;
-  appendExtraFields(extraParts, faction, knownKeys);
-  const vars = {
-    name: formatTemplateField(faction?.name, mode),
-    aliases: formatTemplateList(faction?.aliases, mode, '?'),
-    type: formatTemplateField(faction?.type, mode),
-    scope: formatTemplateField(faction?.scope, mode),
-    leader: formatTemplateField(faction?.leader, mode),
-    ideology: formatTemplateField(faction?.ideology, mode),
-    relationToProtagonist: formatTemplateField(faction?.relationToProtagonist, mode),
-    status: formatTemplateField(faction?.status, mode),
-    keyEvents: formatTemplateList(faction?.keyEvents, mode, '?'),
-    statInfo: formatTemplateField(faction?.statInfo, mode),
-    extraFields: extraParts.join('
-'),
-  };
-  const output = renderTemplate(template, vars);
-  return cleanupStructuredTemplateOutput(output);
+  appendExtraFields(parts, faction, knownKeys);
+  return parts.join('\n');
 }
 
 function buildAchievementContent(achievement) {
-  const s = ensureSettings();
-  const mode = String(s.structuredEntryContentFormat || 'text');
-  const template = String(s.structuredAchievementEntryTemplate || '').trim() || DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE;
+  const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'description',
@@ -5694,29 +5594,22 @@ function buildAchievementContent(achievement) {
     'keyEvents',
     'statInfo',
   ];
-  const extraParts = [];
+  if (achievement.name) parts.push(`【成就】${achievement.name}`);
+  if (achievement.description) parts.push(`描述：${achievement.description}`);
+  if (achievement.requirements) parts.push(`达成条件：${achievement.requirements}`);
+  if (achievement.obtainedAt) parts.push(`获得时间：${achievement.obtainedAt}`);
+  if (achievement.status) parts.push(`状态：${achievement.status}`);
+  if (achievement.effects) parts.push(`影响：${achievement.effects}`);
+  if (achievement.keyEvents?.length) parts.push(`关键事件：${achievement.keyEvents.join('；')}`);
+  if (achievement.statInfo) pushStructuredLabel(parts, '属性数据', achievement.statInfo, mode);
   knownKeys.__mode = mode;
-  appendExtraFields(extraParts, achievement, knownKeys);
-  const vars = {
-    name: formatTemplateField(achievement?.name, mode),
-    description: formatTemplateField(achievement?.description, mode),
-    requirements: formatTemplateField(achievement?.requirements, mode),
-    obtainedAt: formatTemplateField(achievement?.obtainedAt, mode),
-    status: formatTemplateField(achievement?.status, mode),
-    effects: formatTemplateField(achievement?.effects, mode),
-    keyEvents: formatTemplateList(achievement?.keyEvents, mode, '?'),
-    statInfo: formatTemplateField(achievement?.statInfo, mode),
-    extraFields: extraParts.join('
-'),
-  };
-  const output = renderTemplate(template, vars);
-  return cleanupStructuredTemplateOutput(output);
+  appendExtraFields(parts, achievement, knownKeys);
+  return parts.join('\n');
 }
 
 function buildSubProfessionContent(subProfession) {
-  const s = ensureSettings();
-  const mode = String(s.structuredEntryContentFormat || 'text');
-  const template = String(s.structuredSubProfessionEntryTemplate || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE;
+  const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'role',
@@ -5728,30 +5621,23 @@ function buildSubProfessionContent(subProfession) {
     'keyEvents',
     'statInfo',
   ];
-  const extraParts = [];
+  if (subProfession.name) parts.push(`【副职业】${subProfession.name}`);
+  if (subProfession.role) parts.push(`定位：${subProfession.role}`);
+  if (subProfession.level) parts.push(`等级：${subProfession.level}`);
+  if (subProfession.progress) parts.push(`进度：${subProfession.progress}`);
+  if (subProfession.skills) parts.push(`核心技能：${subProfession.skills}`);
+  if (subProfession.source) parts.push(`获得方式：${subProfession.source}`);
+  if (subProfession.status) parts.push(`状态：${subProfession.status}`);
+  if (subProfession.keyEvents?.length) parts.push(`关键事件：${subProfession.keyEvents.join('；')}`);
+  if (subProfession.statInfo) pushStructuredLabel(parts, '属性数据', subProfession.statInfo, mode);
   knownKeys.__mode = mode;
-  appendExtraFields(extraParts, subProfession, knownKeys);
-  const vars = {
-    name: formatTemplateField(subProfession?.name, mode),
-    role: formatTemplateField(subProfession?.role, mode),
-    level: formatTemplateField(subProfession?.level, mode),
-    progress: formatTemplateField(subProfession?.progress, mode),
-    skills: formatTemplateField(subProfession?.skills, mode),
-    source: formatTemplateField(subProfession?.source, mode),
-    status: formatTemplateField(subProfession?.status, mode),
-    keyEvents: formatTemplateList(subProfession?.keyEvents, mode, '?'),
-    statInfo: formatTemplateField(subProfession?.statInfo, mode),
-    extraFields: extraParts.join('
-'),
-  };
-  const output = renderTemplate(template, vars);
-  return cleanupStructuredTemplateOutput(output);
+  appendExtraFields(parts, subProfession, knownKeys);
+  return parts.join('\n');
 }
 
 function buildQuestContent(quest) {
-  const s = ensureSettings();
-  const mode = String(s.structuredEntryContentFormat || 'text');
-  const template = String(s.structuredQuestEntryTemplate || '').trim() || DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE;
+  const parts = [];
+  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
   const knownKeys = [
     'name',
     'goal',
@@ -5764,25 +5650,19 @@ function buildQuestContent(quest) {
     'keyEvents',
     'statInfo',
   ];
-  const extraParts = [];
+  if (quest.name) parts.push(`【任务】${quest.name}`);
+  if (quest.goal) parts.push(`目标：${quest.goal}`);
+  if (quest.progress) parts.push(`进度：${quest.progress}`);
+  if (quest.status) parts.push(`状态：${quest.status}`);
+  if (quest.issuer) parts.push(`发布者：${quest.issuer}`);
+  if (quest.reward) parts.push(`奖励：${quest.reward}`);
+  if (quest.deadline) parts.push(`期限：${quest.deadline}`);
+  if (quest.location) parts.push(`地点：${quest.location}`);
+  if (quest.keyEvents?.length) parts.push(`关键事件：${quest.keyEvents.join('；')}`);
+  if (quest.statInfo) pushStructuredLabel(parts, '属性数据', quest.statInfo, mode);
   knownKeys.__mode = mode;
-  appendExtraFields(extraParts, quest, knownKeys);
-  const vars = {
-    name: formatTemplateField(quest?.name, mode),
-    goal: formatTemplateField(quest?.goal, mode),
-    progress: formatTemplateField(quest?.progress, mode),
-    status: formatTemplateField(quest?.status, mode),
-    issuer: formatTemplateField(quest?.issuer, mode),
-    reward: formatTemplateField(quest?.reward, mode),
-    deadline: formatTemplateField(quest?.deadline, mode),
-    location: formatTemplateField(quest?.location, mode),
-    keyEvents: formatTemplateList(quest?.keyEvents, mode, '?'),
-    statInfo: formatTemplateField(quest?.statInfo, mode),
-    extraFields: extraParts.join('
-'),
-  };
-  const output = renderTemplate(template, vars);
-  return cleanupStructuredTemplateOutput(output);
+  appendExtraFields(parts, quest, knownKeys);
+  return parts.join('\n');
 }
 
 // 写入或更新结构化条目（方案C：混合策略）
@@ -10231,70 +10111,1699 @@ function getCharacterProfilesFromSettings(options = {}) {
 }
 
 function renderCharacterProfilesUi() {
+  const s = ensureSettings();
   const list = getCharacterProfilesFromSettings({ includeEmpty: true });
   const $wrap = $('#sg_imageGenProfiles');
   if (!$wrap.length) return;
   if (!list.length) {
-    $wrap.html('<div class="sg-hint">??????????????????</div>');
+    $wrap.html('<div class="sg-hint">暂无人物形象，点击“添加人物”创建。</div>');
     return;
   }
 
   const rows = list.map((entry, idx) => {
     const keys = (entry.keys || []).join(', ');
-    const name = escapeHtml(entry.name || '');
-    const tags = escapeHtml(entry.tags || '');
-    const enabled = entry.enabled !== false;
     return `
       <div class="sg-profile-row" data-index="${idx}">
         <div class="sg-grid2">
           <div class="sg-field">
-            <label>???</label>
-            <input class="sg-profile-name" type="text" value="${name}">
+            <label>人物名</label>
+            <input type="text" class="sg-profile-name" value="${escapeHtml(entry.name)}">
           </div>
           <div class="sg-field">
-            <label>?????????</label>
-            <input class="sg-profile-keys" type="text" value="${escapeHtml(keys)}">
+            <label>关键词（逗号分隔）</label>
+            <input type="text" class="sg-profile-keys" value="${escapeHtml(keys)}">
           </div>
         </div>
-        <div class="sg-grid2">
-          <div class="sg-field">
-            <label>????</label>
-            <textarea class="sg-profile-tags" rows="2" placeholder="?? tag / ????">${tags}</textarea>
-          </div>
-          <div class="sg-row sg-inline sg-profile-scale-controls" style="gap:6px;">
-            <label class="sg-check" style="margin:0;"><input type="checkbox" class="sg-profile-enabled" ${enabled ? 'checked' : ''}>??</label>
-            <button class="menu_button sg-btn sg-profile-delete">??</button>
-          </div>
+        <div class="sg-field" style="margin-top:6px;">
+          <label>形象标签</label>
+          <textarea rows="3" class="sg-profile-tags" placeholder="1girl, silver hair, ...">${escapeHtml(entry.tags)}</textarea>
         </div>
-      </div>`;
+        <div class="sg-row sg-inline" style="margin-top:6px; gap:12px;">
+          <label class="sg-check"><input type="checkbox" class="sg-profile-enabled" ${entry.enabled ? 'checked' : ''}>启用</label>
+          <button class="menu_button sg-btn sg-profile-delete" type="button">删除</button>
+        </div>
+      </div>
+    `;
   }).join('');
-
   $wrap.html(rows);
 }
 
 function collectCharacterProfilesFromUi() {
   const list = [];
-  $('#sg_imageGenProfiles .sg-profile-row').each((_, row) => {
-    const $row = $(row);
+  $('#sg_imageGenProfiles .sg-profile-row').each((_, el) => {
+    const $row = $(el);
     const name = String($row.find('.sg-profile-name').val() || '').trim();
-    const keysRaw = String($row.find('.sg-profile-keys').val() || '');
-    const keys = keysRaw
-      .split(/[?,;?
-]+/)
-      .map(k => k.trim().toLowerCase())
-      .filter(Boolean);
+    const keysRaw = String($row.find('.sg-profile-keys').val() || '').trim();
     const tags = String($row.find('.sg-profile-tags').val() || '').trim();
     const enabled = $row.find('.sg-profile-enabled').is(':checked');
-    if (!name && !tags && !keys.length) return;
+    if (!name && !tags && !keysRaw) return;
+    const keys = keysRaw
+      .split(',')
+      .map(k => String(k || '').toLowerCase().trim())
+      .filter(Boolean);
     list.push({ name, keys, tags, enabled });
   });
   return list;
 }
 
+function matchCharacterTagsFromProfiles(storyContent) {
+  const s = ensureSettings();
+  if (!s.imageGenCharacterProfilesEnabled) return '';
+  const entries = getCharacterProfilesFromSettings();
+  if (!entries.length) return '';
+
+  const text = String(storyContent || '').toLowerCase();
+  const matched = [];
+
+  for (const entry of entries) {
+    if (!entry.enabled) continue;
+    const nameMatch = entry.name && text.includes(entry.name.toLowerCase());
+    const keyMatch = entry.keys?.some(k => text.includes(k));
+    if (nameMatch || keyMatch) matched.push(entry);
+  }
+
+  if (!matched.length) return '';
+
+  const allTags = matched.map(e => e.tags).join(', ');
+  console.log('[ImageGen] Matched profiles:', matched.map(e => e.name));
+  return allTags;
+}
+
+
+function getImageGenBatchPatterns() {
+  const s = ensureSettings();
+  const raw = String(s.imageGenBatchPatterns || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item, i) => ({
+      label: String(item?.label || `组${i + 1}`),
+      type: String(item?.type || 'character'),
+      detail: String(item?.detail || '').trim()
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function splitStoryIntoParts(text, count) {
+  const clean = String(text || '').trim();
+  if (!clean) return Array(count).fill('');
+  const paras = clean.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  if (paras.length >= count) return paras.slice(0, count);
+  const parts = [];
+  const total = clean.length;
+  const chunk = Math.max(1, Math.floor(total / count));
+  for (let i = 0; i < count; i += 1) {
+    const start = i * chunk;
+    const end = i === count - 1 ? total : Math.min(total, (i + 1) * chunk);
+    parts.push(clean.slice(start, end).trim());
+  }
+  return parts;
+}
+
+
+
+
+function getBatchDistinctHint(index, total) {
+  if (!Number.isFinite(index)) return '';
+  const hints = [
+    '使用近景构图，强调面部表情',
+    '使用中景构图，强调姿态与动作',
+    '使用互动构图，强调人物关系',
+    '使用远景构图，强调环境与气氛',
+    '使用趣味构图，强调轻松彩蛋动作',
+    '使用全身构图，强调姿态与服装',
+    '使用对战构图，强调动感与张力',
+    '使用对话构图，强调视线互动',
+    '使用场景构图，强调空间层次',
+    '使用光影构图，强调氛围',
+    '使用情绪构图，强调情感',
+    '使用静态构图，强调安静氛围'
+  ];
+  return hints[index % hints.length];
+}
+
+function renderImageGenBatchPreview() {
+  const s = ensureSettings();
+  const $wrap = $('#sg_imagegen_batch');
+  if (!$wrap.length) return;
+  if (!imageGenBatchPrompts.length) {
+    const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '尚未生成提示词');
+    $wrap.html(`
+      <div class="sg-floating-row">
+        <div class="sg-floating-title-sm">提示词预览</div>
+        <div class="sg-floating-status">${escapeHtml(status)}</div>
+      </div>
+      <div class="sg-floating-empty">尚未生成提示词</div>
+    `);
+    return;
+  }
+
+  const current = imageGenBatchPrompts[imageGenPreviewIndex] || imageGenBatchPrompts[0];
+  const counter = `${imageGenPreviewIndex + 1}/${imageGenBatchPrompts.length}`;
+  const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '就绪');
+  const imgUrl = imageGenImageUrls[imageGenPreviewIndex] || '';
+  const imgHtml = imgUrl
+    ? `<img class="sg-floating-image sg-image-zoom" src="${escapeHtml(imgUrl)}" data-full="${escapeHtml(imgUrl)}" alt="Generated" style="cursor: zoom-in;" />`
+    : '<div class="sg-floating-empty">暂无图像</div>';
+  const regenDisabled = (!imgUrl || imageGenBatchBusy) ? 'disabled' : '';
+  const model = String(s.novelaiModel || DEFAULT_SETTINGS.novelaiModel || 'nai-diffusion-4-5-full');
+  const resolution = String(s.novelaiResolution || '832x1216');
+  const steps = s.novelaiSteps || 28;
+  const scale = s.novelaiScale || 5;
+  const sampler = String(s.novelaiSampler || (model.includes('diffusion-4') ? 'k_euler_ancestral' : 'k_euler'));
+  const legacy = model.includes('diffusion-4') ? (s.novelaiLegacy !== false) : true;
+  const cfgRescale = clampFloat(s.novelaiCfgRescale, 0, 1, 0);
+  const noiseSchedule = String(s.novelaiNoiseSchedule || 'native');
+  const varietyBoost = s.novelaiVarietyBoost ? '开' : '关';
+  const seedLabel = s.novelaiFixedSeedEnabled ? `固定:${clampInt(s.novelaiFixedSeed, 0, 4294967295, 0)}` : '随机';
+  const negative = String((s.novelaiNegativePrompt || '').trim());
+  const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '…' : ''}` : '（空）';
+  const legacyLabel = legacy ? '开' : '关';
+  const expandLabel = imageGenPreviewExpanded ? '折叠预览' : '展开预览';
+  const previewHiddenClass = imageGenPreviewExpanded ? '' : 'sg-floating-preview-collapsed';
+  const paramsHtml = `
+    <div class="sg-floating-params ${previewHiddenClass}">
+      <div><b>模型</b>：${escapeHtml(model)}</div>
+      <div><b>分辨率</b>：${escapeHtml(resolution)}</div>
+      <div><b>Steps</b>：${escapeHtml(String(steps))}｜<b>Scale</b>：${escapeHtml(String(scale))}</div>
+      <div><b>Sampler</b>：${escapeHtml(sampler)}｜<b>Seed</b>：${escapeHtml(seedLabel)}｜<b>Legacy</b>：${escapeHtml(legacyLabel)}</div>
+      <div><b>CFG Rescale</b>：${escapeHtml(String(cfgRescale))}｜<b>Noise</b>：${escapeHtml(noiseSchedule)}｜<b>Variety</b>：${escapeHtml(varietyBoost)}</div>
+      <div><b>负面</b>：${escapeHtml(negativePreview)}</div>
+    </div>
+    <div class="sg-floating-row sg-floating-row-actions" style="margin-top:-2px;">
+      <button class="sg-floating-mini-btn" id="sg_imagegen_toggle_preview">${escapeHtml(expandLabel)}</button>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_copy_payload">复制请求参数</button>
+    </div>
+  `;
+  $wrap.html(`
+    <div class="sg-floating-row">
+      <div class="sg-floating-title-sm">提示词预览（${escapeHtml(counter)}）</div>
+      <div class="sg-floating-status">${escapeHtml(status)}</div>
+    </div>
+    <div class="sg-floating-prompt">${escapeHtml(String(current.positive || ''))}</div>
+    ${paramsHtml}
+    <div class="sg-floating-row sg-floating-row-actions">
+      <button class="sg-floating-mini-btn" id="sg_imagegen_prev">◀</button>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_next">▶</button>
+      <div class="sg-floating-spacer"></div>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_regen" ${regenDisabled}>重生成</button>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_clear">清空</button>
+    </div>
+    <div class="sg-floating-image-wrap">${imgHtml}</div>
+    <div class="sg-floating-row sg-floating-row-actions" style="margin-top:6px;">
+      <button class="sg-floating-mini-btn" id="sg_imagegen_download">下载图像</button>
+    </div>
+  `);
+
+
+  if (!imgUrl) $('#sg_imagegen_regen').prop('disabled', true);
+}
+
+async function generateImagePromptBatch() {
+  const s = ensureSettings();
+  if (!s.imageGenBatchEnabled) return [];
+
+  const lookback = s.imageGenLookbackMessages || 5;
+  let storyContent = getRecentStoryContent(lookback);
+  if (s.imageGenPromptRulesEnabled && s.imageGenPromptRules) {
+    storyContent = applyPromptRules(storyContent, s.imageGenPromptRules);
+  }
+  if (!storyContent.trim()) throw new Error('没有找到对话内容');
+
+  let statData = null;
+  if (s.imageGenReadStatData) {
+    try {
+      const ctx = SillyTavern.getContext();
+      const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+      const { statData: loaded } = await resolveStatDataComprehensive(chat, {
+        ...s,
+        wiRollStatVarName: s.imageGenStatVarName || 'stat_data'
+      });
+      if (loaded) {
+        statData = loaded;
+        console.log('[ImageGen] Loaded stat_data for image batch prompt:', statData);
+      }
+    } catch (e) {
+      console.warn('[ImageGen] Failed to load stat_data for image batch prompt:', e);
+    }
+  }
+
+  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
+  const profileTags = matchCharacterTagsFromProfiles(storyContent);
+
+  const patterns = getImageGenBatchPatterns();
+  if (!patterns.length) throw new Error('未配置批次模板');
+
+  const storyParts = splitStoryIntoParts(storyContent, 5);
+  const results = [];
+
+  let batchPrompt = `请根据以下故事内容生成一组图像提示词列表（JSON 数组）。\n\n`;
+  if (statDataJson) {
+    batchPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+  }
+
+  batchPrompt += `需要生成 ${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
+  batchPrompt += `要求：只输出 JSON 数组，不要其它文字。positive/negative 必须是英文标签串（逗号分隔）。\n`;
+
+  const patternLines = patterns.map((pattern, idx) => {
+    let rule = '';
+    if (pattern.type === 'story') {
+      const part = storyParts[idx] || storyContent;
+      rule = `剧情代表性画面。剧情片段：${part}`;
+    } else if (pattern.type === 'character_close') {
+      rule = '单人女性近景特写，强调脸部与表情。';
+    } else if (pattern.type === 'character_full') {
+      rule = '单人女性全身立绘，展示服装与姿态。';
+    } else if (pattern.type === 'duo') {
+      rule = '双人同框互动，突出动作关系与情绪交流；即使剧情没有双人也要生成双人构图。';
+    } else if (pattern.type === 'scene') {
+      rule = '场景图提示词，重点描述环境和氛围。';
+    } else if (pattern.type === 'custom_female_1') {
+      const custom = String(s.imageGenCustomFemalePrompt1 || '').trim();
+      rule = `女性角色提示词，融合自定义描述：${custom || '（空）'}`;
+    } else if (pattern.type === 'custom_female_2') {
+      const custom = String(s.imageGenCustomFemalePrompt2 || '').trim();
+      rule = `女性角色提示词，融合自定义描述：${custom || '（空）'}`;
+    } else {
+      rule = '彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。';
+    }
+    const distinctHint = getBatchDistinctHint(idx, patterns.length);
+    const detail = pattern.detail ? `细化：${pattern.detail}` : '';
+    const hint = distinctHint ? `构图提示：${distinctHint}` : '';
+    const parts = [rule, hint, detail].filter(Boolean).join(' | ');
+    return `${idx + 1}. label=${pattern.label}, type=${pattern.type} => ${parts}`;
+  }).join('\n');
+
+  batchPrompt += `\n【模板列表】：\n${patternLines}\n`;
+  batchPrompt += `\n【故事内容】：\n${storyContent}\n`;
+
+  const messages = [
+    { role: 'system', content: s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt },
+    { role: 'user', content: batchPrompt }
+  ];
+
+  const result = await callLLM(messages, { temperature: 0.7 });
+  let parsedList;
+  try {
+    const jsonMatch = result.match(/\[[\s\S]*\]/);
+    if (jsonMatch) parsedList = JSON.parse(jsonMatch[0]);
+  } catch {
+    parsedList = null;
+  }
+
+  if (!Array.isArray(parsedList)) {
+    throw new Error('批量提示词解析失败，请重试');
+  }
+
+  for (let i = 0; i < patterns.length; i += 1) {
+    const pattern = patterns[i];
+    const parsed = parsedList[i] || {};
+    const positive = parsed?.positive || '';
+    const negative = parsed?.negative || '';
+    let finalPositive = positive || '';
+    if (profileTags) finalPositive = `${profileTags}, ${finalPositive}`;
+
+    if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
+      const artist = String(s.imageGenArtistPrompt || '').trim();
+      if (artist) finalPositive = `${artist}, ${finalPositive}`;
+    }
+
+    results.push({
+      label: parsed?.label || pattern.label,
+      type: parsed?.type || pattern.type,
+      positive: finalPositive || positive || '',
+      negative: negative || '',
+      subject: parsed?.subject || ''
+    });
+  }
+
+  return results;
+
+}
+
+async function generateImageFromBatch() {
+  const s = ensureSettings();
+  if (!imageGenBatchPrompts.length) {
+    imageGenBatchStatus = '未生成提示词';
+    renderImageGenBatchPreview();
+    return;
+  }
+  if (imageGenBatchIndex >= imageGenBatchPrompts.length) imageGenBatchIndex = 0;
+
+  const item = imageGenBatchPrompts[imageGenBatchIndex];
+  imageGenBatchBusy = true;
+  imageGenBatchStatus = `生成中：${item.label}`;
+  renderImageGenBatchPreview();
+
+  try {
+    const url = await generateImageWithNovelAI(item.positive, item.negative);
+    imageGenImageUrls[imageGenBatchIndex] = url;
+    imageGenPreviewIndex = imageGenBatchIndex;
+    imageGenBatchStatus = `已生成：${item.label}`;
+    imageGenBatchIndex = (imageGenBatchIndex + 1) % imageGenBatchPrompts.length;
+  } catch (e) {
+    imageGenBatchStatus = `生成失败：${e?.message || e}`;
+  } finally {
+    imageGenBatchBusy = false;
+    renderImageGenBatchPreview();
+  }
+}
+
+async function generateAllImagesFromBatch() {
+  if (!imageGenBatchPrompts.length) {
+    imageGenBatchStatus = '未生成提示词';
+    renderImageGenBatchPreview();
+    return;
+  }
+  if (imageGenBatchBusy) return;
+
+  imageGenBatchBusy = true;
+  for (let i = 0; i < imageGenBatchPrompts.length; i += 1) {
+    const item = imageGenBatchPrompts[i];
+    imageGenBatchStatus = `生成中：${item.label} (${i + 1}/${imageGenBatchPrompts.length})`;
+    imageGenPreviewIndex = i;
+    renderImageGenBatchPreview();
+    try {
+      const url = await generateImageWithNovelAI(item.positive, item.negative);
+      imageGenImageUrls[i] = url;
+      imageGenBatchStatus = `已生成：${item.label} (${i + 1}/${imageGenBatchPrompts.length})`;
+      renderImageGenBatchPreview();
+    } catch (e) {
+      imageGenBatchStatus = `生成失败：${item.label} (${i + 1}/${imageGenBatchPrompts.length})`;
+      renderImageGenBatchPreview();
+      break;
+    }
+  }
+  imageGenBatchBusy = false;
+  renderImageGenBatchPreview();
+}
+
+
+function clearImageGenBatch() {
+  imageGenBatchPrompts = [];
+  imageGenImageUrls = [];
+  imageGenBatchIndex = 0;
+  imageGenPreviewIndex = 0;
+  imageGenBatchStatus = '已清空';
+  renderImageGenBatchPreview();
+}
+
+
+async function generateImagePromptWithLLM(storyContent, genType, statData = null) {
+  const s = ensureSettings();
+  const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
+
+  const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
+  let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
+  if (genType === 'character') {
+    userPrompt += `【要求】：生成角色立绘的提示词，重点描述角色外观。\n\n`;
+  } else if (genType === 'scene') {
+    userPrompt += `【要求】：生成场景图的提示词，重点描述环境和氛围。\n\n`;
+  } else {
+    userPrompt += `【要求】：自动判断应该生成角色还是场景。\n\n`;
+  }
+  userPrompt += `【故事内容】：\n${storyContent}\n\n`;
+  userPrompt += `请输出 JSON 格式的提示词。`;
+
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ];
+
+  try {
+    const result = await callLLM(messages, { temperature: 0.7 });
+
+
+    let parsed;
+    try {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('未找到 JSON');
+      }
+    } catch (e) {
+      console.warn('[ImageGen] Failed to parse LLM response:', e, result);
+      return { type: genType || 'auto', subject: '(解析失败)', positive: result.slice(0, 500), negative: '' };
+    }
+
+    return { type: parsed.type || genType || 'auto', subject: parsed.subject || '', positive: parsed.positive || '', negative: parsed.negative || '' };
+  } catch (e) {
+    console.error('[ImageGen] LLM call failed:', e);
+    const errMsg = e?.message || String(e);
+    if (errMsg.includes('not found') || errMsg.includes('404')) {
+      throw new Error(`LLM 模型不存在，请点击「🔄 刷新模型」获取可用模型列表`);
+    }
+    throw new Error(`LLM 调用失败: ${errMsg}`);
+  }
+}
+
+async function generateImageWithNovelAI(positive, negative) {
+  const s = ensureSettings();
+  const apiKey = s.novelaiApiKey;
+
+  if (!apiKey) throw new Error('请先填写 Novel AI API Key');
+
+  const [width, height] = (s.novelaiResolution || '832x1216').split('x').map(Number);
+  const defaultNegative = s.novelaiNegativePrompt || DEFAULT_SETTINGS.novelaiNegativePrompt;
+  const finalNegative = negative ? `${defaultNegative}, ${negative}` : defaultNegative;
+
+  const model = String(s.novelaiModel || DEFAULT_SETTINGS.novelaiModel || 'nai-diffusion-4-5-full');
+  const isV4 = model.includes('diffusion-4');
+  const fixedSeedEnabled = !!s.novelaiFixedSeedEnabled;
+  const fixedSeed = clampInt(s.novelaiFixedSeed, 0, 4294967295, 0);
+  const seed = fixedSeedEnabled ? fixedSeed : Math.floor(Math.random() * 4294967295);
+  const sampler = String(s.novelaiSampler || (isV4 ? 'k_euler_ancestral' : 'k_euler'));
+  const legacy = isV4 ? (s.novelaiLegacy !== false) : true;
+  const cfgRescale = clampFloat(s.novelaiCfgRescale, 0, 1, 0);
+  const noiseSchedule = String(s.novelaiNoiseSchedule || 'native');
+  const varietyBoost = !!s.novelaiVarietyBoost;
+
+
+  // V4/V4.5 需要完全不同的参数格式
+  let payload;
+
+  if (isV4) {
+    // V4/V4.5 格式 - 基于 novelai-python SDK
+    payload = {
+      input: positive,
+      model: model,
+      action: 'generate',
+      parameters: {
+        width: width || 832,
+        height: height || 1216,
+        scale: s.novelaiScale || 5,
+        steps: s.novelaiSteps || 28,
+        sampler: sampler,
+
+        n_samples: 1,
+        ucPreset: 0,
+        qualityToggle: true,
+        seed: seed,
+        negative_prompt: finalNegative,
+        // V4/V4.5 特有参数
+        cfg_rescale: cfgRescale,
+        sm: false,
+        sm_dyn: false,
+        noise_schedule: noiseSchedule,
+        legacy: legacy,  // 启用以支持 V3 风格的 :: 权重语法
+        legacy_v3_extend: false,
+        skip_cfg_above_sigma: null,
+        variety_boost: varietyBoost,
+
+        decrisp_mode: false,
+        use_coords: false,
+        v4_prompt: {
+          caption: {
+            base_caption: positive,
+            char_captions: []
+          },
+          use_coords: false,
+          use_order: false
+        },
+        v4_negative_prompt: {
+          caption: {
+            base_caption: finalNegative,
+            char_captions: []
+          }
+        }
+      }
+    };
+  } else {
+    // V3 格式
+    payload = {
+      input: positive,
+      model: model,
+      action: 'generate',
+      parameters: {
+        width: width || 832,
+        height: height || 1216,
+        scale: s.novelaiScale || 5,
+        steps: s.novelaiSteps || 28,
+        sampler: sampler,
+
+        negative_prompt: finalNegative,
+        n_samples: 1,
+        ucPreset: 0,
+        qualityToggle: true,
+        seed: seed
+      }
+    };
+  }
+
+  setImageGenStatus('正在调用 Novel AI API 生成图像…', 'warn');
+
+  console.log('[ImageGen] NovelAI request params:', {
+    model,
+    width: width || 832,
+    height: height || 1216,
+    steps: s.novelaiSteps || 28,
+    scale: s.novelaiScale || 5,
+    sampler,
+    seed,
+    fixedSeedEnabled,
+    legacy,
+    cfgRescale,
+    noiseSchedule,
+    varietyBoost,
+    negative: finalNegative,
+    isV4
+  });
+
+  lastNovelaiPayload = payload;
+
+  const response = await fetch('https://image.novelai.net/ai/generate-image', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'Accept': 'application/zip' },
+    body: JSON.stringify(payload)
+  });
+
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Novel AI API 错误: ${response.status} ${response.statusText}\n${errText}`);
+  }
+
+  const blob = await response.blob();
+
+  // 尝试用 JSZip 解压
+  try {
+    if (typeof JSZip !== 'undefined') {
+      const zip = await JSZip.loadAsync(blob);
+      const files = Object.keys(zip.files);
+      if (files.length > 0) {
+        const imageBlob = await zip.files[files[0]].async('blob');
+        return URL.createObjectURL(imageBlob);
+      }
+    }
+  } catch (e) { console.warn('[ImageGen] JSZip failed:', e); }
+
+  return URL.createObjectURL(blob);
+}
+
+async function runImageGeneration() {
+  const s = ensureSettings();
+
+  if (!s.novelaiApiKey) { setImageGenStatus('请先填写 Novel AI API Key', 'err'); return; }
+
+  const genType = $('#sg_imageGenType').val() || 'auto';
+  const lookback = s.imageGenLookbackMessages || 5;
+
+  try {
+    setImageGenStatus('正在读取最近对话…', 'warn');
+    let storyContent = getRecentStoryContent(lookback);
+    if (s.imageGenPromptRulesEnabled && s.imageGenPromptRules) {
+      storyContent = applyPromptRules(storyContent, s.imageGenPromptRules);
+    }
+
+
+    if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
+
+    setImageGenStatus('正在使用 LLM 生成图像提示词…', 'warn');
+    let statData = null;
+    if (s.imageGenReadStatData) {
+      try {
+        const ctx = SillyTavern.getContext();
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+        const { statData: loaded } = await resolveStatDataComprehensive(chat, {
+          ...s,
+          wiRollStatVarName: s.imageGenStatVarName || 'stat_data'
+        });
+        if (loaded) {
+          statData = loaded;
+          console.log('[ImageGen] Loaded stat_data for image prompt:', statData);
+        }
+      } catch (e) {
+        console.warn('[ImageGen] Failed to load stat_data for image prompt:', e);
+      }
+    }
+    const promptResult = await generateImagePromptWithLLM(storyContent, genType, statData);
+
+    const normalizePositive = (text) => String(text || '')
+      .replace(/\s+/g, ' ')
+      .replace(/^\s*,+\s*/g, '')
+      .replace(/\s*,+\s*$/g, '')
+      .trim();
+
+    const normalizeStatText = (data) => {
+      if (!data) return '';
+      try {
+        return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      } catch {
+        return String(data);
+      }
+    };
+
+    const profileTags = matchCharacterTagsFromProfiles(storyContent);
+    let finalPositive = normalizePositive(promptResult.positive);
+    if (profileTags) {
+      finalPositive = `${normalizePositive(profileTags)}, ${finalPositive}`;
+      console.log('[ImageGen] Added character profile tags:', profileTags);
+    }
+
+
+    if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
+      const artistPrompt = normalizePositive(s.imageGenArtistPrompt);
+      if (artistPrompt) {
+        finalPositive = `${artistPrompt}, ${finalPositive}`;
+      }
+    }
+
+    $('#sg_imagePositivePrompt').val(finalPositive);
+
+
+    $('#sg_imagePromptPreview').show();
+
+    const imageUrl = await generateImageWithNovelAI(finalPositive, promptResult.negative);
+
+    $('#sg_generatedImage').attr('src', imageUrl);
+    $('#sg_generatedImage').attr('data-full', imageUrl);
+    $('#sg_imageResult').show();
+
+
+    setImageGenStatus(`✅ 生成成功！类型: ${promptResult.type}，主题: ${promptResult.subject}`, 'ok');
+
+    if (s.imageGenAutoSave && s.imageGenSavePath) {
+      try { await saveGeneratedImage(imageUrl); setImageGenStatus(`✅ 生成成功并已保存！`, 'ok'); }
+      catch (e) { console.warn('[ImageGen] Auto-save failed:', e); }
+    }
+  } catch (e) {
+    console.error('[ImageGen] Generation failed:', e);
+    setImageGenStatus(`❌ 生成失败: ${e?.message || e}`, 'err');
+  }
+}
+
+async function saveGeneratedImage(imageUrl) {
+  const response = await fetch(imageUrl);
+  const blob = await response.blob();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const filename = `sg_image_${timestamp}.png`;
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+
+// -------------------- 在线图库功能 --------------------
+
+async function loadGalleryFromGitHub() {
+  const s = ensureSettings();
+  const url = String($('#sg_imageGalleryUrl').val() || s.imageGalleryUrl || '').trim();
+
+  if (!url) {
+    setImageGenStatus('请先填写图库索引 URL', 'err');
+    return false;
+  }
+
+  setImageGenStatus('正在加载图库…', 'warn');
+  $('#sg_galleryInfo').text('(加载中…)');
+
+  try {
+    const response = await fetch(url, { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = await response.json();
+    if (!data.images || !Array.isArray(data.images)) throw new Error('格式错误：缺少 images 数组');
+
+    s.imageGalleryCache = data.images;
+    s.imageGalleryCacheTime = Date.now();
+    s.imageGalleryBaseUrl = data.baseUrl || url.replace(/\/[^\/]+$/, '/');
+    saveSettings();
+
+    $('#sg_galleryInfo').text(`(已加载 ${data.images.length} 张)`);
+    setImageGenStatus(`✅ 图库加载成功：${data.images.length} 张图片`, 'ok');
+    return true;
+  } catch (e) {
+    console.error('[ImageGallery] Load failed:', e);
+    $('#sg_galleryInfo').text('(加载失败)');
+    setImageGenStatus(`❌ 图库加载失败: ${e?.message || e}`, 'err');
+    return false;
+  }
+}
+
+async function matchGalleryImage() {
+  const s = ensureSettings();
+
+  if (!s.imageGalleryCache || s.imageGalleryCache.length === 0) {
+    setImageGenStatus('请先加载图库', 'err');
+    return;
+  }
+
+  const storyContent = getRecentStoryContent(s.imageGenLookbackMessages || 5);
+  if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
+
+  setImageGenStatus('正在分析剧情并匹配图片…', 'warn');
+
+  const galleryList = s.imageGalleryCache.map(img =>
+    `- id:${img.id}, tags:[${(img.tags || []).join(',')}], desc:${img.description || ''}`
+  ).join('\n');
+
+  const messages = [
+    { role: 'system', content: s.imageGalleryMatchPrompt || DEFAULT_SETTINGS.imageGalleryMatchPrompt },
+    { role: 'user', content: `【剧情】：\n${storyContent}\n\n【图库】：\n${galleryList}\n\n选择最匹配的图片。` }
+  ];
+
+  try {
+    const result = await callLLM(messages, { temperature: 0.3, max_tokens: 256 });
+    const jsonMatch = result.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) { setImageGenStatus('❌ 匹配失败：无法解析响应', 'err'); return; }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    const matchedImage = s.imageGalleryCache.find(img => img.id === parsed.matchedId);
+
+    if (!matchedImage) { setImageGenStatus(`❌ 未找到 ID "${parsed.matchedId}"`, 'err'); return; }
+
+    const baseUrl = s.imageGalleryBaseUrl || '';
+    const imageUrl = matchedImage.path.startsWith('http') ? matchedImage.path : baseUrl + matchedImage.path;
+
+    $('#sg_matchedGalleryImage').attr('src', imageUrl);
+    $('#sg_matchedGalleryImage').attr('data-full', imageUrl);
+    $('#sg_galleryMatchReason').text(`🎯 ${parsed.reason || ''}`);
+    $('#sg_galleryResult').show();
+
+    setImageGenStatus(`✅ 匹配：${matchedImage.description || parsed.matchedId}`, 'ok');
+  } catch (e) {
+    console.error('[ImageGallery] Match failed:', e);
+    setImageGenStatus(`❌ 匹配失败: ${e?.message || e}`, 'err');
+  }
+}
+
+
+async function refreshModels() {
+  const s = ensureSettings();
+  const raw = String($('#sg_customEndpoint').val() || s.customEndpoint || '').trim();
+  const apiBase = normalizeBaseUrl(raw);
+  if (!apiBase) { setStatus('请先填写 API基础URL 再刷新模型', 'warn'); return; }
+
+  setStatus('正在刷新模型列表…', 'warn');
+
+  const apiKey = String($('#sg_customApiKey').val() || s.customApiKey || '');
+  const statusUrl = '/api/backends/chat-completions/status';
+
+  const body = {
+    reverse_proxy: apiBase,
+    chat_completion_source: 'custom',
+    custom_url: apiBase,
+    custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : ''
+  };
+
+  // prefer backend status
+  try {
+    const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
+    const res = await fetch(statusUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    const data = await res.json().catch(() => ({}));
+
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) {
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      return;
+    }
+
+    s.customModelsCache = ids;
+    saveSettings();
+    fillModelSelect(ids, s.customModel);
+
+    // Update character model datalist
+    const $dl = $('#sg_char_model_list');
+    $dl.empty();
+    ids.forEach(id => {
+      $dl.append($('<option>').val(id));
+    });
+
+    setStatus(`已刷新模型：${ids.length} 个（后端代理）`, 'ok');
+    return;
+  } catch (e) {
+    const status = e?.status;
+    if (!(status === 404 || status === 405)) console.warn('[StoryGuide] status check failed; fallback to direct /models', e);
+  }
+
+  // fallback direct
+  try {
+    const modelsUrl = (function (base) {
+      const u = normalizeBaseUrl(base);
+      if (!u) return '';
+      if (/\/v1$/.test(u)) return u + '/models';
+      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      return u + '/v1/models';
+    })(apiBase);
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+    const res = await fetch(modelsUrl, { method: 'GET', headers });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+    }
+    const data = await res.json().catch(() => ({}));
+
+    let modelsList = [];
+    if (Array.isArray(data?.models)) modelsList = data.models;
+    else if (Array.isArray(data?.data)) modelsList = data.data;
+    else if (Array.isArray(data)) modelsList = data;
+
+    let ids = [];
+    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+
+    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+
+    s.customModelsCache = ids;
+    saveSettings();
+    fillModelSelect(ids, s.customModel);
+    setStatus(`已刷新模型：${ids.length} 个`, 'ok');
+  } catch (e) {
+    const status = e?.status;
+    if (!(status === 404 || status === 405)) {
+      setStatus(`刷新失败：${e?.message ?? e}`, 'err');
+      return;
+    }
+
+    // Fallback: direct /models
+    console.warn('[StoryGuide] custom character status check failed; fallback to direct /models', e);
+    try {
+      const modelsUrl = (function (base) {
+        const u = normalizeBaseUrl(base);
+        if (!u) return '';
+        if (/\/v1$/.test(u)) return u + '/models';
+        if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+        return u + '/v1/models';
+      })(apiBase);
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+      const res = await fetch(modelsUrl, { method: 'GET', headers });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      }
+
+      const data = await res.json().catch(() => ({}));
+      let modelsList = [];
+      if (Array.isArray(data?.models)) modelsList = data.models;
+      else if (Array.isArray(data?.data)) modelsList = data.data;
+      else if (Array.isArray(data)) modelsList = data;
+
+      let ids = [];
+      if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+      ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+
+      if (!ids.length) {
+        setStatus('刷新成功，但未解析到模型列表', 'warn');
+        return;
+      }
+
+      s.customModelsCache = ids;
+      saveSettings();
+      const $dl = $('#sg_char_model_list');
+      $dl.empty();
+      ids.forEach(id => {
+        $dl.append($('<option>').val(id));
+      });
+      setStatus(`已刷新模型（直连）：${ids.length} 个`, 'ok');
+
+    } catch (e2) {
+      setStatus(`刷新失败：${e2?.message ?? e2}`, 'err');
+    }
+  }
+}
+
+// -------------------- UI --------------------
+
+function findTopbarContainer() {
+  const extBtn =
+    document.querySelector('#extensions_button') ||
+    document.querySelector('[data-i18n="Extensions"]') ||
+    document.querySelector('button[title*="Extensions"]') ||
+    document.querySelector('button[aria-label*="Extensions"]');
+  if (extBtn && extBtn.parentElement) return extBtn.parentElement;
+
+  const candidates = ['#top-bar', '#topbar', '#topbar_buttons', '#topbar-buttons', '.topbar', '.topbar_buttons', '.top-bar', '.top-bar-buttons', '#rightNav', '#top-right', '#toolbar'];
+  for (const sel of candidates) {
+    const el = document.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
+}
+
+function createTopbarButton() {
+  if (document.getElementById('sg_topbar_btn')) return;
+  const container = findTopbarContainer();
+  const btn = document.createElement('button');
+  btn.id = 'sg_topbar_btn';
+  btn.type = 'button';
+  btn.className = 'sg-topbar-btn';
+  btn.title = '剧情指导 StoryGuide';
+  btn.innerHTML = '<span class="sg-topbar-icon">📘</span>';
+  btn.addEventListener('click', () => openModal());
+
+  if (container) {
+    const sample = container.querySelector('button');
+    if (sample && sample.className) btn.className = sample.className + ' sg-topbar-btn';
+    container.appendChild(btn);
+  } else {
+    btn.className += ' sg-topbar-fallback';
+    document.body.appendChild(btn);
+  }
+}
+
+
+function findChatInputAnchor() {
+  // Prefer send button as anchor
+  const sendBtn =
+    document.querySelector('#send_but') ||
+    document.querySelector('#send_button') ||
+    document.querySelector('button#send') ||
+    document.querySelector('button[title*="Send"]') ||
+    document.querySelector('button[aria-label*="Send"]') ||
+    document.querySelector('button.menu_button#send_but') ||
+    document.querySelector('.send_button') ||
+    document.querySelector('button[type="submit"]');
+
+  if (sendBtn) return sendBtn;
+
+  // Fallback: textarea container
+  const ta =
+    document.querySelector('#send_textarea') ||
+    document.querySelector('textarea[name="message"]') ||
+    document.querySelector('textarea');
+
+  return ta;
+}
+
+const SG_CHAT_POS_KEY = 'storyguide_chat_controls_pos_v1';
+let sgChatPinnedLoaded = false;
+let sgChatPinnedPos = null; // {left, top, pinned}
+let sgChatPinned = false;
+
+function loadPinnedChatPos() {
+  if (sgChatPinnedLoaded) return;
+  sgChatPinnedLoaded = true;
+  try {
+    const raw = localStorage.getItem(SG_CHAT_POS_KEY);
+    if (!raw) return;
+    const j = JSON.parse(raw);
+    if (j && typeof j.left === 'number' && typeof j.top === 'number') {
+      sgChatPinnedPos = { left: j.left, top: j.top, pinned: j.pinned !== false };
+      sgChatPinned = sgChatPinnedPos.pinned;
+    }
+  } catch { /* ignore */ }
+}
+
+function savePinnedChatPos(left, top) {
+  try {
+    sgChatPinnedPos = { left: Number(left) || 0, top: Number(top) || 0, pinned: true };
+    sgChatPinned = true;
+    localStorage.setItem(SG_CHAT_POS_KEY, JSON.stringify(sgChatPinnedPos));
+  } catch { /* ignore */ }
+}
+
+function clearPinnedChatPos() {
+  try {
+    sgChatPinnedPos = null;
+    sgChatPinned = false;
+    localStorage.removeItem(SG_CHAT_POS_KEY);
+  } catch { /* ignore */ }
+}
+
+const SG_FLOATING_POS_KEY = 'storyguide_floating_panel_pos_v1';
+let sgFloatingPinnedLoaded = false;
+let sgFloatingPinnedPos = null;
+
+function loadFloatingPanelPos() {
+  if (sgFloatingPinnedLoaded) return;
+  sgFloatingPinnedLoaded = true;
+  try {
+    const raw = localStorage.getItem(SG_FLOATING_POS_KEY);
+    if (!raw) return;
+    const j = JSON.parse(raw);
+    if (j && typeof j.left === 'number' && typeof j.top === 'number') {
+      sgFloatingPinnedPos = { left: j.left, top: j.top };
+    }
+  } catch { /* ignore */ }
+}
+
+function saveFloatingPanelPos(left, top) {
+  try {
+    sgFloatingPinnedPos = { left: Number(left) || 0, top: Number(top) || 0 };
+    localStorage.setItem(SG_FLOATING_POS_KEY, JSON.stringify(sgFloatingPinnedPos));
+  } catch { /* ignore */ }
+}
+
+function clearFloatingPanelPos() {
+  try {
+    sgFloatingPinnedPos = null;
+    localStorage.removeItem(SG_FLOATING_POS_KEY);
+  } catch { /* ignore */ }
+}
+
+function clampToViewport(left, top, w, h) {
+  // 放宽边界限制：允许窗口越界 50%（即至少保留 50% 或标题栏 40px 可见）
+  const minVisibleRatio = 0.5; // 至少 50% 可见（允许另外 50% 在屏幕外）
+  const minVisiblePx = 40;     // 或至少 40px（保证标题栏可拖回）
+
+  // 计算水平方向需要保持可见的最小宽度
+  const minVisibleW = Math.max(minVisiblePx, w * minVisibleRatio);
+  // 计算垂直方向需要保持可见的最小高度
+  const minVisibleH = Math.max(minVisiblePx, h * minVisibleRatio);
+
+  // 左边界：允许负值，但确保右侧至少 minVisibleW 在屏幕内
+  // 即 left + w >= minVisibleW → left >= minVisibleW - w
+  const minLeft = minVisibleW - w;
+  // 右边界：确保左侧至少 minVisibleW 在屏幕内
+  // 即 left + minVisibleW <= window.innerWidth → left <= window.innerWidth - minVisibleW
+  const maxLeft = window.innerWidth - minVisibleW;
+
+  // 上边界：严格限制 >= 0，保证标题栏不被遮挡
+  const minTop = 0;
+  // 下边界：确保顶部至少 minVisibleH 在屏幕内
+  const maxTop = window.innerHeight - minVisibleH;
+
+  const L = Math.max(minLeft, Math.min(left, maxLeft));
+  const T = Math.max(minTop, Math.min(top, maxTop));
+  return { left: L, top: T };
+}
+
+function measureWrap(wrap) {
+  const prevVis = wrap.style.visibility;
+  wrap.style.visibility = 'hidden';
+  wrap.style.left = '0px';
+  wrap.style.top = '0px';
+  const w = wrap.offsetWidth || 220;
+  const h = wrap.offsetHeight || 38;
+  wrap.style.visibility = prevVis || 'visible';
+  return { w, h };
+}
+
+function positionChatActionButtons() {
+  const wrap = document.getElementById('sg_chat_controls');
+  if (!wrap) return;
+
+  loadPinnedChatPos();
+
+  const { w, h } = measureWrap(wrap);
+
+  // If user dragged & pinned position, keep it.
+  if (sgChatPinned && sgChatPinnedPos) {
+    const clamped = clampToViewport(sgChatPinnedPos.left, sgChatPinnedPos.top, w, h);
+    wrap.style.left = `${Math.round(clamped.left)}px`;
+    wrap.style.top = `${Math.round(clamped.top)}px`;
+    return;
+  }
+
+  const sendBtn =
+    document.querySelector('#send_but') ||
+    document.querySelector('#send_button') ||
+    document.querySelector('button#send') ||
+    document.querySelector('button[title*="Send"]') ||
+    document.querySelector('button[aria-label*="Send"]') ||
+    document.querySelector('.send_button') ||
+    document.querySelector('button[type="submit"]');
+
+  if (!sendBtn) return;
+
+  const rect = sendBtn.getBoundingClientRect();
+
+  // place to the left of send button, vertically centered
+  let left = rect.left - w - 10;
+  let top = rect.top + (rect.height - h) / 2;
+
+  const clamped = clampToViewport(left, top, w, h);
+  wrap.style.left = `${Math.round(clamped.left)}px`;
+  wrap.style.top = `${Math.round(clamped.top)}px`;
+}
+
+let sgChatPosTimer = null;
+function schedulePositionChatButtons() {
+  if (sgChatPosTimer) return;
+  sgChatPosTimer = setTimeout(() => {
+    sgChatPosTimer = null;
+    try { positionChatActionButtons(); } catch { }
+  }, 60);
+}
+
+// Removed: ensureChatActionButtons feature (Generate/Reroll buttons near input)
+function ensureChatActionButtons() {
+  // Feature disabled/removed as per user request.
+  const el = document.getElementById('sg_chat_controls');
+  if (el) el.remove();
+}
+
+
+// -------------------- card toggle (shrink/expand per module card) --------------------
+function clearLegacyZoomArtifacts() {
+  try {
+    document.body.classList.remove('sg-zoom-lock');
+    document.querySelectorAll('.sg-zoomed').forEach(el => el.classList.remove('sg-zoomed'));
+    const ov = document.getElementById('sg_zoom_overlay');
+    if (ov) ov.remove();
+  } catch { /* ignore */ }
+}
+
+function installCardZoomDelegation() {
+  if (window.__storyguide_card_toggle_installed) return;
+  window.__storyguide_card_toggle_installed = true;
+
+  clearLegacyZoomArtifacts();
+
+  document.addEventListener('click', (e) => {
+    const target = e.target;
+    // don't hijack interactive elements
+    if (target.closest('a, button, input, textarea, select, label')) return;
+
+    // Handle Title Click -> Collapse Section
+    // Target headers h1-h6 inside floating or inline body
+    // We strictly look for headers that are direct children or wrapped in simple divs of the body
+    const header = target.closest('.sg-floating-body h1, .sg-floating-body h2, .sg-floating-body h3, .sg-floating-body h4, .sg-floating-body h5, .sg-floating-body h6, .sg-inline-body h1, .sg-inline-body h2, .sg-inline-body h3, .sg-inline-body h4, .sg-inline-body h5, .sg-inline-body h6');
+
+    if (header) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Find the next sibling that is usually the content (ul, p, or div)
+      let next = header.nextElementSibling;
+      let handled = false;
+
+      // Toggle class on header for styling (arrow)
+      header.classList.toggle('sg-section-collapsed');
+
+      while (next) {
+        // Stop if we hit another header of same or higher level, or if end of container
+        const tag = next.tagName.toLowerCase();
+        if (/^h[1-6]$/.test(tag)) break;
+
+        // Toggle visibility
+        if (next.style.display === 'none') {
+          next.style.display = '';
+        } else {
+          next.style.display = 'none';
+        }
+
+        next = next.nextElementSibling;
+        handled = true;
+      }
+      return;
+    }
+
+    // Fallback: If inline cards still need collapsing (optional, keeping for compatibility if user wants inline msg boxes to toggle)
+    const card = target.closest('.sg-inline-body > ul > li');
+    if (card) {
+      // Check selection
+      try {
+        const sel = window.getSelection();
+        if (sel && String(sel).trim().length > 0) return;
+      } catch { /* ignore */ }
+
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.toggle('sg-collapsed');
+    }
+  }, true);
+}
+
+
+
 function buildModalHtml() {
-return `
-      <div class="sg-profile-row" data-index="${idx}">
-        <div class="sg-grid2">
+  return `
+  <div id="sg_modal_backdrop" class="sg-backdrop" style="display:none;">
+    <div id="sg_modal" class="sg-modal" role="dialog" aria-modal="true">
+      <div class="sg-modal-head">
+        <div class="sg-modal-title">
+          <span class="sg-badge">📘</span>
+          剧情指导 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
+        </div>
+        <div class="sg-modal-actions">
+          <button class="menu_button sg-btn" id="sg_close">✕</button>
+        </div>
+      </div>
+
+
+      <div class="sg-modal-body">
+        <div class="sg-left">
+          <div class="sg-pagetabs">
+            <button class="sg-pgtab active" id="sg_pgtab_guide">剧情指导</button>
+            <button class="sg-pgtab" id="sg_pgtab_summary">总结设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_index">索引设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
+            <button class="sg-pgtab" id="sg_pgtab_image">图像生成</button>
+            <button class="sg-pgtab" id="sg_pgtab_character">自定义角色</button>
+          </div>
+
+          <div class="sg-page active" id="sg_page_guide">
+          <div class="sg-card">
+            <div class="sg-card-title">生成设置</div>
+
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>启用</label>
+                <label class="sg-switch">
+                  <input type="checkbox" id="sg_enabled">
+                  <span class="sg-slider"></span>
+                </label>
+              </div>
+
+              <div class="sg-field">
+                <label>剧透等级</label>
+                <select id="sg_spoiler">
+                  <option value="none">不剧透</option>
+                  <option value="mild">轻剧透</option>
+                  <option value="full">全剧透</option>
+                </select>
+              </div>
+
+              <div class="sg-field">
+                <label>Provider</label>
+                <select id="sg_provider">
+                  <option value="st">使用当前 SillyTavern API（推荐）</option>
+                  <option value="custom">独立API（走酒馆后端代理，减少跨域）</option>
+                </select>
+              </div>
+
+              <div class="sg-field">
+                <label>temperature</label>
+                <input id="sg_temperature" type="number" step="0.05" min="0" max="2">
+              </div>
+            </div>
+
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>最近消息条数</label>
+                <input id="sg_maxMessages" type="number" min="5" max="200">
+              </div>
+              <div class="sg-field">
+                <label>每条最大字符</label>
+                <input id="sg_maxChars" type="number" min="200" max="8000">
+              </div>
+            </div>
+
+            <div class="sg-row">
+              <label class="sg-check"><input type="checkbox" id="sg_includeUser">包含用户消息</label>
+              <label class="sg-check"><input type="checkbox" id="sg_includeAssistant">包含AI消息</label>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_autoRefresh">自动刷新面板报告</label>
+              <select id="sg_autoRefreshOn">
+                <option value="received">AI回复时</option>
+                <option value="sent">用户发送时</option>
+                <option value="both">两者都触发</option>
+              </select>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_autoAppendBox">启用分析框（手动生成/重Roll）</label>
+              <select id="sg_appendMode">
+                <option value="compact">简洁</option>
+                <option value="standard">标准</option>
+              </select>
+              <select id="sg_inlineModulesSource" title="选择追加框展示的模块来源">
+                <option value="inline">仅 inline=true 的模块</option>
+                <option value="panel">跟随面板（panel=true）</option>
+                <option value="all">显示全部模块</option>
+              </select>
+              <label class="sg-check" title="即使模型没输出该字段，也显示（空）占位">
+                <input type="checkbox" id="sg_inlineShowEmpty">显示空字段
+              </label>
+              <span class="sg-hint">（点击框标题可折叠）</span>
+            </div>
+
+            <div id="sg_custom_block" class="sg-card sg-subcard" style="display:none;">
+              <div class="sg-card-title">独立API 设置（建议填 API基础URL）</div>
+
+              <div class="sg-field">
+                <label>API基础URL（例如 https://api.openai.com/v1 ）</label>
+                <input id="sg_customEndpoint" type="text" placeholder="https://xxx.com/v1">
+                <div class="sg-hint sg-warn">优先走酒馆后端代理接口（/api/backends/...），比浏览器直连更不容易跨域/连不上。</div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>API Key（可选）</label>
+                  <input id="sg_customApiKey" type="password" placeholder="可留空">
+                </div>
+
+                <div class="sg-field">
+                  <label>模型（可手填）</label>
+                  <input id="sg_customModel" type="text" placeholder="gpt-4o-mini">
+                </div>
+              </div>
+
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_refreshModels">检查/刷新模型</button>
+                <select id="sg_modelSelect" class="sg-model-select">
+                  <option value="">（选择模型）</option>
+                </select>
+              </div>
+
+              <div class="sg-row">
+                <div class="sg-field sg-field-full">
+                  <label>最大回复token数</label>
+                  <input id="sg_customMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如：60000">
+                
+                  <label class="sg-check" style="margin-top:8px;">
+                    <input type="checkbox" id="sg_customStream"> 使用流式返回（stream=true）
+                  </label>
+</div>
+              </div>
+            </div>
+
+            <div class="sg-actions-row">
+              <button class="menu_button sg-btn-primary" id="sg_saveSettings">保存设置</button>
+              <button class="menu_button sg-btn-primary" id="sg_analyze">分析当前剧情</button>
+            </div>
+            <div class="sg-actions-row" style="margin-top: 8px;">
+              <button class="menu_button sg-btn" id="sg_exportPreset">📤 导出全局预设</button>
+              <button class="menu_button sg-btn" id="sg_importPreset">📥 导入全局预设</button>
+              <input type="file" id="sg_importPresetFile" accept=".json" style="display: none;">
+            </div>
+          </div>
+
+          <div class="sg-card">
+            <div class="sg-card-title">快捷选项</div>
+            <div class="sg-hint">点击选项可自动将提示词输入到聊天框。可自定义选项内容。</div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_quickOptionsEnabled">启用快捷选项</label>
+              <select id="sg_quickOptionsShowIn">
+                <option value="inline">仅分析框</option>
+                <option value="panel">仅面板</option>
+                <option value="both">两者都显示</option>
+              </select>
+            </div>
+
+            <div class="sg-field" style="margin-top:10px;">
+              <label>选项配置（JSON，格式：[{label, prompt}, ...]）</label>
+              <textarea id="sg_quickOptionsJson" rows="6" spellcheck="false" placeholder='[{"label": "继续", "prompt": "继续当前剧情发展"}]'></textarea>
+              <div class="sg-actions-row">
+                <button class="menu_button sg-btn" id="sg_resetQuickOptions">恢复默认选项</button>
+                <button class="menu_button sg-btn" id="sg_applyQuickOptions">应用选项</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sg-card">
+            <div class="sg-card-title">输出模块（JSON，可自定义字段/提示词）</div>
+            <div class="sg-hint">你可以增删模块、改 key/title/type/prompt、控制 panel/inline。保存前可点“校验”。</div>
+
+            <div class="sg-field">
+              <textarea id="sg_modulesJson" rows="12" spellcheck="false"></textarea>
+              <div class="sg-hint" style="margin-top:4px;">💡 模块可添加 <code>static: true</code> 表示静态模块（只在首次生成或手动刷新时更新）</div>
+              <div class="sg-actions-row">
+                <button class="menu_button sg-btn" id="sg_validateModules">校验</button>
+                <button class="menu_button sg-btn" id="sg_resetModules">恢复默认</button>
+                <button class="menu_button sg-btn" id="sg_applyModules">应用到设置</button>
+                <button class="menu_button sg-btn" id="sg_clearStaticCache">刷新静态模块</button>
+              </div>
+            </div>
+
+            <div class="sg-field">
+              <label>自定义 System 补充（可选）</label>
+              <textarea id="sg_customSystemPreamble" rows="3" placeholder="例如：更偏悬疑、强调线索、避免冗长…"></textarea>
+            </div>
+            <div class="sg-field">
+              <label>自定义 Constraints 补充（可选）</label>
+              <textarea id="sg_customConstraints" rows="3" placeholder="例如：必须提到关键人物动机、每条不超过20字…"></textarea>
+            </div>
+          </div>
+
+          
+          <div class="sg-card">
+            <div class="sg-card-title">预设与世界书</div>
+
+            <div class="sg-row sg-inline">
+              <button class="menu_button sg-btn" id="sg_exportPreset">导出预设</button>
+              <label class="sg-check"><input type="checkbox" id="sg_presetIncludeApiKey">导出包含 API Key</label>
+              <button class="menu_button sg-btn" id="sg_importPreset">导入预设</button>
+            </div>
+
+            <div class="sg-hint">预设会包含：生成设置 / 独立API / 输出模块 / 世界书设置 / 自定义提示骨架。导入会覆盖当前配置。</div>
+
+            <hr class="sg-hr">
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_worldbookEnabled">在分析输入中注入世界书</label>
+              <select id="sg_worldbookMode">
+                <option value="active">仅注入“可能激活”的条目（推荐）</option>
+                <option value="all">注入全部条目</option>
+              </select>
+            </div>
+
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>世界书最大注入字符</label>
+                <input id="sg_worldbookMaxChars" type="number" min="500" max="50000">
+              </div>
+              <div class="sg-field">
+                <label>激活检测窗口（最近消息条数）</label>
+                <input id="sg_worldbookWindowMessages" type="number" min="5" max="80">
+              </div>
+            </div>
+
+            <div class="sg-row sg-inline">
+              <button class="menu_button sg-btn" id="sg_importWorldbook">导入世界书JSON</button>
+              <button class="menu_button sg-btn" id="sg_clearWorldbook">清空世界书</button>
+              <button class="menu_button sg-btn" id="sg_saveWorldbookSettings">保存世界书设置</button>
+            </div>
+
+            <div class="sg-hint" id="sg_worldbookInfo">（未导入世界书）</div>
+          </div>
+
+          <div class="sg-card">
+            <div class="sg-card-title">🗺️ 网格地图</div>
+            <div class="sg-hint">从剧情中自动提取地点信息，生成可视化世界地图。显示主角位置和各地事件。</div>
+            
+              <div class="sg-row sg-inline" style="margin-top: 10px;">
+                <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
+              </div>
+
+              <div class="sg-field" style="margin-top: 10px;">
+                <label>地图提示词</label>
+                <textarea id="sg_mapSystemPrompt" rows="6" placeholder="可自定义地图提取规则（仍需输出 JSON）"></textarea>
+                <div class="sg-actions-row">
+                  <button class="menu_button sg-btn" id="sg_mapResetPrompt">恢复默认提示词</button>
+                </div>
+              </div>
+              
+              <div class="sg-field" style="margin-top: 10px;">
+                <label>地图当前状态</label>
+                <div id="sg_mapPreview" class="sg-map-container">
+                <div class="sg-map-empty">暂无地图数据。启用后进行剧情分析将自动生成地图。</div>
+              </div>
+            </div>
+            
+            <div class="sg-actions-row">
+              <button class="menu_button sg-btn" id="sg_resetMap">🗑 重置地图</button>
+              <button class="menu_button sg-btn" id="sg_refreshMapPreview">🔄 刷新预览</button>
+            </div>
+          </div>
+
+          </div> <!-- sg_page_guide -->
+
+          <div class="sg-page" id="sg_page_summary">
+
+          <div class="sg-card">
+            <div class="sg-card-title">自动总结（写入世界书）</div>
+
+            <div class="sg-row sg-inline">
+              <label class="sg-check"><input type="checkbox" id="sg_summaryEnabled">启用自动总结</label>
+              <span>每</span>
+              <input id="sg_summaryEvery" type="number" min="1" max="200" style="width:90px">
+              <span>层</span>
+              <select id="sg_summaryCountMode">
+                <option value="assistant">按 AI 回复计数</option>
+                <option value="all">按全部消息计数</option>
+              </select>
+            </div>
+
+            <div class="sg-grid2">
+              <div class="sg-field">
+                <label>总结 Provider</label>
+                <select id="sg_summaryProvider">
+                  <option value="st">使用酒馆当前连接的模型</option>
+                  <option value="custom">使用独立 OpenAI 兼容 API</option>
+                </select>
+              </div>
+              <div class="sg-field">
+                <label>总结 Temperature</label>
+                <input id="sg_summaryTemperature" type="number" min="0" max="2" step="0.1">
+              </div>
+            </div>
+
+              <div class="sg-card sg-subcard">
+                <div class="sg-field">
+                  <label>自定义总结提示词（System，可选）</label>
+                  <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON）"></textarea>
+                </div>
+                <div class="sg-field">
+                  <label>对话片段模板（User，可选）</label>
+                  <textarea id="sg_summaryUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
+                </div>
+              <div class="sg-row sg-inline">
+                <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示词</button>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{statData}}。插件会强制要求输出 JSON：{title, summary, keywords[]}。</div>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:8px">
+                <label class="sg-check"><input type="checkbox" id="sg_summaryReadStatData">读取角色状态变量</label>
+                <div class="sg-field" style="flex:1;margin-left:8px">
+                  <input id="sg_summaryStatVarName" type="text" placeholder="stat_data" style="width:120px">
+                </div>
+                <div class="sg-hint" style="margin-left:8px">AI 可看到变量中的角色属性数据（类似 ROLL 点模块）</div>
+              </div>
+            </div>
+
+            <div class="sg-card sg-subcard">
+              <div class="sg-card-title">结构化条目（人物/装备/物品栏/势力/成就/副职业/任务）</div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">启用结构化条目</label>
+                <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">人物</label>
+                <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">装备</label>
+                <label class="sg-check"><input type="checkbox" id="sg_inventoryEntriesEnabled">物品栏</label>
+                <label class="sg-check"><input type="checkbox" id="sg_factionEntriesEnabled">势力</label>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:6px">
+                <label class="sg-check"><input type="checkbox" id="sg_structuredWorldbookEnabled">读取蓝灯世界书</label>
+                <select id="sg_structuredWorldbookMode">
+                  <option value="active">active（只读取未禁用条目）</option>
+                  <option value="all">all（读取所有条目）</option>
+                </select>
+                <div class="sg-hint" id="sg_structuredWorldbookInfo" style="margin-left:auto">（未读取）</div>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:6px">
+                <span>更新频率</span>
+                <span>每</span>
+                <input id="sg_structuredEntriesEvery" type="number" min="1" max="200" style="width:90px">
+                <span>层</span>
+                <select id="sg_structuredEntriesCountMode">
+                  <option value="assistant">按 AI 回复计数</option>
+                  <option value="all">按全部消息计数</option>
+                </select>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:6px">
+                <span>读取楼层</span>
+                <span>最近</span>
+                <input id="sg_structuredEntriesReadFloors" type="number" min="1" max="200" style="width:90px">
+                <span>层</span>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:6px">
+                <span>条目内容格式</span>
+                <select id="sg_structuredEntryContentFormat">
+                  <option value="text">简洁文本</option>
+                  <option value="markdown">Markdown</option>
+                </select>
+              </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_structuredReenableEntriesEnabled">自动重新启用人物/势力</label>
+              </div>
+
+              <div class="sg-card sg-subcard">
+                <div class="sg-card-title">大总结（汇总多条剧情总结）</div>
+                <div class="sg-row sg-inline">
+                  <label class="sg-check"><input type="checkbox" id="sg_megaSummaryEnabled">启用大总结</label>
+                  <div class="sg-field" style="margin-left:8px">
+                    <label style="margin-right:6px">每</label>
+                    <input id="sg_megaSummaryEvery" type="number" min="5" max="5000" style="width:80px">
+                    <span class="sg-hint" style="margin-left:6px">条剧情总结生成一次</span>
+                  </div>
+                </div>
+                <div class="sg-field">
+                  <label>大总结前缀</label>
+                  <input id="sg_megaSummaryCommentPrefix" type="text" placeholder="大总结">
+                </div>
+                <div class="sg-field">
+                  <label>大总结提示词（System，可选）</label>
+                  <textarea id="sg_megaSummarySystemPrompt" rows="5" placeholder="例如：强调阶段性转折/主线推进…（仍需输出 JSON）"></textarea>
+                </div>
+                <div class="sg-field">
+                  <label>大总结模板（User，可选）</label>
+                  <textarea id="sg_megaSummaryUserTemplate" rows="4" placeholder="支持占位符：{{items}}"></textarea>
+                </div>
+              </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_achievementEntriesEnabled">成就</label>
+                <label class="sg-check"><input type="checkbox" id="sg_subProfessionEntriesEnabled">副职业</label>
+                <label class="sg-check"><input type="checkbox" id="sg_questEntriesEnabled">任务</label>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>人物条目前缀</label>
+                  <input id="sg_characterEntryPrefix" type="text" placeholder="人物">
+                </div>
+                <div class="sg-field">
+                  <label>装备条目前缀</label>
+                  <input id="sg_equipmentEntryPrefix" type="text" placeholder="装备">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>物品栏条目前缀</label>
+                  <input id="sg_inventoryEntryPrefix" type="text" placeholder="物品栏">
+                </div>
+                <div class="sg-field">
+                  <label>势力条目前缀</label>
+                  <input id="sg_factionEntryPrefix" type="text" placeholder="势力">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>成就条目前缀</label>
+                  <input id="sg_achievementEntryPrefix" type="text" placeholder="成就">
+                </div>
+              </div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>副职业条目前缀</label>
+                  <input id="sg_subProfessionEntryPrefix" type="text" placeholder="副职业">
+                </div>
+                <div class="sg-field">
+                  <label>任务条目前缀</label>
+                  <input id="sg_questEntryPrefix" type="text" placeholder="任务">
+                </div>
+              </div>
+              <div class="sg-field">
+                <label>结构化提取提示词（System，可选）</label>
+                <textarea id="sg_structuredEntriesSystemPrompt" rows="5" placeholder="例如：强调客观档案式描述、避免杜撰…"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>结构化提取模板（User，可选）</label>
+                <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownInventories}} {{knownFactions}} {{knownAchievements}} {{knownSubProfessions}} {{knownQuests}} {{structuredWorldbook}}"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>人物条目提示词（可选）</label>
+                <textarea id="sg_structuredCharacterPrompt" rows="3" placeholder="例如：优先记录阵营/关系/关键事件…"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>人物条目模板（可配置）</label>
+                <textarea id="sg_structuredCharacterEntryTemplate" rows="8" placeholder="支持占位符：{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}"></textarea>
+                <div class="sg-hint">占位符：{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}</div>
+              </div>
               <div class="sg-field">
                 <label>装备条目提示词（可选）</label>
                 <textarea id="sg_structuredEquipmentPrompt" rows="3" placeholder="例如：强调来源/稀有度/当前状态…"></textarea>
@@ -10318,70 +11827,6 @@ return `
               <div class="sg-field">
                 <label>任务条目提示词（可选）</label>
                 <textarea id="sg_structuredQuestPrompt" rows="3" placeholder="例如：强调目标/进度/奖励…"></textarea>
-              </div>
-
-              <div class="sg-field">
-                <label>????</label>
-                <div class="sg-tabs sg-template-tabs" id="sg_structuredEntryTemplateTabs">
-                  <button class="sg-tab active" data-template="character">??</button>
-                  <button class="sg-tab" data-template="equipment">??</button>
-                  <button class="sg-tab" data-template="inventory">???</button>
-                  <button class="sg-tab" data-template="faction">??</button>
-                  <button class="sg-tab" data-template="achievement">??</button>
-                  <button class="sg-tab" data-template="subProfession">???</button>
-                  <button class="sg-tab" data-template="quest">??</button>
-                </div>
-              </div>
-              <div class="sg-template-panels" id="sg_structuredEntryTemplatePanels">
-                <div class="sg-template-panel active" data-template="character">
-                  <div class="sg-field">
-                    <label>???????????</label>
-                    <textarea id="sg_structuredCharacterEntryTemplate" rows="8" placeholder="??????{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}"></textarea>
-                    <div class="sg-hint">????{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}</div>
-                  </div>
-                </div>
-                <div class="sg-template-panel" data-template="equipment">
-                  <div class="sg-field">
-                    <label>???????????</label>
-                    <textarea id="sg_structuredEquipmentEntryTemplate" rows="7" placeholder="??????{{name}} {{aliases}} {{type}} {{rarity}} {{effects}} {{source}} {{currentState}} {{statInfo}} {{boundEvents}} {{extraFields}}"></textarea>
-                    <div class="sg-hint">????{{name}} {{aliases}} {{type}} {{rarity}} {{effects}} {{source}} {{currentState}} {{statInfo}} {{boundEvents}} {{extraFields}}</div>
-                  </div>
-                </div>
-                <div class="sg-template-panel" data-template="inventory">
-                  <div class="sg-field">
-                    <label>????????????</label>
-                    <textarea id="sg_structuredInventoryEntryTemplate" rows="7" placeholder="??????{{name}} {{aliases}} {{type}} {{rarity}} {{quantity}} {{effects}} {{source}} {{currentState}} {{statInfo}} {{boundEvents}} {{extraFields}}"></textarea>
-                    <div class="sg-hint">????{{name}} {{aliases}} {{type}} {{rarity}} {{quantity}} {{effects}} {{source}} {{currentState}} {{statInfo}} {{boundEvents}} {{extraFields}}</div>
-                  </div>
-                </div>
-                <div class="sg-template-panel" data-template="faction">
-                  <div class="sg-field">
-                    <label>???????????</label>
-                    <textarea id="sg_structuredFactionEntryTemplate" rows="7" placeholder="??????{{name}} {{aliases}} {{type}} {{scope}} {{leader}} {{ideology}} {{relationToProtagonist}} {{status}} {{keyEvents}} {{statInfo}} {{extraFields}}"></textarea>
-                    <div class="sg-hint">????{{name}} {{aliases}} {{type}} {{scope}} {{leader}} {{ideology}} {{relationToProtagonist}} {{status}} {{keyEvents}} {{statInfo}} {{extraFields}}</div>
-                  </div>
-                </div>
-                <div class="sg-template-panel" data-template="achievement">
-                  <div class="sg-field">
-                    <label>???????????</label>
-                    <textarea id="sg_structuredAchievementEntryTemplate" rows="7" placeholder="??????{{name}} {{description}} {{requirements}} {{obtainedAt}} {{status}} {{effects}} {{keyEvents}} {{statInfo}} {{extraFields}}"></textarea>
-                    <div class="sg-hint">????{{name}} {{description}} {{requirements}} {{obtainedAt}} {{status}} {{effects}} {{keyEvents}} {{statInfo}} {{extraFields}}</div>
-                  </div>
-                </div>
-                <div class="sg-template-panel" data-template="subProfession">
-                  <div class="sg-field">
-                    <label>????????????</label>
-                    <textarea id="sg_structuredSubProfessionEntryTemplate" rows="7" placeholder="??????{{name}} {{role}} {{level}} {{progress}} {{skills}} {{source}} {{status}} {{keyEvents}} {{statInfo}} {{extraFields}}"></textarea>
-                    <div class="sg-hint">????{{name}} {{role}} {{level}} {{progress}} {{skills}} {{source}} {{status}} {{keyEvents}} {{statInfo}} {{extraFields}}</div>
-                  </div>
-                </div>
-                <div class="sg-template-panel" data-template="quest">
-                  <div class="sg-field">
-                    <label>???????????</label>
-                    <textarea id="sg_structuredQuestEntryTemplate" rows="7" placeholder="??????{{name}} {{goal}} {{progress}} {{status}} {{issuer}} {{reward}} {{deadline}} {{location}} {{keyEvents}} {{statInfo}} {{extraFields}}"></textarea>
-                    <div class="sg-hint">????{{name}} {{goal}} {{progress}} {{status}} {{issuer}} {{reward}} {{deadline}} {{location}} {{keyEvents}} {{statInfo}} {{extraFields}}</div>
-                  </div>
-                </div>
               </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
@@ -11560,12 +13005,6 @@ function ensureModal() {
     $('#sg_structuredEntriesUserTemplate').val(DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE);
     $('#sg_structuredCharacterPrompt').val(DEFAULT_STRUCTURED_CHARACTER_PROMPT);
     $('#sg_structuredCharacterEntryTemplate').val(DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE);
-    $('#sg_structuredEquipmentEntryTemplate').val(DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE);
-    $('#sg_structuredInventoryEntryTemplate').val(DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE);
-    $('#sg_structuredFactionEntryTemplate').val(DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE);
-    $('#sg_structuredAchievementEntryTemplate').val(DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE);
-    $('#sg_structuredSubProfessionEntryTemplate').val(DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE);
-    $('#sg_structuredQuestEntryTemplate').val(DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE);
     $('#sg_structuredEquipmentPrompt').val(DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
     $('#sg_structuredInventoryPrompt').val(DEFAULT_STRUCTURED_INVENTORY_PROMPT);
     $('#sg_structuredFactionPrompt').val(DEFAULT_STRUCTURED_FACTION_PROMPT);
@@ -11696,7 +13135,7 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_structuredWorldbookEnabled, #sg_structuredWorldbookMode, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredCharacterEntryTemplate, #sg_structuredEquipmentEntryTemplate, #sg_structuredInventoryEntryTemplate, #sg_structuredFactionEntryTemplate, #sg_structuredAchievementEntryTemplate, #sg_structuredSubProfessionEntryTemplate, #sg_structuredQuestEntryTemplate, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_structuredEntriesEnabled, #sg_structuredWorldbookEnabled, #sg_structuredWorldbookMode, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_abilityEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_abilityEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredCharacterEntryTemplate, #sg_structuredEquipmentPrompt, #sg_structuredAbilityPrompt, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -12281,27 +13720,6 @@ function showSettingsPage(page) {
   try { $('.sg-left').scrollTop(0); } catch { }
 }
 
-function setupStructuredEntryTemplateTabs() {
-  const $tabs = $('#sg_structuredEntryTemplateTabs .sg-tab');
-  const $panels = $('#sg_structuredEntryTemplatePanels .sg-template-panel');
-  if (!$tabs.length || !$panels.length) return;
-
-  const activate = (name) => {
-    const key = String(name || 'character');
-    $tabs.removeClass('active');
-    $tabs.filter(`[data-template="${key}"]`).addClass('active');
-    $panels.removeClass('active');
-    $panels.filter(`[data-template="${key}"]`).addClass('active');
-  };
-
-  $tabs.on('click', function () {
-    activate($(this).data('template'));
-  });
-
-  const initial = $tabs.filter('.active').data('template') || 'character';
-  activate(initial);
-}
-
 function setupSettingsPages() {
   // 把“索引设置块”从总结页移到索引页（保留内部所有控件 id，不影响事件绑定）
   try {
@@ -12324,7 +13742,6 @@ function setupSettingsPages() {
   $('#sg_pgtab_character').on('click', () => showSettingsPage('character'));
 
   setupCharacterPage();
-  setupStructuredEntryTemplateTabs();
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
@@ -12595,12 +14012,6 @@ function pullSettingsToUi() {
   $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
   $('#sg_structuredCharacterEntryTemplate').val(String(s.structuredCharacterEntryTemplate || DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE));
-  $('#sg_structuredEquipmentEntryTemplate').val(String(s.structuredEquipmentEntryTemplate || DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE));
-  $('#sg_structuredInventoryEntryTemplate').val(String(s.structuredInventoryEntryTemplate || DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE));
-  $('#sg_structuredFactionEntryTemplate').val(String(s.structuredFactionEntryTemplate || DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE));
-  $('#sg_structuredAchievementEntryTemplate').val(String(s.structuredAchievementEntryTemplate || DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE));
-  $('#sg_structuredSubProfessionEntryTemplate').val(String(s.structuredSubProfessionEntryTemplate || DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE));
-  $('#sg_structuredQuestEntryTemplate').val(String(s.structuredQuestEntryTemplate || DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE));
   $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
   $('#sg_structuredInventoryPrompt').val(String(s.structuredInventoryPrompt || DEFAULT_STRUCTURED_INVENTORY_PROMPT));
   $('#sg_structuredFactionPrompt').val(String(s.structuredFactionPrompt || DEFAULT_STRUCTURED_FACTION_PROMPT));
@@ -13199,12 +14610,6 @@ function pullUiToSettings() {
   s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   s.structuredCharacterEntryTemplate = String($('#sg_structuredCharacterEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE;
-  s.structuredEquipmentEntryTemplate = String($('#sg_structuredEquipmentEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE;
-  s.structuredInventoryEntryTemplate = String($('#sg_structuredInventoryEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE;
-  s.structuredFactionEntryTemplate = String($('#sg_structuredFactionEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE;
-  s.structuredAchievementEntryTemplate = String($('#sg_structuredAchievementEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE;
-  s.structuredSubProfessionEntryTemplate = String($('#sg_structuredSubProfessionEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE;
-  s.structuredQuestEntryTemplate = String($('#sg_structuredQuestEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE;
   s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
   s.structuredInventoryPrompt = String($('#sg_structuredInventoryPrompt').val() || '').trim() || DEFAULT_STRUCTURED_INVENTORY_PROMPT;
   s.structuredFactionPrompt = String($('#sg_structuredFactionPrompt').val() || '').trim() || DEFAULT_STRUCTURED_FACTION_PROMPT;
