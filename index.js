@@ -6690,7 +6690,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
 
   const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
   const keyValue = (keyMode === 'indexId')
-    ? buildSummaryCoreTitle(rec.title, rec.indexId, s, commentPrefix || rec?.commentPrefix, true)
+    ? comment
     : (kws.length ? kws.join(',') : (commentPrefix || '剧情总结'));
   const constantVal = (Number(constant) === 1) ? 1 : 0;
 
