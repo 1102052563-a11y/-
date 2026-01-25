@@ -276,7 +276,9 @@ const DEFAULT_STRUCTURED_FACTION_PROMPT = `记录重要势力/组织/阵营。�
 const DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT = `记录主角获得的成就。说明达成条件、影响、获得时间与当前状态。若成就被撤销/失效，将其名字加入 deletedAchievements。若有 statData，精简总结其数值。`;
 const DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT = `记录主角的副职业/第二职业。说明定位、等级/进度、核心技能、获得方式、当前状态。若副职业被放弃/失去，将其名字加入 deletedSubProfessions。若有 statData，精简总结其数值。`;
 const DEFAULT_STRUCTURED_QUEST_PROMPT = `记录任务/委托。说明目标、发布者、进度、奖励、期限/地点。若任务完成/失败/取消，将其名字加入 deletedQuests。若有 statData，精简总结其数值。`;
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。各字段要填写完整，statInfo 只填关键数值的精简总结（1-2行）。人物条目请使用 sixStats/skillsTalents 等字段，不输出 statInfo。
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。
+对于【已知条目】（已出现在已知列表中）：你只需要输出有变化或新增的字段，未变内容无需输出。对于【新条目】：必须输出完整字段。
+statInfo 只填关键数值的精简总结（1-2行）。人物条目请使用 sixStats/skillsTalents 等字段，不输出 statInfo。
 
 结构：{"characters":[...],"equipments":[...],"inventories":[...],"factions":[...],"achievements":[...],"subProfessions":[...],"quests":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedInventories":[...],"deletedFactions":[...],"deletedAchievements":[...],"deletedSubProfessions":[...],"deletedQuests":[...]}
 
@@ -5749,7 +5751,20 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     }
   }
 
-  const content = buildContent(entryData).replace(/\|/g, '｜');
+  // 合并数据：如果已有缓存，则将新数据合并到旧数据中
+  let finalEntryData = entryData;
+  if (cached && cached.raw) {
+    // 浅合并：用新值替换旧值（如果新值非空）
+    finalEntryData = { ...cached.raw };
+    for (const [k, v] of Object.entries(entryData)) {
+      if (v !== undefined && v !== null && v !== '' && (!Array.isArray(v) || v.length > 0)) {
+        finalEntryData[k] = v;
+      }
+    }
+    console.log(`[StoryGuide] Merged incremental data for ${entryType}: ${entryName}`);
+  }
+
+  const content = buildContent(finalEntryData).replace(/\|/g, '｜');
 
   // 根据 targetType 选择世界书目标
   let target, file, constant;
@@ -5853,6 +5868,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
         await execSlash(updateParts.join(' | '));
         cached.content = content;
+        cached.raw = finalEntryData;
         cached.lastUpdated = Date.now();
         console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${foundUid}`);
         const comment = newComment;
@@ -5875,6 +5891,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         console.log(`[StoryGuide] Entry not found via /findentry: ${searchPattern}, skipping update`);
         // 未找到条目（可能被手动删除），只更新缓存
         cached.content = content;
+        cached.raw = finalEntryData;
         cached.lastUpdated = Date.now();
         return { skipped: true, name: entryName, entryType, targetType, cacheKey, reason: 'entry_not_found' };
       }
@@ -5882,6 +5899,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       console.warn(`[StoryGuide] Update ${entryType} (${targetType}) via /findentry failed:`, e);
       // 更新失败，只更新缓存
       cached.content = content;
+      cached.raw = finalEntryData;
       cached.lastUpdated = Date.now();
       return { skipped: true, name: entryName, entryType, targetType, cacheKey, reason: 'update_failed' };
     }
@@ -5933,6 +5951,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       lastUpdated: Date.now(),
       indexId,
       targetType,
+      raw: finalEntryData,
     };
     if (targetType === 'green' && !existingGreenEntry) {
       // 只在绿灯首次创建时递增索引
