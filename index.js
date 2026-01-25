@@ -13028,6 +13028,7 @@ function ensureModal() {
 
     // Trigger the change on hidden elements so auto-save logic picks it up
     $(promptId).trigger('change');
+    $(templateId).trigger('change');
   });
 
   // Initial update
