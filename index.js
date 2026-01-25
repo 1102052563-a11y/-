@@ -5144,26 +5144,7 @@ async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloo
   const knownAchievements = formatKnown(meta.achievementEntries);
   const knownSubProfessions = formatKnown(meta.subProfessionEntries);
   const knownQuests = formatKnown(meta.questEntries);
-  const knownInventories = Object.values(meta.inventoryEntries || {}).map(i => {
-    const aliases = Array.isArray(i.aliases) && i.aliases.length > 0 ? `[别名:${i.aliases.join('/')}]` : '';
-    return `${i.name}${aliases}`;
-  }).join('、') || '无';
-  const knownFactions = Object.values(meta.factionEntries || {}).map(f => {
-    const aliases = Array.isArray(f.aliases) && f.aliases.length > 0 ? `[别名:${f.aliases.join('/')}]` : '';
-    return `${f.name}${aliases}`;
-  }).join('、') || '无';
-  const knownAchievements = Object.values(meta.achievementEntries || {}).map(a => {
-    const aliases = Array.isArray(a.aliases) && a.aliases.length > 0 ? `[别名:${a.aliases.join('/')}]` : '';
-    return `${a.name}${aliases}`;
-  }).join('、') || '无';
-  const knownSubProfessions = Object.values(meta.subProfessionEntries || {}).map(p => {
-    const aliases = Array.isArray(p.aliases) && p.aliases.length > 0 ? `[别名:${p.aliases.join('/')}]` : '';
-    return `${p.name}${aliases}`;
-  }).join('、') || '无';
-  const knownQuests = Object.values(meta.questEntries || {}).map(q => {
-    const aliases = Array.isArray(q.aliases) && q.aliases.length > 0 ? `[别名:${q.aliases.join('/')}]` : '';
-    return `${q.name}${aliases}`;
-  }).join('、') || '无';
+
 
   // 格式化 statData
   let statDataJson = '';
