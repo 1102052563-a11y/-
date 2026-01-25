@@ -6685,11 +6685,13 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   // 2) creates the entry (UID goes into pipe)
   // 3) stores UID into a local var
   // 4) sets fields using the stored UID
-  // This works regardless of whether JS can read the piped output.
   const uidVar = '__sg_summary_uid';
   const fileVar = '__sg_summary_wbfile';
 
-  const keyValue = (kws.length ? kws.join(',') : (commentPrefix || '剧情总结'));
+  const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
+  const keyValue = (keyMode === 'indexId')
+    ? buildSummaryCoreTitle(rec.title, rec.indexId, s, commentPrefix || rec?.commentPrefix, true)
+    : (kws.length ? kws.join(',') : (commentPrefix || '剧情总结'));
   const constantVal = (Number(constant) === 1) ? 1 : 0;
 
   const fileExpr = (t === 'chatbook') ? `{{getvar::${fileVar}}}` : f;
