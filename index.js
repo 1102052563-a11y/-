@@ -5080,6 +5080,30 @@ function appendToBlueIndexCache(rec) {
   updateBlueIndexInfoLabel();
 }
 
+// 深合并助手：将 source 合并到 target，处理对象和数组
+function deepMergeStructuredData(target, source) {
+  if (!source || typeof source !== 'object') return target;
+  if (!target || typeof target !== 'object') return source;
+
+  const result = { ...target };
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined || value === null || value === '') continue;
+
+    if (Array.isArray(value)) {
+      // 数组处理：去重合并
+      const oldArr = Array.isArray(target[key]) ? target[key] : [];
+      result[key] = Array.from(new Set([...oldArr, ...value]));
+    } else if (typeof value === 'object' && !Array.isArray(value)) {
+      // 对象处理：递归合并
+      result[key] = deepMergeStructuredData(target[key] || {}, value);
+    } else {
+      // 基本类型：覆盖
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 // ===== 结构化世界书条目核心函数 =====
 
 async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloor, meta, statData = null) {
@@ -5105,15 +5129,21 @@ async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloo
     STRUCTURED_ENTRIES_JSON_REQUIREMENT,
   ].join('\n\n');
 
-  // 构建已知列表供 LLM 判断是否新增/更新（包含别名以帮助识别不同写法）
-  const knownChars = Object.values(meta.characterEntries || {}).map(c => {
-    const aliases = Array.isArray(c.aliases) && c.aliases.length > 0 ? `[别名:${c.aliases.join('/')}]` : '';
-    return `${c.name}${aliases}`;
-  }).join('、') || '无';
-  const knownEquips = Object.values(meta.equipmentEntries || {}).map(e => {
-    const aliases = Array.isArray(e.aliases) && e.aliases.length > 0 ? `[别名:${e.aliases.join('/')}]` : '';
-    return `${e.name}${aliases}`;
-  }).join('、') || '无';
+  const formatKnown = (entries) => {
+    return Object.values(entries || {}).map(c => {
+      const aliases = Array.isArray(c.aliases) && c.aliases.length > 0 ? `[别名:${c.aliases.join('/')}]` : '';
+      const flag = !c.raw ? '(!需要完整信息进行初始化)' : '';
+      return `${c.name}${aliases}${flag}`;
+    }).join('、') || '无';
+  };
+
+  const knownChars = formatKnown(meta.characterEntries);
+  const knownEquips = formatKnown(meta.equipmentEntries);
+  const knownInventories = formatKnown(meta.inventoryEntries);
+  const knownFactions = formatKnown(meta.factionEntries);
+  const knownAchievements = formatKnown(meta.achievementEntries);
+  const knownSubProfessions = formatKnown(meta.subProfessionEntries);
+  const knownQuests = formatKnown(meta.questEntries);
   const knownInventories = Object.values(meta.inventoryEntries || {}).map(i => {
     const aliases = Array.isArray(i.aliases) && i.aliases.length > 0 ? `[别名:${i.aliases.join('/')}]` : '';
     return `${i.name}${aliases}`;
@@ -5166,6 +5196,11 @@ async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloo
     structuredWorldbook: structuredWorldbookText,
     statData: statDataJson,
   });
+
+  if (user.includes('(!需要完整信息进行初始化)')) {
+    user += `\n\n【注意】：标记为 (!需要完整信息进行初始化) 的已知条目，请务必在 JSON 中输出其所有字段（即使未变化），以便系统初始化长期记忆。`;
+  }
+
   if (structuredWorldbookText && !/\{\{\s*structuredWorldbook\s*\}\}/i.test(tpl)) {
     user = String(user || '').trim() + `\n\n【蓝灯世界书】\n${structuredWorldbookText}`;
   }
@@ -5754,14 +5789,8 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   // 合并数据：如果已有缓存，则将新数据合并到旧数据中
   let finalEntryData = entryData;
   if (cached && cached.raw) {
-    // 浅合并：用新值替换旧值（如果新值非空）
-    finalEntryData = { ...cached.raw };
-    for (const [k, v] of Object.entries(entryData)) {
-      if (v !== undefined && v !== null && v !== '' && (!Array.isArray(v) || v.length > 0)) {
-        finalEntryData[k] = v;
-      }
-    }
-    console.log(`[StoryGuide] Merged incremental data for ${entryType}: ${entryName}`);
+    finalEntryData = deepMergeStructuredData(cached.raw, entryData);
+    console.log(`[StoryGuide] Deep merged incremental data for ${entryType}: ${entryName}`);
   }
 
   const content = buildContent(finalEntryData).replace(/\|/g, '｜');
