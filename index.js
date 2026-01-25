@@ -192,6 +192,73 @@ const DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE = `【人物】{{name}}
 与主角关系：{{relationToProtagonist}}
 关键事件：{{keyEvents}}
 {{extraFields}}`;
+
+const DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE = `【装备】{{name}}
+类型：{{type}}
+稀有度：{{rarity}}
+效果：{{effects}}
+来源：{{source}}
+当前状态：{{currentState}}
+数值信息：{{statInfo}}
+绑定事件：{{boundEvents}}
+{{extraFields}}`;
+
+const DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE = `【物品】{{name}}
+别名：{{aliases}}
+类型：{{type}}
+稀有度：{{rarity}}
+数量：{{quantity}}
+效果：{{effects}}
+来源：{{source}}
+当前状态：{{currentState}}
+数值信息：{{statInfo}}
+绑定事件：{{boundEvents}}
+{{extraFields}}`;
+
+const DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE = `【势力】{{name}}
+别名：{{aliases}}
+性质：{{type}}
+范围：{{scope}}
+领导者：{{leader}}
+理念：{{ideology}}
+与主角关系：{{relationToProtagonist}}
+状态：{{status}}
+关键事件：{{keyEvents}}
+数值信息：{{statInfo}}
+{{extraFields}}`;
+
+const DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE = `【成就】{{name}}
+描述：{{description}}
+达成条件：{{requirements}}
+获得时间：{{obtainedAt}}
+状态：{{status}}
+影响：{{effects}}
+关键事件：{{keyEvents}}
+数值信息：{{statInfo}}
+{{extraFields}}`;
+
+const DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE = `【副职业】{{name}}
+定位：{{role}}
+等级：{{level}}
+进度：{{progress}}
+核心技能：{{skills}}
+获得方式：{{source}}
+状态：{{status}}
+关键事件：{{keyEvents}}
+数值信息：{{statInfo}}
+{{extraFields}}`;
+
+const DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE = `【任务】{{name}}
+目标：{{goal}}
+发布者：{{issuer}}
+进度：{{progress}}
+奖励：{{reward}}
+期限：{{deadline}}
+地点：{{location}}
+状态：{{status}}
+关键事件：{{keyEvents}}
+数值信息：{{statInfo}}
+{{extraFields}}`;
 const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。
 
 【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件、六维属性、技能/天赋、当前装备、物品栏
@@ -397,6 +464,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   structuredEntryContentFormat: 'markdown', // text | markdown
   // Character entry template (optional)
   structuredCharacterEntryTemplate: '',
+  structuredEquipmentEntryTemplate: '',
+  structuredInventoryEntryTemplate: '',
+  structuredFactionEntryTemplate: '',
+  structuredAchievementEntryTemplate: '',
+  structuredSubProfessionEntryTemplate: '',
+  structuredQuestEntryTemplate: '',
 
   // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
@@ -5494,175 +5567,143 @@ function buildCharacterContent(char) {
 }
 
 function buildEquipmentContent(equip) {
-  const parts = [];
-  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
-  const knownKeys = [
-    'name',
-    'aliases',
-    'type',
-    'rarity',
-    'effects',
-    'source',
-    'currentState',
-    'statInfo',
-    'boundEvents',
-  ];
-  if (equip.name) parts.push(`【装备】${equip.name}`);
-  if (equip.aliases?.length) parts.push(`别名：${equip.aliases.join('、')}`);
-  if (equip.type) parts.push(`类型：${equip.type}`);
-  if (equip.rarity) parts.push(`品质：${equip.rarity}`);
-  if (equip.effects) parts.push(`效果：${equip.effects}`);
-  if (equip.source) parts.push(`来源：${equip.source}`);
-  if (equip.currentState) parts.push(`当前状态：${equip.currentState}`);
-  if (equip.statInfo) pushStructuredLabel(parts, '属性数据', equip.statInfo, mode);
-  if (equip.boundEvents?.length) parts.push(`相关事件：${equip.boundEvents.join('；')}`);
+  const s = ensureSettings();
+  const mode = String(s.structuredEntryContentFormat || 'text');
+  const template = String(s.structuredEquipmentEntryTemplate || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE;
+  const knownKeys = ['name', 'aliases', 'type', 'rarity', 'effects', 'source', 'currentState', 'statInfo', 'boundEvents'];
+  const extraParts = [];
   knownKeys.__mode = mode;
-  appendExtraFields(parts, equip, knownKeys);
-  return parts.join('\n');
+  appendExtraFields(extraParts, equip, knownKeys);
+  const vars = {
+    name: formatTemplateField(equip?.name, mode),
+    aliases: formatTemplateField(equip?.aliases, mode),
+    type: formatTemplateField(equip?.type, mode),
+    rarity: formatTemplateField(equip?.rarity, mode),
+    effects: formatTemplateField(equip?.effects, mode),
+    source: formatTemplateField(equip?.source, mode),
+    currentState: formatTemplateField(equip?.currentState, mode),
+    statInfo: formatTemplateField(equip?.statInfo, mode),
+    boundEvents: formatTemplateField(equip?.boundEvents, mode),
+    extraFields: extraParts.join('\n'),
+  };
+  return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
 
 function buildInventoryContent(item) {
-  const parts = [];
-  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
-  const knownKeys = [
-    'name',
-    'aliases',
-    'type',
-    'rarity',
-    'quantity',
-    'effects',
-    'source',
-    'currentState',
-    'statInfo',
-    'boundEvents',
-  ];
-  if (item.name) parts.push(`【物品栏】${item.name}`);
-  if (item.aliases?.length) parts.push(`别名：${item.aliases.join('、')}`);
-  if (item.type) parts.push(`类型：${item.type}`);
-  if (item.rarity) parts.push(`品质：${item.rarity}`);
-  if (item.quantity !== undefined && item.quantity !== null) parts.push(`数量：${item.quantity}`);
-  if (item.effects) parts.push(`效果：${item.effects}`);
-  if (item.source) parts.push(`来源：${item.source}`);
-  if (item.currentState) parts.push(`当前状态：${item.currentState}`);
-  if (item.statInfo) pushStructuredLabel(parts, '属性数据', item.statInfo, mode);
-  if (item.boundEvents?.length) parts.push(`相关事件：${item.boundEvents.join('；')}`);
+  const s = ensureSettings();
+  const mode = String(s.structuredEntryContentFormat || 'text');
+  const template = String(s.structuredInventoryEntryTemplate || '').trim() || DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE;
+  const knownKeys = ['name', 'aliases', 'type', 'rarity', 'quantity', 'effects', 'source', 'currentState', 'statInfo', 'boundEvents'];
+  const extraParts = [];
   knownKeys.__mode = mode;
-  appendExtraFields(parts, item, knownKeys);
-  return parts.join('\n');
+  appendExtraFields(extraParts, item, knownKeys);
+  const vars = {
+    name: formatTemplateField(item?.name, mode),
+    aliases: formatTemplateField(item?.aliases, mode),
+    type: formatTemplateField(item?.type, mode),
+    rarity: formatTemplateField(item?.rarity, mode),
+    quantity: formatTemplateField(item?.quantity, mode),
+    effects: formatTemplateField(item?.effects, mode),
+    source: formatTemplateField(item?.source, mode),
+    currentState: formatTemplateField(item?.currentState, mode),
+    statInfo: formatTemplateField(item?.statInfo, mode),
+    boundEvents: formatTemplateField(item?.boundEvents, mode),
+    extraFields: extraParts.join('\n'),
+  };
+  return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
 
 function buildFactionContent(faction) {
-  const parts = [];
-  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
-  const knownKeys = [
-    'name',
-    'aliases',
-    'type',
-    'scope',
-    'leader',
-    'ideology',
-    'relationToProtagonist',
-    'status',
-    'keyEvents',
-    'statInfo',
-  ];
-  if (faction.name) parts.push(`【势力】${faction.name}`);
-  if (faction.aliases?.length) parts.push(`别名：${faction.aliases.join('、')}`);
-  if (faction.type) parts.push(`性质：${faction.type}`);
-  if (faction.scope) parts.push(`范围：${faction.scope}`);
-  if (faction.leader) parts.push(`领袖：${faction.leader}`);
-  if (faction.ideology) parts.push(`理念：${faction.ideology}`);
-  if (faction.relationToProtagonist) parts.push(`与主角关系：${faction.relationToProtagonist}`);
-  if (faction.status) parts.push(`状态：${faction.status}`);
-  if (faction.keyEvents?.length) parts.push(`关键事件：${faction.keyEvents.join('；')}`);
-  if (faction.statInfo) pushStructuredLabel(parts, '属性数据', faction.statInfo, mode);
+  const s = ensureSettings();
+  const mode = String(s.structuredEntryContentFormat || 'text');
+  const template = String(s.structuredFactionEntryTemplate || '').trim() || DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE;
+  const knownKeys = ['name', 'aliases', 'type', 'scope', 'leader', 'ideology', 'relationToProtagonist', 'status', 'keyEvents', 'statInfo'];
+  const extraParts = [];
   knownKeys.__mode = mode;
-  appendExtraFields(parts, faction, knownKeys);
-  return parts.join('\n');
+  appendExtraFields(extraParts, faction, knownKeys);
+  const vars = {
+    name: formatTemplateField(faction?.name, mode),
+    aliases: formatTemplateField(faction?.aliases, mode),
+    type: formatTemplateField(faction?.type, mode),
+    scope: formatTemplateField(faction?.scope, mode),
+    leader: formatTemplateField(faction?.leader, mode),
+    ideology: formatTemplateField(faction?.ideology, mode),
+    relationToProtagonist: formatTemplateField(faction?.relationToProtagonist, mode),
+    status: formatTemplateField(faction?.status, mode),
+    keyEvents: formatTemplateField(faction?.keyEvents, mode),
+    statInfo: formatTemplateField(faction?.statInfo, mode),
+    extraFields: extraParts.join('\n'),
+  };
+  return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
 
 function buildAchievementContent(achievement) {
-  const parts = [];
-  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
-  const knownKeys = [
-    'name',
-    'description',
-    'requirements',
-    'obtainedAt',
-    'status',
-    'effects',
-    'keyEvents',
-    'statInfo',
-  ];
-  if (achievement.name) parts.push(`【成就】${achievement.name}`);
-  if (achievement.description) parts.push(`描述：${achievement.description}`);
-  if (achievement.requirements) parts.push(`达成条件：${achievement.requirements}`);
-  if (achievement.obtainedAt) parts.push(`获得时间：${achievement.obtainedAt}`);
-  if (achievement.status) parts.push(`状态：${achievement.status}`);
-  if (achievement.effects) parts.push(`影响：${achievement.effects}`);
-  if (achievement.keyEvents?.length) parts.push(`关键事件：${achievement.keyEvents.join('；')}`);
-  if (achievement.statInfo) pushStructuredLabel(parts, '属性数据', achievement.statInfo, mode);
+  const s = ensureSettings();
+  const mode = String(s.structuredEntryContentFormat || 'text');
+  const template = String(s.structuredAchievementEntryTemplate || '').trim() || DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE;
+  const knownKeys = ['name', 'description', 'requirements', 'obtainedAt', 'status', 'effects', 'keyEvents', 'statInfo'];
+  const extraParts = [];
   knownKeys.__mode = mode;
-  appendExtraFields(parts, achievement, knownKeys);
-  return parts.join('\n');
+  appendExtraFields(extraParts, achievement, knownKeys);
+  const vars = {
+    name: formatTemplateField(achievement?.name, mode),
+    description: formatTemplateField(achievement?.description, mode),
+    requirements: formatTemplateField(achievement?.requirements, mode),
+    obtainedAt: formatTemplateField(achievement?.obtainedAt, mode),
+    status: formatTemplateField(achievement?.status, mode),
+    effects: formatTemplateField(achievement?.effects, mode),
+    keyEvents: formatTemplateField(achievement?.keyEvents, mode),
+    statInfo: formatTemplateField(achievement?.statInfo, mode),
+    extraFields: extraParts.join('\n'),
+  };
+  return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
 
 function buildSubProfessionContent(subProfession) {
-  const parts = [];
-  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
-  const knownKeys = [
-    'name',
-    'role',
-    'level',
-    'progress',
-    'skills',
-    'source',
-    'status',
-    'keyEvents',
-    'statInfo',
-  ];
-  if (subProfession.name) parts.push(`【副职业】${subProfession.name}`);
-  if (subProfession.role) parts.push(`定位：${subProfession.role}`);
-  if (subProfession.level) parts.push(`等级：${subProfession.level}`);
-  if (subProfession.progress) parts.push(`进度：${subProfession.progress}`);
-  if (subProfession.skills) parts.push(`核心技能：${subProfession.skills}`);
-  if (subProfession.source) parts.push(`获得方式：${subProfession.source}`);
-  if (subProfession.status) parts.push(`状态：${subProfession.status}`);
-  if (subProfession.keyEvents?.length) parts.push(`关键事件：${subProfession.keyEvents.join('；')}`);
-  if (subProfession.statInfo) pushStructuredLabel(parts, '属性数据', subProfession.statInfo, mode);
+  const s = ensureSettings();
+  const mode = String(s.structuredEntryContentFormat || 'text');
+  const template = String(s.structuredSubProfessionEntryTemplate || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE;
+  const knownKeys = ['name', 'role', 'level', 'progress', 'skills', 'source', 'status', 'keyEvents', 'statInfo'];
+  const extraParts = [];
   knownKeys.__mode = mode;
-  appendExtraFields(parts, subProfession, knownKeys);
-  return parts.join('\n');
+  appendExtraFields(extraParts, subProfession, knownKeys);
+  const vars = {
+    name: formatTemplateField(subProfession?.name, mode),
+    role: formatTemplateField(subProfession?.role, mode),
+    level: formatTemplateField(subProfession?.level, mode),
+    progress: formatTemplateField(subProfession?.progress, mode),
+    skills: formatTemplateField(subProfession?.skills, mode),
+    source: formatTemplateField(subProfession?.source, mode),
+    status: formatTemplateField(subProfession?.status, mode),
+    keyEvents: formatTemplateField(subProfession?.keyEvents, mode),
+    statInfo: formatTemplateField(subProfession?.statInfo, mode),
+    extraFields: extraParts.join('\n'),
+  };
+  return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
 
 function buildQuestContent(quest) {
-  const parts = [];
-  const mode = String(ensureSettings().structuredEntryContentFormat || 'text');
-  const knownKeys = [
-    'name',
-    'goal',
-    'progress',
-    'status',
-    'issuer',
-    'reward',
-    'deadline',
-    'location',
-    'keyEvents',
-    'statInfo',
-  ];
-  if (quest.name) parts.push(`【任务】${quest.name}`);
-  if (quest.goal) parts.push(`目标：${quest.goal}`);
-  if (quest.progress) parts.push(`进度：${quest.progress}`);
-  if (quest.status) parts.push(`状态：${quest.status}`);
-  if (quest.issuer) parts.push(`发布者：${quest.issuer}`);
-  if (quest.reward) parts.push(`奖励：${quest.reward}`);
-  if (quest.deadline) parts.push(`期限：${quest.deadline}`);
-  if (quest.location) parts.push(`地点：${quest.location}`);
-  if (quest.keyEvents?.length) parts.push(`关键事件：${quest.keyEvents.join('；')}`);
-  if (quest.statInfo) pushStructuredLabel(parts, '属性数据', quest.statInfo, mode);
+  const s = ensureSettings();
+  const mode = String(s.structuredEntryContentFormat || 'text');
+  const template = String(s.structuredQuestEntryTemplate || '').trim() || DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE;
+  const knownKeys = ['name', 'goal', 'progress', 'status', 'issuer', 'reward', 'deadline', 'location', 'keyEvents', 'statInfo'];
+  const extraParts = [];
   knownKeys.__mode = mode;
-  appendExtraFields(parts, quest, knownKeys);
-  return parts.join('\n');
+  appendExtraFields(extraParts, quest, knownKeys);
+  const vars = {
+    name: formatTemplateField(quest?.name, mode),
+    goal: formatTemplateField(quest?.goal, mode),
+    progress: formatTemplateField(quest?.progress, mode),
+    status: formatTemplateField(quest?.status, mode),
+    issuer: formatTemplateField(quest?.issuer, mode),
+    reward: formatTemplateField(quest?.reward, mode),
+    deadline: formatTemplateField(quest?.deadline, mode),
+    location: formatTemplateField(quest?.location, mode),
+    keyEvents: formatTemplateField(quest?.keyEvents, mode),
+    statInfo: formatTemplateField(quest?.statInfo, mode),
+    extraFields: extraParts.join('\n'),
+  };
+  return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
 
 // 写入或更新结构化条目（方案C：混合策略）
@@ -11795,38 +11836,53 @@ function buildModalHtml() {
                 <label>结构化提取模板（User，可选）</label>
                 <textarea id="sg_structuredEntriesUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownInventories}} {{knownFactions}} {{knownAchievements}} {{knownSubProfessions}} {{knownQuests}} {{structuredWorldbook}}"></textarea>
               </div>
-              <div class="sg-field">
-                <label>人物条目提示词（可选）</label>
-                <textarea id="sg_structuredCharacterPrompt" rows="3" placeholder="例如：优先记录阵营/关系/关键事件…"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>人物条目模板（可配置）</label>
-                <textarea id="sg_structuredCharacterEntryTemplate" rows="8" placeholder="支持占位符：{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}"></textarea>
-                <div class="sg-hint">占位符：{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}</div>
-              </div>
-              <div class="sg-field">
-                <label>装备条目提示词（可选）</label>
-                <textarea id="sg_structuredEquipmentPrompt" rows="3" placeholder="例如：强调来源/稀有度/当前状态…"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>物品栏条目提示词（可选）</label>
-                <textarea id="sg_structuredInventoryPrompt" rows="3" placeholder="例如：强调数量/用途/消耗状态…"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>势力条目提示词（可选）</label>
-                <textarea id="sg_structuredFactionPrompt" rows="3" placeholder="例如：强调范围/领袖/关系变化…"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>成就条目提示词（可选）</label>
-                <textarea id="sg_structuredAchievementPrompt" rows="3" placeholder="例如：强调达成条件/影响…"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>副职业条目提示词（可选）</label>
-                <textarea id="sg_structuredSubProfessionPrompt" rows="3" placeholder="例如：强调定位/技能/进度…"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>任务条目提示词（可选）</label>
-                <textarea id="sg_structuredQuestPrompt" rows="3" placeholder="例如：强调目标/进度/奖励…"></textarea>
+              <div class="sg-card sg-subcard">
+                <div class="sg-card-title">条目提示词与模板管理</div>
+                <div class="sg-hint" style="margin-bottom:8px">为每种类型的条目配置独立的提取逻辑（提示词）和输出格式（模板）。</div>
+                
+                <div class="sg-row sg-inline" style="margin-bottom:10px">
+                  <label>选择条目类型</label>
+                  <select id="sg_structuredTypeSelector" style="flex:1">
+                    <option value="character">人物 (Character)</option>
+                    <option value="equipment">装备 (Equipment)</option>
+                    <option value="inventory">物品栏 (Inventory)</option>
+                    <option value="faction">势力 (Faction)</option>
+                    <option value="achievement">成就 (Achievement)</option>
+                    <option value="subProfession">副职业 (Sub-profession)</option>
+                    <option value="quest">任务 (Quest)</option>
+                  </select>
+                </div>
+
+                <!-- Template Editor Area -->
+                <div id="sg_structured_template_editor">
+                  <div class="sg-field">
+                    <label>提取提示词 (Prompt)</label>
+                    <textarea id="sg_structured_type_prompt" rows="3" placeholder="该类型的提取侧重点..."></textarea>
+                  </div>
+                  <div class="sg-field">
+                    <label>输出模板 (Template)</label>
+                    <textarea id="sg_structured_type_template" rows="8" placeholder="该类型的输出格式..."></textarea>
+                    <div class="sg-hint" id="sg_structured_type_hint">占位符：{{name}} {{uid}} ...</div>
+                  </div>
+                </div>
+
+                <!-- Hidden inputs to store all values (so pullUiToSettings can read them easily) -->
+                <div style="display:none">
+                  <textarea id="sg_structuredCharacterPrompt"></textarea>
+                  <textarea id="sg_structuredCharacterEntryTemplate"></textarea>
+                  <textarea id="sg_structuredEquipmentPrompt"></textarea>
+                  <textarea id="sg_structuredEquipmentEntryTemplate"></textarea>
+                  <textarea id="sg_structuredInventoryPrompt"></textarea>
+                  <textarea id="sg_structuredInventoryEntryTemplate"></textarea>
+                  <textarea id="sg_structuredFactionPrompt"></textarea>
+                  <textarea id="sg_structuredFactionEntryTemplate"></textarea>
+                  <textarea id="sg_structuredAchievementPrompt"></textarea>
+                  <textarea id="sg_structuredAchievementEntryTemplate"></textarea>
+                  <textarea id="sg_structuredSubProfessionPrompt"></textarea>
+                  <textarea id="sg_structuredSubProfessionEntryTemplate"></textarea>
+                  <textarea id="sg_structuredQuestPrompt"></textarea>
+                  <textarea id="sg_structuredQuestEntryTemplate"></textarea>
+                </div>
               </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
@@ -12932,6 +12988,49 @@ function ensureModal() {
     $('#sg_custom_block').toggle(provider === 'custom');
   });
 
+  // Template Selector Logic
+  const updateStructuredEditor = () => {
+    const type = $('#sg_structuredTypeSelector').val();
+    const typeKey = type.charAt(0).toUpperCase() + type.slice(1);
+    const promptId = `#sg_structured${typeKey}Prompt`;
+    const templateId = `#sg_structured${typeKey}EntryTemplate`;
+
+    $('#sg_structured_type_prompt').val($(promptId).val());
+    $('#sg_structured_type_template').val($(templateId).val());
+
+    // Update hint based on type
+    let hint = '';
+    switch (type) {
+      case 'character': hint = '占位符：{{name}} {{aliases}} {{gender}} {{faction}} {{status}} {{personality}} {{background}} {{sixStats}} {{equipment}} {{skillsTalents}} {{inventory}} {{sexLife}} {{corePersonality}} {{motivation}} {{relationshipStage}} {{relationToProtagonist}} {{keyEvents}} {{extraFields}}'; break;
+      case 'equipment': hint = '占位符：{{name}} {{uid}} {{type}} {{rarity}} {{effects}} {{source}} {{currentState}} {{statInfo}} {{boundEvents}} {{extraFields}}'; break;
+      case 'inventory': hint = '占位符：{{name}} {{uid}} {{aliases}} {{type}} {{rarity}} {{quantity}} {{effects}} {{source}} {{currentState}} {{statInfo}} {{boundEvents}} {{extraFields}}'; break;
+      case 'faction': hint = '占位符：{{name}} {{uid}} {{aliases}} {{type}} {{scope}} {{leader}} {{ideology}} {{relationToProtagonist}} {{status}} {{keyEvents}} {{statInfo}} {{extraFields}}'; break;
+      case 'achievement': hint = '占位符：{{name}} {{uid}} {{description}} {{requirements}} {{obtainedAt}} {{status}} {{effects}} {{keyEvents}} {{statInfo}} {{extraFields}}'; break;
+      case 'subProfession': hint = '占位符：{{name}} {{uid}} {{role}} {{level}} {{progress}} {{skills}} {{source}} {{status}} {{keyEvents}} {{statInfo}} {{extraFields}}'; break;
+      case 'quest': hint = '占位符：{{name}} {{uid}} {{goal}} {{progress}} {{status}} {{issuer}} {{reward}} {{deadline}} {{location}} {{keyEvents}} {{statInfo}} {{extraFields}}'; break;
+    }
+    $('#sg_structured_type_hint').text(hint);
+  };
+
+  $('#sg_structuredTypeSelector').on('change', updateStructuredEditor);
+
+  $('#sg_structured_type_prompt, #sg_structured_type_template').on('input', () => {
+    const type = $('#sg_structuredTypeSelector').val();
+    const typeKey = type.charAt(0).toUpperCase() + type.slice(1);
+    const promptId = `#sg_structured${typeKey}Prompt`;
+    const templateId = `#sg_structured${typeKey}EntryTemplate`;
+
+    $(promptId).val($('#sg_structured_type_prompt').val());
+    $(templateId).val($('#sg_structured_type_template').val());
+
+    // Trigger the change on hidden elements so auto-save logic picks it up
+    $(promptId).trigger('change');
+  });
+
+  // Initial update
+  setTimeout(updateStructuredEditor, 100);
+
+
   // summary provider toggle
   $('#sg_summaryProvider').on('change', () => {
     const p = String($('#sg_summaryProvider').val() || 'st');
@@ -13006,14 +13105,21 @@ function ensureModal() {
     $('#sg_structuredCharacterPrompt').val(DEFAULT_STRUCTURED_CHARACTER_PROMPT);
     $('#sg_structuredCharacterEntryTemplate').val(DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE);
     $('#sg_structuredEquipmentPrompt').val(DEFAULT_STRUCTURED_EQUIPMENT_PROMPT);
+    $('#sg_structuredEquipmentEntryTemplate').val(DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE);
     $('#sg_structuredInventoryPrompt').val(DEFAULT_STRUCTURED_INVENTORY_PROMPT);
+    $('#sg_structuredInventoryEntryTemplate').val(DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE);
     $('#sg_structuredFactionPrompt').val(DEFAULT_STRUCTURED_FACTION_PROMPT);
+    $('#sg_structuredFactionEntryTemplate').val(DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE);
     $('#sg_structuredAchievementPrompt').val(DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT);
+    $('#sg_structuredAchievementEntryTemplate').val(DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE);
     $('#sg_structuredSubProfessionPrompt').val(DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT);
+    $('#sg_structuredSubProfessionEntryTemplate').val(DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE);
     $('#sg_structuredQuestPrompt').val(DEFAULT_STRUCTURED_QUEST_PROMPT);
+    $('#sg_structuredQuestEntryTemplate').val(DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE);
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认结构化提示词 ✅', 'ok');
+    updateStructuredEditor(); // Refresh the visible textareas
+    setStatus('已恢复默认结构化提示词与模板 ✅', 'ok');
   });
 
   $('#sg_clearStructuredCache').on('click', async () => {
@@ -14013,11 +14119,17 @@ function pullSettingsToUi() {
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
   $('#sg_structuredCharacterEntryTemplate').val(String(s.structuredCharacterEntryTemplate || DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE));
   $('#sg_structuredEquipmentPrompt').val(String(s.structuredEquipmentPrompt || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT));
+  $('#sg_structuredEquipmentEntryTemplate').val(String(s.structuredEquipmentEntryTemplate || DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE));
   $('#sg_structuredInventoryPrompt').val(String(s.structuredInventoryPrompt || DEFAULT_STRUCTURED_INVENTORY_PROMPT));
+  $('#sg_structuredInventoryEntryTemplate').val(String(s.structuredInventoryEntryTemplate || DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE));
   $('#sg_structuredFactionPrompt').val(String(s.structuredFactionPrompt || DEFAULT_STRUCTURED_FACTION_PROMPT));
+  $('#sg_structuredFactionEntryTemplate').val(String(s.structuredFactionEntryTemplate || DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE));
   $('#sg_structuredAchievementPrompt').val(String(s.structuredAchievementPrompt || DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT));
+  $('#sg_structuredAchievementEntryTemplate').val(String(s.structuredAchievementEntryTemplate || DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE));
   $('#sg_structuredSubProfessionPrompt').val(String(s.structuredSubProfessionPrompt || DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT));
+  $('#sg_structuredSubProfessionEntryTemplate').val(String(s.structuredSubProfessionEntryTemplate || DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE));
   $('#sg_structuredQuestPrompt').val(String(s.structuredQuestPrompt || DEFAULT_STRUCTURED_QUEST_PROMPT));
+  $('#sg_structuredQuestEntryTemplate').val(String(s.structuredQuestEntryTemplate || DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -14611,11 +14723,17 @@ function pullUiToSettings() {
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
   s.structuredCharacterEntryTemplate = String($('#sg_structuredCharacterEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE;
   s.structuredEquipmentPrompt = String($('#sg_structuredEquipmentPrompt').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_PROMPT;
+  s.structuredEquipmentEntryTemplate = String($('#sg_structuredEquipmentEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_EQUIPMENT_ENTRY_TEMPLATE;
   s.structuredInventoryPrompt = String($('#sg_structuredInventoryPrompt').val() || '').trim() || DEFAULT_STRUCTURED_INVENTORY_PROMPT;
+  s.structuredInventoryEntryTemplate = String($('#sg_structuredInventoryEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_INVENTORY_ENTRY_TEMPLATE;
   s.structuredFactionPrompt = String($('#sg_structuredFactionPrompt').val() || '').trim() || DEFAULT_STRUCTURED_FACTION_PROMPT;
+  s.structuredFactionEntryTemplate = String($('#sg_structuredFactionEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_FACTION_ENTRY_TEMPLATE;
   s.structuredAchievementPrompt = String($('#sg_structuredAchievementPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT;
+  s.structuredAchievementEntryTemplate = String($('#sg_structuredAchievementEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ACHIEVEMENT_ENTRY_TEMPLATE;
   s.structuredSubProfessionPrompt = String($('#sg_structuredSubProfessionPrompt').val() || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT;
+  s.structuredSubProfessionEntryTemplate = String($('#sg_structuredSubProfessionEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE;
   s.structuredQuestPrompt = String($('#sg_structuredQuestPrompt').val() || '').trim() || DEFAULT_STRUCTURED_QUEST_PROMPT;
+  s.structuredQuestEntryTemplate = String($('#sg_structuredQuestEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE;
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
