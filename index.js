@@ -10210,11 +10210,17 @@ function collectCharacterProfilesFromUi() {
   return list;
 }
 
-function matchCharacterTagsFromProfiles(storyContent) {
+function matchCharacterTagsFromProfiles(textOverride = null) {
   const s = ensureSettings();
   if (!s.imageGenCharacterProfilesEnabled) return '';
   const entries = getCharacterProfilesFromSettings();
   if (!entries.length) return '';
+
+  let storyContent = textOverride;
+  if (!storyContent) {
+    const lookback = s.imageGenLookbackMessages || 5;
+    storyContent = getRecentStoryContent(lookback);
+  }
 
   const text = String(storyContent || '').toLowerCase();
   const matched = [];
@@ -10396,7 +10402,7 @@ async function generateImagePromptBatch() {
   }
 
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
-  const profileTags = matchCharacterTagsFromProfiles(storyContent);
+  const globalProfileTags = matchCharacterTagsFromProfiles(storyContent);
 
   const patterns = getImageGenBatchPatterns();
   if (!patterns.length) throw new Error('未配置批次模板');
@@ -10467,8 +10473,20 @@ async function generateImagePromptBatch() {
     const parsed = parsedList[i] || {};
     const positive = parsed?.positive || '';
     const negative = parsed?.negative || '';
+    const isScene = (parsed?.type === 'scene' || pattern.type === 'scene');
+
     let finalPositive = positive || '';
-    if (profileTags) finalPositive = `${profileTags}, ${finalPositive}`;
+
+    if (!isScene) {
+      // For story type, try to match profile from the specific part
+      let itemProfileTags = globalProfileTags;
+      if (pattern.type === 'story' && storyParts[i]) {
+        const partMatch = matchCharacterTagsFromProfiles(storyParts[i]);
+        if (partMatch) itemProfileTags = partMatch;
+      }
+
+      if (itemProfileTags) finalPositive = `${itemProfileTags}, ${finalPositive}`;
+    }
 
     if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
       const artist = String(s.imageGenArtistPrompt || '').trim();
@@ -10802,7 +10820,7 @@ async function runImageGeneration() {
       }
     };
 
-    const profileTags = matchCharacterTagsFromProfiles(storyContent);
+    const profileTags = (genType === 'scene' || promptResult.type === 'scene') ? '' : matchCharacterTagsFromProfiles(storyContent);
     let finalPositive = normalizePositive(promptResult.positive);
     if (profileTags) {
       finalPositive = `${normalizePositive(profileTags)}, ${finalPositive}`;
