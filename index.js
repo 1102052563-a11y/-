@@ -5808,8 +5808,14 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       // comment 格式为: "人物｜角色名｜CHA-001"
       const searchName = String(cached?.name || entryName).trim() || entryName;
       const searchIndexSuffix = cached?.indexId ? `｜${cached.indexId}` : '';
-      const searchPatterns = [`${prefix}｜${searchName}${searchIndexSuffix}`];
-      if (searchIndexSuffix) searchPatterns.push(`${prefix}｜${searchName}`);
+      const searchPatterns = [
+        `${prefix}｜${searchName}${searchIndexSuffix}`,
+        `[已删除] ${prefix}｜${searchName}${searchIndexSuffix}`
+      ];
+      if (searchIndexSuffix) {
+        searchPatterns.push(`${prefix}｜${searchName}`);
+        searchPatterns.push(`[已删除] ${prefix}｜${searchName}`);
+      }
 
       let foundUid = null;
       for (const searchPattern of searchPatterns) {
@@ -5850,7 +5856,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         let updateParts = [];
         const updateFileVar = '__sg_update_file';
 
-        const shouldReenable = !!settings.structuredReenableEntriesEnabled && (entryType === 'character' || entryType === 'faction');
+        const shouldReenable = !!settings.structuredReenableEntriesEnabled;
         const commentName = String(cached?.name || entryName).trim() || entryName;
         const indexSuffix = cached?.indexId ? `｜${cached.indexId}` : '';
         const newComment = `${prefix}｜${commentName}${indexSuffix}`;
