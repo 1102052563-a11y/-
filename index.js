@@ -6847,23 +6847,39 @@ async function rollbackStructuredChangesForRecord(rec, meta, settings, {
     let ok = false;
 
     if (change.action === 'create') {
+      console.log(`[StoryGuide] Rolling back "create" for ${change.entryType}: ${change.name} (disabling entry)`);
       const r = await deleteWorldInfoEntryByComment(comment, s, {
         target: targetInfo.target,
         file: targetInfo.file,
       });
       ok = !!r;
+      if (!ok) console.warn(`[StoryGuide] Failed to disable entry for "create" rollback: ${comment}`);
     } else if (change.action === 'update') {
+      console.log(`[StoryGuide] Rolling back "update" for ${change.entryType}: ${change.name} (restoring previous content)`);
       const r = await updateWorldInfoEntryByComment(comment, s, {
         target: targetInfo.target,
         file: targetInfo.file,
         content: prevContent,
       });
       ok = !!r;
+      if (!ok) {
+        // 尝试使用 [已删除] 前缀兜底（以防回滚前条目正好被手动禁用了）
+        const fallbackComment = `[已删除] ${comment}`;
+        const r2 = await updateWorldInfoEntryByComment(fallbackComment, s, {
+          target: targetInfo.target,
+          file: targetInfo.file,
+          content: prevContent,
+        });
+        ok = !!r2;
+      }
+      if (!ok) console.warn(`[StoryGuide] Failed to restore content for "update" rollback: ${comment}`);
     } else if (change.action === 'delete') {
+      console.log(`[StoryGuide] Rolling back "delete" for ${change.entryType}: ${change.name} (restoring/enabling entry)`);
       const commentVariants = [
         comment,
         comment ? `[已删除] ${comment}` : '',
         comment ? `[已汇总] ${comment}` : '',
+        comment ? `[已删除] [已汇总] ${comment}` : '',
       ].filter(Boolean);
       let restored = null;
       for (const c of commentVariants) {
@@ -6878,6 +6894,7 @@ async function rollbackStructuredChangesForRecord(rec, meta, settings, {
         if (restored) break;
       }
       if (!restored) {
+        console.log(`[StoryGuide] Entry not found for "delete" rollback, re-creating: ${comment}`);
         try {
           await createWorldInfoEntryInTarget(targetInfo.target, targetInfo.file, {
             key,
