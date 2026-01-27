@@ -523,6 +523,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryToBlueWorldInfo: true,
   summaryBlueWorldInfoFile: '',
   summaryBlueWorldInfoCommentPrefix: '剧情总结',
+  summaryAutoRollback: false,
+  structuredAutoRollback: false,
 
   // —— 蓝灯索引 → 绿灯触发 ——
   wiTriggerEnabled: false,
@@ -5903,38 +5905,30 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
           cacheKey,
           prevCacheEntry,
         };
-      } else {
-        console.log(`[StoryGuide] Entry not found via /findentry: ${searchPattern}, skipping update`);
-        // 未找到条目（可能被手动删除），只更新缓存
-        cached.content = content;
-        cached.raw = finalEntryData;
-        cached.lastUpdated = Date.now();
-        return { skipped: true, name: entryName, entryType, targetType, cacheKey, reason: 'entry_not_found' };
       }
     } catch (e) {
       console.warn(`[StoryGuide] Update ${entryType} (${targetType}) via /findentry failed:`, e);
-      // 更新失败，只更新缓存
-      cached.content = content;
-      cached.raw = finalEntryData;
-      cached.lastUpdated = Date.now();
-      return { skipped: true, name: entryName, entryType, targetType, cacheKey, reason: 'update_failed' };
     }
   }
 
-  // 创建新条目
+  // 创建新条目 (或更新查无此人的缓存条目)
   // 对于蓝灯条目，先检查是否有对应的绿灯条目，复用其 indexId
-  let indexId;
-  const greenCacheKey = `${normalizedName}_green`;
-  const existingGreenEntry = entriesCache[greenCacheKey];
+  let indexId = cached?.indexId;
+  if (!indexId) {
+    const greenCacheKey = `${normalizedName}_green`;
+    const existingGreenEntry = entriesCache[greenCacheKey];
 
-  if (targetType === 'blue' && existingGreenEntry?.indexId) {
-    // 蓝灯复用绿灯的 indexId
-    indexId = existingGreenEntry.indexId;
-    console.log(`[StoryGuide] Reusing green indexId for blue: ${entryName} -> ${indexId}`);
-  } else {
-    // 绿灯或没有对应绿灯条目时，生成新 indexId
-    const indexNum = meta[nextIndexKey] || 1;
-    indexId = `${entryType.substring(0, 3).toUpperCase()}-${String(indexNum).padStart(3, '0')}`;
+    if (targetType === 'blue' && existingGreenEntry?.indexId) {
+      // 蓝灯复用绿灯的 indexId
+      indexId = existingGreenEntry.indexId;
+      console.log(`[StoryGuide] Reusing green indexId for blue: ${entryName} -> ${indexId}`);
+    } else {
+      // 绿灯或没有对应绿灯条目时，生成新 indexId
+      const indexNum = meta[nextIndexKey] || 1;
+      indexId = `${entryType.substring(0, 3).toUpperCase()}-${String(indexNum).padStart(3, '0')}`;
+      meta[nextIndexKey] = Number(indexNum) + 1;
+      await setSummaryMeta(meta);
+    }
   }
 
   const keyValue = buildStructuredEntryKey(prefix, entryName, indexId);
@@ -6252,7 +6246,8 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     if (!uid) {
       console.log(`[StoryGuide] Delete ${entryType} (${targetType}): ${entryName} not found in world book`);
       // 仍然从缓存中删除
-      delete entriesCache[cacheKey];
+      // 仍然标记为已停用
+      if (entriesCache[cacheKey]) entriesCache[cacheKey].disabled = true;
       return {
         deleted: true,
         name: entryName,
@@ -6299,8 +6294,8 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
       await execSlash(`/flushvar ${fileVar}`);
     }
 
-    // 从缓存中删除
-    delete entriesCache[cacheKey];
+    // 标记为已停用
+    if (entriesCache[cacheKey]) entriesCache[cacheKey].disabled = true;
 
     console.log(`[StoryGuide] Disabled ${entryType} (${targetType}): ${entryName} (UID: ${uid})`);
     return {
@@ -6317,8 +6312,8 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     };
   } catch (e) {
     console.warn(`[StoryGuide] Delete ${entryType} (${targetType}) failed:`, e);
-    // 仍然从缓存中删除（避免下次再次尝试）
-    delete entriesCache[cacheKey];
+    // 仍然标记为已停用
+    if (entriesCache[cacheKey]) entriesCache[cacheKey].disabled = true;
     return null;
   }
 }
@@ -6927,21 +6922,28 @@ async function rollbackStructuredChangesForRecord(rec, meta, settings, {
   return { total: structuredChanges.length, rolled, errors };
 }
 
-async function rollbackLastSummary() {
+async function rollbackLastSummary(options = {}) {
+  const { silent = false } = options;
   const s = ensureSettings();
+  if (silent && !s.summaryAutoRollback) return;
+
   const meta = getSummaryMeta();
   const hist = Array.isArray(meta.history) ? meta.history : [];
 
   let idx = hist.length - 1;
   while (idx >= 0 && hist[idx] && hist[idx].isMega) idx--;
   if (idx < 0) {
-    setStatus('没有可撤销的总结', 'warn');
+    if (!silent) setStatus('没有可撤销的总结', 'warn');
     return;
   }
 
   const rec = hist[idx];
-  setStatus('正在撤销最近一次总结…', 'warn');
-  showToast('正在撤销最近一次总结…', { kind: 'warn', spinner: true, sticky: true });
+  if (!silent) {
+    setStatus('正在撤销最近一次总结…', 'warn');
+    showToast('正在撤销最近一次总结…', { kind: 'warn', spinner: true, sticky: true });
+  } else {
+    console.log('[StoryGuide] Auto-rolling back last summary due to message deletion');
+  }
 
   const errors = [];
   let greenOk = false;
@@ -7020,8 +7022,11 @@ async function rollbackLastSummary() {
   }
 }
 
-async function rollbackLastStructuredEntries() {
+async function rollbackLastStructuredEntries(options = {}) {
+  const { silent = false } = options;
   const s = ensureSettings();
+  if (silent && !s.structuredAutoRollback) return;
+
   const meta = getSummaryMeta();
   const hist = Array.isArray(meta.structuredHistory) ? meta.structuredHistory : [];
 
@@ -7050,14 +7055,18 @@ async function rollbackLastStructuredEntries() {
 
   if (idx < 0) {
     if (!fromSummary) {
-      setStatus('没有可撤销的结构化条目', 'warn');
+      if (!silent) setStatus('没有可撤销的结构化条目', 'warn');
       return;
     }
   }
 
   const rec = fromSummary ? sumRec : hist[idx];
-  setStatus('正在撤销最近一次结构化条目…', 'warn');
-  showToast('正在撤销最近一次结构化条目…', { kind: 'warn', spinner: true, sticky: true });
+  if (!silent) {
+    setStatus('正在撤销最近一次结构化条目…', 'warn');
+    showToast('正在撤销最近一次结构化条目…', { kind: 'warn', spinner: true, sticky: true });
+  } else {
+    console.log('[StoryGuide] Auto-rolling back last structured entries due to message deletion');
+  }
 
   const result = await rollbackStructuredChangesForRecord(rec, meta, s, { clearChanges: true });
   if (fromSummary) {
@@ -7082,13 +7091,59 @@ async function rollbackLastStructuredEntries() {
   try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
 
   if (!result.total) {
-    setStatus('没有可撤销的结构化条目', 'warn');
+    if (!silent) setStatus('没有可撤销的结构化条目', 'warn');
     return;
   }
   if (result.errors.length) {
-    setStatus(`结构化撤销完成（${result.errors[0]}）`, 'warn');
+    if (!silent) setStatus(`结构化撤销完成（${result.errors[0]}）`, 'warn');
   } else {
-    setStatus(`已撤销最近一次结构化条目 ✅（${result.rolled}/${result.total}）`, 'ok');
+    if (!silent) setStatus(`已撤销最近一次结构化条目 ✅（${result.rolled}/${result.total}）`, 'ok');
+    else setStatus(`已自动撤回结构化条目 ✅`, 'ok');
+  }
+}
+
+/**
+ * Handle automatic rollback when a message is deleted.
+ * @param {any} data The event data from MESSAGE_DELETED
+ */
+async function handleAutoRollbackOnDeletion(data) {
+  const s = ensureSettings();
+  if (!s.summaryAutoRollback && !s.structuredAutoRollback) return;
+
+  const meta = getSummaryMeta();
+  const lastSummary = (Array.isArray(meta.history) && meta.history.length) ? meta.history[meta.history.length - 1] : null;
+  const lastStructured = (Array.isArray(meta.structuredHistory) && meta.structuredHistory.length) ? meta.structuredHistory[meta.structuredHistory.length - 1] : null;
+
+  if (!lastSummary && !lastStructured) return;
+
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+
+  // SillyTavern passes the deleted message index in some versions, or it's handled by CHAT_CHANGED.
+  // We check if the last summarized floor is now missing or if the chat shortened.
+  const mode = String(s.summaryCountMode || 'assistant');
+  const floorNow = computeFloorCount(chat, mode, true, true);
+
+  let triggerSummary = false;
+  if (s.summaryAutoRollback && lastSummary?.range?.toFloor > floorNow) {
+    triggerSummary = true;
+  }
+
+  let triggerStructured = false;
+  if (s.structuredAutoRollback) {
+    // Check both dedicated structured history and summary-based structured history
+    if (lastStructured?.range?.toFloor > floorNow) {
+      triggerStructured = true;
+    } else if (lastSummary?.range?.toFloor > floorNow && lastSummary.structuredChanges) {
+      triggerStructured = true;
+    }
+  }
+
+  if (triggerSummary) {
+    await rollbackLastSummary({ silent: true });
+  }
+  if (triggerStructured) {
+    await rollbackLastStructuredEntries({ silent: true });
   }
 }
 
@@ -12004,6 +12059,11 @@ function buildModalHtml() {
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
             </div>
 
+            <div class="sg-row sg-inline" style="gap: 20px;">
+              <label class="sg-check" title="当在酒馆撤回/删除消息导致楼层减少时，自动撤销最近一次总结条目"><input type="checkbox" id="sg_summaryAutoRollback">剧本总结自动随消息撤回</label>
+              <label class="sg-check" title="当在酒馆撤回/删除消息导致楼层减少时，自动回滚最近一次结构化条目变更"><input type="checkbox" id="sg_structuredAutoRollback">结构化条目自动随消息撤回</label>
+            </div>
+
             <div class="sg-hint" style="margin-top: 8px; color: var(--SmartThemeQuoteColor);">
               💡 请手动创建世界书文件，然后在上方填写文件名。绿灯选择「写入指定世界书文件名」模式。
             </div>
@@ -14220,6 +14280,8 @@ function pullSettingsToUi() {
   $('#sg_summaryIndexStart').val(s.summaryIndexStart ?? 1);
   $('#sg_summaryIndexInComment').prop('checked', !!s.summaryIndexInComment);
   $('#sg_summaryToBlueWorldInfo').prop('checked', !!s.summaryToBlueWorldInfo);
+  $('#sg_summaryAutoRollback').prop('checked', !!s.summaryAutoRollback);
+  $('#sg_structuredAutoRollback').prop('checked', !!s.structuredAutoRollback);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
 
   // 地图功能
@@ -14815,6 +14877,10 @@ function pullUiToSettings() {
   s.summaryCustomMaxTokens = clampInt($('#sg_summaryCustomMaxTokens').val(), 128, 200000, s.summaryCustomMaxTokens || 2048);
   s.summaryCustomStream = $('#sg_summaryCustomStream').is(':checked');
   s.summaryToWorldInfo = $('#sg_summaryToWorldInfo').is(':checked');
+  s.summaryToBlueWorldInfo = $('#sg_summaryToBlueWorldInfo').is(':checked');
+  s.summaryAutoRollback = $('#sg_summaryAutoRollback').is(':checked');
+  s.structuredAutoRollback = $('#sg_structuredAutoRollback').is(':checked');
+  s.summaryBlueWorldInfoFile = String($('#sg_summaryBlueWorldInfoFile').val() || '').trim();
   s.summaryWorldInfoTarget = String($('#sg_summaryWorldInfoTarget').val() || 'chatbook');
   s.summaryWorldInfoFile = normalizeWorldInfoFileName($('#sg_summaryWorldInfoFile').val());
   s.summaryWorldInfoCommentPrefix = String($('#sg_summaryWorldInfoCommentPrefix').val() || '剧情总结').trim() || '剧情总结';
@@ -15098,6 +15164,10 @@ function setupEventListeners() {
       maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
       scheduleAutoSummary('msg_sent');
       scheduleAutoStructuredEntries('msg_sent');
+    });
+
+    eventSource.on(event_types.MESSAGE_DELETED, async (data) => {
+      await handleAutoRollbackOnDeletion(data);
     });
   });
 }
