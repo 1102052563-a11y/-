@@ -5750,14 +5750,16 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       const cachedNameNorm = String(value.name || '').replace(/[|｜,，\s]/g, '_').toLowerCase();
       const cachedAliases = Array.isArray(value.aliases) ? value.aliases.map(a => String(a).toLowerCase().trim()) : [];
       const newAliases = Array.isArray(entryData.aliases) ? entryData.aliases.map(a => String(a).toLowerCase().trim()) : [];
-      const nameMatch = (cachedNameNorm === normalizedName);
-      const newNameInCachedAliases = cachedAliases.some(a => a === normalizedName);
-      const cachedNameInNewAliases = newAliases.some(a => a === cachedNameNorm);
+      const nameMatch = cachedNameNorm === normalizedName; // Disable aggressive fuzzy match: || cachedNameNorm.includes(normalizedName) || normalizedName.includes(cachedNameNorm);
+      const newNameInCachedAliases = cachedAliases.some(a => a === normalizedName); // || a.includes(normalizedName) || normalizedName.includes(a));
+      const cachedNameInNewAliases = newAliases.some(a => a === cachedNameNorm); // || a.includes(cachedNameNorm) || cachedNameNorm.includes(a));
+      // const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na || ca.includes(na) || na.includes(ca)));
       const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na));
+
       if (nameMatch || newNameInCachedAliases || cachedNameInNewAliases || aliasesOverlap) {
         cached = value;
-        console.log(`[StoryGuide] Found cached ${entryType} by smart match: "${entryName}" -> "${value.name}"`);
         if (entryName.toLowerCase() !== String(value.name).toLowerCase()) {
+          console.log(`[StoryGuide] Found cached ${entryType} by smart match: "${entryName}" -> "${value.name}" (Strict Match)`);
           cached.aliases = cached.aliases || [];
           if (!cached.aliases.some(a => String(a).toLowerCase() === entryName.toLowerCase())) {
             cached.aliases.push(entryName);
@@ -5816,8 +5818,10 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       ];
       if (searchIndexSuffix) {
         searchPatterns.push(`${prefix}｜${searchName}`);
-        searchPatterns.push(`[已删除] ${prefix}｜${searchName}`);
+        // searchPatterns.push(`[已删除] ${prefix}｜${searchName}`);
       }
+
+      console.log(`[StoryGuide] DEBUG Update Search: Patterns=${JSON.stringify(searchPatterns)}`);
 
       let foundUid = null;
       for (const searchPattern of searchPatterns) {
@@ -5888,13 +5892,6 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         cached.content = content;
         cached.raw = finalEntryData;
         cached.lastUpdated = Date.now();
-        if (shouldReenable) {
-          cached.comment = newComment;
-          cached.key = newKey;
-        } else {
-          if (!cached.comment) cached.comment = newComment;
-          if (!cached.key) cached.key = newKey;
-        }
         console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${foundUid}`);
         const comment = newComment;
         const key = newKey;
@@ -5968,8 +5965,6 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       lastUpdated: Date.now(),
       indexId,
       targetType,
-      comment,
-      key: keyValue,
       raw: finalEntryData,
     };
     if (targetType === 'green' && !existingGreenEntry) {
@@ -6201,11 +6196,9 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
   }
   const cacheEntry = clone(cached);
 
-  // 构建 comment 用于查找世界书条目（优先使用缓存中的原始 comment/key）
-  const cachedComment = String(cached?.comment || '').trim();
-  const cachedKey = String(cached?.key || '').trim();
-  const comment = cachedComment || `${prefix}｜${cached.name}｜${cached.indexId}`;
-  const key = cachedKey || (cached?.indexId ? buildStructuredEntryKey(prefix, cached.name, cached.indexId) : '');
+  // 构建 comment 用于查找世界书条目
+  const comment = `${prefix}｜${cached.name}｜${cached.indexId}`;
+  const key = cached?.indexId ? buildStructuredEntryKey(prefix, cached.name, cached.indexId) : '';
 
   // 确定目标世界书
   let target = 'chatbook';
@@ -6238,6 +6231,8 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     const findResult = await execSlash(findExpr);
     const findText = slashOutputToText(findResult);
 
+    console.log(`[StoryGuide] DEBUG Delete Search: EntryName="${entryName}", CacheKey="${cacheKey}", Comment="${comment}", Result="${findText}"`);
+
     // 清理临时变量
     if (target === 'chatbook') {
       await execSlash(`/flushvar ${findFileVar}`);
@@ -6253,6 +6248,8 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
         uid = findText.trim();
       }
     }
+
+    console.log(`[StoryGuide] DEBUG Delete Target: UID="${uid}"`);
 
     if (!uid) {
       console.log(`[StoryGuide] Delete ${entryType} (${targetType}): ${entryName} not found in world book`);
