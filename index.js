@@ -6200,6 +6200,27 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
   const comment = `${prefix}｜${cached.name}｜${cached.indexId}`;
   const key = cached?.indexId ? buildStructuredEntryKey(prefix, cached.name, cached.indexId) : '';
 
+  // [Safety Check] 防止删除别名/合并条目时误删主条目
+  // 如果当前要删除的名字 (entryName) 与缓存的主名字 (cached.name) 不一致，
+  // 说明这是一个“被合并”的条目（指针）。删除它不应影响主条目。
+  const cachedNameNormCheck = String(cached.name || '').trim().toLowerCase();
+  if (normalizedName !== cachedNameNormCheck) {
+    console.log(`[StoryGuide] Safety Guard: Deleting alias "${entryName}" (points to "${cached.name}"). Skipping Worldbook deletion.`);
+    if (entriesCache[cacheKey]) entriesCache[cacheKey].disabled = true;
+    return {
+      deleted: true,
+      name: entryName,
+      entryType,
+      targetType,
+      source: 'cache_alias_only',
+      comment,
+      key,
+      content: cacheEntry?.content,
+      cacheKey,
+      cacheEntry,
+    };
+  }
+
   // 确定目标世界书
   let target = 'chatbook';
   let file = '';
