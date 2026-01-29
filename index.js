@@ -5145,6 +5145,7 @@ async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloo
   const achievementPrompt = String(s.structuredAchievementPrompt || '').trim() || DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT;
   const subProfessionPrompt = String(s.structuredSubProfessionPrompt || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT;
   const questPrompt = String(s.structuredQuestPrompt || '').trim() || DEFAULT_STRUCTURED_QUEST_PROMPT;
+  const conquestPrompt = String(s.structuredConquestPrompt || '').trim() || DEFAULT_STRUCTURED_CONQUEST_PROMPT;
   sys = [
     sys,
     `【人物条目要求】\n${charPrompt}`,
@@ -5154,6 +5155,7 @@ async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloo
     `【成就条目要求】\n${achievementPrompt}`,
     `【副职业条目要求】\n${subProfessionPrompt}`,
     `【任务条目要求】\n${questPrompt}`,
+    `【猎艳录条目要求】\n${conquestPrompt}`,
     STRUCTURED_ENTRIES_JSON_REQUIREMENT,
   ].join('\n\n');
 
