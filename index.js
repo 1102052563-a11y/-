@@ -15166,11 +15166,33 @@ function setupEventListeners() {
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
     ensureBlueIndexLive(true).catch(() => void 0);
 
-    eventSource.on(event_types.CHAT_CHANGED, () => {
+    eventSource.on(event_types.CHAT_CHANGED, async () => {
       inlineCache.clear();
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
       ensureBlueIndexLive(true).catch(() => void 0);
+
+      // 切换聊天时，初始化结构化条目进度，避免自动触发已有历史的总结
+      try {
+        const s = ensureSettings();
+        if (s.structuredEntriesEnabled) {
+          const ctxNow = SillyTavern.getContext();
+          const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
+          const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+          const floorNow = computeFloorCount(chatNow, mode, true, true);
+          const meta = getSummaryMeta();
+          // 如果 lastStructuredFloor 为 0 且已有聊天历史，初始化为当前楼层
+          if (floorNow > 0 && !meta.lastStructuredFloor) {
+            meta.lastStructuredFloor = floorNow;
+            meta.lastStructuredChatLen = chatNow.length;
+            await setSummaryMeta(meta);
+            console.log('[StoryGuide] Initialized lastStructuredFloor to', floorNow, 'for existing chat');
+          }
+        }
+      } catch (e) {
+        console.warn('[StoryGuide] Failed to init structured progress on chat change:', e);
+      }
+
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
         pullSettingsToUi();
         setStatus('已切换聊天：已同步本聊天字段', 'ok');
