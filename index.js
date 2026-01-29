@@ -14405,6 +14405,7 @@ function pullSettingsToUi() {
   $('#sg_achievementEntriesEnabled').prop('checked', !!s.achievementEntriesEnabled);
   $('#sg_subProfessionEntriesEnabled').prop('checked', !!s.subProfessionEntriesEnabled);
   $('#sg_questEntriesEnabled').prop('checked', !!s.questEntriesEnabled);
+  $('#sg_conquestEntriesEnabled').prop('checked', !!s.conquestEntriesEnabled);
   $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '人物'));
   $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '装备'));
   $('#sg_inventoryEntryPrefix').val(String(s.inventoryEntryPrefix || '物品栏'));
@@ -14412,6 +14413,7 @@ function pullSettingsToUi() {
   $('#sg_achievementEntryPrefix').val(String(s.achievementEntryPrefix || '成就'));
   $('#sg_subProfessionEntryPrefix').val(String(s.subProfessionEntryPrefix || '副职业'));
   $('#sg_questEntryPrefix').val(String(s.questEntryPrefix || '任务'));
+  $('#sg_conquestEntryPrefix').val(String(s.conquestEntryPrefix || '猎艳录'));
   $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
   $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
@@ -14428,6 +14430,8 @@ function pullSettingsToUi() {
   $('#sg_structuredSubProfessionEntryTemplate').val(String(s.structuredSubProfessionEntryTemplate || DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE));
   $('#sg_structuredQuestPrompt').val(String(s.structuredQuestPrompt || DEFAULT_STRUCTURED_QUEST_PROMPT));
   $('#sg_structuredQuestEntryTemplate').val(String(s.structuredQuestEntryTemplate || DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE));
+  $('#sg_structuredConquestPrompt').val(String(s.structuredConquestPrompt || DEFAULT_STRUCTURED_CONQUEST_PROMPT));
+  $('#sg_structuredConquestEntryTemplate').val(String(s.structuredConquestEntryTemplate || DEFAULT_STRUCTURED_CONQUEST_ENTRY_TEMPLATE));
   $('#sg_summaryCustomEndpoint').val(String(s.summaryCustomEndpoint || ''));
   $('#sg_summaryCustomApiKey').val(String(s.summaryCustomApiKey || ''));
   $('#sg_summaryCustomModel').val(String(s.summaryCustomModel || ''));
@@ -15012,6 +15016,7 @@ function pullUiToSettings() {
   s.achievementEntriesEnabled = $('#sg_achievementEntriesEnabled').is(':checked');
   s.subProfessionEntriesEnabled = $('#sg_subProfessionEntriesEnabled').is(':checked');
   s.questEntriesEnabled = $('#sg_questEntriesEnabled').is(':checked');
+  s.conquestEntriesEnabled = $('#sg_conquestEntriesEnabled').is(':checked');
   s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '人物').trim() || '人物';
   s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '装备').trim() || '装备';
   s.inventoryEntryPrefix = String($('#sg_inventoryEntryPrefix').val() || '物品栏').trim() || '物品栏';
@@ -15019,6 +15024,7 @@ function pullUiToSettings() {
   s.achievementEntryPrefix = String($('#sg_achievementEntryPrefix').val() || '成就').trim() || '成就';
   s.subProfessionEntryPrefix = String($('#sg_subProfessionEntryPrefix').val() || '副职业').trim() || '副职业';
   s.questEntryPrefix = String($('#sg_questEntryPrefix').val() || '任务').trim() || '任务';
+  s.conquestEntryPrefix = String($('#sg_conquestEntryPrefix').val() || '猎艳录').trim() || '猎艳录';
   s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
   s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
@@ -15035,6 +15041,8 @@ function pullUiToSettings() {
   s.structuredSubProfessionEntryTemplate = String($('#sg_structuredSubProfessionEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE;
   s.structuredQuestPrompt = String($('#sg_structuredQuestPrompt').val() || '').trim() || DEFAULT_STRUCTURED_QUEST_PROMPT;
   s.structuredQuestEntryTemplate = String($('#sg_structuredQuestEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE;
+  s.structuredConquestPrompt = String($('#sg_structuredConquestPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CONQUEST_PROMPT;
+  s.structuredConquestEntryTemplate = String($('#sg_structuredConquestEntryTemplate').val() || '').trim() || DEFAULT_STRUCTURED_CONQUEST_ENTRY_TEMPLATE;
   s.summaryCustomEndpoint = String($('#sg_summaryCustomEndpoint').val() || '').trim();
   s.summaryCustomApiKey = String($('#sg_summaryCustomApiKey').val() || '');
   s.summaryCustomModel = String($('#sg_summaryCustomModel').val() || '').trim() || 'gpt-4o-mini';
