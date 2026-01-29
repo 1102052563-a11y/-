@@ -12134,6 +12134,7 @@ function buildModalHtml() {
                     <option value="achievement">成就 (Achievement)</option>
                     <option value="subProfession">副职业 (Sub-profession)</option>
                     <option value="quest">任务 (Quest)</option>
+                    <option value="conquest">猎艳录 (Conquest)</option>
                   </select>
                 </div>
 
@@ -12166,12 +12167,14 @@ function buildModalHtml() {
                   <textarea id="sg_structuredSubProfessionEntryTemplate"></textarea>
                   <textarea id="sg_structuredQuestPrompt"></textarea>
                   <textarea id="sg_structuredQuestEntryTemplate"></textarea>
+                  <textarea id="sg_structuredConquestPrompt"></textarea>
+                  <textarea id="sg_structuredConquestEntryTemplate"></textarea>
                 </div>
               </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
                 <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓存</button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownInventories}} {{knownFactions}} {{knownAchievements}} {{knownSubProfessions}} {{knownQuests}} {{structuredWorldbook}}。</div>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownInventories}} {{knownFactions}} {{knownAchievements}} {{knownSubProfessions}} {{knownQuests}} {{knownConquests}} {{structuredWorldbook}}。</div>
               </div>
             </div>
 
@@ -13297,6 +13300,7 @@ function ensureModal() {
       case 'achievement': hint = '占位符：{{name}} {{uid}} {{description}} {{requirements}} {{obtainedAt}} {{status}} {{effects}} {{keyEvents}} {{statInfo}} {{extraFields}}'; break;
       case 'subProfession': hint = '占位符：{{name}} {{uid}} {{role}} {{level}} {{progress}} {{skills}} {{source}} {{status}} {{keyEvents}} {{statInfo}} {{extraFields}}'; break;
       case 'quest': hint = '占位符：{{name}} {{uid}} {{goal}} {{progress}} {{status}} {{issuer}} {{reward}} {{deadline}} {{location}} {{keyEvents}} {{statInfo}} {{extraFields}}'; break;
+      case 'conquest': hint = '占位符：{{name}} {{aliases}} {{identity}} {{firstEncounter}} {{conquestProcess}} {{conquestTime}} {{currentRelation}} {{specialTechniques}} {{bodyFeatures}} {{status}} {{keyEvents}} {{statInfo}} {{extraFields}}'; break;
     }
     $('#sg_structured_type_hint').text(hint);
   };
@@ -13406,6 +13410,8 @@ function ensureModal() {
     $('#sg_structuredSubProfessionEntryTemplate').val(DEFAULT_STRUCTURED_SUBPROFESSION_ENTRY_TEMPLATE);
     $('#sg_structuredQuestPrompt').val(DEFAULT_STRUCTURED_QUEST_PROMPT);
     $('#sg_structuredQuestEntryTemplate').val(DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE);
+    $('#sg_structuredConquestPrompt').val(DEFAULT_STRUCTURED_CONQUEST_PROMPT);
+    $('#sg_structuredConquestEntryTemplate').val(DEFAULT_STRUCTURED_CONQUEST_ENTRY_TEMPLATE);
     pullUiToSettings();
     saveSettings();
     updateStructuredEditor(); // Refresh the visible textareas
