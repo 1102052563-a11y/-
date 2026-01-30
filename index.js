@@ -16937,7 +16937,30 @@ function createFloatingPanel() {
   // Floating sex guide actions
   $(document).on('click', '#sg_floating_sex_generate', async (e) => {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
-    const need = String($('#sg_floating_sex_need').val() || '').trim();
+    let need = String($('#sg_floating_sex_need').val() || '').trim();
+    const bdsmMode = String($('#sg_floating_sex_bdsm_mode').val() || 'default');
+    const bdsmCustom = String($('#sg_floating_sex_bdsm_custom').val() || '').trim();
+    const poseMode = String($('#sg_floating_sex_pose_mode').val() || 'default');
+    const poseCustom = String($('#sg_floating_sex_pose_custom').val() || '').trim();
+    const ejaculateMode = String($('#sg_floating_sex_ejaculate').val() || 'default');
+    const outfitMode = String($('#sg_floating_sex_outfit_random').val() || 'default');
+    const extras = [];
+    if (bdsmMode === 'none') extras.push('BDSM????');
+    if (bdsmMode === 'random') extras.push('BDSM???');
+    if (bdsmMode === 'custom' && bdsmCustom) extras.push(`BDSM?${bdsmCustom}`);
+    if (poseMode === 'random') extras.push('?????');
+    if (poseMode === 'custom' && poseCustom) extras.push(`???${poseCustom}`);
+    if (ejaculateMode === 'yes') extras.push('??????');
+    if (ejaculateMode === 'no') extras.push('??????');
+    if (ejaculateMode === 'random') extras.push('???????');
+    if (outfitMode === 'yes') extras.push('????????');
+    if (outfitMode === 'no') extras.push('????????');
+    if (outfitMode === 'random') extras.push('?????????');
+    if (extras.length) {
+      const extraText = extras.join('?');
+      need = need ? `${need}
+${extraText}` : extraText;
+    }
     $('#sg_floating_sex_generate').prop('disabled', true);
     $('#sg_floating_sex_status').text('正在生成…');
     try {
@@ -17509,6 +17532,55 @@ function showFloatingSexGuide() {
       <div class="sg-field" style="margin-top:6px;">
         <label>用户需求</label>
         <textarea id="sg_floating_sex_need" rows="3" placeholder="输入你的需求：更温柔/更主动/更慢节奏/强调沟通与安全…"></textarea>
+      </div>
+      <div class="sg-grid2" style="margin-top:6px;">
+        <div class="sg-field">
+          <label>???? BDSM ??</label>
+          <select id="sg_floating_sex_bdsm_mode">
+            <option value="default">??</option>
+            <option value="none">???</option>
+            <option value="random">??</option>
+            <option value="custom">???</option>
+          </select>
+        </div>
+        <div class="sg-field">
+          <label>BDSM ???</label>
+          <input id="sg_floating_sex_bdsm_custom" type="text" placeholder="????/??/???">
+        </div>
+      </div>
+      <div class="sg-grid2" style="margin-top:6px;">
+        <div class="sg-field">
+          <label>????</label>
+          <select id="sg_floating_sex_pose_mode">
+            <option value="default">??</option>
+            <option value="random">??</option>
+            <option value="custom">???</option>
+          </select>
+        </div>
+        <div class="sg-field">
+          <label>?????</label>
+          <input id="sg_floating_sex_pose_custom" type="text" placeholder="????/??/??">
+        </div>
+      </div>
+      <div class="sg-grid2" style="margin-top:6px;">
+        <div class="sg-field">
+          <label>????</label>
+          <select id="sg_floating_sex_ejaculate">
+            <option value="default">??</option>
+            <option value="yes">?</option>
+            <option value="no">?</option>
+            <option value="random">??</option>
+          </select>
+        </div>
+        <div class="sg-field">
+          <label>??????</label>
+          <select id="sg_floating_sex_outfit_random">
+            <option value="default">??</option>
+            <option value="yes">?</option>
+            <option value="no">?</option>
+            <option value="random">??</option>
+          </select>
+        </div>
       </div>
       <div class="sg-actions-row" style="justify-content:flex-end;">
         <button class="menu_button sg-btn" id="sg_floating_sex_generate">生成</button>
