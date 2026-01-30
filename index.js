@@ -16939,27 +16939,28 @@ function createFloatingPanel() {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     let need = String($('#sg_floating_sex_need').val() || '').trim();
     const bdsmMode = String($('#sg_floating_sex_bdsm_mode').val() || 'default');
-    const bdsmCustom = String($('#sg_floating_sex_bdsm_custom').val() || '').trim();
     const poseMode = String($('#sg_floating_sex_pose_mode').val() || 'default');
-    const poseCustom = String($('#sg_floating_sex_pose_custom').val() || '').trim();
     const ejaculateMode = String($('#sg_floating_sex_ejaculate').val() || 'default');
     const outfitMode = String($('#sg_floating_sex_outfit_random').val() || 'default');
+    let bdsmCustom = '';
+    let poseCustom = '';
+    if (bdsmMode === 'custom') bdsmCustom = String(prompt('BDSM（自定义）：') || '').trim();
+    if (poseMode === 'custom') poseCustom = String(prompt('体位（自定义）：') || '').trim();
     const extras = [];
-    if (bdsmMode === 'none') extras.push('BDSM????');
-    if (bdsmMode === 'random') extras.push('BDSM???');
-    if (bdsmMode === 'custom' && bdsmCustom) extras.push(`BDSM?${bdsmCustom}`);
-    if (poseMode === 'random') extras.push('?????');
-    if (poseMode === 'custom' && poseCustom) extras.push(`???${poseCustom}`);
-    if (ejaculateMode === 'yes') extras.push('??????');
-    if (ejaculateMode === 'no') extras.push('??????');
-    if (ejaculateMode === 'random') extras.push('???????');
-    if (outfitMode === 'yes') extras.push('????????');
-    if (outfitMode === 'no') extras.push('????????');
-    if (outfitMode === 'random') extras.push('?????????');
+    if (bdsmMode === 'none') extras.push('BDSM：不使用');
+    if (bdsmMode === 'random') extras.push('BDSM：随机');
+    if (bdsmMode === 'custom' && bdsmCustom) extras.push(`BDSM：${bdsmCustom}`);
+    if (poseMode === 'random') extras.push('体位：随机');
+    if (poseMode === 'custom' && poseCustom) extras.push(`体位：${poseCustom}`);
+    if (ejaculateMode === 'yes') extras.push('射精：是');
+    if (ejaculateMode === 'no') extras.push('射精：否');
+    if (ejaculateMode === 'random') extras.push('射精：随机');
+    if (outfitMode === 'yes') extras.push('服装：是');
+    if (outfitMode === 'no') extras.push('服装：否');
+    if (outfitMode === 'random') extras.push('服装：随机');
     if (extras.length) {
-      const extraText = extras.join('?');
-      need = need ? `${need}
-${extraText}` : extraText;
+      const extraText = extras.join('；');
+      need = need ? `${need}\n${extraText}` : extraText;
     }
     $('#sg_floating_sex_generate').prop('disabled', true);
     $('#sg_floating_sex_status').text('正在生成…');
@@ -16975,7 +16976,7 @@ ${extraText}` : extraText;
     }
   });
 
-  $(document).on('click', '#sg_floating_sex_send', (e) => {
+$(document).on('click', '#sg_floating_sex_send', (e) => {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     const text = String($('#sg_floating_sex_output').val() || '').trim();
     if (!text) {
@@ -17531,56 +17532,36 @@ function showFloatingSexGuide() {
       <div style="font-weight:700; margin-bottom:8px;">性爱指导</div>
       <div class="sg-field" style="margin-top:6px;">
         <label>用户需求</label>
-        <textarea id="sg_floating_sex_need" rows="3" placeholder="输入你的需求：更温柔/更主动/更慢节奏/强调沟通与安全…"></textarea>
+        <textarea id="sg_floating_sex_need" rows="3" placeholder="例如：更温柔 / 更主动 / 更慢节奏 / 强调沟通与安全"></textarea>
       </div>
-      <div class="sg-grid2" style="margin-top:6px;">
-        <div class="sg-field">
-          <label>???? BDSM ??</label>
-          <select id="sg_floating_sex_bdsm_mode">
-            <option value="default">??</option>
-            <option value="none">???</option>
-            <option value="random">??</option>
-            <option value="custom">???</option>
-          </select>
-        </div>
-        <div class="sg-field">
-          <label>BDSM ???</label>
-          <input id="sg_floating_sex_bdsm_custom" type="text" placeholder="????/??/???">
-        </div>
-      </div>
-      <div class="sg-grid2" style="margin-top:6px;">
-        <div class="sg-field">
-          <label>????</label>
-          <select id="sg_floating_sex_pose_mode">
-            <option value="default">??</option>
-            <option value="random">??</option>
-            <option value="custom">???</option>
-          </select>
-        </div>
-        <div class="sg-field">
-          <label>?????</label>
-          <input id="sg_floating_sex_pose_custom" type="text" placeholder="????/??/??">
-        </div>
-      </div>
-      <div class="sg-grid2" style="margin-top:6px;">
-        <div class="sg-field">
-          <label>????</label>
-          <select id="sg_floating_sex_ejaculate">
-            <option value="default">??</option>
-            <option value="yes">?</option>
-            <option value="no">?</option>
-            <option value="random">??</option>
-          </select>
-        </div>
-        <div class="sg-field">
-          <label>??????</label>
-          <select id="sg_floating_sex_outfit_random">
-            <option value="default">??</option>
-            <option value="yes">?</option>
-            <option value="no">?</option>
-            <option value="random">??</option>
-          </select>
-        </div>
+      <div class="sg-row sg-inline" style="margin-top:6px; gap:8px; flex-wrap:wrap;">
+        <label style="margin-right:4px;">BDSM</label>
+        <select id="sg_floating_sex_bdsm_mode" style="min-width:90px;">
+          <option value="default">默认</option>
+          <option value="none">不使用</option>
+          <option value="random">随机</option>
+          <option value="custom">自定义</option>
+        </select>
+        <label style="margin-right:4px;">体位</label>
+        <select id="sg_floating_sex_pose_mode" style="min-width:90px;">
+          <option value="default">默认</option>
+          <option value="random">随机</option>
+          <option value="custom">自定义</option>
+        </select>
+        <label style="margin-right:4px;">射精</label>
+        <select id="sg_floating_sex_ejaculate" style="min-width:80px;">
+          <option value="default">默认</option>
+          <option value="yes">是</option>
+          <option value="no">否</option>
+          <option value="random">随机</option>
+        </select>
+        <label style="margin-right:4px;">服装</label>
+        <select id="sg_floating_sex_outfit_random" style="min-width:90px;">
+          <option value="default">默认</option>
+          <option value="yes">是</option>
+          <option value="no">否</option>
+          <option value="random">随机</option>
+        </select>
       </div>
       <div class="sg-actions-row" style="justify-content:flex-end;">
         <button class="menu_button sg-btn" id="sg_floating_sex_generate">生成</button>
@@ -17592,7 +17573,7 @@ function showFloatingSexGuide() {
         <div class="sg-hint" id="sg_floating_sex_status">· 生成后可发送到聊天 ·</div>
       </div>
     </div>
-  `;
+  `
   $body.html(html);
 }
 
