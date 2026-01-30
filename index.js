@@ -689,6 +689,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   conquestEntryPrefix: '猎艳录',
   structuredEntriesSystemPrompt: '',
   structuredEntriesUserTemplate: '',
+  structuredPresetList: '[]',
+  structuredPresetActive: '',
   structuredCharacterPrompt: '',
   structuredEquipmentPrompt: '',
   structuredInventoryPrompt: '',
@@ -3003,6 +3005,92 @@ function resolveSexGuidePresetFromSillyPreset(rawText, nameFallback) {
       .filter(Boolean);
     if (systemParts.length) {
       snapshot.sexGuideSystemPrompt = systemParts.join('\n\n');
+    }
+  }
+
+  return { name, snapshot };
+}
+
+function normalizeStructuredPresetName(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, 64);
+}
+
+function getStructuredPresetList() {
+  const s = ensureSettings();
+  const raw = String(s.structuredPresetList || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function setStructuredPresetList(list) {
+  const s = ensureSettings();
+  s.structuredPresetList = JSON.stringify(list || [], null, 2);
+  saveSettings();
+}
+
+function getStructuredPresetSnapshot() {
+  const s = ensureSettings();
+  return {
+    structuredEntriesSystemPrompt: s.structuredEntriesSystemPrompt,
+    structuredEntriesUserTemplate: s.structuredEntriesUserTemplate,
+    structuredCharacterPrompt: s.structuredCharacterPrompt,
+    structuredCharacterEntryTemplate: s.structuredCharacterEntryTemplate,
+    structuredEquipmentPrompt: s.structuredEquipmentPrompt,
+    structuredEquipmentEntryTemplate: s.structuredEquipmentEntryTemplate,
+    structuredInventoryPrompt: s.structuredInventoryPrompt,
+    structuredInventoryEntryTemplate: s.structuredInventoryEntryTemplate,
+    structuredFactionPrompt: s.structuredFactionPrompt,
+    structuredFactionEntryTemplate: s.structuredFactionEntryTemplate,
+    structuredAchievementPrompt: s.structuredAchievementPrompt,
+    structuredAchievementEntryTemplate: s.structuredAchievementEntryTemplate,
+    structuredSubProfessionPrompt: s.structuredSubProfessionPrompt,
+    structuredSubProfessionEntryTemplate: s.structuredSubProfessionEntryTemplate,
+    structuredQuestPrompt: s.structuredQuestPrompt,
+    structuredQuestEntryTemplate: s.structuredQuestEntryTemplate,
+    structuredConquestPrompt: s.structuredConquestPrompt,
+    structuredConquestEntryTemplate: s.structuredConquestEntryTemplate
+  };
+}
+
+function applyStructuredPresetSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+  const s = ensureSettings();
+  const keys = Object.keys(getStructuredPresetSnapshot());
+  for (const k of keys) {
+    if (!Object.hasOwn(snapshot, k)) continue;
+    s[k] = snapshot[k];
+  }
+  saveSettings();
+  pullSettingsToUi();
+}
+
+function resolveStructuredPresetFromSillyPreset(rawText, nameFallback) {
+  const normalizedText = normalizeJsonPresetText(rawText);
+  if (!normalizedText) return null;
+  let data = null;
+  try { data = JSON.parse(normalizedText); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+
+  const name = normalizeStructuredPresetName(
+    data.name || data.preset_name || data.title || data.presetTitle || nameFallback || '对话预设'
+  );
+  const snapshot = {};
+
+  const prompts = findPromptPresetValue(data);
+  if (Array.isArray(prompts)) {
+    const systemParts = prompts
+      .filter(p => p && typeof p === 'object' && String(p.role || '').toLowerCase() === 'system')
+      .map(p => String(p.content || '').trim())
+      .filter(Boolean);
+    if (systemParts.length) {
+      snapshot.structuredEntriesSystemPrompt = systemParts.join('\n\n');
     }
   }
 
@@ -12636,6 +12724,15 @@ function buildModalHtml() {
               <div class="sg-card sg-subcard">
                 <div class="sg-card-title">条目提示词与模板管理</div>
                 <div class="sg-hint" style="margin-bottom:8px">为每种类型的条目配置独立的提取逻辑（提示词）和输出格式（模板）。</div>
+
+                <div class="sg-row sg-inline" style="margin-bottom:8px">
+                  <select id="sg_structuredPresetSelect" style="min-width:160px;"></select>
+                  <button class="menu_button sg-btn" id="sg_structuredApplyPreset">应用</button>
+                  <button class="menu_button sg-btn" id="sg_structuredSavePreset">保存为预设</button>
+                  <button class="menu_button sg-btn" id="sg_structuredDeletePreset">删除</button>
+                  <button class="menu_button sg-btn" id="sg_structuredExportPreset">导出预设</button>
+                  <button class="menu_button sg-btn" id="sg_structuredImportPreset">导入预设</button>
+                </div>
                 
                 <div class="sg-row sg-inline" style="margin-bottom:10px">
                   <label>选择条目类型</label>
@@ -13988,6 +14085,103 @@ function ensureModal() {
   // Initial update
   setTimeout(updateStructuredEditor, 100);
 
+  // structured presets
+  $('#sg_structuredSavePreset').on('click', () => {
+    const name = normalizeStructuredPresetName(prompt('预设名称？') || '');
+    if (!name) return;
+    const list = getStructuredPresetList();
+    const snapshot = getStructuredPresetSnapshot();
+    const idx = list.findIndex(p => p?.name === name);
+    if (idx >= 0) list[idx] = { name, snapshot };
+    else list.push({ name, snapshot });
+    setStructuredPresetList(list);
+    const s = ensureSettings();
+    s.structuredPresetActive = name;
+    saveSettings();
+    pullSettingsToUi();
+    setStatus('预设已保存', 'ok');
+  });
+
+  $('#sg_structuredApplyPreset').on('click', () => {
+    const name = String($('#sg_structuredPresetSelect').val() || '').trim();
+    if (!name) return;
+    const list = getStructuredPresetList();
+    const preset = list.find(p => p?.name === name);
+    if (!preset) return;
+    applyStructuredPresetSnapshot(preset.snapshot);
+    const s = ensureSettings();
+    s.structuredPresetActive = name;
+    saveSettings();
+    setStatus('预设已应用', 'ok');
+  });
+
+  $('#sg_structuredDeletePreset').on('click', () => {
+    const name = String($('#sg_structuredPresetSelect').val() || '').trim();
+    if (!name) return;
+    const list = getStructuredPresetList().filter(p => p?.name !== name);
+    setStructuredPresetList(list);
+    const s = ensureSettings();
+    if (s.structuredPresetActive === name) s.structuredPresetActive = '';
+    saveSettings();
+    pullSettingsToUi();
+    setStatus('预设已删除', 'ok');
+  });
+
+  $('#sg_structuredExportPreset').on('click', () => {
+    const name = String($('#sg_structuredPresetSelect').val() || '').trim();
+    const list = getStructuredPresetList();
+    const preset = list.find(p => p?.name === name);
+    if (!preset) {
+      setStatus('请选择一个预设再导出', 'warn');
+      return;
+    }
+    const payload = {
+      _type: 'StoryGuide_StructuredPreset',
+      _version: '1.0',
+      _exportedAt: new Date().toISOString(),
+      name: preset.name,
+      snapshot: preset.snapshot
+    };
+    downloadTextFile(`storyguide-structured-preset-${preset.name}.json`, JSON.stringify(payload, null, 2));
+    setStatus('预设已导出', 'ok');
+  });
+
+  $('#sg_structuredImportPreset').on('click', async () => {
+    const file = await pickFile('.json,application/json');
+    if (!file) return;
+    try {
+      const txt = await readFileText(file);
+      const data = JSON.parse(txt);
+      let preset = null;
+
+      if (data && data._type === 'StoryGuide_StructuredPreset') {
+        const name = normalizeStructuredPresetName(data.name || '未命名');
+        if (!name) return;
+        preset = { name, snapshot: data.snapshot || {} };
+      } else {
+        preset = resolveStructuredPresetFromSillyPreset(txt, file?.name || '对话预设');
+      }
+
+      if (!preset || !preset.name) {
+        setStatus('预设文件格式不正确', 'err');
+        return;
+      }
+
+      const list = getStructuredPresetList();
+      const idx = list.findIndex(p => p?.name === preset.name);
+      if (idx >= 0) list[idx] = preset;
+      else list.push(preset);
+      setStructuredPresetList(list);
+      const s = ensureSettings();
+      s.structuredPresetActive = preset.name;
+      saveSettings();
+      pullSettingsToUi();
+      setStatus('预设已导入', 'ok');
+    } catch (e) {
+      setStatus(`导入失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
 
   // summary provider toggle
   $('#sg_summaryProvider').on('change', () => {
@@ -15302,6 +15496,21 @@ function pullSettingsToUi() {
         $sexPresetSelect.append(opt);
       });
       if (s.sexGuidePresetActive) $sexPresetSelect.val(s.sexGuidePresetActive);
+    }
+    // structured presets
+    const $structuredPresetSelect = $('#sg_structuredPresetSelect');
+    const structuredPresets = getStructuredPresetList();
+    if ($structuredPresetSelect.length) {
+      $structuredPresetSelect.empty();
+      $structuredPresetSelect.append('<option value="">(选择预设)</option>');
+      structuredPresets.forEach(p => {
+        if (!p || !p.name) return;
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name;
+        $structuredPresetSelect.append(opt);
+      });
+      if (s.structuredPresetActive) $structuredPresetSelect.val(s.structuredPresetActive);
     }
     renderSexGuideWorldbookList();
     updateSexGuideWorldbookInfoLabel();
