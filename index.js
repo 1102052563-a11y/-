@@ -4091,7 +4091,7 @@ function buildRecentChatTextSexGuide(chat, maxMessages = 6, maxCharsPerMessage =
   return picked.reverse().join('\n');
 }
 
-function buildSexGuidePromptMessages(snapshotText, worldbookText, settings) {
+function buildSexGuidePromptMessages(snapshotText, worldbookText, settings, options = {}) {
   const s = settings || ensureSettings();
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -4099,9 +4099,14 @@ function buildSexGuidePromptMessages(snapshotText, worldbookText, settings) {
   const system = String(s.sexGuideSystemPrompt || DEFAULT_SEX_GUIDE_SYSTEM_PROMPT).trim() || DEFAULT_SEX_GUIDE_SYSTEM_PROMPT;
   const tpl = String(s.sexGuideUserTemplate || DEFAULT_SEX_GUIDE_USER_TEMPLATE).trim() || DEFAULT_SEX_GUIDE_USER_TEMPLATE;
 
-  const lastUser = getLastUserMessageText(chat);
+  const overrideNeed = String(options.userNeedOverride || '').trim();
+  let lastUser = getLastUserMessageText(chat);
+  // If user provided explicit need, don't use last user chat text to avoid echoing previous output.
+  if (overrideNeed) lastUser = '';
+  // If last user equals last generated sex guide text, ignore it.
+  if (lastUser && lastSexGuideText && lastUser.trim() === String(lastSexGuideText).trim()) lastUser = '';
   const recentText = buildRecentChatTextSexGuide(chat, 6, 800);
-  const userNeed = String(s.sexGuideUserNeed || '').trim();
+  const userNeed = overrideNeed || String(s.sexGuideUserNeed || '').trim();
   let user = renderTemplate(tpl, {
     snapshot: snapshotText,
     worldbook: String(worldbookText || '').trim(),
@@ -4482,7 +4487,7 @@ async function runSexGuide(options = {}) {
   try {
     const { snapshotText } = buildSnapshot();
     const wbInfo = computeSexGuideWorldbookInjection();
-    const messages = buildSexGuidePromptMessages(snapshotText, wbInfo.text, { ...s, sexGuideUserNeed: userNeed });
+    const messages = buildSexGuidePromptMessages(snapshotText, wbInfo.text, { ...s, sexGuideUserNeed: userNeed }, { userNeedOverride: userNeed });
 
     let text = '';
     if (String(s.sexGuideProvider || 'st') === 'custom') {
