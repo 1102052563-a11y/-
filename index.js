@@ -16840,6 +16840,28 @@ function createFloatingPanel() {
     await refreshFloatingPanelContent();
   });
 
+  $(document).on('click', '.sg-inner-structured-btn', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const s = ensureSettings();
+    if (!s.structuredEntriesEnabled) {
+      setStatus('结构化条目未启用', 'warn');
+      showToast('结构化条目未启用', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+      return;
+    }
+    if (!s.summaryToWorldInfo && !s.summaryToBlueWorldInfo) {
+      setStatus('未启用写入世界书', 'warn');
+      showToast('请先启用“写入世界书”（绿灯或蓝灯）', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
+      return;
+    }
+    const $btn = $(e.currentTarget);
+    $btn.prop('disabled', true);
+    try {
+      await runStructuredEntries({ reason: 'manual' });
+    } finally {
+      $btn.prop('disabled', false);
+    }
+  });
+
   $(document).on('click', '.sg-inner-map-reset-btn', async (e) => {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     try {
@@ -17321,8 +17343,9 @@ async function refreshFloatingPanelContent() {
     const optionsHtml = renderDynamicQuickActionsHtml(quickActions, 'panel');
 
     const refreshBtnHtml = `
-      <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right;">
+      <div style="padding:2px 8px; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:4px; text-align:right; display:flex; gap:6px; justify-content:flex-end;">
         <button class="sg-inner-refresh-btn" title="重新生成分析" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.8;">🔄</button>
+        <button class="sg-inner-structured-btn" title="手动结构化条目总结" style="background:none; border:none; cursor:pointer; font-size:1.1em; opacity:0.85;">🧩</button>
       </div>
     `;
 
