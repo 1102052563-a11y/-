@@ -3006,15 +3006,17 @@ function resolveImageGenPresetFromSillyPreset(rawText, nameFallback) {
 
 // 尝试解析 SillyTavern 世界书导出 JSON（不同版本结构可能不同）
 // 返回：[{ title, keys: string[], content: string }]
-function normalizeWorldbookData(rawInput) {
-  if (!rawInput) return null;
-  let data = rawInput;
-  if (typeof data === 'string') {
-    try { data = JSON.parse(data); } catch { return null; }
-  }
+function parseWorldbookJson(rawText) {
+  if (!rawText) return [];
+  let data = null;
+  try { data = JSON.parse(rawText); } catch { return []; }
+
+  // Some exports embed JSON as a string field (double-encoded)
   if (typeof data === 'string') {
     try { data = JSON.parse(data); } catch { /* ignore */ }
   }
+  // Some ST endpoints wrap the lorebook JSON inside a string field (e.g. { data: "<json>" }).
+  // Try to unwrap a few common wrapper fields.
   for (let i = 0; i < 4; i++) {
     if (!data || typeof data !== 'object') break;
     const wrappers = ['data', 'world_info', 'worldInfo', 'lorebook', 'book', 'worldbook', 'worldBook', 'payload', 'result'];
@@ -3027,11 +3029,13 @@ function normalizeWorldbookData(rawInput) {
           try { data = JSON.parse(t); changed = true; break; } catch { /* ignore */ }
         }
       } else if (v && typeof v === 'object') {
-        if (v.entries || v.world_info || v.worldInfo || v.lorebook || v.items || v.worlds || v.worldbooks || v.books) {
+        // Sometimes the real file is nested under a wrapper object
+        if (v.entries || v.world_info || v.worldInfo || v.lorebook || v.items) {
           data = v;
           changed = true;
           break;
         }
+        // Or a nested string field again
         if (typeof v.data === 'string') {
           const t2 = String(v.data || '').trim();
           if (t2 && (t2.startsWith('{') || t2.startsWith('['))) {
@@ -3045,37 +3049,21 @@ function normalizeWorldbookData(rawInput) {
       try { data = JSON.parse(data); } catch { break; }
     }
   }
-  return data;
-}
 
-function isWorldbookEntryLike(obj) {
-  if (!obj || typeof obj !== 'object') return false;
-  return (
-    Object.hasOwn(obj, 'content') ||
-    Object.hasOwn(obj, 'entry') ||
-    Object.hasOwn(obj, 'text') ||
-    Object.hasOwn(obj, 'description') ||
-    Object.hasOwn(obj, 'desc') ||
-    Object.hasOwn(obj, 'body') ||
-    Object.hasOwn(obj, 'value') ||
-    Object.hasOwn(obj, 'prompt')
-  );
-}
 
-function toWorldbookArray(maybe) {
-  if (!maybe) return null;
-  if (Array.isArray(maybe)) return maybe;
-  if (typeof maybe === 'object') {
-    const vals = Object.values(maybe);
-    if (vals.length && vals.every(v => typeof v === 'object')) return vals;
+  function toArray(maybe) {
+    if (!maybe) return null;
+    if (Array.isArray(maybe)) return maybe;
+    if (typeof maybe === 'object') {
+      // common: entries as map {uid: entry}
+      const vals = Object.values(maybe);
+      if (vals.length && vals.every(v => typeof v === 'object')) return vals;
+    }
+    return null;
   }
-  return null;
-}
 
-function collectWorldbookEntries(data) {
-  if (!data || typeof data !== 'object') return null;
-
-  const directContainers = [
+  // try to locate entries container (array or map)
+  const candidates = [
     data?.entries,
     data?.world_info?.entries,
     data?.worldInfo?.entries,
@@ -3085,39 +3073,20 @@ function collectWorldbookEntries(data) {
     data?.world_info,
     data?.worldInfo,
     data?.lorebook,
-    data?.worlds,
-    data?.worldbooks,
-    data?.worldBooks,
-    data?.lorebooks,
-    data?.books,
     Array.isArray(data) ? data : null,
   ].filter(Boolean);
 
-  for (const c of directContainers) {
-    const arr = toWorldbookArray(c);
-    if (arr && arr.length) {
-      if (arr.some(isWorldbookEntryLike)) return arr;
-      const flattened = [];
-      for (const item of arr) {
-        const nested = collectWorldbookEntries(item);
-        if (nested && nested.length) flattened.push(...nested);
-      }
-      if (flattened.length) return flattened;
-    }
+  let entries = null;
+  for (const c of candidates) {
+    const arr = toArray(c);
+    if (arr && arr.length) { entries = arr; break; }
+    // sometimes nested: { entries: {..} }
     if (c && typeof c === 'object') {
-      const inner = toWorldbookArray(c.entries || c.items);
-      if (inner && inner.length) return inner;
+      const inner = toArray(c.entries);
+      if (inner && inner.length) { entries = inner; break; }
     }
   }
-  return null;
-}
-
-function parseWorldbookJson(rawText) {
-  const data = normalizeWorldbookData(rawText);
-  if (!data) return [];
-
-  const entries = collectWorldbookEntries(data);
-  if (!entries || !entries.length) return [];
+  if (!entries) return [];
 
   function splitKeys(str) {
     return String(str || '')
@@ -3167,11 +3136,9 @@ function parseWorldbookJson(rawText) {
 
     keys = Array.from(new Set(keys)).filter(Boolean);
 
-    let contentRaw = e.content ?? e.entry ?? e.text ?? e.description ?? e.desc ?? e.body ?? e.value ?? e.prompt ?? '';
-    if (contentRaw && typeof contentRaw === 'object') {
-      contentRaw = contentRaw.text ?? contentRaw.content ?? contentRaw.value ?? contentRaw.body ?? contentRaw.entry ?? contentRaw.desc ?? contentRaw.description ?? '';
-    }
-    const content = String(contentRaw || '').trim();
+    const content = String(
+      e.content ?? e.entry ?? e.text ?? e.description ?? e.desc ?? e.body ?? e.value ?? e.prompt ?? ''
+    ).trim();
 
     const disabledRaw =
       e.disable ??
@@ -4260,11 +4227,75 @@ function parseSummaryIndexInput(input, settings) {
 }
 
 function extractWorldbookEntriesDetailed(rawJson) {
-  const data = normalizeWorldbookData(rawJson);
-  if (!data) return [];
+  if (!rawJson) return [];
+  let data = rawJson;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { return []; }
+  }
+  for (let i = 0; i < 4; i++) {
+    if (!data || typeof data !== 'object') break;
+    const wrappers = ['data', 'world_info', 'worldInfo', 'lorebook', 'book', 'worldbook', 'worldBook', 'payload', 'result'];
+    let changed = false;
+    for (const k of wrappers) {
+      const v = data?.[k];
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (t && (t.startsWith('{') || t.startsWith('['))) {
+          try { data = JSON.parse(t); changed = true; break; } catch { /* ignore */ }
+        }
+      } else if (v && typeof v === 'object') {
+        if (v.entries || v.world_info || v.worldInfo || v.lorebook || v.items) {
+          data = v;
+          changed = true;
+          break;
+        }
+        if (typeof v.data === 'string') {
+          const t2 = String(v.data || '').trim();
+          if (t2 && (t2.startsWith('{') || t2.startsWith('['))) {
+            try { data = JSON.parse(t2); changed = true; break; } catch { /* ignore */ }
+          }
+        }
+      }
+    }
+    if (!changed) break;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch { break; }
+    }
+  }
 
-  const entries = collectWorldbookEntries(data);
-  if (!entries || !entries.length) return [];
+  function toArray(maybe) {
+    if (!maybe) return null;
+    if (Array.isArray(maybe)) return maybe;
+    if (typeof maybe === 'object') {
+      const vals = Object.values(maybe);
+      if (vals.length && vals.every(v => typeof v === 'object')) return vals;
+    }
+    return null;
+  }
+
+  const candidates = [
+    data?.entries,
+    data?.world_info?.entries,
+    data?.worldInfo?.entries,
+    data?.lorebook?.entries,
+    data?.data?.entries,
+    data?.items,
+    data?.world_info,
+    data?.worldInfo,
+    data?.lorebook,
+    Array.isArray(data) ? data : null,
+  ].filter(Boolean);
+
+  let entries = null;
+  for (const c of candidates) {
+    const arr = toArray(c);
+    if (arr && arr.length) { entries = arr; break; }
+    if (c && typeof c === 'object') {
+      const inner = toArray(c.entries);
+      if (inner && inner.length) { entries = inner; break; }
+    }
+  }
+  if (!entries) return [];
 
   function splitKeys(str) {
     return String(str || '')
@@ -4307,11 +4338,9 @@ function extractWorldbookEntriesDetailed(rawJson) {
     else if (typeof k2Raw === 'string') keys = keys.concat(splitKeys(k2Raw));
     keys = Array.from(new Set(keys)).filter(Boolean);
 
-    let contentRaw = e.content ?? e.entry ?? e.text ?? e.description ?? e.desc ?? e.body ?? e.value ?? e.prompt ?? '';
-    if (contentRaw && typeof contentRaw === 'object') {
-      contentRaw = contentRaw.text ?? contentRaw.content ?? contentRaw.value ?? contentRaw.body ?? contentRaw.entry ?? contentRaw.desc ?? contentRaw.description ?? '';
-    }
-    const content = String(contentRaw || '').trim();
+    const content = String(
+      e.content ?? e.entry ?? e.text ?? e.description ?? e.desc ?? e.body ?? e.value ?? e.prompt ?? ''
+    ).trim();
     if (!content) continue;
 
     const disabledRaw = e.disable ?? e.disabled ?? e.isDisabled ?? e.disable_entry ?? e.disabled_entry;
@@ -11344,109 +11373,6 @@ async function refreshModels() {
     } catch (e2) {
       setStatus(`刷新失败：${e2?.message ?? e2}`, 'err');
     }
-  }
-}
-
-async function refreshCharacterModels() {
-  const s = ensureSettings();
-  const raw = String($('#sg_char_customEndpoint').val() || s.characterCustomEndpoint || '').trim();
-  const apiBase = normalizeBaseUrl(raw);
-  if (!apiBase) { setCharacterStatus('· 请先填写角色自定义API URL ·', 'warn'); return; }
-
-  setCharacterStatus('· 正在刷新模型列表… ·', 'warn');
-
-  const apiKey = String($('#sg_char_customApiKey').val() || s.characterCustomApiKey || '');
-  const statusUrl = '/api/backends/chat-completions/status';
-
-  const body = {
-    reverse_proxy: apiBase,
-    chat_completion_source: 'custom',
-    custom_url: apiBase,
-    custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : ''
-  };
-
-  const updateList = (ids) => {
-    const $dl = $('#sg_char_model_list');
-    $dl.empty();
-    ids.forEach(id => {
-      $dl.append($('<option>').val(id));
-    });
-    if (ids.length && !ids.includes(String($('#sg_char_customModel').val() || s.characterCustomModel || ''))) {
-      s.characterCustomModel = ids[0];
-      $('#sg_char_customModel').val(ids[0]);
-    }
-  };
-
-  try {
-    const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
-    const res = await fetch(statusUrl, { method: 'POST', headers, body: JSON.stringify(body) });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
-      err.status = res.status;
-      throw err;
-    }
-
-    const data = await res.json().catch(() => ({}));
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
-
-    if (!ids.length) {
-      setCharacterStatus('· 刷新成功但未解析到模型列表 ·', 'warn');
-      return;
-    }
-
-    updateList(ids);
-    saveSettings();
-    setCharacterStatus(`· 已刷新模型：${ids.length} 个（后端代理） ·`, 'ok');
-    return;
-  } catch (e) {
-    const status = e?.status;
-    if (!(status === 404 || status === 405)) console.warn('[StoryGuide] character status check failed; fallback to direct /models', e);
-  }
-
-  try {
-    const modelsUrl = (function (base) {
-      const u = normalizeBaseUrl(base);
-      if (!u) return '';
-      if (/\/v1$/.test(u)) return u + '/models';
-      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
-      return u + '/v1/models';
-    })(apiBase);
-
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-    const res = await fetch(modelsUrl, { method: 'GET', headers });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
-    }
-    const data = await res.json().catch(() => ({}));
-
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
-
-    if (!ids.length) { setCharacterStatus('· 直连刷新失败：未解析到模型列表 ·', 'warn'); return; }
-
-    updateList(ids);
-    saveSettings();
-    setCharacterStatus(`· 已刷新模型：${ids.length} 个（直连） ·`, 'ok');
-  } catch (e) {
-    setCharacterStatus(`· 刷新失败：${e?.message ?? e} ·`, 'err');
   }
 }
 
