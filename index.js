@@ -16345,49 +16345,63 @@ function injectFixedInputButton() {
 }
 
 function init() {
-  ensureSettings();
-  bindMapEventPanelHandler();
-  setupEventListeners();
+  try {
+    console.log('[StoryGuide] Initializing...');
+    ensureSettings();
+    bindMapEventPanelHandler();
+    setupEventListeners();
 
-  const ctx = SillyTavern.getContext();
-  const { eventSource, event_types } = ctx;
+    const ctx = SillyTavern.getContext();
+    const { eventSource, event_types } = ctx;
 
-  eventSource.on(event_types.APP_READY, () => {
-    // 不再在顶栏显示📘按钮（避免占位/重复入口）
-    const oldBtn = document.getElementById('sg_topbar_btn');
-    if (oldBtn) oldBtn.remove();
+    eventSource.on(event_types.APP_READY, () => {
+      try {
+        // 不再在顶栏显示📘按钮（避免占位/重复入口）
+        const oldBtn = document.getElementById('sg_topbar_btn');
+        if (oldBtn) oldBtn.remove();
 
-    injectMinimalSettingsPanel();
-    ensureChatActionButtons();
-    installCardZoomDelegation();
-    installQuickOptionsClickHandler();
-    createFloatingButton();
-    injectFixedInputButton();
-    installRollPreSendHook();
+        injectMinimalSettingsPanel();
+        ensureChatActionButtons();
+        installCardZoomDelegation();
+        installQuickOptionsClickHandler();
+        createFloatingButton();
+        injectFixedInputButton();
+        installRollPreSendHook();
 
-    // 浮动面板图像点击放大（使用 document 级别事件委托确保动态元素可响应）
-    $(document).on('click', '#sg_floating_panel .sg-image-zoom, #sg_floating_panel .sg-floating-image', (e) => {
-      const $img = $(e.currentTarget);
-      const src = String($img.attr('data-full') || $img.attr('src') || '').trim();
-      if (!src) return;
-      e.preventDefault();
-      e.stopPropagation();
-      openImagePreviewModal(src, $img.attr('alt') || 'Image preview');
+        // 浮动面板图像点击放大
+        $(document).on('click', '#sg_floating_panel .sg-image-zoom, #sg_floating_panel .sg-floating-image', (e) => {
+          const $img = $(e.currentTarget);
+          const src = String($img.attr('data-full') || $img.attr('src') || '').trim();
+          if (!src) return;
+          e.preventDefault();
+          e.stopPropagation();
+          openImagePreviewModal(src, $img.attr('alt') || 'Image preview');
+        });
+        console.log('[StoryGuide] App Ready hooks installed.');
+      } catch (e) {
+        console.error('[StoryGuide] APP_READY error:', e);
+        alert('[StoryGuide] Startup Error (AppReady): ' + e.message);
+      }
     });
-  });
 
-  globalThis.StoryGuide = {
-    open: openModal,
-    close: closeModal,
-    runAnalysis,
-    runSummary,
-    runInlineAppendForLastMessage,
-    reapplyAllInlineBoxes,
-    buildSnapshot: () => buildSnapshot(),
-    getLastReport: () => lastReport,
-    refreshModels,
-    _inlineCache: inlineCache,
-  };
+    globalThis.StoryGuide = {
+      open: openModal,
+      close: closeModal,
+      runAnalysis,
+      runSummary,
+      runInlineAppendForLastMessage,
+      reapplyAllInlineBoxes,
+      buildSnapshot: () => buildSnapshot(),
+      getLastReport: () => lastReport,
+      refreshModels,
+      refreshCharacterModels, // Ensure this is exposed
+      _inlineCache: inlineCache,
+    };
+    console.log('[StoryGuide] Init completed.');
+  } catch (e) {
+    console.error('[StoryGuide] Init error:', e);
+    alert('[StoryGuide] Extension Init Error: ' + e.message);
+  }
 }
 
 init();
