@@ -12074,7 +12074,7 @@ function buildModalHtml() {
                 </select>
               </div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_structuredReenableEntriesEnabled">自动重新启用人物/势力</label>
+                <label class="sg-check"><input type="checkbox" id="sg_structuredReenableEntriesEnabled">自动重新启用人物/势力/猎艳录</label>
               </div>
 
               <div class="sg-card sg-subcard">
