@@ -16556,6 +16556,7 @@ function createFloatingPanel() {
           <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺️</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_image" title="图像生成">🖼️</button>
+          <button class="sg-floating-action-btn" id="sg_floating_show_sex" title="性爱指导">❤️</button>
           <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
           <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
           <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
@@ -16602,6 +16603,10 @@ function createFloatingPanel() {
 
   $('#sg_floating_show_image').on('click', () => {
     showFloatingImageGen();
+  });
+
+  $('#sg_floating_show_sex').on('click', () => {
+    showFloatingSexGuide();
   });
 
 
@@ -16660,6 +16665,35 @@ function createFloatingPanel() {
       imageGenBatchBusy = false;
       renderImageGenBatchPreview();
     }
+  });
+
+  // Floating sex guide actions
+  $(document).on('click', '#sg_floating_sex_generate', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const need = String($('#sg_floating_sex_need').val() || '').trim();
+    $('#sg_floating_sex_generate').prop('disabled', true);
+    $('#sg_floating_sex_status').text('正在生成…');
+    try {
+      await runSexGuide({ userNeedOverride: need });
+      $('#sg_floating_sex_output').val(lastSexGuideText || '');
+      $('#sg_floating_sex_send').prop('disabled', !lastSexGuideText);
+      $('#sg_floating_sex_status').text('生成完成');
+    } catch (err) {
+      $('#sg_floating_sex_status').text(`生成失败：${err?.message ?? err}`);
+    } finally {
+      $('#sg_floating_sex_generate').prop('disabled', false);
+    }
+  });
+
+  $(document).on('click', '#sg_floating_sex_send', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const text = String($('#sg_floating_sex_output').val() || '').trim();
+    if (!text) {
+      $('#sg_floating_sex_status').text('暂无可发送内容');
+      return;
+    }
+    const ok = injectToUserInput(text);
+    $('#sg_floating_sex_status').text(ok ? '已填入输入框（未发送）' : '未找到聊天输入框');
   });
 
   $(document).on('click', '#sg_imagegen_clear', (e) => {
@@ -17191,6 +17225,36 @@ function showFloatingReport() {
       </div>
     `);
   }
+}
+
+function showFloatingSexGuide() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+  const s = ensureSettings();
+  if (!s.sexGuideEnabled) {
+    $body.html('<div class="sg-floating-loading">性爱指导未启用</div>');
+    return;
+  }
+
+  const html = `
+    <div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">
+      <div style="font-weight:700; margin-bottom:8px;">性爱指导</div>
+      <div class="sg-field" style="margin-top:6px;">
+        <label>用户需求</label>
+        <textarea id="sg_floating_sex_need" rows="3" placeholder="输入你的需求：更温柔/更主动/更慢节奏/强调沟通与安全…"></textarea>
+      </div>
+      <div class="sg-actions-row" style="justify-content:flex-end;">
+        <button class="menu_button sg-btn" id="sg_floating_sex_generate">生成</button>
+        <button class="menu_button sg-btn" id="sg_floating_sex_send" ${lastSexGuideText ? '' : 'disabled'}>发送到聊天</button>
+      </div>
+      <div class="sg-field" style="margin-top:8px;">
+        <label>输出</label>
+        <textarea id="sg_floating_sex_output" rows="10" spellcheck="false">${escapeHtml(lastSexGuideText || '')}</textarea>
+        <div class="sg-hint" id="sg_floating_sex_status">· 生成后可发送到聊天 ·</div>
+      </div>
+    </div>
+  `;
+  $body.html(html);
 }
 
 // -------------------- init --------------------
