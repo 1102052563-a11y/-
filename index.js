@@ -6275,8 +6275,6 @@ function buildConquestContent(conquest) {
   const template = String(s.structuredConquestEntryTemplate || '').trim() || DEFAULT_STRUCTURED_CONQUEST_ENTRY_TEMPLATE;
   const knownKeys = ['name', 'aliases', 'identity', 'firstEncounter', 'conquestProcess', 'conquestTime', 'currentRelation', 'specialTechniques', 'bodyFeatures', 'status', 'keyEvents', 'statInfo'];
   const extraParts = [];
-  knownKeys.__mode = mode;
-  appendExtraFields(extraParts, conquest, knownKeys);
   const vars = {
     name: formatTemplateField(conquest?.name, mode),
     aliases: formatTemplateField(conquest?.aliases, mode),
