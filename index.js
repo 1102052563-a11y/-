@@ -2392,6 +2392,13 @@ function setSexGuideStatus(text, kind = '') {
   $s.text(text || '');
 }
 
+function setSexGuidePanelStatus(text, kind = '') {
+  const $s = $('#sg_sex_panel_status');
+  if (!$s.length) return;
+  $s.removeClass('ok err warn').addClass(kind || '');
+  $s.text(text || '');
+}
+
 function updateCharacterCustomRows() {
   const parkVal = String($('#sg_char_park').val() || '');
   const raceVal = String($('#sg_char_race').val() || '');
@@ -4369,20 +4376,25 @@ async function runAnalysis() {
 
 // -------------------- sex guide --------------------
 
-async function runSexGuide() {
+async function runSexGuide(options = {}) {
   const s = ensureSettings();
   if (!s.sexGuideEnabled) {
     setSexGuideStatus('性爱指导未启用', 'warn');
+    setSexGuidePanelStatus('性爱指导未启用', 'warn');
     return;
   }
 
+  const updateNeed = options?.userNeedOverride !== undefined;
+  const userNeed = updateNeed ? String(options.userNeedOverride || '').trim() : String(s.sexGuideUserNeed || '').trim();
+
   setSexGuideStatus('正在生成…', 'warn');
-  $('#sg_sex_generate').prop('disabled', true);
+  setSexGuidePanelStatus('正在生成…', 'warn');
+  $('#sg_sex_generate, #sg_sex_panel_generate').prop('disabled', true);
 
   try {
     const { snapshotText } = buildSnapshot();
     const wbInfo = computeSexGuideWorldbookInjection();
-    const messages = buildSexGuidePromptMessages(snapshotText, wbInfo.text, s);
+    const messages = buildSexGuidePromptMessages(snapshotText, wbInfo.text, { ...s, sexGuideUserNeed: userNeed });
 
     let text = '';
     if (String(s.sexGuideProvider || 'st') === 'custom') {
@@ -4405,12 +4417,16 @@ async function runSexGuide() {
     lastSexGuideText = String(text || '').trim();
     $('#sg_sex_output').val(lastSexGuideText);
     $('#sg_sex_copy, #sg_sex_insert').prop('disabled', !lastSexGuideText);
+    $('#sg_sex_panel_output').val(lastSexGuideText);
+    $('#sg_sex_panel_send').prop('disabled', !lastSexGuideText);
     setSexGuideStatus('生成完成', 'ok');
+    setSexGuidePanelStatus('生成完成', 'ok');
   } catch (e) {
     console.error('[StoryGuide] sex guide failed:', e);
     setSexGuideStatus(`生成失败：${e?.message ?? e}`, 'err');
+    setSexGuidePanelStatus(`生成失败：${e?.message ?? e}`, 'err');
   } finally {
-    $('#sg_sex_generate').prop('disabled', false);
+    $('#sg_sex_generate, #sg_sex_panel_generate').prop('disabled', false);
   }
 }
 
@@ -13806,6 +13822,7 @@ function buildModalHtml() {
               <button class="sg-tab" id="sg_tab_json">JSON</button>
               <button class="sg-tab" id="sg_tab_src">来源</button>
               <button class="sg-tab" id="sg_tab_sum">总结</button>
+              <button class="sg-tab" id="sg_tab_sex">性爱指导</button>
               <div class="sg-spacer"></div>
               <button class="menu_button sg-btn" id="sg_copyMd" disabled>复制MD</button>
               <button class="menu_button sg-btn" id="sg_copyJson" disabled>复制JSON</button>
@@ -13817,6 +13834,24 @@ function buildModalHtml() {
             <div class="sg-pane" id="sg_pane_json"><pre class="sg-pre" id="sg_json"></pre></div>
             <div class="sg-pane" id="sg_pane_src"><pre class="sg-pre" id="sg_src"></pre></div>
             <div class="sg-pane" id="sg_pane_sum"><div class="sg-md" id="sg_sum">(尚未生成)</div></div>
+            <div class="sg-pane" id="sg_pane_sex">
+              <div class="sg-card">
+                <div class="sg-card-title">性爱指导面板</div>
+                <div class="sg-field">
+                  <label>用户需求</label>
+                  <textarea id="sg_sex_panel_need" rows="3" placeholder="输入你的需求：例如更温柔/更主动/更慢节奏/强调沟通与安全…"></textarea>
+                </div>
+                <div class="sg-actions-row">
+                  <button class="menu_button sg-btn-primary" id="sg_sex_panel_generate">生成性爱指导</button>
+                  <button class="menu_button sg-btn" id="sg_sex_panel_send" disabled>发送到聊天</button>
+                </div>
+                <div class="sg-field" style="margin-top:10px;">
+                  <label>输出</label>
+                  <textarea id="sg_sex_panel_output" rows="10" spellcheck="false"></textarea>
+                  <div class="sg-hint" id="sg_sex_panel_status">· 生成后可发送到聊天 ·</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -13853,6 +13888,7 @@ function ensureModal() {
   $('#sg_tab_json').on('click', () => showPane('json'));
   $('#sg_tab_src').on('click', () => showPane('src'));
   $('#sg_tab_sum').on('click', () => showPane('sum'));
+  $('#sg_tab_sex').on('click', () => showPane('sex'));
 
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
@@ -15075,6 +15111,18 @@ function setupSexGuidePage() {
     await runSexGuide();
   });
 
+  $('#sg_sex_panel_generate').on('click', async () => {
+    const need = String($('#sg_sex_panel_need').val() || '').trim();
+    await runSexGuide({ userNeedOverride: need });
+  });
+
+  $('#sg_sex_panel_send').on('click', () => {
+    const text = String($('#sg_sex_panel_output').val() || '').trim();
+    if (!text) { setSexGuidePanelStatus('暂无可发送内容', 'warn'); return; }
+    const ok = injectToUserInput(text);
+    setSexGuidePanelStatus(ok ? '已填入输入框（未发送）' : '未找到聊天输入框', ok ? 'ok' : 'err');
+  });
+
   $('#sg_sex_copy').on('click', async () => {
     const text = String($('#sg_sex_output').val() || '').trim();
     if (!text) { setSexGuideStatus('暂无可复制内容', 'warn'); return; }
@@ -15259,6 +15307,8 @@ function pullSettingsToUi() {
     updateSexGuideWorldbookInfoLabel();
     $('#sg_sex_output').val(lastSexGuideText || '');
     $('#sg_sex_copy, #sg_sex_insert').prop('disabled', !lastSexGuideText);
+    $('#sg_sex_panel_output').val(lastSexGuideText || '');
+    $('#sg_sex_panel_send').prop('disabled', !lastSexGuideText);
   } catch (e) {
     console.error('[StoryGuide] sex guide UI sync failed:', e);
   }
