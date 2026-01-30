@@ -483,6 +483,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   sexGuideWorldbookMaxChars: 6000,
   sexGuideWorldbooks: [],
   sexGuideUserNeed: '',
+  sexGuidePresetList: '[]',
+  sexGuidePresetActive: '',
 
   // ===== 总结功能（独立于剧情提示的 API 设置） =====
   summaryEnabled: false,
@@ -2903,6 +2905,101 @@ function getImageGenPresetSnapshot() {
 
 
   };
+}
+
+function normalizeSexGuidePresetName(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, 64);
+}
+
+function getSexGuidePresetList() {
+  const s = ensureSettings();
+  const raw = String(s.sexGuidePresetList || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function setSexGuidePresetList(list) {
+  const s = ensureSettings();
+  s.sexGuidePresetList = JSON.stringify(list || [], null, 2);
+  saveSettings();
+}
+
+function getSexGuidePresetSnapshot() {
+  const s = ensureSettings();
+  return {
+    sexGuideSystemPrompt: s.sexGuideSystemPrompt,
+    sexGuideUserTemplate: s.sexGuideUserTemplate,
+    sexGuideUserNeed: s.sexGuideUserNeed,
+    sexGuideTemperature: s.sexGuideTemperature,
+    sexGuideCustomMaxTokens: s.sexGuideCustomMaxTokens,
+    sexGuideCustomTopP: s.sexGuideCustomTopP,
+    sexGuideWorldbookEnabled: s.sexGuideWorldbookEnabled,
+    sexGuideWorldbookMaxChars: s.sexGuideWorldbookMaxChars
+  };
+}
+
+function applySexGuidePresetSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+  const s = ensureSettings();
+  const keys = Object.keys(getSexGuidePresetSnapshot());
+  for (const k of keys) {
+    if (!Object.hasOwn(snapshot, k)) continue;
+    if (k === 'sexGuideCustomMaxTokens') {
+      s[k] = clampInt(snapshot[k], 128, 200000, s[k] || 2048);
+      continue;
+    }
+    if (k === 'sexGuideWorldbookMaxChars') {
+      s[k] = clampInt(snapshot[k], 500, 50000, s[k] || 6000);
+      continue;
+    }
+    s[k] = snapshot[k];
+  }
+  saveSettings();
+  pullSettingsToUi();
+}
+
+function resolveSexGuidePresetFromSillyPreset(rawText, nameFallback) {
+  const normalizedText = normalizeJsonPresetText(rawText);
+  if (!normalizedText) return null;
+  let data = null;
+  try { data = JSON.parse(normalizedText); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+
+  const name = normalizeSexGuidePresetName(
+    data.name || data.preset_name || data.title || data.presetTitle || nameFallback || '对话预设'
+  );
+  const snapshot = {
+    sexGuideCustomMaxTokens: clampInt(
+      data.openai_max_tokens ?? data.max_tokens ?? data.maxTokens,
+      128,
+      200000,
+      2048
+    )
+  };
+
+  if (data.temperature !== undefined && data.temperature !== null) {
+    snapshot.sexGuideTemperature = clampFloat(data.temperature, 0, 2, 0.6);
+  }
+
+  const prompts = findPromptPresetValue(data);
+  if (Array.isArray(prompts)) {
+    const systemParts = prompts
+      .filter(p => p && typeof p === 'object' && String(p.role || '').toLowerCase() === 'system')
+      .map(p => String(p.content || '').trim())
+      .filter(Boolean);
+    if (systemParts.length) {
+      snapshot.sexGuideSystemPrompt = systemParts.join('\n\n');
+    }
+  }
+
+  return { name, snapshot };
 }
 
 function applyImageGenPresetSnapshot(snapshot) {
@@ -13451,7 +13548,15 @@ function buildModalHtml() {
               <div class="sg-field">
                 <label>User 模板</label>
                 <textarea id="sg_sexUserTemplate" rows="4" placeholder="支持占位符：{{snapshot}} {{worldbook}} {{lastUser}} {{recentText}}"></textarea>
-                <div class="sg-hint">占位符：{{snapshot}} {{worldbook}} {{lastUser}} {{recentText}}</div>
+                <div class="sg-hint">占位符：{{snapshot}} {{worldbook}} {{lastUser}} {{recentText}} {{userNeed}}</div>
+              </div>
+              <div class="sg-row sg-inline" style="margin-top:6px;">
+                <select id="sg_sexPresetSelect" style="min-width:160px;"></select>
+                <button class="menu_button sg-btn" id="sg_sexApplyPreset">应用</button>
+                <button class="menu_button sg-btn" id="sg_sexSavePreset">保存为预设</button>
+                <button class="menu_button sg-btn" id="sg_sexDeletePreset">删除</button>
+                <button class="menu_button sg-btn" id="sg_sexExportPreset">导出预设</button>
+                <button class="menu_button sg-btn" id="sg_sexImportPreset">导入预设</button>
               </div>
               <div class="sg-actions-row">
                 <button class="menu_button sg-btn" id="sg_sexResetPrompt">恢复默认提示词</button>
@@ -14869,6 +14974,102 @@ function setupSexGuidePage() {
     setSexGuideStatus('已恢复默认提示词', 'ok');
   });
 
+  $('#sg_sexSavePreset').on('click', () => {
+    const name = normalizeSexGuidePresetName(prompt('预设名称？') || '');
+    if (!name) return;
+    const list = getSexGuidePresetList();
+    const snapshot = getSexGuidePresetSnapshot();
+    const idx = list.findIndex(p => p?.name === name);
+    if (idx >= 0) list[idx] = { name, snapshot };
+    else list.push({ name, snapshot });
+    setSexGuidePresetList(list);
+    const s = ensureSettings();
+    s.sexGuidePresetActive = name;
+    saveSettings();
+    pullSettingsToUi();
+    setSexGuideStatus('预设已保存', 'ok');
+  });
+
+  $('#sg_sexApplyPreset').on('click', () => {
+    const name = String($('#sg_sexPresetSelect').val() || '').trim();
+    if (!name) return;
+    const list = getSexGuidePresetList();
+    const preset = list.find(p => p?.name === name);
+    if (!preset) return;
+    applySexGuidePresetSnapshot(preset.snapshot);
+    const s = ensureSettings();
+    s.sexGuidePresetActive = name;
+    saveSettings();
+    setSexGuideStatus('预设已应用', 'ok');
+  });
+
+  $('#sg_sexDeletePreset').on('click', () => {
+    const name = String($('#sg_sexPresetSelect').val() || '').trim();
+    if (!name) return;
+    const list = getSexGuidePresetList().filter(p => p?.name !== name);
+    setSexGuidePresetList(list);
+    const s = ensureSettings();
+    if (s.sexGuidePresetActive === name) s.sexGuidePresetActive = '';
+    saveSettings();
+    pullSettingsToUi();
+    setSexGuideStatus('预设已删除', 'ok');
+  });
+
+  $('#sg_sexExportPreset').on('click', () => {
+    const name = String($('#sg_sexPresetSelect').val() || '').trim();
+    const list = getSexGuidePresetList();
+    const preset = list.find(p => p?.name === name);
+    if (!preset) {
+      setSexGuideStatus('请选择一个预设再导出', 'warn');
+      return;
+    }
+    const payload = {
+      _type: 'StoryGuide_SexGuidePreset',
+      _version: '1.0',
+      _exportedAt: new Date().toISOString(),
+      name: preset.name,
+      snapshot: preset.snapshot
+    };
+    downloadTextFile(`storyguide-sexguide-preset-${preset.name}.json`, JSON.stringify(payload, null, 2));
+    setSexGuideStatus('预设已导出', 'ok');
+  });
+
+  $('#sg_sexImportPreset').on('click', async () => {
+    const file = await pickFile('.json,application/json');
+    if (!file) return;
+    try {
+      const txt = await readFileText(file);
+      const data = JSON.parse(txt);
+      let preset = null;
+
+      if (data && data._type === 'StoryGuide_SexGuidePreset') {
+        const name = normalizeSexGuidePresetName(data.name || '未命名');
+        if (!name) return;
+        preset = { name, snapshot: data.snapshot || {} };
+      } else {
+        preset = resolveSexGuidePresetFromSillyPreset(txt, file?.name || '对话预设');
+      }
+
+      if (!preset || !preset.name) {
+        setSexGuideStatus('预设文件格式不正确', 'err');
+        return;
+      }
+
+      const list = getSexGuidePresetList();
+      const idx = list.findIndex(p => p?.name === preset.name);
+      if (idx >= 0) list[idx] = preset;
+      else list.push(preset);
+      setSexGuidePresetList(list);
+      const s = ensureSettings();
+      s.sexGuidePresetActive = preset.name;
+      saveSettings();
+      pullSettingsToUi();
+      setSexGuideStatus('预设已导入', 'ok');
+    } catch (e) {
+      setSexGuideStatus(`导入失败：${e?.message ?? e}`, 'err');
+    }
+  });
+
   $('#sg_sex_generate').on('click', async () => {
     autoSave();
     await runSexGuide();
@@ -15039,6 +15240,21 @@ function pullSettingsToUi() {
     $('#sg_sexWorldbookMaxChars').val(s.sexGuideWorldbookMaxChars || 6000);
     $('#sg_sex_custom_block').toggle(String(s.sexGuideProvider || 'st') === 'custom');
     fillSexGuideModelSelect(Array.isArray(s.sexGuideCustomModelsCache) ? s.sexGuideCustomModelsCache : [], s.sexGuideCustomModel);
+    // sex guide presets
+    const $sexPresetSelect = $('#sg_sexPresetSelect');
+    const sexPresets = getSexGuidePresetList();
+    if ($sexPresetSelect.length) {
+      $sexPresetSelect.empty();
+      $sexPresetSelect.append('<option value="">(选择预设)</option>');
+      sexPresets.forEach(p => {
+        if (!p || !p.name) return;
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name;
+        $sexPresetSelect.append(opt);
+      });
+      if (s.sexGuidePresetActive) $sexPresetSelect.val(s.sexGuidePresetActive);
+    }
     renderSexGuideWorldbookList();
     updateSexGuideWorldbookInfoLabel();
     $('#sg_sex_output').val(lastSexGuideText || '');
