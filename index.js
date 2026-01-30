@@ -472,6 +472,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   sexGuideTemperature: 0.6,
   sexGuideSystemPrompt: DEFAULT_SEX_GUIDE_SYSTEM_PROMPT,
   sexGuideUserTemplate: DEFAULT_SEX_GUIDE_USER_TEMPLATE,
+  sexGuideIncludeUserInput: true,
   sexGuideCustomEndpoint: '',
   sexGuideCustomApiKey: '',
   sexGuideCustomModel: 'gpt-4o-mini',
@@ -2946,6 +2947,7 @@ function getSexGuidePresetSnapshot() {
     sexGuideSystemPrompt: s.sexGuideSystemPrompt,
     sexGuideUserTemplate: s.sexGuideUserTemplate,
     sexGuideUserNeed: s.sexGuideUserNeed,
+    sexGuideIncludeUserInput: s.sexGuideIncludeUserInput,
     sexGuideTemperature: s.sexGuideTemperature,
     sexGuideCustomMaxTokens: s.sexGuideCustomMaxTokens,
     sexGuideCustomTopP: s.sexGuideCustomTopP,
@@ -4105,7 +4107,9 @@ function buildSexGuidePromptMessages(snapshotText, worldbookText, settings, opti
   if (overrideNeed) lastUser = '';
   // If last user equals last generated sex guide text, ignore it.
   if (lastUser && lastSexGuideText && lastUser.trim() === String(lastSexGuideText).trim()) lastUser = '';
-  const recentText = buildRecentChatTextSexGuide(chat, 6, 800);
+  const includeUserInput = s.sexGuideIncludeUserInput !== false;
+  const recentText = includeUserInput ? buildRecentChatTextSexGuide(chat, 6, 800) : '';
+  if (!includeUserInput) lastUser = '';
   const userNeed = overrideNeed || String(s.sexGuideUserNeed || '').trim();
   let user = renderTemplate(tpl, {
     snapshot: snapshotText,
@@ -13668,6 +13672,9 @@ function buildModalHtml() {
                 <textarea id="sg_sexUserTemplate" rows="4" placeholder="支持占位符：{{snapshot}} {{worldbook}} {{lastUser}} {{recentText}}"></textarea>
                 <div class="sg-hint">占位符：{{snapshot}} {{worldbook}} {{lastUser}} {{recentText}} {{userNeed}}</div>
               </div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_sexIncludeUserInput">Include user input (last user + recent chat)</label>
+              </div>
               <div class="sg-row sg-inline" style="margin-top:6px;">
                 <select id="sg_sexPresetSelect" style="min-width:160px;"></select>
                 <button class="menu_button sg-btn" id="sg_sexApplyPreset">应用</button>
@@ -15188,7 +15195,7 @@ function setupSexGuidePage() {
     autoSave();
   });
 
-  $('#sg_sexEnabled, #sg_sex_temperature, #sg_sexSystemPrompt, #sg_sexUserTemplate, #sg_sexUserNeed, #sg_sexCustomEndpoint, #sg_sexCustomApiKey, #sg_sexCustomModel, #sg_sexCustomMaxTokens, #sg_sexCustomStream, #sg_sexWorldbookEnabled, #sg_sexWorldbookMaxChars')
+  $('#sg_sexEnabled, #sg_sex_temperature, #sg_sexSystemPrompt, #sg_sexUserTemplate, #sg_sexUserNeed, #sg_sexIncludeUserInput, #sg_sexCustomEndpoint, #sg_sexCustomApiKey, #sg_sexCustomModel, #sg_sexCustomMaxTokens, #sg_sexCustomStream, #sg_sexWorldbookEnabled, #sg_sexWorldbookMaxChars')
     .on('input change', autoSave);
 
   $('#sg_sexModelSelect').on('change', () => {
@@ -15478,6 +15485,7 @@ function pullSettingsToUi() {
     $('#sg_sexSystemPrompt').val(String(s.sexGuideSystemPrompt || DEFAULT_SEX_GUIDE_SYSTEM_PROMPT));
     $('#sg_sexUserTemplate').val(String(s.sexGuideUserTemplate || DEFAULT_SEX_GUIDE_USER_TEMPLATE));
     $('#sg_sexUserNeed').val(String(s.sexGuideUserNeed || ''));
+    $('#sg_sexIncludeUserInput').prop('checked', s.sexGuideIncludeUserInput !== false);
     $('#sg_sexCustomEndpoint').val(String(s.sexGuideCustomEndpoint || ''));
     $('#sg_sexCustomApiKey').val(String(s.sexGuideCustomApiKey || ''));
     $('#sg_sexCustomModel').val(String(s.sexGuideCustomModel || 'gpt-4o-mini'));
@@ -16197,6 +16205,7 @@ function pullUiToSettings() {
   s.sexGuideSystemPrompt = String($('#sg_sexSystemPrompt').val() || '').trim() || DEFAULT_SEX_GUIDE_SYSTEM_PROMPT;
   s.sexGuideUserTemplate = String($('#sg_sexUserTemplate').val() || '').trim() || DEFAULT_SEX_GUIDE_USER_TEMPLATE;
   s.sexGuideUserNeed = String($('#sg_sexUserNeed').val() || '').trim();
+  s.sexGuideIncludeUserInput = $('#sg_sexIncludeUserInput').is(':checked');
   s.sexGuideCustomEndpoint = String($('#sg_sexCustomEndpoint').val() || '').trim();
   s.sexGuideCustomApiKey = String($('#sg_sexCustomApiKey').val() || '');
   s.sexGuideCustomModel = String($('#sg_sexCustomModel').val() || '').trim() || 'gpt-4o-mini';
