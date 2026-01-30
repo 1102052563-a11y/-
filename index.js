@@ -84,7 +84,7 @@ const DEFAULT_SEX_GUIDE_SYSTEM_PROMPT = `你是一个“性爱指导”助手，
 3) 给出 3~6 条建议，语言直接但不必低俗。
 4) 若上下文不足，先提出澄清问题或保守建议。`;
 
-const DEFAULT_SEX_GUIDE_USER_TEMPLATE = `【上下文】\n{{snapshot}}\n\n【性爱指导世界书】\n{{worldbook}}\n\n【用户输入】\n{{lastUser}}`;
+const DEFAULT_SEX_GUIDE_USER_TEMPLATE = `【上下文】\n{{snapshot}}\n\n【性爱指导世界书】\n{{worldbook}}\n\n【用户需求】\n{{userNeed}}\n\n【用户输入】\n{{lastUser}}`;
 
 // 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
 const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
@@ -482,6 +482,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   sexGuideWorldbookEnabled: true,
   sexGuideWorldbookMaxChars: 6000,
   sexGuideWorldbooks: [],
+  sexGuideUserNeed: '',
 
   // ===== 总结功能（独立于剧情提示的 API 设置） =====
   summaryEnabled: false,
@@ -3908,11 +3909,13 @@ function buildSexGuidePromptMessages(snapshotText, worldbookText, settings) {
 
   const lastUser = getLastUserMessageText(chat);
   const recentText = buildRecentChatTextSexGuide(chat, 6, 800);
+  const userNeed = String(s.sexGuideUserNeed || '').trim();
   let user = renderTemplate(tpl, {
     snapshot: snapshotText,
     worldbook: String(worldbookText || '').trim(),
     lastUser,
-    recentText
+    recentText,
+    userNeed
   });
   if (worldbookText && !/\{\{\s*worldbook\s*\}\}/i.test(tpl)) {
     user = String(user || '').trim() + `\n\n【性爱指导世界书】\n${worldbookText}`;
@@ -5505,12 +5508,23 @@ async function generateStructuredEntries(chunkText, fromFloor, toFloor, meta, se
   let jsonText = '';
   if (String(settings.summaryProvider || 'st') === 'custom') {
     jsonText = await callViaCustom(settings.summaryCustomEndpoint, settings.summaryCustomApiKey, settings.summaryCustomModel, messages, settings.summaryTemperature, settings.summaryCustomMaxTokens, 0.95, settings.summaryCustomStream);
+    if (!String(jsonText || '').trim()) {
+      try {
+        jsonText = await fallbackAskJsonCustom(settings.summaryCustomEndpoint, settings.summaryCustomApiKey, settings.summaryCustomModel, messages, settings.summaryTemperature, settings.summaryCustomMaxTokens, 0.95, settings.summaryCustomStream);
+      } catch { /* ignore */ }
+    }
   } else {
     jsonText = await callViaSillyTavern(messages, null, settings.summaryTemperature);
     if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+    if (!String(jsonText || '').trim()) {
+      try { jsonText = await fallbackAskJson(messages, settings.summaryTemperature); } catch { /* ignore */ }
+    }
   }
   const parsed = safeJsonParse(jsonText);
-  if (!parsed) return null;
+  if (!parsed) {
+    console.warn('[StoryGuide] structured entries parse failed (empty or invalid JSON).');
+    return null;
+  }
   return {
     characters: Array.isArray(parsed.characters) ? parsed.characters : [],
     equipments: Array.isArray(parsed.equipments) ? parsed.equipments : [],
@@ -13446,6 +13460,10 @@ function buildModalHtml() {
 
             <div class="sg-card">
               <div class="sg-card-title">生成</div>
+              <div class="sg-field" style="margin-top:6px;">
+                <label>用户需求（可选）</label>
+                <textarea id="sg_sexUserNeed" rows="3" placeholder="例如：更温柔/更主动/更慢节奏/强调沟通与安全…"></textarea>
+              </div>
               <div class="sg-actions-row">
                 <button class="menu_button sg-btn-primary" id="sg_sex_generate">生成性爱指导</button>
                 <button class="menu_button sg-btn" id="sg_sex_copy" disabled>复制</button>
@@ -14830,7 +14848,7 @@ function setupSexGuidePage() {
     autoSave();
   });
 
-  $('#sg_sexEnabled, #sg_sex_temperature, #sg_sexSystemPrompt, #sg_sexUserTemplate, #sg_sexCustomEndpoint, #sg_sexCustomApiKey, #sg_sexCustomModel, #sg_sexCustomMaxTokens, #sg_sexCustomStream, #sg_sexWorldbookEnabled, #sg_sexWorldbookMaxChars')
+  $('#sg_sexEnabled, #sg_sex_temperature, #sg_sexSystemPrompt, #sg_sexUserTemplate, #sg_sexUserNeed, #sg_sexCustomEndpoint, #sg_sexCustomApiKey, #sg_sexCustomModel, #sg_sexCustomMaxTokens, #sg_sexCustomStream, #sg_sexWorldbookEnabled, #sg_sexWorldbookMaxChars')
     .on('input change', autoSave);
 
   $('#sg_sexModelSelect').on('change', () => {
@@ -15011,6 +15029,7 @@ function pullSettingsToUi() {
     $('#sg_sex_temperature').val(s.sexGuideTemperature ?? 0.6);
     $('#sg_sexSystemPrompt').val(String(s.sexGuideSystemPrompt || DEFAULT_SEX_GUIDE_SYSTEM_PROMPT));
     $('#sg_sexUserTemplate').val(String(s.sexGuideUserTemplate || DEFAULT_SEX_GUIDE_USER_TEMPLATE));
+    $('#sg_sexUserNeed').val(String(s.sexGuideUserNeed || ''));
     $('#sg_sexCustomEndpoint').val(String(s.sexGuideCustomEndpoint || ''));
     $('#sg_sexCustomApiKey').val(String(s.sexGuideCustomApiKey || ''));
     $('#sg_sexCustomModel').val(String(s.sexGuideCustomModel || 'gpt-4o-mini'));
@@ -15697,6 +15716,7 @@ function pullUiToSettings() {
   s.sexGuideTemperature = clampFloat($('#sg_sex_temperature').val(), 0, 2, s.sexGuideTemperature ?? 0.6);
   s.sexGuideSystemPrompt = String($('#sg_sexSystemPrompt').val() || '').trim() || DEFAULT_SEX_GUIDE_SYSTEM_PROMPT;
   s.sexGuideUserTemplate = String($('#sg_sexUserTemplate').val() || '').trim() || DEFAULT_SEX_GUIDE_USER_TEMPLATE;
+  s.sexGuideUserNeed = String($('#sg_sexUserNeed').val() || '').trim();
   s.sexGuideCustomEndpoint = String($('#sg_sexCustomEndpoint').val() || '').trim();
   s.sexGuideCustomApiKey = String($('#sg_sexCustomApiKey').val() || '');
   s.sexGuideCustomModel = String($('#sg_sexCustomModel').val() || '').trim() || 'gpt-4o-mini';
