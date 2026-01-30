@@ -3883,7 +3883,7 @@ function getLastUserMessageText(chat) {
   return '';
 }
 
-function buildRecentChatText(chat, maxMessages = 6, maxCharsPerMessage = 800) {
+function buildRecentChatTextSexGuide(chat, maxMessages = 6, maxCharsPerMessage = 800) {
   const arr = Array.isArray(chat) ? chat : [];
   const picked = [];
   for (let i = arr.length - 1; i >= 0 && picked.length < maxMessages; i--) {
@@ -3907,7 +3907,7 @@ function buildSexGuidePromptMessages(snapshotText, worldbookText, settings) {
   const tpl = String(s.sexGuideUserTemplate || DEFAULT_SEX_GUIDE_USER_TEMPLATE).trim() || DEFAULT_SEX_GUIDE_USER_TEMPLATE;
 
   const lastUser = getLastUserMessageText(chat);
-  const recentText = buildRecentChatText(chat, 6, 800);
+  const recentText = buildRecentChatTextSexGuide(chat, 6, 800);
   let user = renderTemplate(tpl, {
     snapshot: snapshotText,
     worldbook: String(worldbookText || '').trim(),
