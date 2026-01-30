@@ -14652,7 +14652,7 @@ function setupSettingsPages() {
   $('#sg_pgtab_sex').on('click', () => showSettingsPage('sex'));
   $('#sg_pgtab_character').on('click', () => showSettingsPage('character'));
 
-  setupSexGuidePage();
+  try { setupSexGuidePage(); } catch (e) { console.error('[StoryGuide] setupSexGuidePage failed:', e); }
   setupCharacterPage();
 
   // quick jump
@@ -15005,24 +15005,28 @@ function pullSettingsToUi() {
   $('#sg_custom_block').toggle(s.provider === 'custom');
 
   // sex guide
-  $('#sg_sexEnabled').prop('checked', !!s.sexGuideEnabled);
-  $('#sg_sex_provider').val(String(s.sexGuideProvider || 'st'));
-  $('#sg_sex_temperature').val(s.sexGuideTemperature ?? 0.6);
-  $('#sg_sexSystemPrompt').val(String(s.sexGuideSystemPrompt || DEFAULT_SEX_GUIDE_SYSTEM_PROMPT));
-  $('#sg_sexUserTemplate').val(String(s.sexGuideUserTemplate || DEFAULT_SEX_GUIDE_USER_TEMPLATE));
-  $('#sg_sexCustomEndpoint').val(String(s.sexGuideCustomEndpoint || ''));
-  $('#sg_sexCustomApiKey').val(String(s.sexGuideCustomApiKey || ''));
-  $('#sg_sexCustomModel').val(String(s.sexGuideCustomModel || 'gpt-4o-mini'));
-  $('#sg_sexCustomMaxTokens').val(s.sexGuideCustomMaxTokens || 2048);
-  $('#sg_sexCustomStream').prop('checked', !!s.sexGuideCustomStream);
-  $('#sg_sexWorldbookEnabled').prop('checked', !!s.sexGuideWorldbookEnabled);
-  $('#sg_sexWorldbookMaxChars').val(s.sexGuideWorldbookMaxChars || 6000);
-  $('#sg_sex_custom_block').toggle(String(s.sexGuideProvider || 'st') === 'custom');
-  fillSexGuideModelSelect(Array.isArray(s.sexGuideCustomModelsCache) ? s.sexGuideCustomModelsCache : [], s.sexGuideCustomModel);
-  renderSexGuideWorldbookList();
-  updateSexGuideWorldbookInfoLabel();
-  $('#sg_sex_output').val(lastSexGuideText || '');
-  $('#sg_sex_copy, #sg_sex_insert').prop('disabled', !lastSexGuideText);
+  try {
+    $('#sg_sexEnabled').prop('checked', !!s.sexGuideEnabled);
+    $('#sg_sex_provider').val(String(s.sexGuideProvider || 'st'));
+    $('#sg_sex_temperature').val(s.sexGuideTemperature ?? 0.6);
+    $('#sg_sexSystemPrompt').val(String(s.sexGuideSystemPrompt || DEFAULT_SEX_GUIDE_SYSTEM_PROMPT));
+    $('#sg_sexUserTemplate').val(String(s.sexGuideUserTemplate || DEFAULT_SEX_GUIDE_USER_TEMPLATE));
+    $('#sg_sexCustomEndpoint').val(String(s.sexGuideCustomEndpoint || ''));
+    $('#sg_sexCustomApiKey').val(String(s.sexGuideCustomApiKey || ''));
+    $('#sg_sexCustomModel').val(String(s.sexGuideCustomModel || 'gpt-4o-mini'));
+    $('#sg_sexCustomMaxTokens').val(s.sexGuideCustomMaxTokens || 2048);
+    $('#sg_sexCustomStream').prop('checked', !!s.sexGuideCustomStream);
+    $('#sg_sexWorldbookEnabled').prop('checked', !!s.sexGuideWorldbookEnabled);
+    $('#sg_sexWorldbookMaxChars').val(s.sexGuideWorldbookMaxChars || 6000);
+    $('#sg_sex_custom_block').toggle(String(s.sexGuideProvider || 'st') === 'custom');
+    fillSexGuideModelSelect(Array.isArray(s.sexGuideCustomModelsCache) ? s.sexGuideCustomModelsCache : [], s.sexGuideCustomModel);
+    renderSexGuideWorldbookList();
+    updateSexGuideWorldbookInfoLabel();
+    $('#sg_sex_output').val(lastSexGuideText || '');
+    $('#sg_sex_copy, #sg_sex_insert').prop('disabled', !lastSexGuideText);
+  } catch (e) {
+    console.error('[StoryGuide] sex guide UI sync failed:', e);
+  }
 
   // summary
   $('#sg_summaryEnabled').prop('checked', !!s.summaryEnabled);
