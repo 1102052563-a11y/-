@@ -2967,7 +2967,7 @@ function applySexGuidePresetSnapshot(snapshot) {
       continue;
     }
     if (k === 'sexGuideWorldbookMaxChars') {
-      s[k] = clampInt(snapshot[k], 500, 50000, s[k] || 6000);
+      s[k] = clampInt(snapshot[k], 500, 200000, s[k] || 6000);
       continue;
     }
     s[k] = snapshot[k];
@@ -3824,7 +3824,7 @@ function computeSexGuideWorldbookInjection() {
 
   if (!enabled || !list.length) return result;
 
-  const maxChars = clampInt(s.sexGuideWorldbookMaxChars, 500, 50000, 6000);
+  const maxChars = clampInt(s.sexGuideWorldbookMaxChars, 500, 200000, 6000);
   let acc = '';
 
   for (const wb of list) {
@@ -13653,7 +13653,7 @@ function buildModalHtml() {
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label>最大注入字符</label>
-                  <input id="sg_sexWorldbookMaxChars" type="number" min="500" max="50000">
+                <input id="sg_sexWorldbookMaxChars" type="number" min="500" max="200000">
                 </div>
               </div>
 
@@ -16212,7 +16212,7 @@ function pullUiToSettings() {
   s.sexGuideCustomMaxTokens = clampInt($('#sg_sexCustomMaxTokens').val(), 256, 200000, s.sexGuideCustomMaxTokens || 2048);
   s.sexGuideCustomStream = $('#sg_sexCustomStream').is(':checked');
   s.sexGuideWorldbookEnabled = $('#sg_sexWorldbookEnabled').is(':checked');
-  s.sexGuideWorldbookMaxChars = clampInt($('#sg_sexWorldbookMaxChars').val(), 500, 50000, s.sexGuideWorldbookMaxChars || 6000);
+  s.sexGuideWorldbookMaxChars = clampInt($('#sg_sexWorldbookMaxChars').val(), 500, 200000, s.sexGuideWorldbookMaxChars || 6000);
 
   // summary
   s.summaryEnabled = $('#sg_summaryEnabled').is(':checked');
