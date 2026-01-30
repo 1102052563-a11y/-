@@ -897,6 +897,7 @@ let structuredWorldbookLiveCache = { file: '', loadedAt: 0, mode: 'active', tota
 const inlineCache = new Map();
 const panelCache = new Map(); // <mesKey, { htmlInner, collapsed, createdAt }>
 let chatDomObserver = null;
+let generationIdleTimer = null;
 let bodyDomObserver = null;
 let reapplyTimer = null;
 
@@ -8179,6 +8180,19 @@ function scheduleAutoSummary(reason = '') {
   summaryTimer = setTimeout(() => {
     summaryTimer = null;
     maybeAutoSummary(reason).catch(() => void 0);
+  }, delay);
+}
+
+function schedulePostGenerationAuto(reason = '') {
+  const s = ensureSettings();
+  if (!s.enabled) return;
+  if (!s.summaryEnabled && !s.structuredEntriesEnabled) return;
+  const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
+  if (generationIdleTimer) clearTimeout(generationIdleTimer);
+  generationIdleTimer = setTimeout(() => {
+    generationIdleTimer = null;
+    maybeAutoSummary(reason).catch(() => void 0);
+    maybeAutoStructuredEntries(reason).catch(() => void 0);
   }, delay);
 }
 
@@ -16574,9 +16588,8 @@ function setupEventListeners() {
     eventSource.on(event_types.MESSAGE_RECEIVED, () => {
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
-      // 自动总结（独立功能）
-      scheduleAutoSummary('msg_received');
-      scheduleAutoStructuredEntries('msg_received');
+      // 回复生成结束后再触发总结/结构化
+      schedulePostGenerationAuto('msg_received');
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
@@ -16585,8 +16598,8 @@ function setupEventListeners() {
       maybeInjectRollResult('msg_sent').catch(() => void 0);
       // 蓝灯索引 → 绿灯触发（尽量在生成前完成）
       maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
-      scheduleAutoSummary('msg_sent');
-      scheduleAutoStructuredEntries('msg_sent');
+      // 记录生成活动，最终在回复完成后触发
+      schedulePostGenerationAuto('msg_sent');
     });
 
     eventSource.on(event_types.MESSAGE_DELETED, async (data) => {
@@ -16944,33 +16957,37 @@ function createFloatingPanel() {
     const outfitMode = String($('#sg_floating_sex_outfit_random').val() || 'default');
     let bdsmCustom = '';
     let poseCustom = '';
-    if (bdsmMode === 'custom') bdsmCustom = String(prompt('BDSM（自定义）：') || '').trim();
-    if (poseMode === 'custom') poseCustom = String(prompt('体位（自定义）：') || '').trim();
+    let outfitCustom = '';
+    if (bdsmMode === 'custom') bdsmCustom = String(prompt('BDSM (\u81ea\u5b9a\u4e49):') || '').trim();
+    if (poseMode === 'custom') poseCustom = String(prompt('\u4f53\u4f4d (\u81ea\u5b9a\u4e49):') || '').trim();
+    if (outfitMode === 'custom') outfitCustom = String(prompt('\u670d\u88c5 (\u81ea\u5b9a\u4e49):') || '').trim();
     const extras = [];
-    if (bdsmMode === 'none') extras.push('BDSM：不使用');
-    if (bdsmMode === 'random') extras.push('BDSM：随机');
-    if (bdsmMode === 'custom' && bdsmCustom) extras.push(`BDSM：${bdsmCustom}`);
-    if (poseMode === 'random') extras.push('体位：随机');
-    if (poseMode === 'custom' && poseCustom) extras.push(`体位：${poseCustom}`);
-    if (ejaculateMode === 'yes') extras.push('射精：是');
-    if (ejaculateMode === 'no') extras.push('射精：否');
-    if (ejaculateMode === 'random') extras.push('射精：随机');
-    if (outfitMode === 'yes') extras.push('服装：是');
-    if (outfitMode === 'no') extras.push('服装：否');
-    if (outfitMode === 'random') extras.push('服装：随机');
+    if (bdsmMode === 'none') extras.push('BDSM: \u4e0d\u4f7f\u7528');
+    if (bdsmMode === 'random') extras.push('BDSM: \u968f\u673a');
+    if (bdsmMode === 'custom' && bdsmCustom) extras.push(`BDSM: ${bdsmCustom}`);
+    if (poseMode === 'random') extras.push('\u4f53\u4f4d: \u968f\u673a');
+    if (poseMode === 'custom' && poseCustom) extras.push(`\u4f53\u4f4d: ${poseCustom}`);
+    if (ejaculateMode === 'yes') extras.push('\u5c04\u7cbe: \u662f');
+    if (ejaculateMode === 'no') extras.push('\u5c04\u7cbe: \u5426');
+    if (ejaculateMode === 'random') extras.push('\u5c04\u7cbe: \u968f\u673a');
+    if (outfitMode === 'yes') extras.push('\u670d\u88c5: \u662f');
+    if (outfitMode === 'no') extras.push('\u670d\u88c5: \u5426');
+    if (outfitMode === 'random') extras.push('\u670d\u88c5: \u968f\u673a');
+    if (outfitMode === 'custom' && outfitCustom) extras.push(`\u670d\u88c5: ${outfitCustom}`);
     if (extras.length) {
-      const extraText = extras.join('；');
-      need = need ? `${need}\n${extraText}` : extraText;
+      const extraText = extras.join('; ');
+      need = need ? `${need}
+${extraText}` : extraText;
     }
     $('#sg_floating_sex_generate').prop('disabled', true);
-    $('#sg_floating_sex_status').text('正在生成…');
+    $('#sg_floating_sex_status').text('\u6b63\u5728\u751f\u6210...');
     try {
       await runSexGuide({ userNeedOverride: need });
       $('#sg_floating_sex_output').val(lastSexGuideText || '');
       $('#sg_floating_sex_send').prop('disabled', !lastSexGuideText);
-      $('#sg_floating_sex_status').text('生成完成');
+      $('#sg_floating_sex_status').text('\u751f\u6210\u5b8c\u6210');
     } catch (err) {
-      $('#sg_floating_sex_status').text(`生成失败：${err?.message ?? err}`);
+      $('#sg_floating_sex_status').text(`\u751f\u6210\u5931\u8d25: ${err?.message ?? err}`);
     } finally {
       $('#sg_floating_sex_generate').prop('disabled', false);
     }
@@ -17529,48 +17546,49 @@ function showFloatingSexGuide() {
 
   const html = `
     <div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">
-      <div style="font-weight:700; margin-bottom:8px;">性爱指导</div>
+      <div style="font-weight:700; margin-bottom:8px;">\u6027\u7231\u6307\u5bfc</div>
       <div class="sg-field" style="margin-top:6px;">
-        <label>用户需求</label>
-        <textarea id="sg_floating_sex_need" rows="3" placeholder="例如：更温柔 / 更主动 / 更慢节奏 / 强调沟通与安全"></textarea>
+        <label>\u7528\u6237\u9700\u6c42</label>
+        <textarea id="sg_floating_sex_need" rows="3" placeholder="\u4f8b\u5982\uff1a\u66f4\u6e29\u67d4 / \u66f4\u4e3b\u52a8 / \u66f4\u6162\u8282\u594f / \u5f3a\u8c03\u6c9f\u901a\u4e0e\u5b89\u5168"></textarea>
       </div>
       <div class="sg-row sg-inline" style="margin-top:6px; gap:8px; flex-wrap:wrap;">
         <label style="margin-right:4px;">BDSM</label>
         <select id="sg_floating_sex_bdsm_mode" style="min-width:90px;">
-          <option value="default">默认</option>
-          <option value="none">不使用</option>
-          <option value="random">随机</option>
-          <option value="custom">自定义</option>
+          <option value="default">\u9ed8\u8ba4</option>
+          <option value="none">\u4e0d\u4f7f\u7528</option>
+          <option value="random">\u968f\u673a</option>
+          <option value="custom">\u81ea\u5b9a\u4e49</option>
         </select>
-        <label style="margin-right:4px;">体位</label>
+        <label style="margin-right:4px;">\u4f53\u4f4d</label>
         <select id="sg_floating_sex_pose_mode" style="min-width:90px;">
-          <option value="default">默认</option>
-          <option value="random">随机</option>
-          <option value="custom">自定义</option>
+          <option value="default">\u9ed8\u8ba4</option>
+          <option value="random">\u968f\u673a</option>
+          <option value="custom">\u81ea\u5b9a\u4e49</option>
         </select>
-        <label style="margin-right:4px;">射精</label>
+        <label style="margin-right:4px;">\u5c04\u7cbe</label>
         <select id="sg_floating_sex_ejaculate" style="min-width:80px;">
-          <option value="default">默认</option>
-          <option value="yes">是</option>
-          <option value="no">否</option>
-          <option value="random">随机</option>
+          <option value="default">\u9ed8\u8ba4</option>
+          <option value="yes">\u662f</option>
+          <option value="no">\u5426</option>
+          <option value="random">\u968f\u673a</option>
         </select>
-        <label style="margin-right:4px;">服装</label>
+        <label style="margin-right:4px;">\u670d\u88c5</label>
         <select id="sg_floating_sex_outfit_random" style="min-width:90px;">
-          <option value="default">默认</option>
-          <option value="yes">是</option>
-          <option value="no">否</option>
-          <option value="random">随机</option>
+          <option value="default">\u9ed8\u8ba4</option>
+          <option value="yes">\u662f</option>
+          <option value="no">\u5426</option>
+          <option value="random">\u968f\u673a</option>
+          <option value="custom">\u81ea\u5b9a\u4e49</option>
         </select>
       </div>
       <div class="sg-actions-row" style="justify-content:flex-end;">
-        <button class="menu_button sg-btn" id="sg_floating_sex_generate">生成</button>
-        <button class="menu_button sg-btn" id="sg_floating_sex_send" ${lastSexGuideText ? '' : 'disabled'}>发送到聊天</button>
+        <button class="menu_button sg-btn" id="sg_floating_sex_generate">\u751f\u6210</button>
+        <button class="menu_button sg-btn" id="sg_floating_sex_send" ${lastSexGuideText ? '' : 'disabled'}>\u53d1\u9001\u5230\u804a\u5929</button>
       </div>
       <div class="sg-field" style="margin-top:8px;">
-        <label>输出</label>
+        <label>\u8f93\u51fa</label>
         <textarea id="sg_floating_sex_output" rows="10" spellcheck="false">${escapeHtml(lastSexGuideText || '')}</textarea>
-        <div class="sg-hint" id="sg_floating_sex_status">· 生成后可发送到聊天 ·</div>
+        <div class="sg-hint" id="sg_floating_sex_status">\u00b7 \u751f\u6210\u540e\u53ef\u53d1\u9001\u5230\u804a\u5929 \u00b7</div>
       </div>
     </div>
   `
