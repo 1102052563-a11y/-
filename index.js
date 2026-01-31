@@ -5983,179 +5983,6 @@ function pushStructuredLabel(parts, label, value, mode) {
   }
 }
 
-// 英中文字段名别名映射：将英文字段名映射到对应的中文名
-// 当模板使用中文标签时，重复的英文标签会被过滤掉
-const FIELD_NAME_ALIASES = Object.freeze({
-  // ===== 人物模板字段 =====
-  'name': '姓名',
-  'aliases': '别名',
-  'faction': '阵营',
-  'status': '状态',
-  'personality': '性格',
-  'Outlook': '外貌描写',
-  'outlook': '外貌描写',
-  'appearance': '外貌描写',
-  'relationToProtagonist': '与主角关系',
-  'relationtoprotagonist': '与主角关系',
-  'thought': '内心想法',
-  'thoughts': '内心想法',
-  'innerThoughts': '内心想法',
-  'background': '背景',
-  'sixStats': '六维属性',
-  'sixstats': '六维属性',
-  'stats': '六维属性',
-  'equipment': '装备',
-  'skillsTalents': '技能/天赋',
-  'skillstalents': '技能/天赋',
-  'skills': '技能/天赋',
-  'talents': '技能/天赋',
-  'inventory': '物品栏',
-  'items': '物品栏',
-  'sexLife': '性生活',
-  'sexlife': '性生活',
-  'sexualLife': '性生活',
-  'sexHistory': '性爱经历',
-  'sexhistory': '性爱经历',
-  'sexualHistory': '性爱经历',
-  'sexExperience': '性爱经历',
-  'sexexperience': '性爱经历',
-  'sexualExperience': '性爱经历',
-  'sexLifebody': '部位开发度',
-  'sexlifebody': '部位开发度',
-  'bodyDevelopment': '部位开发度',
-  'sexhobby': '性癖',
-  'sexHobby': '性癖',
-  'fetish': '性癖',
-  'fetishes': '性癖',
-  'sexualPreference': '性癖',
-  'sexualPreferences': '性癖',
-  'preferguesture': '偏好姿势',
-  'preferredPositions': '偏好姿势',
-  'positions': '偏好姿势',
-  'corePersonality': '核心性格锚点',
-  'corepersonality': '核心性格锚点',
-  'motivation': '角色动机',
-  'relationshipStage': '关系阶段',
-  'relationshipstage': '关系阶段',
-  'keyEvents': '关键事件',
-  'keyevents': '关键事件',
-  'events': '关键事件',
-  'Comment': '人物评价',
-  'comment': '人物评价',
-  'evaluation': '人物评价',
-  'wheatherinsameworld': '是否在同一个世界',
-  'sameWorld': '是否在同一个世界',
-  'gender': '性别',
-
-  // ===== 猎艳录模板字段 =====
-  'theam': '主题',
-  'theme': '主题',
-  'identity': '身份',
-  'sexprocess': '性爱经历',
-  'sexProcess': '性爱经历',
-  'conquestHistory': '性爱经历',
-  'currentRelation': '当前关系',
-  'currentrelation': '当前关系',
-  'relationship': '当前关系',
-  'skin': '淫纹',
-  'tattoo': '淫纹',
-  'sexnumber': '性爱次数',
-  'sexNumber': '性爱次数',
-  'sexCount': '性爱次数',
-  'timesHadSex': '性爱次数',
-  'sexguesture': '已掌握的姿势',
-  'sexGuesture': '已掌握的姿势',
-  'masteredPositions': '已掌握的姿势',
-  'learnedPositions': '已掌握的姿势',
-  'postures': '已掌握的姿势',
-  'specialTechniques': '已掌握特殊技巧',
-  'specialtechniques': '已掌握特殊技巧',
-  'techniques': '已掌握特殊技巧',
-  'unlockcloth': '已解锁的服装',
-  'unlockCloth': '已解锁的服装',
-  'unlockedOutfits': '已解锁的服装',
-  'unlockedoutfits': '已解锁的服装',
-  'outfits': '已解锁的服装',
-  'clothes': '已解锁的服装',
-  'costumes': '已解锁的服装',
-  'sexgame': '已经开发的玩法',
-  'sexGame': '已经开发的玩法',
-  'developedPlays': '已经开发的玩法',
-  'developedplays': '已经开发的玩法',
-  'plays': '已经开发的玩法',
-  'sexualPlays': '已经开发的玩法',
-  'bodyFeatures': '身体敏感点',
-  'bodyfeatures': '身体敏感点',
-  'sensitivePoints': '身体敏感点',
-  'sensitivepoints': '身体敏感点',
-  'sensitiveAreas': '身体敏感点',
-  'sensitiveParts': '身体敏感点',
-  'erogenousZones': '身体敏感点',
-  'currentstatus': '当前状态',
-  'currentStatus': '当前状态',
-  'unlockstatus': '已解锁的状态',
-  'unlockStatus': '已解锁的状态',
-  'unlockedStates': '已解锁的状态',
-  'unlockedstates': '已解锁的状态',
-  'unlockedStatus': '已解锁的状态',
-  'sexvalue': '爱欲值',
-  'sexValue': '爱欲值',
-  'loveLustValue': '爱欲值',
-  'lovelustvalue': '爱欲值',
-  'lustValue': '爱欲值',
-  'loveValue': '爱欲值',
-  'affection': '爱欲值',
-  'sexdescription': '肉体描述',
-  'sexDescription': '肉体描述',
-  'bodyDescription': '肉体描述',
-  'bodydescription': '肉体描述',
-  'physicalDescription': '肉体描述',
-
-  // ===== 装备/物品相关 =====
-  'type': '类型',
-  'rarity': '稀有度',
-  'effects': '效果',
-  'source': '来源',
-  'currentState': '当前状态',
-  'statInfo': '数值信息',
-  'statinfo': '数值信息',
-  'boundEvents': '关联事件',
-  'boundevents': '关联事件',
-  'quantity': '数量',
-
-  // ===== 势力相关 =====
-  'scope': '规模',
-  'leader': '领导者',
-  'ideology': '理念',
-
-  // ===== 成就相关 =====
-  'description': '描述',
-  'requirements': '要求',
-  'obtainedAt': '获得时间',
-  'obtainedat': '获得时间',
-
-  // ===== 副职业相关 =====
-  'role': '定位',
-  'level': '等级',
-  'progress': '进度',
-
-  // ===== 任务相关 =====
-  'goal': '目标',
-  'issuer': '发布者',
-  'reward': '奖励',
-  'deadline': '期限',
-  'location': '地点',
-
-  // ===== 其他猎艳录字段 =====
-  'firstEncounter': '初遇',
-  'firstencounter': '初遇',
-  'firstMeeting': '初遇',
-  'conquestProcess': '攻略过程',
-  'conquestprocess': '攻略过程',
-  'conquestTime': '攻略时间',
-  'conquesttime': '攻略时间',
-});
-
 const STRUCTURED_ENTRY_META_KEYS = new Set([
   'isNew',
   'isUpdated',
@@ -6177,83 +6004,19 @@ function appendExtraFields(parts, data, knownKeys) {
   if (!data || typeof data !== 'object') return;
   const mode = String(knownKeys?.__mode || '').trim() || 'text';
   const known = new Set([...(knownKeys || []), ...STRUCTURED_ENTRY_META_KEYS]);
-  const normalizeKey = (k) => String(k || '').trim().toLowerCase().replace(/[\s._-]+/g, '');
-  const knownNormalized = new Set(Array.from(known).map(normalizeKey));
-
-  // 收集已输出的标签（包括中文翻译后的标签）
-  const outputtedLabels = new Set();
-  for (const k of known) {
-    outputtedLabels.add(k);
-    outputtedLabels.add(normalizeKey(k));
-    // 也添加对应的中文标签
-    const chineseLabel = FIELD_NAME_ALIASES[k] || FIELD_NAME_ALIASES[k.toLowerCase()];
-    if (chineseLabel) {
-      outputtedLabels.add(chineseLabel);
-      outputtedLabels.add(normalizeKey(chineseLabel));
-    }
-  }
-
-  // 收集已输出的值（用于检测内容重复）
-  const outputtedValues = new Set();
-  for (const k of known) {
-    const val = data[k];
-    if (val !== null && val !== undefined) {
-      const valStr = JSON.stringify(val);
-      outputtedValues.add(valStr);
-    }
-  }
-
-  // 获取字段的中文标签（英文 -> 中文翻译）
-  const getChineseLabel = (key) => {
-    // 直接查找
-    let label = FIELD_NAME_ALIASES[key];
-    if (label) return label;
-    // 小写查找
-    label = FIELD_NAME_ALIASES[key.toLowerCase()];
-    if (label) return label;
-    // 没有映射则返回原键名
-    return key;
-  };
-
   for (const [key, value] of Object.entries(data)) {
-    // 跳过已知字段
     if (known.has(key)) continue;
-    if (knownNormalized.has(normalizeKey(key))) continue;
-
-    // 跳过空值
     if (value === null || value === undefined) continue;
     if (typeof value === 'string' && !value.trim()) continue;
     if (Array.isArray(value) && value.length === 0) continue;
     if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) continue;
 
-    // 将英文字段名翻译成中文标签
-    const displayLabel = getChineseLabel(key);
-
-    // 检查这个标签是否已经被输出过
-    if (outputtedLabels.has(displayLabel) || outputtedLabels.has(normalizeKey(displayLabel))) {
-      console.log(`[StoryGuide] 跳过已输出的字段: ${key} -> ${displayLabel}`);
-      continue;
-    }
-
-    // 检查值是否已经被其他字段输出（内容完全相同）
-    const valStr = JSON.stringify(value);
-    if (outputtedValues.has(valStr)) {
-      console.log(`[StoryGuide] 跳过值重复的字段: ${key}`);
-      continue;
-    }
-
-    // 标记这个标签和值已输出
-    outputtedLabels.add(displayLabel);
-    outputtedLabels.add(normalizeKey(displayLabel));
-    outputtedLabels.add(key);
-    outputtedValues.add(valStr);
-
     const rendered = formatStructuredValue(value, mode);
     if (!rendered) continue;
     if (mode === 'markdown' && rendered.includes('\n')) {
-      parts.push(`${displayLabel}：\n${rendered}`);
+      parts.push(`${key}：\n${rendered}`);
     } else {
-      parts.push(`${displayLabel}：${rendered}`);
+      parts.push(`${key}：${rendered}`);
     }
   }
 }
@@ -8441,11 +8204,6 @@ async function maybeAutoSummary(reason = '') {
 
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-  // Avoid triggering auto summary on user send; wait for assistant reply.
-  if (reason === 'msg_sent') {
-    const last = chat[chat.length - 1];
-    if (last && last.is_user === true) return;
-  }
   const mode = String(s.summaryCountMode || 'assistant');
   const every = clampInt(s.summaryEvery, 1, 200, 20);
   const floorNow = computeFloorCount(chat, mode, true, true);
@@ -8481,11 +8239,6 @@ async function maybeAutoStructuredEntries(reason = '') {
 
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-  // Avoid triggering structured entries on user send; wait for assistant reply.
-  if (reason === 'msg_sent') {
-    const last = chat[chat.length - 1];
-    if (last && last.is_user === true) return;
-  }
   const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
   const every = clampInt(s.structuredEntriesEvery, 1, 200, 1);
   const floorNow = computeFloorCount(chat, mode, true, true);
@@ -17240,7 +16993,7 @@ ${extraText}` : extraText;
     }
   });
 
-  $(document).on('click', '#sg_floating_sex_send', (e) => {
+$(document).on('click', '#sg_floating_sex_send', (e) => {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     const text = String($('#sg_floating_sex_output').val() || '').trim();
     if (!text) {
