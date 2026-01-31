@@ -8204,6 +8204,11 @@ async function maybeAutoSummary(reason = '') {
 
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  // Avoid triggering auto summary on user send; wait for assistant reply.
+  if (reason === 'msg_sent') {
+    const last = chat[chat.length - 1];
+    if (last && last.is_user === true) return;
+  }
   const mode = String(s.summaryCountMode || 'assistant');
   const every = clampInt(s.summaryEvery, 1, 200, 20);
   const floorNow = computeFloorCount(chat, mode, true, true);
@@ -8239,6 +8244,11 @@ async function maybeAutoStructuredEntries(reason = '') {
 
   const ctx = SillyTavern.getContext();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  // Avoid triggering structured entries on user send; wait for assistant reply.
+  if (reason === 'msg_sent') {
+    const last = chat[chat.length - 1];
+    if (last && last.is_user === true) return;
+  }
   const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
   const every = clampInt(s.structuredEntriesEvery, 1, 200, 1);
   const floorNow = computeFloorCount(chat, mode, true, true);
