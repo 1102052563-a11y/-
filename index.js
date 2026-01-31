@@ -6004,8 +6004,11 @@ function appendExtraFields(parts, data, knownKeys) {
   if (!data || typeof data !== 'object') return;
   const mode = String(knownKeys?.__mode || '').trim() || 'text';
   const known = new Set([...(knownKeys || []), ...STRUCTURED_ENTRY_META_KEYS]);
+  const normalizeKey = (k) => String(k || '').trim().toLowerCase().replace(/[\s._-]+/g, '');
+  const knownNormalized = new Set(Array.from(known).map(normalizeKey));
   for (const [key, value] of Object.entries(data)) {
     if (known.has(key)) continue;
+    if (knownNormalized.has(normalizeKey(key))) continue;
     if (value === null || value === undefined) continue;
     if (typeof value === 'string' && !value.trim()) continue;
     if (Array.isArray(value) && value.length === 0) continue;
