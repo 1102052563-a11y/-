@@ -5983,6 +5983,110 @@ function pushStructuredLabel(parts, label, value, mode) {
   }
 }
 
+// 英中文字段名别名映射：将英文字段名映射到对应的中文名
+// 当模板使用中文标签时，重复的英文标签会被过滤掉
+const FIELD_NAME_ALIASES = Object.freeze({
+  // ===== 人物模板字段 =====
+  'name': '姓名',
+  'aliases': '别名',
+  'faction': '阵营',
+  'status': '状态',
+  'personality': '性格',
+  'Outlook': '外貌描写',
+  'outlook': '外貌描写',
+  'relationToProtagonist': '与主角关系',
+  'relationtoprotagonist': '与主角关系',
+  'thought': '内心想法',
+  'background': '背景',
+  'sixStats': '六维属性',
+  'sixstats': '六维属性',
+  'equipment': '装备',
+  'skillsTalents': '技能/天赋',
+  'skillstalents': '技能/天赋',
+  'inventory': '物品栏',
+  'sexLife': '性生活',
+  'sexlife': '性生活',
+  'sexLifebody': '部位开发度',
+  'sexlifebody': '部位开发度',
+  'sexhobby': '性癖',
+  'preferguesture': '偏好姿势',
+  'corePersonality': '核心性格锚点',
+  'corepersonality': '核心性格锚点',
+  'motivation': '角色动机',
+  'relationshipStage': '关系阶段',
+  'relationshipstage': '关系阶段',
+  'keyEvents': '关键事件',
+  'keyevents': '关键事件',
+  'Comment': '人物评价',
+  'comment': '人物评价',
+  'wheatherinsameworld': '是否在同一个世界',
+  'gender': '性别',
+
+  // ===== 猎艳录模板字段 =====
+  'theam': '主题',
+  'identity': '身份',
+  'sexprocess': '性爱经历',
+  'currentRelation': '当前关系',
+  'currentrelation': '当前关系',
+  'skin': '淫纹',
+  'sexnumber': '性爱次数',
+  'sexguesture': '已掌握的姿势',
+  'specialTechniques': '已掌握特殊技巧',
+  'specialtechniques': '已掌握特殊技巧',
+  'unlockcloth': '已解锁的服装',
+  'sexgame': '已经开发的玩法',
+  'bodyFeatures': '身体敏感点',
+  'bodyfeatures': '身体敏感点',
+  'currentstatus': '当前状态',
+  'unlockstatus': '已解锁的状态',
+  'sexvalue': '爱欲值',
+  'sexdescription': '肉体描述',
+
+  // ===== 装备/物品相关 =====
+  'type': '类型',
+  'rarity': '稀有度',
+  'effects': '效果',
+  'source': '来源',
+  'currentState': '当前状态',
+  'currentstate': '当前状态',
+  'statInfo': '数值信息',
+  'statinfo': '数值信息',
+  'boundEvents': '关联事件',
+  'boundevents': '关联事件',
+  'quantity': '数量',
+
+  // ===== 势力相关 =====
+  'scope': '规模',
+  'leader': '领导者',
+  'ideology': '理念',
+
+  // ===== 成就相关 =====
+  'description': '描述',
+  'requirements': '要求',
+  'obtainedAt': '获得时间',
+  'obtainedat': '获得时间',
+
+  // ===== 副职业相关 =====
+  'role': '定位',
+  'level': '等级',
+  'progress': '进度',
+
+  // ===== 任务相关 =====
+  'goal': '目标',
+  'issuer': '发布者',
+  'reward': '奖励',
+  'deadline': '期限',
+  'location': '地点',
+
+  // ===== 其他猎艳录字段 =====
+  'firstEncounter': '初遇',
+  'firstencounter': '初遇',
+  'conquestProcess': '攻略过程',
+  'conquestprocess': '攻略过程',
+  'conquestTime': '攻略时间',
+  'conquesttime': '攻略时间',
+});
+
 const STRUCTURED_ENTRY_META_KEYS = new Set([
   'isNew',
   'isUpdated',
@@ -6006,9 +6110,89 @@ function appendExtraFields(parts, data, knownKeys) {
   const known = new Set([...(knownKeys || []), ...STRUCTURED_ENTRY_META_KEYS]);
   const normalizeKey = (k) => String(k || '').trim().toLowerCase().replace(/[\s._-]+/g, '');
   const knownNormalized = new Set(Array.from(known).map(normalizeKey));
+
+  // 收集已知字段的中文标签名（用于值重复检测）
+  const knownChineseLabels = new Set();
+  for (const v of Object.values(FIELD_NAME_ALIASES)) {
+    if (v) knownChineseLabels.add(String(v).trim());
+  }
+
+  // 收集已输出的值（用于检测内容重复）
+  const outputtedValues = new Set();
+  for (const k of known) {
+    const val = data[k];
+    if (val !== null && val !== undefined) {
+      const valStr = JSON.stringify(val);
+      outputtedValues.add(valStr);
+    }
+  }
+
+  // 检测是否为纯英文标识符格式（camelCase, PascalCase, snake_case, kebab-case）
+  const isEnglishIdentifier = (s) => {
+    if (!s || typeof s !== 'string') return false;
+    // 纯 ASCII 字母、数字、下划线、连字符组成
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(s)) return false;
+    // 如果包含中文则不是纯英文
+    if (/[\u4e00-\u9fff]/.test(s)) return false;
+    return true;
+  };
+
+  // 检查英文字段名是否可能是某个中文标签的翻译（启发式匹配）
+  const mightBeDuplicateOfChinese = (englishKey, value) => {
+    // 1. 直接在映射表中查找
+    if (FIELD_NAME_ALIASES[englishKey]) return true;
+    if (FIELD_NAME_ALIASES[englishKey.toLowerCase()]) return true;
+
+    // 2. 检查值是否已经被其他字段输出（内容完全相同）
+    const valStr = JSON.stringify(value);
+    if (outputtedValues.has(valStr)) return true;
+
+    // 3. 检查是否为纯英文标识符格式，且存在对应的中文字段
+    if (isEnglishIdentifier(englishKey)) {
+      const normalized = normalizeKey(englishKey);
+      // 检查是否有类似的中文标签已经在已知列表中
+      for (const chineseLabel of knownChineseLabels) {
+        // 如果数据中存在这个中文标签字段，说明英文字段可能是重复的
+        if (data[chineseLabel] !== undefined) {
+          // 进一步检查值是否相似
+          const chineseVal = JSON.stringify(data[chineseLabel]);
+          if (chineseVal === valStr) return true;
+        }
+      }
+      // 如果纯英文字段名看起来像 camelCase 且长度较长，可能是系统字段
+      if (/[a-z][A-Z]/.test(englishKey) && englishKey.length > 4) {
+        // 检查是否有对应的中文值
+        const valueStr = String(value || '').trim();
+        // 如果值是中文，而键是英文，很可能是翻译重复
+        if (/[\u4e00-\u9fff]/.test(valueStr) && isEnglishIdentifier(englishKey)) {
+          // 检查是否已有相同值
+          for (const [k, v] of Object.entries(data)) {
+            if (k === englishKey) continue;
+            if (/[\u4e00-\u9fff]/.test(k) && JSON.stringify(v) === valStr) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    return false;
+  };
+
   for (const [key, value] of Object.entries(data)) {
     if (known.has(key)) continue;
     if (knownNormalized.has(normalizeKey(key))) continue;
+
+    // 检查是否为已知字段的别名
+    const aliasedField = FIELD_NAME_ALIASES[key];
+    if (aliasedField && (known.has(aliasedField) || knownNormalized.has(normalizeKey(aliasedField)))) continue;
+
+    // 智能检测：检查是否可能是中文字段的英文翻译
+    if (mightBeDuplicateOfChinese(key, value)) {
+      console.log(`[StoryGuide] 跳过疑似重复的英文字段: ${key}`);
+      continue;
+    }
+
     if (value === null || value === undefined) continue;
     if (typeof value === 'string' && !value.trim()) continue;
     if (Array.isArray(value) && value.length === 0) continue;
@@ -17006,7 +17190,7 @@ ${extraText}` : extraText;
     }
   });
 
-$(document).on('click', '#sg_floating_sex_send', (e) => {
+  $(document).on('click', '#sg_floating_sex_send', (e) => {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     const text = String($('#sg_floating_sex_output').val() || '').trim();
     if (!text) {
