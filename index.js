@@ -6180,13 +6180,11 @@ function appendExtraFields(parts, data, knownKeys) {
   const normalizeKey = (k) => String(k || '').trim().toLowerCase().replace(/[\s._-]+/g, '');
   const knownNormalized = new Set(Array.from(known).map(normalizeKey));
 
-  // 收集已输出的中文标签（用于避免重复）
+  // 收集已输出的标签（用于避免重复）
   const outputtedLabels = new Set();
-  // 也收集 known 字段对应的中文标签
   for (const k of known) {
     outputtedLabels.add(k);
-    const chineseLabel = FIELD_NAME_ALIASES[k] || FIELD_NAME_ALIASES[k.toLowerCase()];
-    if (chineseLabel) outputtedLabels.add(chineseLabel);
+    outputtedLabels.add(normalizeKey(k));
   }
 
   // 收集已输出的值（用于检测内容重复）
@@ -6199,18 +6197,6 @@ function appendExtraFields(parts, data, knownKeys) {
     }
   }
 
-  // 获取字段的中文标签（如果有的话）
-  const getChineseLabel = (key) => {
-    // 直接查找
-    let label = FIELD_NAME_ALIASES[key];
-    if (label) return label;
-    // 小写查找
-    label = FIELD_NAME_ALIASES[key.toLowerCase()];
-    if (label) return label;
-    // 如果是纯英文标识符但没有映射，返回原键名
-    return null;
-  };
-
   for (const [key, value] of Object.entries(data)) {
     // 跳过已知字段
     if (known.has(key)) continue;
@@ -6222,13 +6208,12 @@ function appendExtraFields(parts, data, knownKeys) {
     if (Array.isArray(value) && value.length === 0) continue;
     if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) continue;
 
-    // 获取中文标签
-    const chineseLabel = getChineseLabel(key);
-    const displayLabel = chineseLabel || key; // 如果没有映射，使用原键名
+    // 使用原始英文键名作为标签
+    const displayLabel = key;
 
-    // 检查这个中文标签是否已经被输出过
+    // 检查这个标签是否已经被输出过
     if (outputtedLabels.has(displayLabel)) {
-      console.log(`[StoryGuide] 跳过已输出的字段: ${key} -> ${displayLabel}`);
+      console.log(`[StoryGuide] 跳过已输出的字段: ${key}`);
       continue;
     }
 
