@@ -5994,22 +5994,44 @@ const FIELD_NAME_ALIASES = Object.freeze({
   'personality': '性格',
   'Outlook': '外貌描写',
   'outlook': '外貌描写',
+  'appearance': '外貌描写',
   'relationToProtagonist': '与主角关系',
   'relationtoprotagonist': '与主角关系',
   'thought': '内心想法',
+  'thoughts': '内心想法',
+  'innerThoughts': '内心想法',
   'background': '背景',
   'sixStats': '六维属性',
   'sixstats': '六维属性',
+  'stats': '六维属性',
   'equipment': '装备',
   'skillsTalents': '技能/天赋',
   'skillstalents': '技能/天赋',
+  'skills': '技能/天赋',
+  'talents': '技能/天赋',
   'inventory': '物品栏',
+  'items': '物品栏',
   'sexLife': '性生活',
   'sexlife': '性生活',
+  'sexualLife': '性生活',
+  'sexHistory': '性爱经历',
+  'sexhistory': '性爱经历',
+  'sexualHistory': '性爱经历',
+  'sexExperience': '性爱经历',
+  'sexexperience': '性爱经历',
+  'sexualExperience': '性爱经历',
   'sexLifebody': '部位开发度',
   'sexlifebody': '部位开发度',
+  'bodyDevelopment': '部位开发度',
   'sexhobby': '性癖',
+  'sexHobby': '性癖',
+  'fetish': '性癖',
+  'fetishes': '性癖',
+  'sexualPreference': '性癖',
+  'sexualPreferences': '性癖',
   'preferguesture': '偏好姿势',
+  'preferredPositions': '偏好姿势',
+  'positions': '偏好姿势',
   'corePersonality': '核心性格锚点',
   'corepersonality': '核心性格锚点',
   'motivation': '角色动机',
@@ -6017,30 +6039,77 @@ const FIELD_NAME_ALIASES = Object.freeze({
   'relationshipstage': '关系阶段',
   'keyEvents': '关键事件',
   'keyevents': '关键事件',
+  'events': '关键事件',
   'Comment': '人物评价',
   'comment': '人物评价',
+  'evaluation': '人物评价',
   'wheatherinsameworld': '是否在同一个世界',
+  'sameWorld': '是否在同一个世界',
   'gender': '性别',
 
   // ===== 猎艳录模板字段 =====
   'theam': '主题',
+  'theme': '主题',
   'identity': '身份',
   'sexprocess': '性爱经历',
+  'sexProcess': '性爱经历',
+  'conquestHistory': '性爱经历',
   'currentRelation': '当前关系',
   'currentrelation': '当前关系',
+  'relationship': '当前关系',
   'skin': '淫纹',
+  'tattoo': '淫纹',
   'sexnumber': '性爱次数',
+  'sexNumber': '性爱次数',
+  'sexCount': '性爱次数',
+  'timesHadSex': '性爱次数',
   'sexguesture': '已掌握的姿势',
+  'sexGuesture': '已掌握的姿势',
+  'masteredPositions': '已掌握的姿势',
+  'learnedPositions': '已掌握的姿势',
+  'postures': '已掌握的姿势',
   'specialTechniques': '已掌握特殊技巧',
   'specialtechniques': '已掌握特殊技巧',
+  'techniques': '已掌握特殊技巧',
   'unlockcloth': '已解锁的服装',
+  'unlockCloth': '已解锁的服装',
+  'unlockedOutfits': '已解锁的服装',
+  'unlockedoutfits': '已解锁的服装',
+  'outfits': '已解锁的服装',
+  'clothes': '已解锁的服装',
+  'costumes': '已解锁的服装',
   'sexgame': '已经开发的玩法',
+  'sexGame': '已经开发的玩法',
+  'developedPlays': '已经开发的玩法',
+  'developedplays': '已经开发的玩法',
+  'plays': '已经开发的玩法',
+  'sexualPlays': '已经开发的玩法',
   'bodyFeatures': '身体敏感点',
   'bodyfeatures': '身体敏感点',
+  'sensitivePoints': '身体敏感点',
+  'sensitivepoints': '身体敏感点',
+  'sensitiveAreas': '身体敏感点',
+  'sensitiveParts': '身体敏感点',
+  'erogenousZones': '身体敏感点',
   'currentstatus': '当前状态',
+  'currentStatus': '当前状态',
   'unlockstatus': '已解锁的状态',
+  'unlockStatus': '已解锁的状态',
+  'unlockedStates': '已解锁的状态',
+  'unlockedstates': '已解锁的状态',
+  'unlockedStatus': '已解锁的状态',
   'sexvalue': '爱欲值',
+  'sexValue': '爱欲值',
+  'loveLustValue': '爱欲值',
+  'lovelustvalue': '爱欲值',
+  'lustValue': '爱欲值',
+  'loveValue': '爱欲值',
+  'affection': '爱欲值',
   'sexdescription': '肉体描述',
+  'sexDescription': '肉体描述',
+  'bodyDescription': '肉体描述',
+  'bodydescription': '肉体描述',
+  'physicalDescription': '肉体描述',
 
   // ===== 装备/物品相关 =====
   'type': '类型',
@@ -6048,7 +6117,6 @@ const FIELD_NAME_ALIASES = Object.freeze({
   'effects': '效果',
   'source': '来源',
   'currentState': '当前状态',
-  'currentstate': '当前状态',
   'statInfo': '数值信息',
   'statinfo': '数值信息',
   'boundEvents': '关联事件',
@@ -6081,6 +6149,7 @@ const FIELD_NAME_ALIASES = Object.freeze({
   // ===== 其他猎艳录字段 =====
   'firstEncounter': '初遇',
   'firstencounter': '初遇',
+  'firstMeeting': '初遇',
   'conquestProcess': '攻略过程',
   'conquestprocess': '攻略过程',
   'conquestTime': '攻略时间',
@@ -6111,10 +6180,13 @@ function appendExtraFields(parts, data, knownKeys) {
   const normalizeKey = (k) => String(k || '').trim().toLowerCase().replace(/[\s._-]+/g, '');
   const knownNormalized = new Set(Array.from(known).map(normalizeKey));
 
-  // 收集已知字段的中文标签名（用于值重复检测）
-  const knownChineseLabels = new Set();
-  for (const v of Object.values(FIELD_NAME_ALIASES)) {
-    if (v) knownChineseLabels.add(String(v).trim());
+  // 收集已输出的中文标签（用于避免重复）
+  const outputtedLabels = new Set();
+  // 也收集 known 字段对应的中文标签
+  for (const k of known) {
+    outputtedLabels.add(k);
+    const chineseLabel = FIELD_NAME_ALIASES[k] || FIELD_NAME_ALIASES[k.toLowerCase()];
+    if (chineseLabel) outputtedLabels.add(chineseLabel);
   }
 
   // 收集已输出的值（用于检测内容重复）
@@ -6127,83 +6199,57 @@ function appendExtraFields(parts, data, knownKeys) {
     }
   }
 
-  // 检测是否为纯英文标识符格式（camelCase, PascalCase, snake_case, kebab-case）
-  const isEnglishIdentifier = (s) => {
-    if (!s || typeof s !== 'string') return false;
-    // 纯 ASCII 字母、数字、下划线、连字符组成
-    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(s)) return false;
-    // 如果包含中文则不是纯英文
-    if (/[\u4e00-\u9fff]/.test(s)) return false;
-    return true;
-  };
-
-  // 检查英文字段名是否可能是某个中文标签的翻译（启发式匹配）
-  const mightBeDuplicateOfChinese = (englishKey, value) => {
-    // 1. 直接在映射表中查找
-    if (FIELD_NAME_ALIASES[englishKey]) return true;
-    if (FIELD_NAME_ALIASES[englishKey.toLowerCase()]) return true;
-
-    // 2. 检查值是否已经被其他字段输出（内容完全相同）
-    const valStr = JSON.stringify(value);
-    if (outputtedValues.has(valStr)) return true;
-
-    // 3. 检查是否为纯英文标识符格式，且存在对应的中文字段
-    if (isEnglishIdentifier(englishKey)) {
-      const normalized = normalizeKey(englishKey);
-      // 检查是否有类似的中文标签已经在已知列表中
-      for (const chineseLabel of knownChineseLabels) {
-        // 如果数据中存在这个中文标签字段，说明英文字段可能是重复的
-        if (data[chineseLabel] !== undefined) {
-          // 进一步检查值是否相似
-          const chineseVal = JSON.stringify(data[chineseLabel]);
-          if (chineseVal === valStr) return true;
-        }
-      }
-      // 如果纯英文字段名看起来像 camelCase 且长度较长，可能是系统字段
-      if (/[a-z][A-Z]/.test(englishKey) && englishKey.length > 4) {
-        // 检查是否有对应的中文值
-        const valueStr = String(value || '').trim();
-        // 如果值是中文，而键是英文，很可能是翻译重复
-        if (/[\u4e00-\u9fff]/.test(valueStr) && isEnglishIdentifier(englishKey)) {
-          // 检查是否已有相同值
-          for (const [k, v] of Object.entries(data)) {
-            if (k === englishKey) continue;
-            if (/[\u4e00-\u9fff]/.test(k) && JSON.stringify(v) === valStr) {
-              return true;
-            }
-          }
-        }
-      }
-    }
-
-    return false;
+  // 获取字段的中文标签（如果有的话）
+  const getChineseLabel = (key) => {
+    // 直接查找
+    let label = FIELD_NAME_ALIASES[key];
+    if (label) return label;
+    // 小写查找
+    label = FIELD_NAME_ALIASES[key.toLowerCase()];
+    if (label) return label;
+    // 如果是纯英文标识符但没有映射，返回原键名
+    return null;
   };
 
   for (const [key, value] of Object.entries(data)) {
+    // 跳过已知字段
     if (known.has(key)) continue;
     if (knownNormalized.has(normalizeKey(key))) continue;
 
-    // 检查是否为已知字段的别名
-    const aliasedField = FIELD_NAME_ALIASES[key];
-    if (aliasedField && (known.has(aliasedField) || knownNormalized.has(normalizeKey(aliasedField)))) continue;
-
-    // 智能检测：检查是否可能是中文字段的英文翻译
-    if (mightBeDuplicateOfChinese(key, value)) {
-      console.log(`[StoryGuide] 跳过疑似重复的英文字段: ${key}`);
-      continue;
-    }
-
+    // 跳过空值
     if (value === null || value === undefined) continue;
     if (typeof value === 'string' && !value.trim()) continue;
     if (Array.isArray(value) && value.length === 0) continue;
     if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) continue;
 
+    // 获取中文标签
+    const chineseLabel = getChineseLabel(key);
+    const displayLabel = chineseLabel || key; // 如果没有映射，使用原键名
+
+    // 检查这个中文标签是否已经被输出过
+    if (outputtedLabels.has(displayLabel)) {
+      console.log(`[StoryGuide] 跳过已输出的字段: ${key} -> ${displayLabel}`);
+      continue;
+    }
+
+    // 检查值是否已经被其他字段输出（内容完全相同）
+    const valStr = JSON.stringify(value);
+    if (outputtedValues.has(valStr)) {
+      console.log(`[StoryGuide] 跳过值重复的字段: ${key}`);
+      continue;
+    }
+
+    // 标记这个标签和值已输出
+    outputtedLabels.add(displayLabel);
+    outputtedLabels.add(key);
+    outputtedValues.add(valStr);
+
     const rendered = formatStructuredValue(value, mode);
     if (!rendered) continue;
     if (mode === 'markdown' && rendered.includes('\n')) {
-      parts.push(`${key}：\n${rendered}`);
+      parts.push(`${displayLabel}：\n${rendered}`);
     } else {
-      parts.push(`${key}：${rendered}`);
+      parts.push(`${displayLabel}：${rendered}`);
     }
   }
 }
