@@ -6275,6 +6275,8 @@ function buildConquestContent(conquest) {
   const template = String(s.structuredConquestEntryTemplate || '').trim() || DEFAULT_STRUCTURED_CONQUEST_ENTRY_TEMPLATE;
   const knownKeys = ['name', 'aliases', 'identity', 'firstEncounter', 'conquestProcess', 'conquestTime', 'currentRelation', 'specialTechniques', 'bodyFeatures', 'status', 'keyEvents', 'statInfo'];
   const extraParts = [];
+  knownKeys.__mode = mode;
+  appendExtraFields(extraParts, conquest, knownKeys);
   const vars = {
     name: formatTemplateField(conquest?.name, mode),
     aliases: formatTemplateField(conquest?.aliases, mode),
@@ -16596,6 +16598,8 @@ function setupEventListeners() {
       maybeInjectRollResult('msg_sent').catch(() => void 0);
       // 蓝灯索引 → 绿灯触发（尽量在生成前完成）
       maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
+      // 记录生成活动，最终在回复完成后触发
+      schedulePostGenerationAuto('msg_sent');
     });
 
     eventSource.on(event_types.MESSAGE_DELETED, async (data) => {
