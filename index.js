@@ -1961,7 +1961,9 @@ async function collectBlueWorldbookCharacterEntries() {
       const charMap = {};
 
       for (const e of entries) {
-        const comment = String(e.comment || e.title || '').trim();
+        let comment = String(e.comment || e.title || '').trim();
+        // 去掉 [已删除]、[xxx] 等前缀标签
+        comment = comment.replace(/^\[已删除\]\s*/i, '').replace(/^\[[^\]]*\]\s*/g, '').trim();
         // 只匹配以角色前缀开头的条目
         if (!comment.startsWith(prefix)) continue;
 
