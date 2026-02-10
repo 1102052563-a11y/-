@@ -1997,7 +1997,9 @@ async function collectBlueWorldbookCharacterEntries() {
 
         const finalName = (parsed?.name ? String(parsed.name).trim() : namePart) || namePart;
         if (finalName && !charMap[finalName]) {
-          charMap[finalName] = parsed || { name: finalName, _rawContent: content };
+          const entry = parsed || { name: finalName };
+          entry._rawContent = content;   // 始终保留原始内容以供推演使用
+          charMap[finalName] = entry;
           console.log(`[StoryGuide][平行世界] 发现蓝灯角色: "${finalName}"`);
         }
       }
@@ -2049,9 +2051,12 @@ function collectTrackedNpcProfiles(trackedNpcs, pwData) {
       }
     }
 
-    // 构建档案文本
+    // 构建档案文本：优先使用世界书条目的原始内容
     let profile = `【${name}】\n`;
-    if (found) {
+    if (found && found._rawContent) {
+      // 直接使用蓝灯世界书中的条目内容
+      profile += found._rawContent + '\n';
+    } else if (found) {
       if (found.personality) profile += `性格: ${found.personality}\n`;
       if (found.corePersonality) profile += `核心性格: ${found.corePersonality}\n`;
       if (found.motivation) profile += `动机: ${found.motivation}\n`;
@@ -2195,13 +2200,14 @@ async function runParallelWorldSimulation() {
         });
       }
 
-      // 6. 可选：写回世界书（更新角色条目的 keyEvents）
-      if (s.parallelWorldWriteToWorldbook) {
-        try {
-          await updateNpcWorldbookFromSimulation(npcName, npcUpdate, s);
-        } catch (e) {
-          console.warn(`[StoryGuide] 平行世界: 写回世界书失败 (${npcName}):`, e);
-        }
+    }
+
+    // 6. 可选：写回世界书（创建/更新专用「平行事件」条目）
+    if (s.parallelWorldWriteToWorldbook) {
+      try {
+        await writeParallelEventsEntry(pwData, s);
+      } catch (e) {
+        console.warn('[StoryGuide] 平行世界: 写回平行事件条目失败:', e);
       }
     }
 
@@ -2231,52 +2237,139 @@ async function runParallelWorldSimulation() {
 }
 
 /**
- * 将推演结果的核心信息写回角色世界书条目
+ * 将推演结果写入专用「平行事件」世界书条目（同时写入蓝灯和绿灯）。
+ * 条目以所有被追踪NPC的名字为关键词,由索引模块负责触发与上下文注入。
  */
-async function updateNpcWorldbookFromSimulation(npcName, npcUpdate, settings) {
+async function writeParallelEventsEntry(pwData, settings) {
   const s = settings || ensureSettings();
+  const prefix = String(s.characterEntryPrefix || '人物').replace(/\[[^\]]*\]\s*/g, '').trim();
+  const tracked = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
+  if (tracked.length === 0) return;
+
+  const maxEvents = s.parallelWorldMaxEventsPerNpc || 10;
+  const eventLog = pwData.eventLog || [];
+  const worldClock = pwData.worldClock || s.parallelWorldClock || '第1天';
+
+  // 按 NPC 分组构建内容
+  const lines = [`[平行世界事件记录]`, `世界时间: ${worldClock}`, ''];
+  for (const tn of tracked) {
+    const name = String(tn.name || '').trim();
+    if (!name) continue;
+    const npcEvents = eventLog.filter(e => e.npcName === name).slice(-maxEvents);
+    if (npcEvents.length === 0) continue;
+    lines.push(`【${name}】`);
+    for (const ev of npcEvents) {
+      let line = `- [${ev.time}] ${ev.event}`;
+      if (ev.impact) line += ` (影响: ${ev.impact})`;
+      lines.push(line);
+    }
+    lines.push('');
+  }
+
+  if (lines.length <= 3) return; // 无事件，不写入
+
+  const content = lines.join('\n');
+  // 关键词 = 所有被追踪NPC的名字,以便索引模块能匹配触发
+  const keywords = tracked.map(t => String(t.name || '').trim()).filter(Boolean);
+  keywords.push('平行事件', '离屏事件');
+
+  const entryComment = `平行事件`;
   const meta = getSummaryMeta();
-  const charEntries = meta.characterEntries || {};
 
-  // 从缓存中找这个角色的条目
-  let matchedKey = null;
-  let matchedEntry = null;
-  for (const [k, ce] of Object.entries(charEntries)) {
-    const ceName = String(ce.name || '').trim();
-    const ceAliases = Array.isArray(ce.aliases) ? ce.aliases : [];
-    if (ceName === npcName || ceAliases.some(a => String(a).trim() === npcName)) {
-      matchedKey = k;
-      matchedEntry = ce;
-      break;
-    }
-  }
-  if (!matchedEntry || !matchedKey) return;
+  // 使用 writeOrUpdateStructuredEntry 写入蓝灯和绿灯
+  const entryData = {
+    name: '平行事件',
+    isUpdated: true,
+    isNew: false,
+  };
 
-  // 构建更新数据
-  const updateData = { ...matchedEntry, isUpdated: true, isNew: false };
-
-  // 添加离屏事件到 keyEvents
-  const existingEvents = Array.isArray(updateData.keyEvents) ? [...updateData.keyEvents] : [];
-  if (Array.isArray(npcUpdate.events)) {
-    for (const evt of npcUpdate.events) {
-      existingEvents.push(`[离屏] ${evt.time || ''}: ${evt.event || ''}`);
-    }
-  }
-  // 限制最多保留最后10条 keyEvents
-  if (existingEvents.length > 10) {
-    updateData.keyEvents = existingEvents.slice(-10);
-  } else {
-    updateData.keyEvents = existingEvents;
-  }
-
-  // 更新状态/位置/情绪（如果有）
-  if (npcUpdate.location) updateData.status = (updateData.status || '') + ` [位置: ${npcUpdate.location}]`;
-  if (npcUpdate.mood) updateData.status = (updateData.status || '') + ` [情绪: ${npcUpdate.mood}]`;
-  if (npcUpdate.currentGoal) updateData.motivation = npcUpdate.currentGoal;
-
-  // 强制同时写入蓝灯和绿灯世界书
+  // 构建写入数据（直接使用底层 STscript 写入,不走角色条目流程）
   const dualWriteSettings = { ...s, summaryToWorldInfo: true, summaryToBlueWorldInfo: true };
-  await writeOrUpdateCharacterEntry(updateData, meta, dualWriteSettings);
+
+  // 写绿灯
+  try {
+    const greenTarget = resolveGreenWorldInfoTarget(dualWriteSettings);
+    if (greenTarget.file) {
+      await writeWorldInfoEntryDirect({
+        file: greenTarget.file,
+        comment: entryComment,
+        content,
+        keys: keywords,
+        constant: 0,  // 绿灯=关键词触发
+      });
+      console.log('[StoryGuide][平行世界] 平行事件条目已写入绿灯世界书');
+    }
+  } catch (e) {
+    console.warn('[StoryGuide][平行世界] 写入绿灯失败:', e);
+  }
+
+  // 写蓝灯
+  try {
+    const blueFile = normalizeWorldInfoFileName(dualWriteSettings.summaryBlueWorldInfoFile);
+    if (blueFile) {
+      await writeWorldInfoEntryDirect({
+        file: blueFile,
+        comment: entryComment,
+        content,
+        keys: keywords,
+        constant: 1,  // 蓝灯=常开
+      });
+      console.log('[StoryGuide][平行世界] 平行事件条目已写入蓝灯世界书');
+    }
+  } catch (e) {
+    console.warn('[StoryGuide][平行世界] 写入蓝灯失败:', e);
+  }
+}
+
+/**
+ * 直接使用 STscript 写入/更新世界书条目（通用底层方法）
+ */
+async function writeWorldInfoEntryDirect({ file, comment, content, keys, constant = 0 }) {
+  if (!file || !comment) return;
+
+  const qFile = quoteSlashValue(file);
+  const qComment = quoteSlashValue(comment);
+  const qContent = quoteSlashValue(content.replace(/\|/g, '｜'));
+  const keyStr = Array.isArray(keys) ? keys.join(',') : String(keys || '');
+  const qKey = quoteSlashValue(keyStr);
+  const uidVar = '__sg_pw_uid';
+
+  // 先尝试查找已有条目
+  try {
+    const findScript = `/findentry file=${qFile} field=comment ${qComment} | /setvar key=${uidVar}`;
+    const findResult = await execSlash(findScript);
+    const uid = parseFindEntryUid(findResult);
+
+    if (uid) {
+      // 已有条目 -> 更新内容和关键词
+      const updateParts = [
+        `/setentryfield file=${qFile} uid=${uid} field=content ${qContent}`,
+        `/setentryfield file=${qFile} uid=${uid} field=key ${qKey}`,
+        `/setentryfield file=${qFile} uid=${uid} field=disable 0`,
+      ];
+      await execSlash(updateParts.join(' | '));
+      console.log(`[StoryGuide][平行世界] 已更新条目 uid=${uid} (file=${file})`);
+      return;
+    }
+  } catch { /* 查找失败，尝试新建 */ }
+
+  // 新建条目
+  const createParts = [
+    `/createentry file=${qFile} key=${qKey} ${qContent}`,
+    `/setvar key=${uidVar}`,
+  ];
+  await execSlash(createParts.join(' | '));
+
+  // 使用 {{getvar::}} 引用刚创建的 uid 来设置字段
+  const setupParts = [
+    `/setentryfield file=${qFile} uid={{getvar::${uidVar}}} field=comment ${qComment}`,
+    `/setentryfield file=${qFile} uid={{getvar::${uidVar}}} field=content ${qContent}`,
+    `/setentryfield file=${qFile} uid={{getvar::${uidVar}}} field=constant ${constant}`,
+    `/setentryfield file=${qFile} uid={{getvar::${uidVar}}} field=disable 0`,
+    `/flushvar ${uidVar}`,
+  ];
+  await execSlash(setupParts.join(' | '));
+  console.log(`[StoryGuide][平行世界] 新建条目 (file=${file})`);
 }
 
 /**
