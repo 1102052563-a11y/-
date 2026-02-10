@@ -546,6 +546,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   summaryCustomApiKey: '',
   summaryCustomModel: 'gpt-4o-mini',
   summaryCustomModelsCache: [],
+  // 缓存世界书文件列表（来自 ST 后端，用于下拉选择）
+  summaryWorldInfoFilesCache: [],
   summaryCustomMaxTokens: 2048,
   summaryCustomStream: false,
 
@@ -1086,9 +1088,10 @@ function exportPreset() {
   delete preset.settings.wiRollCustomApiKey;
   delete preset.settings.sexGuideCustomApiKey;
   // 移除缓存数据
-  delete preset.settings.customModelsCache;
-  delete preset.settings.summaryCustomModelsCache;
-  delete preset.settings.wiIndexCustomModelsCache;
+    delete preset.settings.customModelsCache;
+    delete preset.settings.summaryCustomModelsCache;
+    delete preset.settings.summaryWorldInfoFilesCache;
+    delete preset.settings.wiIndexCustomModelsCache;
   delete preset.settings.wiRollCustomModelsCache;
   delete preset.settings.sexGuideCustomModelsCache;
 
@@ -3480,6 +3483,108 @@ async function fetchWorldInfoFileJsonCompat(fileName) {
     }
   }
   throw lastErr || new Error('读取世界书失败');
+}
+
+function parseWorldbookList(raw) {
+  const out = [];
+  const pushName = (name) => {
+    const n = normalizeWorldInfoFileName(String(name || '').trim());
+    if (!n) return;
+    out.push(n);
+  };
+
+  const extractName = (item) => {
+    if (!item) return '';
+    if (typeof item === 'string') return item;
+    if (typeof item !== 'object') return '';
+    return (
+      item.name || item.file || item.filename || item.title || item.id
+      || item.lorebook || item.worldbook || item.worldBook
+    );
+  };
+
+  const collectFrom = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach((it) => {
+        const n = extractName(it);
+        if (n) pushName(n);
+      });
+      return;
+    }
+    if (typeof val === 'object') {
+      const n = extractName(val);
+      if (n) pushName(n);
+    }
+  };
+
+  if (!raw) return [];
+  if (typeof raw === 'string') {
+    pushName(raw);
+  } else {
+    const candidates = [
+      raw,
+      raw?.data,
+      raw?.result,
+      raw?.worldbooks,
+      raw?.worldBooks,
+      raw?.worldbook,
+      raw?.lorebooks,
+      raw?.lorebook,
+      raw?.books,
+      raw?.book,
+      raw?.list,
+      raw?.items,
+      raw?.files,
+      raw?.file_list,
+    ];
+    candidates.forEach(collectFrom);
+
+    if (!out.length && typeof raw === 'object') {
+      Object.values(raw).forEach(collectFrom);
+    }
+  }
+
+  return Array.from(new Set(out)).sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+async function fetchWorldInfoListCompat() {
+  const tryList = [
+    { method: 'GET', url: '/api/worldinfo/list' },
+    { method: 'POST', url: '/api/worldinfo/list', body: {} },
+    { method: 'GET', url: '/api/worldinfo/getall' },
+    { method: 'POST', url: '/api/worldinfo/getall', body: {} },
+    { method: 'GET', url: '/api/worldinfo/all' },
+    { method: 'GET', url: '/api/worldinfo/listall' },
+    { method: 'GET', url: '/api/lorebook/list' },
+    { method: 'GET', url: '/api/lorebooks/list' },
+    { method: 'GET', url: '/api/lorebook/getall' },
+    { method: 'GET', url: '/api/lorebooks/getall' },
+  ];
+
+  let lastErr = null;
+  for (const t of tryList) {
+    try {
+      const data = (t.method === 'POST')
+        ? await fetchJsonCompat(t.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(t.body || {}) })
+        : await fetchJsonCompat(t.url, { method: 'GET' });
+      const names = parseWorldbookList(data);
+      if (names.length) return names;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  // Fallback: try context cache if available
+  try {
+    const ctx = SillyTavern.getContext?.() ?? {};
+    const fallback = parseWorldbookList(
+      ctx?.worldInfo || ctx?.world_info || ctx?.lorebook || ctx?.lorebooks || ctx?.worldbooks || ctx?.worldBooks
+    );
+    if (fallback.length) return fallback;
+  } catch { /* ignore */ }
+
+  throw lastErr || new Error('未解析到世界书列表');
 }
 
 function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
@@ -10535,6 +10640,20 @@ function fillSummaryModelSelect(modelIds, selected) {
 }
 
 
+function fillWorldbookSelect($sel, names, selected) {
+  if (!$sel || !$sel.length) return;
+  $sel.empty();
+  $sel.append(`<option value="">(选择世界书)</option>`);
+  (names || []).forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (selected && name === selected) opt.selected = true;
+    $sel.append(opt);
+  });
+}
+
+
 function fillIndexModelSelect(modelIds, selected) {
   const $sel = $('#sg_wiIndexModelSelect');
   if (!$sel.length) return;
@@ -10674,6 +10793,25 @@ async function refreshSummaryModels() {
     setStatus(`已刷新总结模型：${ids.length} 个（直连 fallback）`, 'ok');
   } catch (e) {
     setStatus(`刷新总结模型失败：${e?.message ?? e}`, 'err');
+  }
+}
+
+async function refreshWorldbookList() {
+  const s = ensureSettings();
+  setStatus('正在读取酒馆世界书列表…', 'warn');
+  try {
+    const names = await fetchWorldInfoListCompat();
+    if (!names.length) {
+      setStatus('刷新成功，但未解析到世界书列表（返回格式不兼容）', 'warn');
+      return;
+    }
+    s.summaryWorldInfoFilesCache = names;
+    saveSettings();
+    fillWorldbookSelect($('#sg_summaryWorldbookSelect'), names, normalizeWorldInfoFileName(s.summaryWorldInfoFile));
+    fillWorldbookSelect($('#sg_summaryBlueWorldbookSelect'), names, normalizeWorldInfoFileName(s.summaryBlueWorldInfoFile));
+    setStatus(`已刷新世界书列表：${names.length} 本`, 'ok');
+  } catch (e) {
+    setStatus(`刷新世界书列表失败：${e?.message ?? e}`, 'err');
   }
 }
 
@@ -12922,11 +13060,18 @@ function buildModalHtml() {
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用）</label>
               <input id="sg_summaryWorldInfoFile" type="text" placeholder="世界书文件名" style="flex:1; min-width: 220px;">
+              <select id="sg_summaryWorldbookSelect" class="sg-model-select" title="从酒馆世界书选择" style="min-width: 160px;">
+                <option value="">(选择世界书)</option>
+              </select>
+              <button class="menu_button sg-btn" id="sg_refreshWorldbookList" title="从酒馆读取世界书列表">刷新列表</button>
             </div>
 
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo" checked>同时写入蓝灯世界书（常开索引）</label>
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
+              <select id="sg_summaryBlueWorldbookSelect" class="sg-model-select" title="从酒馆世界书选择" style="min-width: 160px;">
+                <option value="">(选择世界书)</option>
+              </select>
             </div>
 
             <div class="sg-row sg-inline" style="gap: 20px;">
@@ -14737,6 +14882,31 @@ function ensureModal() {
     if (id) $('#sg_summaryCustomModel').val(id);
   });
 
+  $('#sg_refreshWorldbookList').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await refreshWorldbookList();
+  });
+
+  $('#sg_summaryWorldbookSelect').on('change', () => {
+    const name = String($('#sg_summaryWorldbookSelect').val() || '').trim();
+    if (!name) return;
+    $('#sg_summaryWorldInfoFile').val(name);
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryInfoLabel();
+    updateBlueIndexInfoLabel();
+  });
+
+  $('#sg_summaryBlueWorldbookSelect').on('change', () => {
+    const name = String($('#sg_summaryBlueWorldbookSelect').val() || '').trim();
+    if (!name) return;
+    $('#sg_summaryBlueWorldInfoFile').val(name);
+    pullUiToSettings();
+    saveSettings();
+    updateSummaryInfoLabel();
+    updateBlueIndexInfoLabel();
+  });
+
 
   $('#sg_wiIndexModelSelect').on('change', () => {
     const id = String($('#sg_wiIndexModelSelect').val() || '').trim();
@@ -15694,6 +15864,11 @@ function pullSettingsToUi() {
   $('#sg_summaryToWorldInfo').prop('checked', !!s.summaryToWorldInfo);
   $('#sg_summaryWorldInfoTarget').val(String(s.summaryWorldInfoTarget || 'chatbook'));
   $('#sg_summaryWorldInfoFile').val(String(s.summaryWorldInfoFile || ''));
+  fillWorldbookSelect(
+    $('#sg_summaryWorldbookSelect'),
+    Array.isArray(s.summaryWorldInfoFilesCache) ? s.summaryWorldInfoFilesCache : [],
+    normalizeWorldInfoFileName(s.summaryWorldInfoFile)
+  );
   $('#sg_summaryWorldInfoCommentPrefix').val(String(s.summaryWorldInfoCommentPrefix || '剧情总结'));
   $('#sg_summaryWorldInfoKeyMode').val(String(s.summaryWorldInfoKeyMode || 'keywords'));
   $('#sg_summaryIndexPrefix').val(String(s.summaryIndexPrefix || 'A-'));
@@ -15704,6 +15879,11 @@ function pullSettingsToUi() {
   $('#sg_summaryAutoRollback').prop('checked', !!s.summaryAutoRollback);
   $('#sg_structuredAutoRollback').prop('checked', !!s.structuredAutoRollback);
   $('#sg_summaryBlueWorldInfoFile').val(String(s.summaryBlueWorldInfoFile || ''));
+  fillWorldbookSelect(
+    $('#sg_summaryBlueWorldbookSelect'),
+    Array.isArray(s.summaryWorldInfoFilesCache) ? s.summaryWorldInfoFilesCache : [],
+    normalizeWorldInfoFileName(s.summaryBlueWorldInfoFile)
+  );
 
   // 地图功能
   $('#sg_mapEnabled').prop('checked', !!s.mapEnabled);
