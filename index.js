@@ -1958,7 +1958,6 @@ async function collectBlueWorldbookCharacterEntries() {
     const charMap = {};
 
     for (const e of entries) {
-      if (e.disabled) continue;
       const comment = String(e.comment || e.title || '').trim();
       // 只匹配以角色前缀开头的条目
       if (!comment.startsWith(prefix)) continue;
