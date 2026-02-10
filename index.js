@@ -3548,11 +3548,8 @@ function parseWorldbookList(raw) {
   return Array.from(new Set(out)).sort((a, b) => String(a).localeCompare(String(b)));
 }
 
-function collectWorldbookNamesFromAny(root, maxDepth = 3, maxItems = 2000) {
+function collectWorldbookNamesFromAny(root) {
   const out = new Set();
-  const queue = [{ val: root, depth: 0 }];
-  const seen = new Set();
-
   const add = (name) => {
     const n = normalizeWorldInfoFileName(String(name || '').trim());
     if (!n) return;
@@ -3569,42 +3566,43 @@ function collectWorldbookNamesFromAny(root, maxDepth = 3, maxItems = 2000) {
     );
   };
 
-  const interestingKeys = new Set([
-    'worldInfo', 'world_info', 'worldInfos',
-    'worldbook', 'worldBook', 'worldbooks', 'worldBooks',
-    'lorebook', 'lorebooks', 'books', 'book',
-    'list', 'items', 'files', 'file_list',
-  ]);
-
-  while (queue.length && out.size < maxItems) {
-    const { val, depth } = queue.shift();
-    if (!val || typeof val !== 'object') continue;
-    if (seen.has(val)) continue;
-    seen.add(val);
-
+  const collectFromList = (val) => {
+    if (!val) return;
     if (Array.isArray(val)) {
       val.forEach((it) => {
         const n = extractName(it);
         if (n) add(n);
-        if (depth + 1 <= maxDepth && it && typeof it === 'object') {
-          queue.push({ val: it, depth: depth + 1 });
-        }
       });
-      continue;
+      return;
     }
-
-    const directName = extractName(val);
-    if (directName) add(directName);
-
-    for (const [k, v] of Object.entries(val)) {
-      if (interestingKeys.has(k)) {
-        const parsed = parseWorldbookList(v);
-        parsed.forEach(add);
-      }
-      if (depth + 1 <= maxDepth && v && typeof v === 'object') {
-        queue.push({ val: v, depth: depth + 1 });
-      }
+    if (typeof val === 'object') {
+      const n = extractName(val);
+      if (n) add(n);
     }
+  };
+
+  const roots = Array.isArray(root) ? root : [root];
+  for (const r of roots) {
+    if (!r || typeof r !== 'object') continue;
+
+    // 只从“可能是世界书列表”的键里取，避免扫出条目/预设等
+    const candidates = [
+      r.worldInfo,
+      r.world_info,
+      r.worldbooks,
+      r.worldBooks,
+      r.worldbook,
+      r.worldBook,
+      r.lorebooks,
+      r.lorebook,
+      r.books,
+      r.book,
+      r.list,
+      r.items,
+      r.files,
+      r.file_list,
+    ];
+    candidates.forEach(collectFromList);
   }
 
   return Array.from(out).sort((a, b) => String(a).localeCompare(String(b)));
@@ -3641,15 +3639,14 @@ async function fetchWorldInfoListCompat() {
   try {
     const ctx = SillyTavern.getContext?.() ?? {};
     const fallback = collectWorldbookNamesFromAny([
-      ctx,
       ctx?.worldInfo,
       ctx?.world_info,
       ctx?.lorebook,
       ctx?.lorebooks,
       ctx?.worldbooks,
       ctx?.worldBooks,
-      ctx?.extensionSettings,
-      globalThis?.SillyTavern,
+      globalThis?.SillyTavern?.getContext?.()?.worldInfo,
+      globalThis?.SillyTavern?.getContext?.()?.world_info,
     ]);
     if (fallback.length) return fallback;
   } catch { /* ignore */ }
