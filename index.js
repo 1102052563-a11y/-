@@ -1943,10 +1943,61 @@ function setParallelWorldStatus(text, kind = '') {
 /**
  * 收集被追踪NPC的档案信息（从结构化条目缓存中获取）
  */
-function collectTrackedNpcProfiles(trackedNpcs, pwData) {
+/**
+ * 从蓝灯世界书中提取角色条目（去重），避免绿灯+蓝灯同时读取导致重复
+ */
+async function collectBlueWorldbookCharacterEntries() {
   const s = ensureSettings();
-  const meta = getSummaryMeta();
-  const charEntries = meta.characterEntries || {};
+  const prefix = String(s.characterEntryPrefix || '人物').trim();
+  const file = pickBlueIndexFileName();
+  if (!file) return {};
+
+  try {
+    const json = await fetchWorldInfoFileJsonCompat(file);
+    const entries = parseWorldbookJson(JSON.stringify(json || {}));
+    const charMap = {};
+
+    for (const e of entries) {
+      if (e.disabled) continue;
+      const comment = String(e.comment || e.title || '').trim();
+      // 只匹配以角色前缀开头的条目
+      if (!comment.startsWith(prefix)) continue;
+
+      const content = String(e.content || '');
+      // 尝试从内容中提取 JSON 结构化数据
+      const jsonMatch = content.match(/```json\s*([\s\S]*?)```/) || content.match(/\{[\s\S]*"name"\s*:/)
+      let parsed = null;
+      if (jsonMatch) {
+        try { parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]); } catch { }
+      }
+      if (!parsed) {
+        // 尝试直接解析整个 content
+        try { parsed = JSON.parse(content); } catch { }
+      }
+
+      if (parsed && parsed.name) {
+        const name = String(parsed.name).trim();
+        if (name && !charMap[name]) {
+          charMap[name] = parsed;
+        }
+      } else {
+        // 无法解析JSON，用comment提取名称
+        const namePart = comment.replace(prefix, '').replace(/^[-_：:\s]+/, '').trim();
+        if (namePart && !charMap[namePart]) {
+          charMap[namePart] = { name: namePart, _rawContent: content };
+        }
+      }
+    }
+    return charMap;
+  } catch (e) {
+    console.warn('[StoryGuide] 读取蓝灯世界书角色条目失败:', e);
+    return {};
+  }
+}
+
+function collectTrackedNpcProfiles(trackedNpcs, pwData) {
+  // 使用上层传入的蓝灯角色缓存（如果有），否则回退到 meta
+  const charEntries = pwData._blueCharEntries || getSummaryMeta().characterEntries || {};
   const profiles = [];
 
   for (const tn of trackedNpcs) {
@@ -1955,13 +2006,15 @@ function collectTrackedNpcProfiles(trackedNpcs, pwData) {
     if (!name) continue;
 
     // 在角色缓存中查找
-    let found = null;
-    for (const [k, ce] of Object.entries(charEntries)) {
-      const ceName = String(ce.name || '').trim();
-      const ceAliases = Array.isArray(ce.aliases) ? ce.aliases : [];
-      if (ceName === name || ceAliases.some(a => String(a).trim() === name)) {
-        found = ce;
-        break;
+    let found = charEntries[name] || null;
+    if (!found) {
+      for (const [k, ce] of Object.entries(charEntries)) {
+        const ceName = String(ce.name || '').trim();
+        const ceAliases = Array.isArray(ce.aliases) ? ce.aliases : [];
+        if (ceName === name || ceAliases.some(a => String(a).trim() === name)) {
+          found = ce;
+          break;
+        }
       }
     }
 
@@ -2035,10 +2088,13 @@ async function runParallelWorldSimulation() {
   showToast('🌍 平行世界推演中…', { kind: 'info', spinner: true, sticky: true });
 
   try {
-    // 1. 收集上下文
+    // 1. 收集上下文（仅从蓝灯世界书读取角色数据）
+    const blueCharEntries = await collectBlueWorldbookCharacterEntries();
+    pwData._blueCharEntries = blueCharEntries;
     const snapshot = buildSnapshot();
     const snapshotText = snapshot?.text || '';
     const npcProfilesText = collectTrackedNpcProfiles(tracked, pwData);
+    delete pwData._blueCharEntries; // 清理临时数据
     const worldClock = pwData.worldClock || s.parallelWorldClock || '第1天';
 
     // 2. 构建 prompt
@@ -2187,8 +2243,9 @@ async function updateNpcWorldbookFromSimulation(npcName, npcUpdate, settings) {
   if (npcUpdate.mood) updateData.status = (updateData.status || '') + ` [情绪: ${npcUpdate.mood}]`;
   if (npcUpdate.currentGoal) updateData.motivation = npcUpdate.currentGoal;
 
-  // 写回世界书
-  await writeOrUpdateCharacterEntry(updateData, meta, s);
+  // 强制同时写入蓝灯和绿灯世界书
+  const dualWriteSettings = { ...s, summaryToWorldInfo: true, summaryToBlueWorldInfo: true };
+  await writeOrUpdateCharacterEntry(updateData, meta, dualWriteSettings);
 }
 
 /**
@@ -2299,24 +2356,31 @@ function updateParallelWorldClockDisplay(clockText) {
 /**
  * 刷新 NPC 追踪列表（从角色缓存中获取可选的NPC名单）
  */
-function refreshParallelWorldNpcList() {
+async function refreshParallelWorldNpcList() {
   const $list = $('#sg_pwNpcList');
   if (!$list.length) return;
 
   const s = ensureSettings();
-  const meta = getSummaryMeta();
-  const charEntries = meta.characterEntries || {};
   const tracked = s.parallelWorldTrackedNpcs || [];
 
-  // 获取所有已知角色名
+  $list.html('<div class="sg-hint">正在读取蓝灯世界书…</div>');
+
+  // 仅从蓝灯世界书读取角色条目（避免与绿灯重复）
+  const blueCharEntries = await collectBlueWorldbookCharacterEntries();
+
+  // 获取所有已知角色名（去重）
   const allNames = [];
-  for (const [k, ce] of Object.entries(charEntries)) {
-    const name = String(ce.name || '').trim();
-    if (name) allNames.push(name);
+  const seen = new Set();
+  for (const [k, ce] of Object.entries(blueCharEntries)) {
+    const name = String(ce.name || k).trim();
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      allNames.push(name);
+    }
   }
 
   if (allNames.length === 0) {
-    $list.html('<div class="sg-hint">暂无角色条目。请先开启结构化条目功能以自动创建角色档案。</div>');
+    $list.html('<div class="sg-hint">蓝灯世界书中暂无角色条目。请先开启结构化条目功能并确保写入蓝灯世界书。</div>');
     return;
   }
 
