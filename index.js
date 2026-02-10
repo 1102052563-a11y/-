@@ -1088,10 +1088,10 @@ function exportPreset() {
   delete preset.settings.wiRollCustomApiKey;
   delete preset.settings.sexGuideCustomApiKey;
   // 移除缓存数据
-    delete preset.settings.customModelsCache;
-    delete preset.settings.summaryCustomModelsCache;
-    delete preset.settings.summaryWorldInfoFilesCache;
-    delete preset.settings.wiIndexCustomModelsCache;
+  delete preset.settings.customModelsCache;
+  delete preset.settings.summaryCustomModelsCache;
+  delete preset.settings.summaryWorldInfoFilesCache;
+  delete preset.settings.wiIndexCustomModelsCache;
   delete preset.settings.wiRollCustomModelsCache;
   delete preset.settings.sexGuideCustomModelsCache;
 
@@ -3637,7 +3637,50 @@ async function fetchWorldInfoListCompat() {
     }
   }
 
-  // Fallback: try context cache if available
+  // Fallback 1: try to read from DOM (#world_info select element in SillyTavern UI)
+  try {
+    const names = [];
+    const $sel = $('#world_info');
+    if ($sel.length) {
+      $sel.find('option').each(function () {
+        const v = $(this).val();
+        if (v && v !== '' && v !== 'null' && v !== 'undefined') {
+          const n = normalizeWorldInfoFileName(String(v).trim());
+          if (n) names.push(n);
+        }
+      });
+    }
+    // Also try #world_editor_select (some ST versions)
+    const $edSel = $('#world_editor_select');
+    if ($edSel.length) {
+      $edSel.find('option').each(function () {
+        const v = $(this).val();
+        if (v && v !== '' && v !== 'null' && v !== 'undefined') {
+          const n = normalizeWorldInfoFileName(String(v).trim());
+          if (n) names.push(n);
+        }
+      });
+    }
+    if (names.length) {
+      const unique = Array.from(new Set(names)).sort((a, b) => String(a).localeCompare(String(b)));
+      return unique;
+    }
+  } catch { /* ignore */ }
+
+  // Fallback 2: try global world_names (common in many ST versions)
+  try {
+    const wn = globalThis.world_names
+      ?? globalThis?.SillyTavern?.getContext?.()?.world_names
+      ?? globalThis?.SillyTavern?.getContext?.()?.worldNames;
+    if (Array.isArray(wn) && wn.length) {
+      const names = wn
+        .map(n => normalizeWorldInfoFileName(String(n || '').trim()))
+        .filter(Boolean);
+      if (names.length) return Array.from(new Set(names)).sort((a, b) => String(a).localeCompare(String(b)));
+    }
+  } catch { /* ignore */ }
+
+  // Fallback 3: try context cache if available
   try {
     const ctx = SillyTavern.getContext?.() ?? {};
     const fallback = collectWorldbookNamesFromAny([
@@ -3651,6 +3694,28 @@ async function fetchWorldInfoListCompat() {
       globalThis?.SillyTavern?.getContext?.()?.world_info,
     ]);
     if (fallback.length) return fallback;
+  } catch { /* ignore */ }
+
+  // Fallback 4: try chat_metadata.world and selected character lore
+  try {
+    const ctx = SillyTavern.getContext?.() ?? {};
+    const meta = ctx?.chatMetadata ?? ctx?.chat_metadata ?? {};
+    const names = [];
+    // chat-level world info
+    if (meta?.world) {
+      const n = normalizeWorldInfoFileName(String(meta.world).trim());
+      if (n) names.push(n);
+    }
+    // character-level world info
+    const charId = ctx?.characterId ?? ctx?.this_chid;
+    if (charId != null && Array.isArray(ctx?.characters)) {
+      const char = ctx.characters[charId];
+      if (char?.data?.extensions?.world) {
+        const n = normalizeWorldInfoFileName(String(char.data.extensions.world).trim());
+        if (n) names.push(n);
+      }
+    }
+    if (names.length) return Array.from(new Set(names)).sort((a, b) => String(a).localeCompare(String(b)));
   } catch { /* ignore */ }
 
   if (lastErr) throw lastErr;
@@ -4557,7 +4622,7 @@ async function callViaCustom(apiBaseUrl, apiKey, model, messages, temperature, m
     const status = e?.status;
     if (status === 404 || status === 405) {
       console.warn('[StoryGuide] backend proxy unavailable; fallback to browser direct');
-        return await callViaCustomBrowserDirect(base, apiKey, model, messages, temperature, maxTokens, topP, stream, signal);
+      return await callViaCustomBrowserDirect(base, apiKey, model, messages, temperature, maxTokens, topP, stream, signal);
     }
     throw e;
   }
@@ -8094,12 +8159,12 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     const affectsProgress = (reason !== 'manual_range');
     const keyMode = String(s.summaryWorldInfoKeyMode || 'keywords');
 
-      let created = 0;
-      let wroteGreenOk = 0;
-      let wroteBlueOk = 0;
-      const writeErrs = [];
-      const runErrs = [];
-      let cancelledEarly = false;
+    let created = 0;
+    let wroteGreenOk = 0;
+    let wroteBlueOk = 0;
+    const writeErrs = [];
+    const runErrs = [];
+    let cancelledEarly = false;
 
     // 读取 stat_data（如果启用）
     let summaryStatData = null;
@@ -8125,14 +8190,14 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
     }
 
-      for (let i = 0; i < segments.length; i++) {
-        // 检查是否被取消
-        if (summaryCancelled) {
-          setStatus('总结已取消', 'warn');
-          showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
-          cancelledEarly = true;
-          break;
-        }
+    for (let i = 0; i < segments.length; i++) {
+      // 检查是否被取消
+      if (summaryCancelled) {
+        setStatus('总结已取消', 'warn');
+        showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+        cancelledEarly = true;
+        break;
+      }
 
       const seg = segments[i];
       const startIdx = seg.startIdx;
@@ -8149,44 +8214,44 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         continue;
       }
 
-        const messages = buildSummaryPromptMessages(chunkText, fromFloor, toFloor, summaryStatData);
-        const schema = getSummarySchema();
+      const messages = buildSummaryPromptMessages(chunkText, fromFloor, toFloor, summaryStatData);
+      const schema = getSummarySchema();
 
-        let jsonText = '';
-        summaryAbortController = new AbortController();
-        const summarySignal = summaryAbortController.signal;
-        try {
-          if (String(s.summaryProvider || 'st') === 'custom') {
-            jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream, summarySignal);
-            const parsedTry = safeJsonParse(jsonText);
-            if (!parsedTry || !parsedTry.summary) {
-              try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream, summarySignal); }
-              catch { /* ignore */ }
-            }
-          } else {
-            jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature, summarySignal);
-            if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
-            const parsedTry = safeJsonParse(jsonText);
-            if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
+      let jsonText = '';
+      summaryAbortController = new AbortController();
+      const summarySignal = summaryAbortController.signal;
+      try {
+        if (String(s.summaryProvider || 'st') === 'custom') {
+          jsonText = await callViaCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream, summarySignal);
+          const parsedTry = safeJsonParse(jsonText);
+          if (!parsedTry || !parsedTry.summary) {
+            try { jsonText = await fallbackAskJsonCustom(s.summaryCustomEndpoint, s.summaryCustomApiKey, s.summaryCustomModel, messages, s.summaryTemperature, s.summaryCustomMaxTokens, 0.95, s.summaryCustomStream, summarySignal); }
+            catch { /* ignore */ }
           }
-        } catch (e) {
-          if (summaryCancelled || isAbortError(e)) {
-            setStatus('总结已取消', 'warn');
-            showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
-            cancelledEarly = true;
-            break;
-          }
-          throw e;
-        } finally {
-          summaryAbortController = null;
+        } else {
+          jsonText = await callViaSillyTavern(messages, schema, s.summaryTemperature, summarySignal);
+          if (typeof jsonText !== 'string') jsonText = JSON.stringify(jsonText ?? '');
+          const parsedTry = safeJsonParse(jsonText);
+          if (!parsedTry || !parsedTry.summary) jsonText = await fallbackAskJson(messages, s.summaryTemperature);
         }
-
-        if (summaryCancelled) {
+      } catch (e) {
+        if (summaryCancelled || isAbortError(e)) {
           setStatus('总结已取消', 'warn');
           showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
           cancelledEarly = true;
           break;
         }
+        throw e;
+      } finally {
+        summaryAbortController = null;
+      }
+
+      if (summaryCancelled) {
+        setStatus('总结已取消', 'warn');
+        showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+        cancelledEarly = true;
+        break;
+      }
 
       const parsed = safeJsonParse(jsonText);
       if (!parsed || !parsed.summary) {
@@ -8353,8 +8418,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     }
 
     // final status
-      if (cancelledEarly) return;
-      if (totalSeg > 1) {
+    if (cancelledEarly) return;
+    if (totalSeg > 1) {
       const parts = [`生成 ${created} 条`];
       if (s.summaryToWorldInfo || s.summaryToBlueWorldInfo) {
         const wrote = [];
@@ -8541,20 +8606,20 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
       }
     }
 
-      let processed = 0;
-      let cancelledEarly = false;
-      for (const seg of segments) {
-        if (structuredCancelled) {
-          setStatus('结构化总结已取消', 'warn');
-          showToast('结构化总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
-          cancelledEarly = true;
-          break;
-        }
-        const chunkText = buildSummaryChunkTextRange(chat, seg.startIdx, seg.endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars, true, true);
-        if (!chunkText) continue;
-        const structuredChanges = [];
-        const ok = await processStructuredEntriesChunk(chunkText, seg.fromFloor, seg.toFloor, meta, s, summaryStatData, structuredChanges);
-        if (ok && structuredChanges.length) {
+    let processed = 0;
+    let cancelledEarly = false;
+    for (const seg of segments) {
+      if (structuredCancelled) {
+        setStatus('结构化总结已取消', 'warn');
+        showToast('结构化总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+        cancelledEarly = true;
+        break;
+      }
+      const chunkText = buildSummaryChunkTextRange(chat, seg.startIdx, seg.endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars, true, true);
+      if (!chunkText) continue;
+      const structuredChanges = [];
+      const ok = await processStructuredEntriesChunk(chunkText, seg.fromFloor, seg.toFloor, meta, s, summaryStatData, structuredChanges);
+      if (ok && structuredChanges.length) {
         appendStructuredHistory(meta, {
           createdAt: Date.now(),
           range: { fromFloor: seg.fromFloor, toFloor: seg.toFloor, fromIdx: seg.startIdx, toIdx: seg.endIdx },
@@ -8562,14 +8627,14 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
           affectsProgress: true,
         });
       }
-        if (ok) processed += 1;
-      }
+      if (ok) processed += 1;
+    }
 
-      if (cancelledEarly) return 0;
-      if (processed > 0) {
-        const lastSeg = segments[segments.length - 1];
-        meta.lastStructuredFloor = lastSeg.toFloor;
-        meta.lastStructuredChatLen = chat.length;
+    if (cancelledEarly) return 0;
+    if (processed > 0) {
+      const lastSeg = segments[segments.length - 1];
+      meta.lastStructuredFloor = lastSeg.toFloor;
+      meta.lastStructuredChatLen = chat.length;
       await setSummaryMeta(meta);
     }
 
@@ -17321,7 +17386,7 @@ ${extraText}` : extraText;
     }
   });
 
-$(document).on('click', '#sg_floating_sex_send', (e) => {
+  $(document).on('click', '#sg_floating_sex_send', (e) => {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     const text = String($('#sg_floating_sex_output').val() || '').trim();
     if (!text) {
