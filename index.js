@@ -1944,54 +1944,80 @@ function setParallelWorldStatus(text, kind = '') {
  * 收集被追踪NPC的档案信息（从结构化条目缓存中获取）
  */
 /**
- * 从蓝灯世界书中提取角色条目（去重），避免绿灯+蓝灯同时读取导致重复
+ * 从蓝灯世界书中提取角色条目（去重），避免绿灯+蓝灯同时读取导致重复。
+ * 如果蓝灯读取失败或为空，会回退到 meta.characterEntries 并去重。
  */
 async function collectBlueWorldbookCharacterEntries() {
   const s = ensureSettings();
   const prefix = String(s.characterEntryPrefix || '人物').trim();
   const file = pickBlueIndexFileName();
-  if (!file) return {};
+  console.log(`[StoryGuide][平行世界] 蓝灯世界书文件名: "${file}", 角色前缀: "${prefix}"`);
 
-  try {
-    const json = await fetchWorldInfoFileJsonCompat(file);
-    const entries = parseWorldbookJson(JSON.stringify(json || {}));
-    const charMap = {};
+  if (file) {
+    try {
+      const json = await fetchWorldInfoFileJsonCompat(file);
+      const entries = parseWorldbookJson(JSON.stringify(json || {}));
+      console.log(`[StoryGuide][平行世界] 蓝灯世界书解析到 ${entries.length} 个条目`);
+      const charMap = {};
 
-    for (const e of entries) {
-      const comment = String(e.comment || e.title || '').trim();
-      // 只匹配以角色前缀开头的条目
-      if (!comment.startsWith(prefix)) continue;
+      for (const e of entries) {
+        const comment = String(e.comment || e.title || '').trim();
+        // 只匹配以角色前缀开头的条目
+        if (!comment.startsWith(prefix)) continue;
 
-      const content = String(e.content || '');
-      // 尝试从内容中提取 JSON 结构化数据
-      const jsonMatch = content.match(/```json\s*([\s\S]*?)```/) || content.match(/\{[\s\S]*"name"\s*:/)
-      let parsed = null;
-      if (jsonMatch) {
-        try { parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]); } catch { }
-      }
-      if (!parsed) {
-        // 尝试直接解析整个 content
-        try { parsed = JSON.parse(content); } catch { }
-      }
+        // 从 comment 提取角色名: 格式 "人物｜角色名｜CHA-001" 或 "人物-角色名"
+        const parts = comment.split(/[｜|]/);
+        const namePart = (parts.length >= 2 ? parts[1] : comment.replace(prefix, '')).replace(/^[-_：:\s]+/, '').trim();
 
-      if (parsed && parsed.name) {
-        const name = String(parsed.name).trim();
-        if (name && !charMap[name]) {
-          charMap[name] = parsed;
+        const content = String(e.content || '');
+        // 尝试从内容中提取 JSON 结构化数据
+        let parsed = null;
+        // 方法1: ```json ... ``` 代码块
+        const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)```/);
+        if (jsonBlockMatch) {
+          try { parsed = JSON.parse(jsonBlockMatch[1]); } catch { }
         }
-      } else {
-        // 无法解析JSON，用comment提取名称
-        const namePart = comment.replace(prefix, '').replace(/^[-_：:\s]+/, '').trim();
-        if (namePart && !charMap[namePart]) {
-          charMap[namePart] = { name: namePart, _rawContent: content };
+        // 方法2: 直接解析整段 content
+        if (!parsed) {
+          try { parsed = JSON.parse(content); } catch { }
+        }
+        // 方法3: 提取第一个 { ... } 块
+        if (!parsed) {
+          const braceMatch = content.match(/\{[\s\S]*\}/);
+          if (braceMatch) {
+            try { parsed = JSON.parse(braceMatch[0]); } catch { }
+          }
+        }
+
+        const finalName = (parsed?.name ? String(parsed.name).trim() : namePart) || namePart;
+        if (finalName && !charMap[finalName]) {
+          charMap[finalName] = parsed || { name: finalName, _rawContent: content };
+          console.log(`[StoryGuide][平行世界] 发现蓝灯角色: "${finalName}"`);
         }
       }
+
+      if (Object.keys(charMap).length > 0) {
+        console.log(`[StoryGuide][平行世界] 从蓝灯世界书共提取 ${Object.keys(charMap).length} 个角色`);
+        return charMap;
+      }
+      console.warn('[StoryGuide][平行世界] 蓝灯世界书中未找到角色条目，回退到 meta 缓存');
+    } catch (e) {
+      console.warn('[StoryGuide][平行世界] 读取蓝灯世界书失败，回退到 meta 缓存:', e);
     }
-    return charMap;
-  } catch (e) {
-    console.warn('[StoryGuide] 读取蓝灯世界书角色条目失败:', e);
-    return {};
   }
+
+  // 回退: 从 meta.characterEntries 读取（去重）
+  const meta = getSummaryMeta();
+  const charEntries = meta.characterEntries || {};
+  const charMap = {};
+  for (const [k, ce] of Object.entries(charEntries)) {
+    const name = String(ce.name || '').trim();
+    if (name && !charMap[name]) {
+      charMap[name] = ce;
+    }
+  }
+  console.log(`[StoryGuide][平行世界] 回退 meta 缓存: ${Object.keys(charMap).length} 个角色 (已去重)`);
+  return charMap;
 }
 
 function collectTrackedNpcProfiles(trackedNpcs, pwData) {
