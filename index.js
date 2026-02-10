@@ -3638,29 +3638,24 @@ async function fetchWorldInfoListCompat() {
   }
 
   // Fallback 1: try to read from DOM (#world_info select element in SillyTavern UI)
+  // NOTE: ST's #world_info option values are often numeric indices; use text() for the name
   try {
     const names = [];
-    const $sel = $('#world_info');
-    if ($sel.length) {
+    const extractFromSelect = ($sel) => {
+      if (!$sel || !$sel.length) return;
       $sel.find('option').each(function () {
-        const v = $(this).val();
-        if (v && v !== '' && v !== 'null' && v !== 'undefined') {
-          const n = normalizeWorldInfoFileName(String(v).trim());
-          if (n) names.push(n);
-        }
+        // prefer text (display name), fall back to value
+        const txt = String($(this).text() || '').trim();
+        const val = String($(this).val() || '').trim();
+        // skip empty / placeholder / pure-number-index values
+        const raw = (txt && !/^[\s\-—()（）]*$/.test(txt) && txt !== 'None' && txt !== '---') ? txt : val;
+        if (!raw || /^\d+$/.test(raw)) return; // skip numeric-only (index)
+        const n = normalizeWorldInfoFileName(raw);
+        if (n) names.push(n);
       });
-    }
-    // Also try #world_editor_select (some ST versions)
-    const $edSel = $('#world_editor_select');
-    if ($edSel.length) {
-      $edSel.find('option').each(function () {
-        const v = $(this).val();
-        if (v && v !== '' && v !== 'null' && v !== 'undefined') {
-          const n = normalizeWorldInfoFileName(String(v).trim());
-          if (n) names.push(n);
-        }
-      });
-    }
+    };
+    extractFromSelect($('#world_info'));
+    extractFromSelect($('#world_editor_select'));
     if (names.length) {
       const unique = Array.from(new Set(names)).sort((a, b) => String(a).localeCompare(String(b)));
       return unique;
