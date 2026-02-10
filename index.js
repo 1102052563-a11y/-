@@ -3631,7 +3631,9 @@ async function fetchWorldInfoListCompat() {
       const names = parseWorldbookList(data);
       if (names.length) return names;
     } catch (e) {
-      lastErr = e;
+      const status = e?.status;
+      // Ignore 404s (endpoint not available), keep trying others
+      if (status !== 404) lastErr = e;
     }
   }
 
@@ -3651,7 +3653,8 @@ async function fetchWorldInfoListCompat() {
     if (fallback.length) return fallback;
   } catch { /* ignore */ }
 
-  throw lastErr || new Error('未解析到世界书列表');
+  if (lastErr) throw lastErr;
+  return [];
 }
 
 function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
@@ -10869,7 +10872,7 @@ async function refreshWorldbookList() {
   try {
     const names = await fetchWorldInfoListCompat();
     if (!names.length) {
-      setStatus('刷新成功，但未解析到世界书列表（返回格式不兼容）', 'warn');
+      setStatus('未能从后端读取世界书列表（该版本可能未开放列表接口），请手动填写名称', 'warn');
       return;
     }
     s.summaryWorldInfoFilesCache = names;
