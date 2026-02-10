@@ -1960,12 +1960,16 @@ async function collectBlueWorldbookCharacterEntries() {
       console.log(`[StoryGuide][平行世界] 蓝灯世界书解析到 ${entries.length} 个条目`);
       const charMap = {};
 
+      // 清理 prefix 中可能存在的方括号标签
+      const cleanPrefix = prefix.replace(/\[[^\]]*\]\s*/g, '').trim();
+      console.log(`[StoryGuide][平行世界] 清理后前缀: "${cleanPrefix}" (原始: "${prefix}")`);
+
       for (const e of entries) {
         let comment = String(e.comment || e.title || '').trim();
         // 去掉 [已删除]、[xxx] 等前缀标签
-        comment = comment.replace(/^\[已删除\]\s*/i, '').replace(/^\[[^\]]*\]\s*/g, '').trim();
+        const cleanComment = comment.replace(/\[[^\]]*\]\s*/g, '').trim();
         // 只匹配以角色前缀开头的条目
-        if (!comment.startsWith(prefix)) continue;
+        if (!cleanComment.startsWith(cleanPrefix)) continue;
 
         // 从 comment 提取角色名: 格式 "人物｜角色名｜CHA-001" 或 "人物-角色名"
         const parts = comment.split(/[｜|]/);
