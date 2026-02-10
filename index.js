@@ -3548,6 +3548,68 @@ function parseWorldbookList(raw) {
   return Array.from(new Set(out)).sort((a, b) => String(a).localeCompare(String(b)));
 }
 
+function collectWorldbookNamesFromAny(root, maxDepth = 3, maxItems = 2000) {
+  const out = new Set();
+  const queue = [{ val: root, depth: 0 }];
+  const seen = new Set();
+
+  const add = (name) => {
+    const n = normalizeWorldInfoFileName(String(name || '').trim());
+    if (!n) return;
+    out.add(n);
+  };
+
+  const extractName = (item) => {
+    if (!item) return '';
+    if (typeof item === 'string') return item;
+    if (typeof item !== 'object') return '';
+    return (
+      item.name || item.file || item.filename || item.title || item.id
+      || item.lorebook || item.worldbook || item.worldBook
+    );
+  };
+
+  const interestingKeys = new Set([
+    'worldInfo', 'world_info', 'worldInfos',
+    'worldbook', 'worldBook', 'worldbooks', 'worldBooks',
+    'lorebook', 'lorebooks', 'books', 'book',
+    'list', 'items', 'files', 'file_list',
+  ]);
+
+  while (queue.length && out.size < maxItems) {
+    const { val, depth } = queue.shift();
+    if (!val || typeof val !== 'object') continue;
+    if (seen.has(val)) continue;
+    seen.add(val);
+
+    if (Array.isArray(val)) {
+      val.forEach((it) => {
+        const n = extractName(it);
+        if (n) add(n);
+        if (depth + 1 <= maxDepth && it && typeof it === 'object') {
+          queue.push({ val: it, depth: depth + 1 });
+        }
+      });
+      continue;
+    }
+
+    const directName = extractName(val);
+    if (directName) add(directName);
+
+    for (const [k, v] of Object.entries(val)) {
+      if (interestingKeys.has(k)) {
+        const parsed = parseWorldbookList(v);
+        parsed.forEach(add);
+      }
+      if (depth + 1 <= maxDepth && v && typeof v === 'object') {
+        queue.push({ val: v, depth: depth + 1 });
+      }
+    }
+  }
+
+  return Array.from(out).sort((a, b) => String(a).localeCompare(String(b)));
+}
+
 async function fetchWorldInfoListCompat() {
   const tryList = [
     { method: 'GET', url: '/api/worldinfo/list' },
@@ -3578,9 +3640,17 @@ async function fetchWorldInfoListCompat() {
   // Fallback: try context cache if available
   try {
     const ctx = SillyTavern.getContext?.() ?? {};
-    const fallback = parseWorldbookList(
-      ctx?.worldInfo || ctx?.world_info || ctx?.lorebook || ctx?.lorebooks || ctx?.worldbooks || ctx?.worldBooks
-    );
+    const fallback = collectWorldbookNamesFromAny([
+      ctx,
+      ctx?.worldInfo,
+      ctx?.world_info,
+      ctx?.lorebook,
+      ctx?.lorebooks,
+      ctx?.worldbooks,
+      ctx?.worldBooks,
+      ctx?.extensionSettings,
+      globalThis?.SillyTavern,
+    ]);
     if (fallback.length) return fallback;
   } catch { /* ignore */ }
 
