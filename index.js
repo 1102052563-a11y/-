@@ -2799,7 +2799,7 @@ async function refreshParallelWorldTrackedLists() {
     } else {
       s2.parallelWorldTrackedNpcs.push({ name, enabled });
     }
-    saveSettingsDebounced();
+    saveSettings();
   });
 
   // 绑定事件：Faction Checkbox
@@ -2815,7 +2815,7 @@ async function refreshParallelWorldTrackedLists() {
     } else {
       s2.parallelWorldTrackedFactions.push({ name, enabled });
     }
-    saveSettingsDebounced();
+    saveSettings();
   });
 }
 
