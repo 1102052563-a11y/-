@@ -933,6 +933,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   parallelWorldSystemPrompt: DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT,
   parallelWorldUserTemplate: DEFAULT_PARALLEL_WORLD_USER_TEMPLATE,
   parallelWorldTrackedNpcs: [],
+  parallelWorldTrackedFactions: [],
   parallelWorldClock: '第1天',
   parallelWorldWriteToWorldbook: true,
   parallelWorldInjectContext: true,
@@ -2228,13 +2229,16 @@ async function runParallelWorldSimulation() {
   }
 
   const pwData = getParallelWorldData();
-  const tracked = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
-  if (tracked.length === 0) {
-    setParallelWorldStatus('没有被追踪的NPC，请先添加', 'warn');
+  const pwData = getParallelWorldData();
+  const trackedNpcs = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
+  const trackedFactions = (s.parallelWorldTrackedFactions || []).filter(t => t.enabled);
+
+  if (trackedNpcs.length === 0 && trackedFactions.length === 0) {
+    setParallelWorldStatus('没有被追踪的NPC或势力，请刷新列表并勾选', 'warn');
     return false;
   }
 
-  setParallelWorldStatus('正在推演NPC离屏事件…', 'warn');
+  setParallelWorldStatus('正在推演离屏事件…', 'warn');
   showToast('🌍 平行世界推演中…', { kind: 'info', spinner: true, sticky: true });
 
   try {
@@ -2244,8 +2248,15 @@ async function runParallelWorldSimulation() {
     pwData._blueCharEntries = blueCharEntries;
     const readFloors = clampInt(s.parallelWorldReadFloors, 1, 50, 5);
     const chatContext = readRecentChatForParallelWorld(readFloors);
-    const npcProfilesText = collectTrackedNpcProfiles(tracked, pwData);
-    const factionProfilesText = collectFactionProfiles(blueFactionEntries, pwData);
+    const npcProfilesText = collectTrackedNpcProfiles(trackedNpcs, pwData);
+
+    // 过滤只处理被追踪的势力
+    const trackedFactionNames = new Set(trackedFactions.map(t => t.name));
+    const filteredFactionEntries = {};
+    for (const [k, v] of Object.entries(blueFactionEntries)) {
+      if (trackedFactionNames.has(k)) filteredFactionEntries[k] = v;
+    }
+    const factionProfilesText = collectFactionProfiles(filteredFactionEntries, pwData);
     delete pwData._blueCharEntries;
 
     // 世界时钟：从正文中提取时间
@@ -2402,8 +2413,10 @@ async function runParallelWorldSimulation() {
 async function writeParallelEventsEntry(pwData, settings) {
   const s = settings || ensureSettings();
   const prefix = String(s.characterEntryPrefix || '人物').replace(/\[[^\]]*\]\s*/g, '').trim();
-  const tracked = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
-  if (tracked.length === 0) return;
+  const trackedNpcs = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
+  const trackedFactions = (s.parallelWorldTrackedFactions || []).filter(t => t.enabled);
+
+  if (trackedNpcs.length === 0 && trackedFactions.length === 0) return;
 
   const maxEvents = s.parallelWorldMaxEventsPerNpc || 10;
   const eventLog = pwData.eventLog || [];
@@ -2411,7 +2424,7 @@ async function writeParallelEventsEntry(pwData, settings) {
 
   // 按 NPC 分组构建内容
   const lines = [`[平行世界事件记录]`, `世界时间: ${worldClock}`, ''];
-  for (const tn of tracked) {
+  for (const tn of trackedNpcs) {
     const name = String(tn.name || '').trim();
     if (!name) continue;
     const npcEvents = eventLog.filter(e => e.npcName === name).slice(-maxEvents);
@@ -2452,9 +2465,9 @@ async function writeParallelEventsEntry(pwData, settings) {
   if (lines.length <= 3) return; // 无事件，不写入
 
   const content = lines.join('\n');
-  // 关键词 = 所有被追踪NPC的名字 + 势力名字,以便索引模块能匹配触发
-  const keywords = tracked.map(t => String(t.name || '').trim()).filter(Boolean);
-  for (const fn of factionNames) keywords.push(fn);
+  // 关键词 = 所有被追踪NPC的名字 + 被追踪势力名字,以便索引模块能匹配触发
+  const keywords = trackedNpcs.map(t => String(t.name || '').trim()).filter(Boolean);
+  for (const tf of trackedFactions) keywords.push(String(tf.name || '').trim());
   keywords.push('平行事件', '离屏事件');
 
   const entryComment = `平行事件`;
@@ -2691,67 +2704,118 @@ function updateParallelWorldClockDisplay(clockText) {
 }
 
 /**
- * 刷新 NPC 追踪列表（从角色缓存中获取可选的NPC名单）
+ * 刷新 NPC 和 势力 追踪列表（从蓝灯世界书中获取）
  */
-async function refreshParallelWorldNpcList() {
-  const $list = $('#sg_pwNpcList');
-  if (!$list.length) return;
+async function refreshParallelWorldTrackedLists() {
+  const $npcList = $('#sg_pwNpcList');
+  const $factionList = $('#sg_pwFactionList');
+
+  if (!$npcList.length && !$factionList.length) return;
 
   const s = ensureSettings();
-  const tracked = s.parallelWorldTrackedNpcs || [];
+  $npcList.html('<div class="sg-hint">正在读取蓝灯角色条目…</div>');
+  $factionList.html('<div class="sg-hint">正在读取蓝灯势力条目…</div>');
 
-  $list.html('<div class="sg-hint">正在读取蓝灯世界书…</div>');
+  // 并行读取
+  const [blueCharEntries, blueFactionEntries] = await Promise.all([
+    collectBlueWorldbookCharacterEntries(),
+    collectBlueWorldbookFactionEntries()
+  ]);
 
-  // 仅从蓝灯世界书读取角色条目（避免与绿灯重复）
-  const blueCharEntries = await collectBlueWorldbookCharacterEntries();
+  // --- 渲染 NPC 列表 ---
+  if ($npcList.length) {
+    const allNames = [];
+    const seen = new Set();
+    for (const [k, ce] of Object.entries(blueCharEntries || {})) {
+      const name = String(ce.name || k).trim();
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        allNames.push(name);
+      }
+    }
 
-  // 获取所有已知角色名（去重）
-  const allNames = [];
-  const seen = new Set();
-  for (const [k, ce] of Object.entries(blueCharEntries)) {
-    const name = String(ce.name || k).trim();
-    if (name && !seen.has(name)) {
-      seen.add(name);
-      allNames.push(name);
+    if (allNames.length === 0) {
+      $npcList.html('<div class="sg-hint">暂无角色条目。</div>');
+    } else {
+      const trackedMap = {};
+      for (const t of (s.parallelWorldTrackedNpcs || [])) {
+        trackedMap[String(t.name || '').trim()] = t.enabled !== false;
+      }
+
+      let html = '';
+      for (const name of allNames) {
+        const checked = trackedMap[name] ? 'checked' : '';
+        html += `<label class="sg-pw-list-item">
+          <input type="checkbox" class="sg-pw-check-npc" data-name="${escapeHtml(name)}" ${checked}>
+          <span>${escapeHtml(name)}</span>
+        </label>`;
+      }
+      $npcList.html(html);
     }
   }
 
-  if (allNames.length === 0) {
-    $list.html('<div class="sg-hint">蓝灯世界书中暂无角色条目。请先开启结构化条目功能并确保写入蓝灯世界书。</div>');
-    return;
+  // --- 渲染 势力 列表 ---
+  if ($factionList.length) {
+    const allNames = [];
+    const seen = new Set();
+    for (const [k, fe] of Object.entries(blueFactionEntries || {})) {
+      const name = String(fe.name || k).trim();
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        allNames.push(name);
+      }
+    }
+
+    if (allNames.length === 0) {
+      $factionList.html('<div class="sg-hint">暂无势力条目。</div>');
+    } else {
+      const trackedMap = {};
+      for (const t of (s.parallelWorldTrackedFactions || [])) {
+        trackedMap[String(t.name || '').trim()] = t.enabled !== false;
+      }
+
+      let html = '';
+      for (const name of allNames) {
+        const checked = trackedMap[name] ? 'checked' : '';
+        html += `<label class="sg-pw-list-item">
+          <input type="checkbox" class="sg-pw-check-faction" data-name="${escapeHtml(name)}" ${checked}>
+          <span>${escapeHtml(name)}</span>
+        </label>`; // Use same class for style
+      }
+      $factionList.html(html);
+    }
   }
 
-  const trackedMap = {};
-  for (const t of tracked) {
-    trackedMap[String(t.name || '').trim()] = t.enabled !== false;
-  }
-
-  let html = '';
-  for (const name of allNames) {
-    const checked = trackedMap[name] ? 'checked' : '';
-    html += `<label class="sg-pw-npc-item">
-      <input type="checkbox" class="sg-pw-npc-check" data-npc="${escapeHtml(name)}" ${checked}>
-      <span>${escapeHtml(name)}</span>
-    </label>`;
-  }
-
-  $list.html(html);
-
-  // 绑定变更事件
-  $list.off('change', '.sg-pw-npc-check').on('change', '.sg-pw-npc-check', function () {
-    const npcName = $(this).data('npc');
+  // 绑定事件：NPC Checkbox
+  $npcList.off('change', '.sg-pw-check-npc').on('change', '.sg-pw-check-npc', function () {
+    const name = $(this).data('name');
     const enabled = $(this).prop('checked');
     const s2 = ensureSettings();
-    let list = s2.parallelWorldTrackedNpcs || [];
+    if (!s2.parallelWorldTrackedNpcs) s2.parallelWorldTrackedNpcs = [];
 
-    const existing = list.find(t => t.name === npcName);
+    const existing = s2.parallelWorldTrackedNpcs.find(t => t.name === name);
     if (existing) {
       existing.enabled = enabled;
     } else {
-      list.push({ name: npcName, enabled });
+      s2.parallelWorldTrackedNpcs.push({ name, enabled });
     }
-    s2.parallelWorldTrackedNpcs = list;
-    saveSettings();
+    saveSettingsDebounced();
+  });
+
+  // 绑定事件：Faction Checkbox
+  $factionList.off('change', '.sg-pw-check-faction').on('change', '.sg-pw-check-faction', function () {
+    const name = $(this).data('name');
+    const enabled = $(this).prop('checked');
+    const s2 = ensureSettings();
+    if (!s2.parallelWorldTrackedFactions) s2.parallelWorldTrackedFactions = [];
+
+    const existing = s2.parallelWorldTrackedFactions.find(t => t.name === name);
+    if (existing) {
+      existing.enabled = enabled;
+    } else {
+      s2.parallelWorldTrackedFactions.push({ name, enabled });
+    }
+    saveSettingsDebounced();
   });
 }
 
@@ -15360,13 +15424,31 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card">
-              <div class="sg-card-title">NPC追踪列表</div>
-              <div class="sg-hint">勾选需要模拟离屏事件的NPC。列表来自结构化条目中的角色。</div>
-              <div id="sg_pwNpcList" class="sg-pw-npc-list">
-                <div class="sg-hint">加载中…</div>
-              </div>
-              <button class="menu_button sg-btn" id="sg_pwRefreshNpcList" style="margin-top:8px;">🔄 刷新NPC列表</button>
-              <div class="sg-field" style="margin-top:8px;">
+              <div class="sg-card-title">追踪列表</div>
+                <div class="sg-pw-list-container">
+                  <div class="sg-pw-list-header">
+                    <span>NPC追踪列表</span>
+                    <small>勾选需要模拟离屏事件的NPC。列表来自结构化条目中的角色。</small>
+                  </div>
+                  <div id="sg_pwNpcList" class="sg-pw-list-content">
+                    <div class="sg-hint">点击下方刷新按钮加载列表…</div>
+                  </div>
+                </div>
+
+                <div class="sg-pw-list-container" style="margin-top:10px;">
+                  <div class="sg-pw-list-header">
+                    <span>势力追踪列表</span>
+                    <small>勾选需要模拟离屏事件的势力。列表来自结构化条目中的势力。</small>
+                  </div>
+                  <div id="sg_pwFactionList" class="sg-pw-list-content">
+                    <div class="sg-hint">点击下方刷新按钮加载列表…</div>
+                  </div>
+                </div>
+
+                <div style="margin-top:10px;">
+                  <button id="sg_pwRefreshNpcList" class="menu_button sg-btn">刷新追踪列表</button>
+                </div>
+                <div class="sg-field" style="margin-top:8px;">
                 <label>手动添加NPC名称</label>
                 <div style="display:flex;gap:6px;">
                   <input id="sg_pwManualNpcName" type="text" placeholder="输入NPC名称" style="flex:1;">
@@ -16559,7 +16641,7 @@ function showSettingsPage(page) {
     $('#sg_pgtab_parallel').addClass('active');
     $('#sg_page_parallel').addClass('active');
     // 切到平行世界页时刷新数据
-    try { refreshParallelWorldNpcList(); renderParallelWorldEventLog(); } catch { }
+    try { refreshParallelWorldTrackedLists(); renderParallelWorldEventLog(); } catch { }
   } else {
     $('#sg_pgtab_guide').addClass('active');
     $('#sg_page_guide').addClass('active');
@@ -17008,9 +17090,9 @@ function setupParallelWorldPage() {
     setParallelWorldStatus('日志已清空', 'ok');
   });
 
-  // 刷新NPC列表
+  // 刷新追踪列表
   $('#sg_pwRefreshNpcList').on('click', () => {
-    refreshParallelWorldNpcList();
+    refreshParallelWorldTrackedLists();
   });
 
   // 手动添加NPC
@@ -17027,7 +17109,7 @@ function setupParallelWorldPage() {
     s.parallelWorldTrackedNpcs = list;
     saveSettings();
     $('#sg_pwManualNpcName').val('');
-    refreshParallelWorldNpcList();
+    refreshParallelWorldTrackedLists();
     setParallelWorldStatus(`已添加 ${name}`, 'ok');
   });
 
