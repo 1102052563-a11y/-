@@ -304,33 +304,30 @@ const DEFAULT_STRUCTURED_CONQUEST_ENTRY_TEMPLATE = `【猎艳录】{{name}}
 const DEFAULT_STRUCTURED_CONQUEST_PROMPT = `记录主角征服/攻略的女性角色。说明身份背景、初遇情境、征服过程、征服时间、当前关系状态、特殊技巧/喜好、身体特征。若关系破裂/角色离开，将其名字加入 deletedConquests。若有 statData，精简总结其数值。`;
 
 // ===== 平行世界（NPC离屏模拟）默认提示词 =====
-const DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT = `你是一个"平行世界模拟器"，负责推演主角视角之外的NPC离屏活动。
+const DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT = `你是一个"平行世界模拟器"，负责推演主角视角之外的NPC离屏活动以及势力/组织的动态变化。
 
 【核心任务】
 1. 为每个被追踪的NPC生成 1~3 件离屏事件（在主角不在场时发生的事）
-2. 事件必须符合NPC的性格特点、独立动机和当前处境
-3. NPC之间可以产生互动（合作、冲突、交易、对话等）
-4. 推进世界时钟，反映时间流逝
+2. 为每个被追踪的势力/组织生成 1~2 件势力事件（势力扩张、冲突、联盟、资源变动等）
+3. 事件必须符合角色/势力的特点和当前处境
+4. NPC之间、势力之间可以产生互动（合作、冲突、交易、对话等）
+5. 推进世界时钟，反映时间流逝
 
 【推演原则】
 - NPC有自己的生活和目标，不应始终围绕主角
+- 势力有自己的议程和内部动态
 - 事件应有合理的因果关系，不能凭空出现
-- 重大变化应循序渐进（如：NPC不会突然变强/变弱/叛变）
-- 考虑NPC的位置、资源、能力限制
-- 关系变化应渐进（陌生→初识→熟悉→信任→亲密）
+- 重大变化应循序渐进
 - 保持世界的内在一致性
 
 【事件类型参考】
-- 日常活动（工作、训练、社交、休息）
-- 目标推进（收集材料、完成交易、学习技能）
-- 意外遭遇（战斗、发现、天灾、机遇）
-- 关系变化（结盟、争吵、和解、交易）
-- 情绪/状态变化（受伤、恢复、情绪波动）
+NPC: 日常活动、目标推进、意外遭遇、关系变化、情绪/状态变化
+势力: 领地扩张/收缩、资源采集/消耗、内部政治变动、外交结盟/对立、战争/冲突、经济活动
 
 【输出要求】
 - 只输出严格 JSON，不要 Markdown 代码块
-- 每个NPC的事件应简洁但有意义（每件事 1~2 句话）
-- impact 说明此事件对NPC状态的具体影响`;
+- 每个NPC/势力的事件应简洁但有意义（每件事 1~2 句话）
+- impact 说明此事件的具体影响`;
 
 const DEFAULT_PARALLEL_WORLD_USER_TEMPLATE = `【世界时钟】{{worldTime}}
 
@@ -340,7 +337,10 @@ const DEFAULT_PARALLEL_WORLD_USER_TEMPLATE = `【世界时钟】{{worldTime}}
 【被追踪的NPC档案】
 {{npcProfiles}}
 
-请为以上每个NPC推演离屏事件，推进世界时钟。`;
+【被追踪的势力/组织】
+{{factionProfiles}}
+
+请为以上每个NPC和势力推演离屏事件，推进世界时钟。`;
 
 const PARALLEL_WORLD_JSON_REQUIREMENT = `输出要求：
 - 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。
@@ -353,18 +353,23 @@ const PARALLEL_WORLD_JSON_REQUIREMENT = `输出要求：
       "location": "当前位置",
       "mood": "当前情绪/状态",
       "currentGoal": "当前目标",
-      "goalProgress": "目标进展",
       "events": [
         { "time": "事件时间", "event": "事件描述", "impact": "对NPC的影响" }
-      ],
-      "relationshipChanges": {
-        "其他NPC名": { "type": "关系类型", "attitude": "态度变化" }
-      }
+      ]
+    }
+  ],
+  "factionUpdates": [
+    {
+      "name": "势力/组织名称",
+      "events": [
+        { "time": "事件时间", "event": "事件描述", "impact": "对势力的影响" }
+      ]
     }
   ]
 }
-- npcUpdates 数组中每个 NPC 对应一个对象。
-- events 为 1~3 件离屏事件。`;
+- npcUpdates 数组中每个 NPC 对应一个对象，events 为 1~3 件离屏事件。
+- factionUpdates 数组中每个势力对应一个对象，events 为 1~2 件势力事件。
+- 如果没有被追踪的势力，factionUpdates 可为空数组。`;
 
 const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。
 对于【已知条目】（已出现在已知列表中）：你只需要输出有变化或新增的字段，未变内容无需输出。对于【新条目】：必须输出完整字段。
@@ -1945,88 +1950,89 @@ function setParallelWorldStatus(text, kind = '') {
  * 收集被追踪NPC的档案信息（从结构化条目缓存中获取）
  */
 /**
- * 从蓝灯世界书中提取角色条目（去重），避免绿灯+蓝灯同时读取导致重复。
- * 如果蓝灯读取失败或为空，会回退到 meta.characterEntries 并去重。
+ * 通用：从蓝灯世界书中按 prefix 提取条目（去重）。
+ * 如果蓝灯读取失败或为空，回退到 meta[metaFallbackKey]。
+ * @param {string} prefix  条目前缀，如 "人物" "势力"
+ * @param {string} metaFallbackKey  meta 中的回退 key，如 "characterEntries" "factionEntries"
+ * @param {string} label  日志标签，如 "角色" "势力"
  */
-async function collectBlueWorldbookCharacterEntries() {
-  const s = ensureSettings();
-  const prefix = String(s.characterEntryPrefix || '人物').trim();
+async function collectBlueWorldbookEntriesByPrefix(prefix, metaFallbackKey, label) {
   const file = pickBlueIndexFileName();
-  console.log(`[StoryGuide][平行世界] 蓝灯世界书文件名: "${file}", 角色前缀: "${prefix}"`);
+  const cleanPrefix = prefix.replace(/\[[^\]]*\]\s*/g, '').trim();
+  console.log(`[StoryGuide][平行世界] 蓝灯世界书查找${label}: 文件="${file}", 前缀="${cleanPrefix}"`);
 
   if (file) {
     try {
       const json = await fetchWorldInfoFileJsonCompat(file);
       const entries = parseWorldbookJson(JSON.stringify(json || {}));
-      console.log(`[StoryGuide][平行世界] 蓝灯世界书解析到 ${entries.length} 个条目`);
-      const charMap = {};
-
-      // 清理 prefix 中可能存在的方括号标签
-      const cleanPrefix = prefix.replace(/\[[^\]]*\]\s*/g, '').trim();
-      console.log(`[StoryGuide][平行世界] 清理后前缀: "${cleanPrefix}" (原始: "${prefix}")`);
+      const resultMap = {};
 
       for (const e of entries) {
         let comment = String(e.comment || e.title || '').trim();
-        // 去掉 [已删除]、[xxx] 等前缀标签
         const cleanComment = comment.replace(/\[[^\]]*\]\s*/g, '').trim();
-        // 只匹配以角色前缀开头的条目
         if (!cleanComment.startsWith(cleanPrefix)) continue;
 
-        // 从 comment 提取角色名: 格式 "人物｜角色名｜CHA-001" 或 "人物-角色名"
         const parts = comment.split(/[｜|]/);
         const namePart = (parts.length >= 2 ? parts[1] : comment.replace(prefix, '')).replace(/^[-_：:\s]+/, '').trim();
 
         const content = String(e.content || '');
-        // 尝试从内容中提取 JSON 结构化数据
         let parsed = null;
-        // 方法1: ```json ... ``` 代码块
         const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)```/);
-        if (jsonBlockMatch) {
-          try { parsed = JSON.parse(jsonBlockMatch[1]); } catch { }
-        }
-        // 方法2: 直接解析整段 content
-        if (!parsed) {
-          try { parsed = JSON.parse(content); } catch { }
-        }
-        // 方法3: 提取第一个 { ... } 块
+        if (jsonBlockMatch) { try { parsed = JSON.parse(jsonBlockMatch[1]); } catch { } }
+        if (!parsed) { try { parsed = JSON.parse(content); } catch { } }
         if (!parsed) {
           const braceMatch = content.match(/\{[\s\S]*\}/);
-          if (braceMatch) {
-            try { parsed = JSON.parse(braceMatch[0]); } catch { }
-          }
+          if (braceMatch) { try { parsed = JSON.parse(braceMatch[0]); } catch { } }
         }
 
         const finalName = (parsed?.name ? String(parsed.name).trim() : namePart) || namePart;
-        if (finalName && !charMap[finalName]) {
+        if (finalName && !resultMap[finalName]) {
           const entry = parsed || { name: finalName };
-          entry._rawContent = content;   // 始终保留原始内容以供推演使用
-          charMap[finalName] = entry;
-          console.log(`[StoryGuide][平行世界] 发现蓝灯角色: "${finalName}"`);
+          entry._rawContent = content;
+          resultMap[finalName] = entry;
         }
       }
 
-      if (Object.keys(charMap).length > 0) {
-        console.log(`[StoryGuide][平行世界] 从蓝灯世界书共提取 ${Object.keys(charMap).length} 个角色`);
-        return charMap;
+      if (Object.keys(resultMap).length > 0) {
+        console.log(`[StoryGuide][平行世界] 从蓝灯世界书提取 ${Object.keys(resultMap).length} 个${label}`);
+        return resultMap;
       }
-      console.warn('[StoryGuide][平行世界] 蓝灯世界书中未找到角色条目，回退到 meta 缓存');
+      console.warn(`[StoryGuide][平行世界] 蓝灯世界书未找到${label}条目，回退 meta`);
     } catch (e) {
-      console.warn('[StoryGuide][平行世界] 读取蓝灯世界书失败，回退到 meta 缓存:', e);
+      console.warn(`[StoryGuide][平行世界] 读取蓝灯${label}失败:`, e);
     }
   }
 
-  // 回退: 从 meta.characterEntries 读取（去重）
+  // 回退: 从 meta 读取
   const meta = getSummaryMeta();
-  const charEntries = meta.characterEntries || {};
-  const charMap = {};
-  for (const [k, ce] of Object.entries(charEntries)) {
+  const fallback = meta[metaFallbackKey] || {};
+  const resultMap = {};
+  for (const [k, ce] of Object.entries(fallback)) {
     const name = String(ce.name || '').trim();
-    if (name && !charMap[name]) {
-      charMap[name] = ce;
+    if (name && !resultMap[name]) {
+      resultMap[name] = ce;
     }
   }
-  console.log(`[StoryGuide][平行世界] 回退 meta 缓存: ${Object.keys(charMap).length} 个角色 (已去重)`);
-  return charMap;
+  console.log(`[StoryGuide][平行世界] 回退 meta: ${Object.keys(resultMap).length} 个${label}`);
+  return resultMap;
+}
+
+/** 角色条目快捷方法 */
+async function collectBlueWorldbookCharacterEntries() {
+  const s = ensureSettings();
+  return collectBlueWorldbookEntriesByPrefix(
+    String(s.characterEntryPrefix || '人物').trim(),
+    'characterEntries', '角色'
+  );
+}
+
+/** 势力条目快捷方法 */
+async function collectBlueWorldbookFactionEntries() {
+  const s = ensureSettings();
+  return collectBlueWorldbookEntriesByPrefix(
+    String(s.factionEntryPrefix || '势力').trim(),
+    'factionEntries', '势力'
+  );
 }
 
 function collectTrackedNpcProfiles(trackedNpcs, pwData) {
@@ -2084,6 +2090,37 @@ function collectTrackedNpcProfiles(trackedNpcs, pwData) {
   return profiles.join('\n');
 }
 
+/**
+ * 收集势力/组织的档案信息，用于平行世界推演
+ */
+function collectFactionProfiles(factionEntries, pwData) {
+  if (!factionEntries || Object.keys(factionEntries).length === 0) return '(无势力/组织数据)';
+
+  const profiles = [];
+  for (const [name, entry] of Object.entries(factionEntries)) {
+    let profile = `【势力: ${name}】\n`;
+    if (entry._rawContent) {
+      profile += entry._rawContent + '\n';
+    } else {
+      if (entry.description) profile += `描述: ${entry.description}\n`;
+      if (entry.leader) profile += `领袖: ${entry.leader}\n`;
+      if (entry.territory) profile += `领地: ${entry.territory}\n`;
+      if (entry.status) profile += `状态: ${entry.status}\n`;
+      if (entry.goal) profile += `目标: ${entry.goal}\n`;
+    }
+
+    // 附加最近的离屏事件
+    const recentEvents = (pwData.factionEventLog || []).filter(e => e.factionName === name).slice(-3);
+    if (recentEvents.length > 0) {
+      profile += `最近势力事件:\n`;
+      for (const ev of recentEvents) {
+        profile += `  - [${ev.time}] ${ev.event}${ev.impact ? ` (影响: ${ev.impact})` : ''}\n`;
+      }
+    }
+    profiles.push(profile);
+  }
+  return profiles.join('\n');
+}
 /**
  * 从聊天记录中读取最近 N 楼的正文内容，用于平行世界推演
  */
@@ -2162,7 +2199,7 @@ function extractTimeFromChat(chatText) {
 /**
  * 构建推演 prompt messages
  */
-function buildParallelWorldPromptMessages(snapshotText, npcProfilesText, worldClock) {
+function buildParallelWorldPromptMessages(snapshotText, npcProfilesText, worldClock, factionProfilesText) {
   const s = ensureSettings();
   const sysTpl = String(s.parallelWorldSystemPrompt || DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT);
   const usrTpl = String(s.parallelWorldUserTemplate || DEFAULT_PARALLEL_WORLD_USER_TEMPLATE);
@@ -2171,6 +2208,7 @@ function buildParallelWorldPromptMessages(snapshotText, npcProfilesText, worldCl
     worldTime: worldClock || '第1天',
     recentContext: snapshotText || '(无可用上下文)',
     npcProfiles: npcProfilesText || '(无NPC)',
+    factionProfiles: factionProfilesText || '(无势力/组织)',
   });
 
   return [
@@ -2200,13 +2238,15 @@ async function runParallelWorldSimulation() {
   showToast('🌍 平行世界推演中…', { kind: 'info', spinner: true, sticky: true });
 
   try {
-    // 1. 收集上下文（从蓝灯世界书读取角色 + 最新正文）
+    // 1. 收集上下文（从蓝灯世界书读取角色+势力 + 最新正文）
     const blueCharEntries = await collectBlueWorldbookCharacterEntries();
+    const blueFactionEntries = await collectBlueWorldbookFactionEntries();
     pwData._blueCharEntries = blueCharEntries;
     const readFloors = clampInt(s.parallelWorldReadFloors, 1, 50, 5);
     const chatContext = readRecentChatForParallelWorld(readFloors);
     const npcProfilesText = collectTrackedNpcProfiles(tracked, pwData);
-    delete pwData._blueCharEntries; // 清理临时数据
+    const factionProfilesText = collectFactionProfiles(blueFactionEntries, pwData);
+    delete pwData._blueCharEntries;
 
     // 世界时钟：从正文中提取时间
     const extractedTime = extractTimeFromChat(chatContext);
@@ -2216,7 +2256,7 @@ async function runParallelWorldSimulation() {
     const worldClock = pwData.worldClock || s.parallelWorldClock || '第1天';
 
     // 2. 构建 prompt
-    const messages = buildParallelWorldPromptMessages(chatContext, npcProfilesText, worldClock);
+    const messages = buildParallelWorldPromptMessages(chatContext, npcProfilesText, worldClock, factionProfilesText);
 
     // 3. 调用 LLM
     let responseText;
@@ -2284,6 +2324,41 @@ async function runParallelWorldSimulation() {
 
     }
 
+    // 5b. 处理势力事件
+    if (!pwData.factionEventLog) pwData.factionEventLog = [];
+    if (Array.isArray(parsed.factionUpdates)) {
+      for (const factionUpdate of parsed.factionUpdates) {
+        const factionName = String(factionUpdate.name || '').trim();
+        if (!factionName) continue;
+
+        if (Array.isArray(factionUpdate.events)) {
+          for (const evt of factionUpdate.events) {
+            pwData.factionEventLog.push({
+              factionName,
+              time: String(evt.time || parsed.worldTime || ''),
+              event: String(evt.event || ''),
+              impact: String(evt.impact || ''),
+              simRunId,
+            });
+          }
+        }
+
+        // 修剪势力事件数
+        const fEvents = pwData.factionEventLog.filter(e => e.factionName === factionName);
+        if (fEvents.length > maxEvents) {
+          const excess = fEvents.length - maxEvents;
+          let removed = 0;
+          pwData.factionEventLog = pwData.factionEventLog.filter(e => {
+            if (e.factionName === factionName && removed < excess) {
+              removed++;
+              return false;
+            }
+            return true;
+          });
+        }
+      }
+    }
+
     // 6. 可选：写回世界书（创建/更新专用「平行事件」条目）
     if (s.parallelWorldWriteToWorldbook) {
       try {
@@ -2306,7 +2381,9 @@ async function runParallelWorldSimulation() {
     updateParallelWorldClockDisplay(pwData.worldClock);
 
     const totalNewEvents = parsed.npcUpdates.reduce((sum, u) => sum + (u.events?.length || 0), 0);
-    setParallelWorldStatus(`✅ 推演完成：${parsed.npcUpdates.length} 个NPC, ${totalNewEvents} 件事件`, 'ok');
+    const totalFactionEvents = Array.isArray(parsed.factionUpdates) ? parsed.factionUpdates.reduce((sum, u) => sum + (u.events?.length || 0), 0) : 0;
+    const factionPart = totalFactionEvents > 0 ? `, ${parsed.factionUpdates.length} 个势力, ${totalFactionEvents} 件势力事件` : '';
+    setParallelWorldStatus(`✅ 推演完成：${parsed.npcUpdates.length} 个NPC, ${totalNewEvents} 件事件${factionPart}`, 'ok');
     hideToast();
     return true;
 
@@ -2348,11 +2425,36 @@ async function writeParallelEventsEntry(pwData, settings) {
     lines.push('');
   }
 
+  // 按势力分组构建内容
+  const factionEventLog = pwData.factionEventLog || [];
+  const factionNames = new Set();
+  if (factionEventLog.length > 0) {
+    const factionGroups = {};
+    for (const fe of factionEventLog) {
+      const fn = fe.factionName;
+      if (!fn) continue;
+      if (!factionGroups[fn]) factionGroups[fn] = [];
+      factionGroups[fn].push(fe);
+      factionNames.add(fn);
+    }
+    for (const [fn, events] of Object.entries(factionGroups)) {
+      const recent = events.slice(-maxEvents);
+      lines.push(`【势力: ${fn}】`);
+      for (const ev of recent) {
+        let line = `- [${ev.time}] ${ev.event}`;
+        if (ev.impact) line += ` (影响: ${ev.impact})`;
+        lines.push(line);
+      }
+      lines.push('');
+    }
+  }
+
   if (lines.length <= 3) return; // 无事件，不写入
 
   const content = lines.join('\n');
-  // 关键词 = 所有被追踪NPC的名字,以便索引模块能匹配触发
+  // 关键词 = 所有被追踪NPC的名字 + 势力名字,以便索引模块能匹配触发
   const keywords = tracked.map(t => String(t.name || '').trim()).filter(Boolean);
+  for (const fn of factionNames) keywords.push(fn);
   keywords.push('平行事件', '离屏事件');
 
   const entryComment = `平行事件`;
@@ -2515,8 +2617,9 @@ function renderParallelWorldEventLog(pwDataOverride) {
 
   const pwData = pwDataOverride || getParallelWorldData();
   const events = pwData.eventLog || [];
+  const factionEvents = pwData.factionEventLog || [];
 
-  if (events.length === 0) {
+  if (events.length === 0 && factionEvents.length === 0) {
     $container.html('<div class="sg-hint">暂无事件记录。点击「立即推演」开始模拟。</div>');
     return;
   }
@@ -2534,7 +2637,6 @@ function renderParallelWorldEventLog(pwDataOverride) {
     html += `<div class="sg-pw-npc-group">`;
     html += `<div class="sg-pw-npc-group-title">${escapeHtml(npcName)} <span class="sg-pw-count">(${npcEvents.length}件)</span></div>`;
     html += `<div class="sg-pw-npc-events">`;
-    // 只显示最近的事件（倒序）
     const recent = npcEvents.slice(-5).reverse();
     for (const ev of recent) {
       html += `<div class="sg-pw-event-item">`;
@@ -2549,6 +2651,35 @@ function renderParallelWorldEventLog(pwDataOverride) {
       html += `<div class="sg-hint">…还有 ${npcEvents.length - 5} 条更早的记录</div>`;
     }
     html += `</div></div>`;
+  }
+
+  // 按势力分组
+  if (factionEvents.length > 0) {
+    const factionGrouped = {};
+    for (const ev of factionEvents) {
+      const name = ev.factionName || '未知势力';
+      if (!factionGrouped[name]) factionGrouped[name] = [];
+      factionGrouped[name].push(ev);
+    }
+    for (const [fName, fEvents] of Object.entries(factionGrouped)) {
+      html += `<div class="sg-pw-npc-group">`;
+      html += `<div class="sg-pw-npc-group-title">[势力] ${escapeHtml(fName)} <span class="sg-pw-count">(${fEvents.length}件)</span></div>`;
+      html += `<div class="sg-pw-npc-events">`;
+      const recent = fEvents.slice(-5).reverse();
+      for (const ev of recent) {
+        html += `<div class="sg-pw-event-item">`;
+        html += `<span class="sg-pw-event-time">${escapeHtml(ev.time || '')}</span> `;
+        html += `<span class="sg-pw-event-text">${escapeHtml(ev.event || '')}</span>`;
+        if (ev.impact) {
+          html += `<span class="sg-pw-event-impact"> → ${escapeHtml(ev.impact)}</span>`;
+        }
+        html += `</div>`;
+      }
+      if (fEvents.length > 5) {
+        html += `<div class="sg-hint">…还有 ${fEvents.length - 5} 条更早的记录</div>`;
+      }
+      html += `</div></div>`;
+    }
   }
 
   $container.html(html);
