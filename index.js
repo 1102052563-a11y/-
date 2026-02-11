@@ -2499,7 +2499,7 @@ async function writeParallelEventsEntry(pwData, settings) {
         comment: entryComment,
         content,
         keys: keywords,
-        constant: 0,  // 绿灯=关键词触发
+        constant: 1,  // 绿灯改为常驻 (用户要求)
         searchKey: '__SG_PARALLEL_WORLD_EVENT__',
       });
       console.log('[StoryGuide][平行世界] 平行事件条目已写入绿灯世界书');
