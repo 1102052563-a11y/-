@@ -2420,6 +2420,12 @@ async function writeParallelEventsEntry(pwData, settings) {
 
   const maxEvents = s.parallelWorldMaxEventsPerNpc || 10;
   const eventLog = pwData.eventLog || [];
+  const factionEventLog = pwData.factionEventLog || [];
+
+  // Find latest run ID to overwrite content with only new events
+  const allEvents = [...eventLog, ...factionEventLog];
+  const lastRunId = allEvents.reduce((max, ev) => Math.max(max, ev.simRunId || 0), 0);
+
   const worldClock = pwData.worldClock || s.parallelWorldClock || '第1天';
 
   // 按 NPC 分组构建内容
@@ -2427,7 +2433,8 @@ async function writeParallelEventsEntry(pwData, settings) {
   for (const tn of trackedNpcs) {
     const name = String(tn.name || '').trim();
     if (!name) continue;
-    const npcEvents = eventLog.filter(e => e.npcName === name).slice(-maxEvents);
+    // Only show events from the LATEST run
+    const npcEvents = eventLog.filter(e => e.npcName === name && e.simRunId === lastRunId);
     if (npcEvents.length === 0) continue;
     lines.push(`【${name}】`);
     for (const ev of npcEvents) {
@@ -2438,20 +2445,21 @@ async function writeParallelEventsEntry(pwData, settings) {
     lines.push('');
   }
 
-  // 按势力分组构建内容
-  const factionEventLog = pwData.factionEventLog || [];
+  // 按势力分组构建内容 (只包含最新一次推演的事件)
+  // const factionEventLog = ... (already declared at top)
+  const currentFactionEvents = factionEventLog.filter(e => e.simRunId === lastRunId);
   const factionNames = new Set();
-  if (factionEventLog.length > 0) {
+
+  if (currentFactionEvents.length > 0) {
     const factionGroups = {};
-    for (const fe of factionEventLog) {
+    for (const fe of currentFactionEvents) {
       const fn = fe.factionName;
       if (!fn) continue;
       if (!factionGroups[fn]) factionGroups[fn] = [];
       factionGroups[fn].push(fe);
       factionNames.add(fn);
     }
-    for (const [fn, events] of Object.entries(factionGroups)) {
-      const recent = events.slice(-maxEvents);
+    for (const [fn, recent] of Object.entries(factionGroups)) {
       lines.push(`【势力: ${fn}】`);
       for (const ev of recent) {
         let line = `- [${ev.time}] ${ev.event}`;
@@ -2466,9 +2474,8 @@ async function writeParallelEventsEntry(pwData, settings) {
 
   const content = lines.join('\n');
   // 关键词 = 所有被追踪NPC的名字 + 被追踪势力名字,以便索引模块能匹配触发
-  const keywords = trackedNpcs.map(t => String(t.name || '').trim()).filter(Boolean);
-  for (const tf of trackedFactions) keywords.push(String(tf.name || '').trim());
-  keywords.push('平行事件', '离屏事件', '__SG_PARALLEL_WORLD_EVENT__');
+  // 关键词只保留 "平行事件" + 唯一标识符 (用户要求)
+  const keywords = ['平行事件', '__SG_PARALLEL_WORLD_EVENT__'];
 
   const entryComment = `[mvu_plot]平行事件`;
   const meta = getSummaryMeta();
@@ -17109,6 +17116,7 @@ function setupParallelWorldPage() {
   $('#sg_pwClearLog').on('click', async () => {
     const pwData = getParallelWorldData();
     pwData.eventLog = [];
+    pwData.factionEventLog = [];
     await setParallelWorldData(pwData);
     renderParallelWorldEventLog(pwData);
     setParallelWorldStatus('日志已清空', 'ok');
