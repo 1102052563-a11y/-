@@ -2894,3 +2894,52 @@ body.sg-image-preview-open {
     transform: translateY(0);
   }
 }
+/* Parallel World Tracking Lists */
+.sg-pw-list-content {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+  margin-top: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sg-pw-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.sg-pw-list-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sg-pw-list-item input {
+  cursor: pointer;
+}
+
+.sg-pw-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.sg-pw-list-header span {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.sg-pw-list-header small {
+  opacity: 0.6;
+  font-size: 0.8rem;
+}
+
