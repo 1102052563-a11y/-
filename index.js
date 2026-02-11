@@ -932,6 +932,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   parallelWorldWriteToWorldbook: true,
   parallelWorldInjectContext: true,
   parallelWorldMaxEventsPerNpc: 10,
+  parallelWorldReadFloors: 5,
   parallelWorldPresetList: '[]',
   parallelWorldPresetActive: '',
 
@@ -2084,6 +2085,81 @@ function collectTrackedNpcProfiles(trackedNpcs, pwData) {
 }
 
 /**
+ * 从聊天记录中读取最近 N 楼的正文内容，用于平行世界推演
+ */
+function readRecentChatForParallelWorld(n = 5) {
+  const ctx = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  if (chat.length === 0) return '(无可用正文)';
+
+  const floors = Math.max(1, Math.min(50, n));
+  const picked = [];
+  for (let i = chat.length - 1; i >= 0 && picked.length < floors; i--) {
+    const m = chat[i];
+    if (!m) continue;
+    const isUser = m.is_user === true;
+    const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
+    let text = stripHtml(m.mes ?? m.message ?? '');
+    if (!text) continue;
+    // 限制每条消息最大字符数
+    if (text.length > 4000) text = text.slice(0, 4000) + '…(截断)';
+    picked.push(`【${name}】${text}`);
+  }
+  picked.reverse();
+  if (picked.length === 0) return '(无可用正文)';
+  return picked.join('\n\n');
+}
+
+/**
+ * 从聊天文本中提取时间信息，用于更新世界时钟。
+ * 优先提取最接近末尾（最新）的时间描述。
+ */
+function extractTimeFromChat(chatText) {
+  if (!chatText || chatText === '(无可用正文)') return null;
+
+  // 常见时间模式（中文叙事常见格式）
+  const patterns = [
+    // "第X天" "第X日" "第X夜"
+    /第\s*[零一二三四五六七八九十百千万\d]+\s*[天日夜]/g,
+    // "X月X日" "X年X月"
+    /[\d一二三四五六七八九十]+\s*[月年]\s*[\d一二三四五六七八九十]*\s*[日号]?/g,
+    // 具体时间：上午/下午/清晨/黄昏/午夜/傍晚/正午/深夜/拂晓/黎明
+    /(?:清晨|拂晓|黎明|早晨|早上|上午|中午|正午|下午|傍晚|黄昏|日落|夜晚|深夜|午夜|凌晨|子时|丑时|寅时|卯时|辰时|巳时|午时|未时|申时|酉时|戌时|亥时)/g,
+    // "XX:XX" 时钟格式
+    /\d{1,2}:\d{2}/g,
+    // "X时" "X点"
+    /[\d一二三四五六七八九十]+\s*[时点](?:\s*[\d一二三四五六七八九十]+\s*分)?/g,
+  ];
+
+  let lastMatch = null;
+  let lastPos = -1;
+
+  for (const pat of patterns) {
+    let m;
+    while ((m = pat.exec(chatText)) !== null) {
+      if (m.index > lastPos) {
+        lastPos = m.index;
+        lastMatch = m[0].trim();
+      }
+    }
+  }
+
+  // 尝试组合：如果 "第X天" + 时间段 相邻，合并
+  if (lastMatch) {
+    // 在 lastMatch 附近也查找日期组合
+    const nearbyText = chatText.slice(Math.max(0, lastPos - 30), lastPos + lastMatch.length + 30);
+    const dayMatch = nearbyText.match(/第\s*[零一二三四五六七八九十百千万\d]+\s*[天日夜]/);
+    const timeMatch = nearbyText.match(/(?:清晨|拂晓|黎明|早晨|早上|上午|中午|正午|下午|傍晚|黄昏|日落|夜晚|深夜|午夜|凌晨)/);
+    if (dayMatch && timeMatch) {
+      return `${dayMatch[0]} ${timeMatch[0]}`;
+    }
+    return lastMatch;
+  }
+
+  return null;
+}
+
+/**
  * 构建推演 prompt messages
  */
 function buildParallelWorldPromptMessages(snapshotText, npcProfilesText, worldClock) {
@@ -2124,17 +2200,23 @@ async function runParallelWorldSimulation() {
   showToast('🌍 平行世界推演中…', { kind: 'info', spinner: true, sticky: true });
 
   try {
-    // 1. 收集上下文（仅从蓝灯世界书读取角色数据）
+    // 1. 收集上下文（从蓝灯世界书读取角色 + 最新正文）
     const blueCharEntries = await collectBlueWorldbookCharacterEntries();
     pwData._blueCharEntries = blueCharEntries;
-    const snapshot = buildSnapshot();
-    const snapshotText = snapshot?.text || '';
+    const readFloors = clampInt(s.parallelWorldReadFloors, 1, 50, 5);
+    const chatContext = readRecentChatForParallelWorld(readFloors);
     const npcProfilesText = collectTrackedNpcProfiles(tracked, pwData);
     delete pwData._blueCharEntries; // 清理临时数据
+
+    // 世界时钟：从正文中提取时间
+    const extractedTime = extractTimeFromChat(chatContext);
+    if (extractedTime) {
+      pwData.worldClock = extractedTime;
+    }
     const worldClock = pwData.worldClock || s.parallelWorldClock || '第1天';
 
     // 2. 构建 prompt
-    const messages = buildParallelWorldPromptMessages(snapshotText, npcProfilesText, worldClock);
+    const messages = buildParallelWorldPromptMessages(chatContext, npcProfilesText, worldClock);
 
     // 3. 调用 LLM
     let responseText;
@@ -15129,8 +15211,20 @@ function buildModalHtml() {
               <div class="sg-pw-clock-row">
                 <span class="sg-pw-clock-icon">🕐</span>
                 <span class="sg-pw-clock" id="sg_pwClockDisplay">第1天</span>
-                <input id="sg_parallelWorldClock" type="text" placeholder="如：第3天 傍晚" style="flex:1;margin-left:10px;">
-                <button class="menu_button sg-btn" id="sg_pwClockSet" style="margin-left:6px;">设置</button>
+                <span class="sg-hint" style="margin-left:10px;">(自动从正文提取)</span>
+              </div>
+              <div class="sg-grid2" style="margin-top:8px;">
+                <div class="sg-field">
+                  <label>读取正文楼层数</label>
+                  <input id="sg_parallelWorldReadFloors" type="number" min="1" max="50" placeholder="5">
+                </div>
+                <div class="sg-field">
+                  <label>手动设置时间(可选)</label>
+                  <div style="display:flex;gap:6px;">
+                    <input id="sg_parallelWorldClock" type="text" placeholder="留空=自动提取" style="flex:1;">
+                    <button class="menu_button sg-btn" id="sg_pwClockSet" style="flex-shrink:0;">设置</button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -17256,7 +17350,8 @@ function pullSettingsToUi() {
   $('#sg_parallelWorldCustomStream').prop('checked', !!s.parallelWorldCustomStream);
   $('#sg_parallelWorldSystemPrompt').val(s.parallelWorldSystemPrompt || DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT);
   $('#sg_parallelWorldUserTemplate').val(s.parallelWorldUserTemplate || DEFAULT_PARALLEL_WORLD_USER_TEMPLATE);
-  $('#sg_parallelWorldClock').val(s.parallelWorldClock || '第1天');
+  $('#sg_parallelWorldClock').val(s.parallelWorldClock || '');
+  $('#sg_parallelWorldReadFloors').val(s.parallelWorldReadFloors || 5);
   $('#sg_parallelCustomBlock').toggle(s.parallelWorldProvider === 'custom');
   if (Array.isArray(s.parallelWorldCustomModelsCache) && s.parallelWorldCustomModelsCache.length) {
     fillParallelWorldModelSelect(s.parallelWorldCustomModelsCache, s.parallelWorldCustomModel);
@@ -17918,7 +18013,8 @@ function pullUiToSettings() {
   s.parallelWorldCustomStream = $('#sg_parallelWorldCustomStream').is(':checked');
   s.parallelWorldSystemPrompt = String($('#sg_parallelWorldSystemPrompt').val() || DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT);
   s.parallelWorldUserTemplate = String($('#sg_parallelWorldUserTemplate').val() || DEFAULT_PARALLEL_WORLD_USER_TEMPLATE);
-  s.parallelWorldClock = String($('#sg_parallelWorldClock').val() || s.parallelWorldClock || '第1天');
+  s.parallelWorldClock = String($('#sg_parallelWorldClock').val() || '').trim();
+  s.parallelWorldReadFloors = clampInt($('#sg_parallelWorldReadFloors').val(), 1, 50, s.parallelWorldReadFloors || 5);
 }
 
 function openModal() {
