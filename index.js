@@ -2229,7 +2229,7 @@ async function runParallelWorldSimulation() {
   }
 
   const pwData = getParallelWorldData();
-  const pwData = getParallelWorldData();
+
   const trackedNpcs = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
   const trackedFactions = (s.parallelWorldTrackedFactions || []).filter(t => t.enabled);
 
@@ -2707,116 +2707,121 @@ function updateParallelWorldClockDisplay(clockText) {
  * 刷新 NPC 和 势力 追踪列表（从蓝灯世界书中获取）
  */
 async function refreshParallelWorldTrackedLists() {
-  const $npcList = $('#sg_pwNpcList');
-  const $factionList = $('#sg_pwFactionList');
+  try {
+    const $npcList = $('#sg_pwNpcList');
+    const $factionList = $('#sg_pwFactionList');
 
-  if (!$npcList.length && !$factionList.length) return;
+    if (!$npcList.length && !$factionList.length) return;
 
-  const s = ensureSettings();
-  $npcList.html('<div class="sg-hint">正在读取蓝灯角色条目…</div>');
-  $factionList.html('<div class="sg-hint">正在读取蓝灯势力条目…</div>');
+    const s = ensureSettings();
+    $npcList.html('<div class="sg-hint">正在读取蓝灯世界书…</div>');
+    $factionList.html('<div class="sg-hint">正在读取蓝灯世界书…</div>');
 
-  // 并行读取
-  const [blueCharEntries, blueFactionEntries] = await Promise.all([
-    collectBlueWorldbookCharacterEntries(),
-    collectBlueWorldbookFactionEntries()
-  ]);
+    // 并行读取
+    const [blueCharEntries, blueFactionEntries] = await Promise.all([
+      collectBlueWorldbookCharacterEntries().catch(e => { console.error(e); return {}; }),
+      collectBlueWorldbookFactionEntries().catch(e => { console.error(e); return {}; })
+    ]);
 
-  // --- 渲染 NPC 列表 ---
-  if ($npcList.length) {
-    const allNames = [];
-    const seen = new Set();
-    for (const [k, ce] of Object.entries(blueCharEntries || {})) {
-      const name = String(ce.name || k).trim();
-      if (name && !seen.has(name)) {
-        seen.add(name);
-        allNames.push(name);
+    // --- 渲染 NPC 列表 ---
+    if ($npcList.length) {
+      const allNames = [];
+      const seen = new Set();
+      for (const [k, ce] of Object.entries(blueCharEntries || {})) {
+        const name = String(ce.name || k).trim();
+        if (name && !seen.has(name)) {
+          seen.add(name);
+          allNames.push(name);
+        }
+      }
+
+      if (allNames.length === 0) {
+        $npcList.html('<div class="sg-hint">暂无角色条目。</div>');
+      } else {
+        const trackedMap = {};
+        for (const t of (s.parallelWorldTrackedNpcs || [])) {
+          trackedMap[String(t.name || '').trim()] = t.enabled !== false;
+        }
+
+        let html = '';
+        for (const name of allNames) {
+          const checked = trackedMap[name] ? 'checked' : '';
+          html += `<label class="sg-pw-list-item">
+            <input type="checkbox" class="sg-pw-check-npc" data-name="${escapeHtml(name)}" ${checked}>
+            <span>${escapeHtml(name)}</span>
+          </label>`;
+        }
+        $npcList.html(html);
       }
     }
 
-    if (allNames.length === 0) {
-      $npcList.html('<div class="sg-hint">暂无角色条目。</div>');
-    } else {
-      const trackedMap = {};
-      for (const t of (s.parallelWorldTrackedNpcs || [])) {
-        trackedMap[String(t.name || '').trim()] = t.enabled !== false;
+    // --- 渲染 势力 列表 ---
+    if ($factionList.length) {
+      const allNames = [];
+      const seen = new Set();
+      for (const [k, fe] of Object.entries(blueFactionEntries || {})) {
+        const name = String(fe.name || k).trim();
+        if (name && !seen.has(name)) {
+          seen.add(name);
+          allNames.push(name);
+        }
       }
 
-      let html = '';
-      for (const name of allNames) {
-        const checked = trackedMap[name] ? 'checked' : '';
-        html += `<label class="sg-pw-list-item">
-          <input type="checkbox" class="sg-pw-check-npc" data-name="${escapeHtml(name)}" ${checked}>
-          <span>${escapeHtml(name)}</span>
-        </label>`;
+      if (allNames.length === 0) {
+        $factionList.html('<div class="sg-hint">暂无势力条目。</div>');
+      } else {
+        const trackedMap = {};
+        for (const t of (s.parallelWorldTrackedFactions || [])) {
+          trackedMap[String(t.name || '').trim()] = t.enabled !== false;
+        }
+
+        let html = '';
+        for (const name of allNames) {
+          const checked = trackedMap[name] ? 'checked' : '';
+          html += `<label class="sg-pw-list-item">
+            <input type="checkbox" class="sg-pw-check-faction" data-name="${escapeHtml(name)}" ${checked}>
+            <span>${escapeHtml(name)}</span>
+          </label>`;
+        }
+        $factionList.html(html);
       }
-      $npcList.html(html);
     }
+
+    // 绑定事件：NPC Checkbox
+    $npcList.off('change', '.sg-pw-check-npc').on('change', '.sg-pw-check-npc', function () {
+      const name = $(this).data('name');
+      const enabled = $(this).prop('checked');
+      const s2 = ensureSettings();
+      if (!s2.parallelWorldTrackedNpcs) s2.parallelWorldTrackedNpcs = [];
+
+      const existing = s2.parallelWorldTrackedNpcs.find(t => t.name === name);
+      if (existing) {
+        existing.enabled = enabled;
+      } else {
+        s2.parallelWorldTrackedNpcs.push({ name, enabled });
+      }
+      saveSettings();
+    });
+
+    // 绑定事件：Faction Checkbox
+    $factionList.off('change', '.sg-pw-check-faction').on('change', '.sg-pw-check-faction', function () {
+      const name = $(this).data('name');
+      const enabled = $(this).prop('checked');
+      const s2 = ensureSettings();
+      if (!s2.parallelWorldTrackedFactions) s2.parallelWorldTrackedFactions = [];
+
+      const existing = s2.parallelWorldTrackedFactions.find(t => t.name === name);
+      if (existing) {
+        existing.enabled = enabled;
+      } else {
+        s2.parallelWorldTrackedFactions.push({ name, enabled });
+      }
+      saveSettings();
+    });
+  } catch (e) {
+    console.error('[StoryGuide] refreshParallelWorldTrackedLists error:', e);
+    $('#sg_pwNpcList, #sg_pwFactionList').html('<div class="sg-hint" style="color:red">加载列表失败</div>');
   }
-
-  // --- 渲染 势力 列表 ---
-  if ($factionList.length) {
-    const allNames = [];
-    const seen = new Set();
-    for (const [k, fe] of Object.entries(blueFactionEntries || {})) {
-      const name = String(fe.name || k).trim();
-      if (name && !seen.has(name)) {
-        seen.add(name);
-        allNames.push(name);
-      }
-    }
-
-    if (allNames.length === 0) {
-      $factionList.html('<div class="sg-hint">暂无势力条目。</div>');
-    } else {
-      const trackedMap = {};
-      for (const t of (s.parallelWorldTrackedFactions || [])) {
-        trackedMap[String(t.name || '').trim()] = t.enabled !== false;
-      }
-
-      let html = '';
-      for (const name of allNames) {
-        const checked = trackedMap[name] ? 'checked' : '';
-        html += `<label class="sg-pw-list-item">
-          <input type="checkbox" class="sg-pw-check-faction" data-name="${escapeHtml(name)}" ${checked}>
-          <span>${escapeHtml(name)}</span>
-        </label>`; // Use same class for style
-      }
-      $factionList.html(html);
-    }
-  }
-
-  // 绑定事件：NPC Checkbox
-  $npcList.off('change', '.sg-pw-check-npc').on('change', '.sg-pw-check-npc', function () {
-    const name = $(this).data('name');
-    const enabled = $(this).prop('checked');
-    const s2 = ensureSettings();
-    if (!s2.parallelWorldTrackedNpcs) s2.parallelWorldTrackedNpcs = [];
-
-    const existing = s2.parallelWorldTrackedNpcs.find(t => t.name === name);
-    if (existing) {
-      existing.enabled = enabled;
-    } else {
-      s2.parallelWorldTrackedNpcs.push({ name, enabled });
-    }
-    saveSettings();
-  });
-
-  // 绑定事件：Faction Checkbox
-  $factionList.off('change', '.sg-pw-check-faction').on('change', '.sg-pw-check-faction', function () {
-    const name = $(this).data('name');
-    const enabled = $(this).prop('checked');
-    const s2 = ensureSettings();
-    if (!s2.parallelWorldTrackedFactions) s2.parallelWorldTrackedFactions = [];
-
-    const existing = s2.parallelWorldTrackedFactions.find(t => t.name === name);
-    if (existing) {
-      existing.enabled = enabled;
-    } else {
-      s2.parallelWorldTrackedFactions.push({ name, enabled });
-    }
-    saveSettings();
-  });
 }
 
 /**
