@@ -2470,12 +2470,12 @@ async function writeParallelEventsEntry(pwData, settings) {
   for (const tf of trackedFactions) keywords.push(String(tf.name || '').trim());
   keywords.push('平行事件', '离屏事件');
 
-  const entryComment = `平行事件`;
+  const entryComment = `[mvu_plot]平行事件`;
   const meta = getSummaryMeta();
 
   // 使用 writeOrUpdateStructuredEntry 写入蓝灯和绿灯
   const entryData = {
-    name: '平行事件',
+    name: '[mvu_plot]平行事件',
     isUpdated: true,
     isNew: false,
   };
