@@ -2525,7 +2525,8 @@ async function writeWorldInfoEntryDirect({ file, comment, content, keys, constan
   if (!file || !comment) return;
 
   const qFile = quoteSlashValue(file);
-  const qComment = quoteSlashValue(comment);
+  // SillyTavern might parse [bracket] as macro, so escape them in comment/title
+  const qComment = quoteSlashValue(comment.replace(/\[/g, '\\[').replace(/\]/g, '\\]'));
   const qContent = quoteSlashValue(content.replace(/\|/g, '｜'));
   const keyStr = Array.isArray(keys) ? keys.join(',') : String(keys || '');
   const qKey = quoteSlashValue(keyStr);
