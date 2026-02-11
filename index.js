@@ -6893,12 +6893,6 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = nu
   if (statData && !/{{\s*statData\s*}}/i.test(tpl)) {
     user = String(user || '').trim() + `\n\n【角色状态数据】\n${statDataJson}`;
   }
-
-  // [Task] 强制让索引/总结模块在 Summary 内容中提及 "平行事件"，以便触发对应的世界书条目
-  if (s.parallelWorldEnabled) {
-    sys += `\n\n【指令】请在生成的 summary 文案中包含 "平行事件" 一词。`;
-  }
-
   return [
     { role: 'system', content: sys },
     { role: 'user', content: user },
