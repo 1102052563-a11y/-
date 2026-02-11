@@ -2468,7 +2468,7 @@ async function writeParallelEventsEntry(pwData, settings) {
   // 关键词 = 所有被追踪NPC的名字 + 被追踪势力名字,以便索引模块能匹配触发
   const keywords = trackedNpcs.map(t => String(t.name || '').trim()).filter(Boolean);
   for (const tf of trackedFactions) keywords.push(String(tf.name || '').trim());
-  keywords.push('平行事件', '离屏事件');
+  keywords.push('平行事件', '离屏事件', '__SG_PARALLEL_WORLD_EVENT__');
 
   const entryComment = `[mvu_plot]平行事件`;
   const meta = getSummaryMeta();
@@ -2493,6 +2493,7 @@ async function writeParallelEventsEntry(pwData, settings) {
         content,
         keys: keywords,
         constant: 0,  // 绿灯=关键词触发
+        searchKey: '__SG_PARALLEL_WORLD_EVENT__',
       });
       console.log('[StoryGuide][平行世界] 平行事件条目已写入绿灯世界书');
     }
@@ -2510,6 +2511,7 @@ async function writeParallelEventsEntry(pwData, settings) {
         content,
         keys: keywords,
         constant: 1,  // 蓝灯=常开
+        searchKey: '__SG_PARALLEL_WORLD_EVENT__',
       });
       console.log('[StoryGuide][平行世界] 平行事件条目已写入蓝灯世界书');
     }
@@ -2521,35 +2523,51 @@ async function writeParallelEventsEntry(pwData, settings) {
 /**
  * 直接使用 STscript 写入/更新世界书条目（通用底层方法）
  */
-async function writeWorldInfoEntryDirect({ file, comment, content, keys, constant = 0 }) {
-  if (!file || !comment) return;
+async function writeWorldInfoEntryDirect({ file, comment, content, keys, constant = 0, searchKey }) {
+  if (!file || (!comment && !searchKey)) return;
 
   const qFile = quoteSlashValue(file);
   // SillyTavern might parse [bracket] as macro, so escape them in comment/title
-  const qComment = quoteSlashValue(comment.replace(/\[/g, '\\[').replace(/\]/g, '\\]'));
+  const qComment = quoteSlashValue(comment ? comment.replace(/\[/g, '\\[').replace(/\]/g, '\\]') : '');
   const qContent = quoteSlashValue(content.replace(/\|/g, '｜'));
   const keyStr = Array.isArray(keys) ? keys.join(',') : String(keys || '');
   const qKey = quoteSlashValue(keyStr);
   const uidVar = '__sg_pw_uid';
 
-  // 先尝试查找已有条目
-  try {
-    const findScript = `/findentry file=${qFile} field=comment ${qComment} | /setvar key=${uidVar}`;
-    const findResult = await execSlash(findScript);
-    const uid = parseFindEntryUid(findResult);
+  let uid = null;
 
-    if (uid) {
-      // 已有条目 -> 更新内容和关键词
-      const updateParts = [
-        `/setentryfield file=${qFile} uid=${uid} field=content ${qContent}`,
-        `/setentryfield file=${qFile} uid=${uid} field=key ${qKey}`,
-        `/setentryfield file=${qFile} uid=${uid} field=disable 0`,
-      ];
-      await execSlash(updateParts.join(' | '));
-      console.log(`[StoryGuide][平行世界] 已更新条目 uid=${uid} (file=${file})`);
-      return;
-    }
-  } catch { /* 查找失败，尝试新建 */ }
+  // 1. 优先尝试按 searchKey 查找 (更精准,避免同名覆盖)
+  if (searchKey) {
+    try {
+      const qSearchKey = quoteSlashValue(searchKey);
+      const findScriptKey = `/findentry file=${qFile} field=key ${qSearchKey} | /setvar key=${uidVar}`;
+      const findResultKey = await execSlash(findScriptKey);
+      uid = parseFindEntryUid(findResultKey);
+      if (uid) console.log(`[StoryGuide] Found entry by unique key: ${searchKey}, uid=${uid}`);
+    } catch { }
+  }
+
+  // 2. 如果没找到，再尝试按 comment 查找 (兼容旧数据)
+  if (!uid && comment) {
+    try {
+      const findScript = `/findentry file=${qFile} field=comment ${qComment} | /setvar key=${uidVar}`;
+      const findResult = await execSlash(findScript);
+      uid = parseFindEntryUid(findResult);
+    } catch { }
+  }
+
+  if (uid) {
+    // 已有条目 -> 更新内容和关键词
+    const updateParts = [
+      `/setentryfield file=${qFile} uid=${uid} field=content ${qContent}`,
+      `/setentryfield file=${qFile} uid=${uid} field=key ${qKey}`,
+      `/setentryfield file=${qFile} uid=${uid} field=comment ${qComment}`, // 确保标题也更新
+      `/setentryfield file=${qFile} uid=${uid} field=disable 0`,
+    ];
+    await execSlash(updateParts.join(' | '));
+    console.log(`[StoryGuide][平行世界] 已更新条目 uid=${uid} (file=${file})`);
+    return;
+  }
 
   // 新建条目
   const createParts = [
