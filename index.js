@@ -7692,10 +7692,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       const newNameInCachedAliases = cachedAliases.some(a => a === normalizedName); // || a.includes(normalizedName) || normalizedName.includes(a));
       const cachedNameInNewAliases = newAliases.some(a => a === cachedNameNorm); // || a.includes(cachedNameNorm) || cachedNameNorm.includes(a));
       // const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na || ca.includes(na) || na.includes(ca)));
-      // const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na));
+      const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na));
 
-      // Removed aliasesOverlap to prevent merging different characters who happen to share a generic alias (e.g. "student")
-      if (nameMatch || newNameInCachedAliases || cachedNameInNewAliases) {
+      if (nameMatch || newNameInCachedAliases || cachedNameInNewAliases || aliasesOverlap) {
         cached = value;
         if (entryName.toLowerCase() !== String(value.name).toLowerCase()) {
           console.log(`[StoryGuide] Found cached ${entryType} by smart match: "${entryName}" -> "${value.name}" (Strict Match)`);
@@ -7765,10 +7764,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       let foundUid = null;
       for (const searchPattern of searchPatterns) {
         // 构建查找脚本
-        const uniqueSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         let findParts = [];
-        const findUidVar = `__sg_find_uid${uniqueSuffix}`;
-        const findFileVar = `__sg_find_file${uniqueSuffix}`;
+        const findUidVar = '__sg_find_uid';
+        const findFileVar = '__sg_find_file';
 
         if (target === 'chatbook') {
           findParts.push('/getchatbook');
@@ -7799,9 +7797,8 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
       if (foundUid) {
         // 找到条目，更新内容
-        const uniqueSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         let updateParts = [];
-        const updateFileVar = `__sg_update_file${uniqueSuffix}`;
+        const updateFileVar = '__sg_update_file';
 
         const shouldReenable = !!settings.structuredReenableEntriesEnabled;
         const commentName = String(cached?.name || entryName).trim() || entryName;
@@ -7879,9 +7876,8 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   const keyValue = buildStructuredEntryKey(prefix, entryName, indexId);
   const comment = `${prefix}｜${entryName}｜${indexId}`;
 
-  const uniqueSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-  const uidVar = `__sg_struct_uid${uniqueSuffix}`;
-  const fileVar = `__sg_struct_wbfile${uniqueSuffix}`;
+  const uidVar = '__sg_struct_uid';
+  const fileVar = '__sg_struct_wbfile';
   const createFileExpr = (target === 'chatbook') ? `{{getvar::${fileVar}}}` : file;
 
   const parts = [];
@@ -8207,11 +8203,8 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
 
   // 使用 /findentry 查找条目 UID
   try {
-    // 使用 /findentry 查找条目 UID
-    const uniqueSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     let findExpr;
-    const findFileVar = `sgTmpFindFile${uniqueSuffix}`;
-
+    const findFileVar = 'sgTmpFindFile';
     if (target === 'chatbook') {
       // 使用 setvar/getvar 管道获取 chatbook 文件名
       await execSlash(`/getchatbook | /setvar key=${findFileVar}`);
@@ -8266,46 +8259,9 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     // 1. 设置 disable=1（禁用条目）
     // 2. 清空内容或标记为已删除
 
-    // [Safety Check] Double-check that the found UID actually belongs to the character we want to delete.
-    // Fetch the current comment of the target UID.
-    const checkSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const checkFileVar = `sgTmpCheckFile${checkSuffix}`;
-    let checkFileExpr;
-    if (target === 'chatbook') {
-      await execSlash(`/getchatbook | /setvar key=${checkFileVar}`);
-      checkFileExpr = `{{getvar::${checkFileVar}}}`;
-    } else {
-      checkFileExpr = quoteSlashValue(file);
-    }
-
-    const checkCommentExpr = `/getentryfield file=${checkFileExpr} uid=${uid} field=comment`;
-    const checkResult = await execSlash(checkCommentExpr);
-    const currentComment = slashOutputToText(checkResult);
-
-    if (target === 'chatbook') {
-      await execSlash(`/flushvar ${checkFileVar}`);
-    }
-
-    // Verify identity: The current comment must contain the entry name or one of its aliases.
-    const expectedNameNorm = normalizedName;
-    const currentCommentNorm = String(currentComment).toLowerCase();
-
-    // Check if the current comment contains the name we are looking for.
-    // We utilize the same strict matching logic: name or known alias.
-    const isIdentityMatch = currentCommentNorm.includes(expectedNameNorm) ||
-      (cached && Array.isArray(cached.aliases) && cached.aliases.some(alias => currentCommentNorm.includes(String(alias).toLowerCase().trim())));
-
-    if (!isIdentityMatch) {
-      console.warn(`[StoryGuide] ABORTING DELETE: Identity mismatch! Tried to delete "${entryName}" (uid: ${uid}), but found entry with comment: "${currentComment}". This prevents deleting the wrong character.`);
-      // Gracefully exit, assuming the correct entry is already gone or we found a ghost.
-      if (entriesCache[cacheKey]) entriesCache[cacheKey].disabled = true;
-      return null;
-    }
-
-
     // 构建文件表达式（chatbook 需要特殊处理）
     let fileExpr;
-    const fileVar = `sgTmpDeleteFile${uniqueSuffix}`;
+    const fileVar = 'sgTmpDeleteFile';
     if (target === 'chatbook') {
       // 使用 setvar/getvar 管道获取 chatbook 文件名
       await execSlash(`/getchatbook | /setvar key=${fileVar}`);
