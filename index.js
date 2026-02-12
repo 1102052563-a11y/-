@@ -7692,9 +7692,10 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       const newNameInCachedAliases = cachedAliases.some(a => a === normalizedName); // || a.includes(normalizedName) || normalizedName.includes(a));
       const cachedNameInNewAliases = newAliases.some(a => a === cachedNameNorm); // || a.includes(cachedNameNorm) || cachedNameNorm.includes(a));
       // const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na || ca.includes(na) || na.includes(ca)));
-      const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na));
+      // const aliasesOverlap = cachedAliases.some(ca => newAliases.some(na => ca === na));
 
-      if (nameMatch || newNameInCachedAliases || cachedNameInNewAliases || aliasesOverlap) {
+      // Removed aliasesOverlap to prevent merging different characters who happen to share a generic alias (e.g. "student")
+      if (nameMatch || newNameInCachedAliases || cachedNameInNewAliases) {
         cached = value;
         if (entryName.toLowerCase() !== String(value.name).toLowerCase()) {
           console.log(`[StoryGuide] Found cached ${entryType} by smart match: "${entryName}" -> "${value.name}" (Strict Match)`);
