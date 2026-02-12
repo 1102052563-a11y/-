@@ -8266,6 +8266,43 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     // 1. 设置 disable=1（禁用条目）
     // 2. 清空内容或标记为已删除
 
+    // [Safety Check] Double-check that the found UID actually belongs to the character we want to delete.
+    // Fetch the current comment of the target UID.
+    const checkSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const checkFileVar = `sgTmpCheckFile${checkSuffix}`;
+    let checkFileExpr;
+    if (target === 'chatbook') {
+      await execSlash(`/getchatbook | /setvar key=${checkFileVar}`);
+      checkFileExpr = `{{getvar::${checkFileVar}}}`;
+    } else {
+      checkFileExpr = quoteSlashValue(file);
+    }
+
+    const checkCommentExpr = `/getentryfield file=${checkFileExpr} uid=${uid} field=comment`;
+    const checkResult = await execSlash(checkCommentExpr);
+    const currentComment = slashOutputToText(checkResult);
+
+    if (target === 'chatbook') {
+      await execSlash(`/flushvar ${checkFileVar}`);
+    }
+
+    // Verify identity: The current comment must contain the entry name or one of its aliases.
+    const expectedNameNorm = normalizedName;
+    const currentCommentNorm = String(currentComment).toLowerCase();
+
+    // Check if the current comment contains the name we are looking for.
+    // We utilize the same strict matching logic: name or known alias.
+    const isIdentityMatch = currentCommentNorm.includes(expectedNameNorm) ||
+      (cached && Array.isArray(cached.aliases) && cached.aliases.some(alias => currentCommentNorm.includes(String(alias).toLowerCase().trim())));
+
+    if (!isIdentityMatch) {
+      console.warn(`[StoryGuide] ABORTING DELETE: Identity mismatch! Tried to delete "${entryName}" (uid: ${uid}), but found entry with comment: "${currentComment}". This prevents deleting the wrong character.`);
+      // Gracefully exit, assuming the correct entry is already gone or we found a ghost.
+      if (entriesCache[cacheKey]) entriesCache[cacheKey].disabled = true;
+      return null;
+    }
+
+
     // 构建文件表达式（chatbook 需要特殊处理）
     let fileExpr;
     const fileVar = `sgTmpDeleteFile${uniqueSuffix}`;
