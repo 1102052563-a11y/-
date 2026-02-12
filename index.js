@@ -4,25 +4,25 @@
  * 剧情指导 StoryGuide (SillyTavern UI Extension)
  * v0.9.8
  *
- * 新增：输出模块自定义（更高自由度）
- * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt）
- * - 面板提供一个「模块配置(JSON)」编辑区：可增删字段、改顺序、改提示词、控制是否在面板/自动追加中展示
- * - 插件会根据模块自动生成 JSON Schema（动态字段）并要求模型按该 Schema 输出
+ * 新增：输出模块自定义（更高自由度�?
+ * - 你可以自定义“输出模块列表”以及每个模块自己的提示词（prompt�?
+ * - 面板提供一个「模块配�?JSON)」编辑区：可增删字段、改顺序、改提示词、控制是否在面板/自动追加中展�?
+ * - 插件会根据模块自动生�?JSON Schema（动态字段）并要求模型按�?Schema 输出
  *
- * 兼容：仍然保持 v0.3.x 的“独立API走后端代理 + 抗变量更新覆盖（自动补贴）+ 点击折叠”能力
+ * 兼容：仍然保�?v0.3.x 的“独立API走后端代�?+ 抗变量更新覆盖（自动补贴�? 点击折叠”能�?
  *
- * v0.8.2 修复：兼容 SlashCommand 返回 [object Object] 的情况（自动解析 UID / 文本输出）
- * v0.8.3 新增：总结功能支持自定义提示词（system + user 模板，支持占位符）
- * v0.8.6 修复：写入世界书不再依赖 JS 解析 UID（改为在同一段 STscript 管线内用 {{pipe}} 传递 UID），避免误报“无法解析 UID”。
- * v0.9.0 修复：实时读取蓝灯世界书在部分 ST 版本返回包装字段（如 data 为 JSON 字符串）时解析为 0 条的问题；并增强读取端点/文件名兼容。
- * v0.9.1 新增：蓝灯索引→绿灯触发 的“索引日志”（显示命中条目名称/注入关键词），便于排查触发效果。
- * v0.9.2 修复：条目标题前缀（comment）现在始终加在最前（即使模型输出了自定义 title 也会保留前缀）。
- * v0.9.4 新增：总结写入世界书的“主要关键词(key)”可切换为“索引编号”（如 A-001），只写 1 个触发词，触发更精确。
- * v0.9.5 改进：蓝灯索引匹配会综合“最近 N 条消息正文 + 本次用户输入”，而不是只看最近正文（可在面板里关闭/调整权重）。
- * v0.9.6 改进：在面板标题处显示版本号，方便确认是否已正确更新到包含“用户输入权重”设置的版本。
- * v0.9.9 改进：把“剧情指导 / 总结设置 / 索引设置”拆成三页（左侧分页标签），界面更清晰。
- * v0.9.8 新增：手动选择总结楼层范围（例如 20-40）并点击立即总结。
- * v0.10.0 新增：手动楼层范围总结支持“按每 N 层拆分生成多条世界书条目”（例如 1-80 且 N=40 → 2 条）。
+ * v0.8.2 修复：兼�?SlashCommand 返回 [object Object] 的情况（自动解析 UID / 文本输出�?
+ * v0.8.3 新增：总结功能支持自定义提示词（system + user 模板，支持占位符�?
+ * v0.8.6 修复：写入世界书不再依赖 JS 解析 UID（改为在同一�?STscript 管线内用 {{pipe}} 传�?UID），避免误报“无法解�?UID”�?
+ * v0.9.0 修复：实时读取蓝灯世界书在部�?ST 版本返回包装字段（如 data �?JSON 字符串）时解析为 0 条的问题；并增强读取端点/文件名兼容�?
+ * v0.9.1 新增：蓝灯索引→绿灯触发 的“索引日志”（显示命中条目名称/注入关键词），便于排查触发效果�?
+ * v0.9.2 修复：条目标题前缀（comment）现在始终加在最前（即使模型输出了自定义 title 也会保留前缀）�?
+ * v0.9.4 新增：总结写入世界书的“主要关键词(key)”可切换为“索引编号”（�?A-001），只写 1 个触发词，触发更精确�?
+ * v0.9.5 改进：蓝灯索引匹配会综合“最�?N 条消息正�?+ 本次用户输入”，而不是只看最近正文（可在面板里关�?调整权重）�?
+ * v0.9.6 改进：在面板标题处显示版本号，方便确认是否已正确更新到包含“用户输入权重”设置的版本�?
+ * v0.9.9 改进：把“剧情指�?/ 总结设置 / 索引设置”拆成三页（左侧分页标签），界面更清晰�?
+ * v0.9.8 新增：手动选择总结楼层范围（例�?20-40）并点击立即总结�?
+ * v0.10.0 新增：手动楼层范围总结支持“按�?N 层拆分生成多条世界书条目”（例如 1-80 �?N=40 �?2 条）�?
  */
 
 const SG_VERSION = '0.10.0';
@@ -38,155 +38,155 @@ const EXT_BASE_URL = (() => {
 /**
  * 模块配置格式（JSON 数组）示例：
  * [
- *   {"key":"world_summary","title":"世界简介","type":"text","prompt":"1~3句概括世界与局势","required":true,"panel":true,"inline":true},
- *   {"key":"key_plot_points","title":"重要剧情点","type":"list","prompt":"3~8条关键剧情点（短句）","maxItems":8,"required":true,"panel":true,"inline":false}
+ *   {"key":"world_summary","title":"世界简�?,"type":"text","prompt":"1~3句概括世界与局�?,"required":true,"panel":true,"inline":true},
+ *   {"key":"key_plot_points","title":"重要剧情�?,"type":"list","prompt":"3~8条关键剧情点（短句）","maxItems":8,"required":true,"panel":true,"inline":false}
  * ]
  *
- * 字段说明：
- * - key: JSON 输出字段名（唯一）
+ * 字段说明�?
+ * - key: JSON 输出字段名（唯一�?
  * - title: 渲染到报告的标题
- * - type: "text" 或 "list"（list = string[]）
- * - prompt: 该模块的生成提示词（会写进 Output Fields）
- * - required: 是否强制要求该字段输出
+ * - type: "text" �?"list"（list = string[]�?
+ * - prompt: 该模块的生成提示词（会写�?Output Fields�?
+ * - required: 是否强制要求该字段输�?
  * - panel: 是否在“报告”里展示
  * - inline: 是否在“自动追加分析框”里展示
  * - maxItems: type=list 时限制最大条目（可选）
  */
 
 const DEFAULT_MODULES = Object.freeze([
-  { key: 'world_summary', title: '世界简介', type: 'text', prompt: '1~3句概括世界与局势', required: true, panel: true, inline: true, static: true },
-  { key: 'key_plot_points', title: '重要剧情点', type: 'list', prompt: '3~8条关键剧情点（短句）', maxItems: 8, required: true, panel: true, inline: false, static: true },
-  { key: 'current_scene', title: '当前时间点 · 具体剧情', type: 'text', prompt: '描述当前发生了什么（地点/人物动机/冲突/悬念）', required: true, panel: true, inline: true },
+  { key: 'world_summary', title: '世界简�?, type: 'text', prompt: '1~3句概括世界与局�?, required: true, panel: true, inline: true, static: true },
+  { key: 'key_plot_points', title: '重要剧情�?, type: 'list', prompt: '3~8条关键剧情点（短句）', maxItems: 8, required: true, panel: true, inline: false, static: true },
+  { key: 'current_scene', title: '当前时间�?· 具体剧情', type: 'text', prompt: '描述当前发生了什么（地点/人物动机/冲突/悬念�?, required: true, panel: true, inline: true },
   { key: 'next_events', title: '后续将会发生的事', type: 'list', prompt: '接下来最可能发生的事（条目）', maxItems: 6, required: true, panel: true, inline: true },
-  { key: 'protagonist_impact', title: '主角行为造成的影响', type: 'text', prompt: '主角行为对剧情/关系/风险造成的改变', required: true, panel: true, inline: false },
-  { key: 'tips', title: '给主角的提示（基于原著后续/大纲）', type: 'list', prompt: '给出可执行提示（尽量具体）', maxItems: 4, required: true, panel: true, inline: true },
-  { key: 'quick_actions', title: '快捷选项', type: 'list', prompt: '根据当前剧情走向，给出4~6个玩家可以发送的具体行动选项（每项15~40字，可直接作为对话输入发送）', maxItems: 6, required: true, panel: true, inline: true },
+  { key: 'protagonist_impact', title: '主角行为造成的影�?, type: 'text', prompt: '主角行为对剧�?关系/风险造成的改�?, required: true, panel: true, inline: false },
+  { key: 'tips', title: '给主角的提示（基于原著后�?大纲�?, type: 'list', prompt: '给出可执行提示（尽量具体�?, maxItems: 4, required: true, panel: true, inline: true },
+  { key: 'quick_actions', title: '快捷选项', type: 'list', prompt: '根据当前剧情走向，给�?~6个玩家可以发送的具体行动选项（每�?5~40字，可直接作为对话输入发送）', maxItems: 6, required: true, panel: true, inline: true },
 ]);
 
-// ===== 总结提示词默认值（可在面板中自定义） =====
-const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n\n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文，150~400字，尽量包含：主要人物/目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
+// ===== 总结提示词默认值（可在面板中自定义�?=====
+const DEFAULT_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情总结/世界书记忆”助手。\n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n任务：\n1) 阅读用户与AI对话片段，生成一段简洁摘要（中文�?50~400字，尽量包含：主要人�?目标/冲突/关键物品/地点/关系变化/未解决的悬念）。\n2) 提取 6~14 个关键词（中文优先，人物/地点/势力/物品/事件/关系等），用于世界书条目触发词。关键词尽量去重、不要太泛（如“然后”“好的”）。`;
 
-const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\n\n【对话片段】\n{{chunk}}`;
+const DEFAULT_SUMMARY_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【对话片段】\n{{chunk}}`;
 
-const DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情大总结”助手。
+const DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT = `你是一个“剧情大总结”助手�?
 
-任务：
-1) 阅读多条剧情总结，输出一段更高层级的归纳（中文，200~600字，强调阶段性进展/主线变化/关键转折）。
-2) 提取 8~16 个关键词（人物/地点/势力/事件/关系等），用于世界书条目触发词。
-3) 只输出 JSON。`;
+任务�?
+1) 阅读多条剧情总结，输出一段更高层级的归纳（中文，200~600字，强调阶段性进�?主线变化/关键转折）�?
+2) 提取 8~16 个关键词（人�?地点/势力/事件/关系等），用于世界书条目触发词�?
+3) 只输�?JSON。`;
 const DEFAULT_MEGA_SUMMARY_USER_TEMPLATE = `【待汇总条目】\n{{items}}`;
 
-const DEFAULT_SEX_GUIDE_SYSTEM_PROMPT = `你是一个“性爱指导”助手，基于给定的剧情上下文与设定，提供成熟、尊重、强调自愿与安全的行动建议与注意事项。
+const DEFAULT_SEX_GUIDE_SYSTEM_PROMPT = `你是一个“性爱指导”助手，基于给定的剧情上下文与设定，提供成熟、尊重、强调自愿与安全的行动建议与注意事项�?
 
-要求：
-1) 先确认双方意愿与边界，再给出具体且可执行的动作/节奏建议。
-2) 注意氛围营造、沟通与情绪反馈，避免粗暴与不适。
-3) 给出 3~6 条建议，语言直接但不必低俗。
+要求�?
+1) 先确认双方意愿与边界，再给出具体且可执行的动�?节奏建议�?
+2) 注意氛围营造、沟通与情绪反馈，避免粗暴与不适�?
+3) 给出 3~6 条建议，语言直接但不必低俗�?
 4) 若上下文不足，先提出澄清问题或保守建议。`;
 
-const DEFAULT_SEX_GUIDE_USER_TEMPLATE = `【上下文】\n{{snapshot}}\n\n【性爱指导世界书】\n{{worldbook}}\n\n【用户需求】\n{{userNeed}}\n\n【用户输入】\n{{lastUser}}`;
+const DEFAULT_SEX_GUIDE_USER_TEMPLATE = `【上下文】\n{{snapshot}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【性爱指导世界书】\n{{worldbook}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【用户需求】\n{{userNeed}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【用户输入】\n{{lastUser}}`;
 
-// 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
-const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
+// 无论用户怎么自定义提示词，仍会强制追�?JSON 输出结构要求，避免写入世界书失败
+const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严�?JSON，不�?Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords �?6~14 个词/短语，尽量去重、避免泛词。`;
 
 
-// ===== 索引提示词默认值（可在面板中自定义；用于"LLM 综合判断"模式） =====
-const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个"剧情索引匹配"助手。
+// ===== 索引提示词默认值（可在面板中自定义；用�?LLM 综合判断"模式�?=====
+const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一�?剧情索引匹配"助手�?
 
-【任务】
-- 输入包含：最近剧情正文（节选）、用户当前输入、以及蓝灯世界书的全部候选条目（含名称/摘要/触发词/类型）。
-- 你的目标是：综合判断哪些候选条目与"当前剧情"最相关，并返回这些候选的名称。
+【任务�?
+- 输入包含：最近剧情正文（节选）、用户当前输入、以及蓝灯世界书的全部候选条目（含名�?摘要/触发�?类型）�?
+- 你的目标是：综合判断哪些候选条目与"当前剧情"最相关，并返回这些候选的名称�?
 
-【选择优先级】
-1. **人物相关**：当前剧情涉及某个NPC时，优先索引该NPC的档案条目
-2. **装备相关**：当前剧情涉及某件装备时，优先索引该装备的条目
-3. **历史剧情**：优先选择时间较久远但与当前剧情相关的条目（避免索引最近已在上下文中的剧情）
-4. **因果关联**：当前事件的前因、伏笔、未解悬念
+【选择优先级�?
+1. **人物相关**：当前剧情涉及某个NPC时，优先索引该NPC的档案条�?
+2. **装备相关**：当前剧情涉及某件装备时，优先索引该装备的条�?
+3. **历史剧情**：优先选择时间较久远但与当前剧情相关的条目（避免索引最近已在上下文中的剧情�?
+4. **因果关联**：当前事件的前因、伏笔、未解悬�?
 
-【避免】
-- 不要选择刚刚发生的剧情（最近5层以内的内容通常已在上下文中）
+【避免�?
+- 不要选择刚刚发生的剧情（最�?层以内的内容通常已在上下文中�?
 - 避免选择明显无关或过于泛泛的条目
 
-【返回要求】
-- 返回条目数量应 <= maxPick
-- 分类控制：人物 <= maxCharacters，装备 <= maxEquipments，势力 <= maxFactions，成就 <= maxAchievements，副职业 <= maxSubProfessions，任务 <= maxQuests，剧情 <= maxPlot`;
+【返回要求�?
+- 返回条目数量�?<= maxPick
+- 分类控制：人�?<= maxCharacters，装�?<= maxEquipments，势�?<= maxFactions，成�?<= maxAchievements，副职业 <= maxSubProfessions，任�?<= maxQuests，剧�?<= maxPlot`;
 
-const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】
+const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入�?
 {{userMessage}}
 
-【最近剧情（节选）】
+【最近剧情（节选）�?
 {{recentText}}
 
-【候选索引条目（JSON，来自蓝灯世界书全部条目）】
+【候选索引条目（JSON，来自蓝灯世界书全部条目）�?
 {{candidates}}
 
-【选择限制】
-- 总数不超过 {{maxPick}} 条
-- 人物条目不超过 {{maxCharacters}} 条
-- 装备条目不超过 {{maxEquipments}} 条
-- 势力条目不超过 {{maxFactions}} 条
-- 成就条目不超过 {{maxAchievements}} 条
-- 副职业条目不超过 {{maxSubProfessions}} 条
-- 任务条目不超过 {{maxQuests}} 条
-- 剧情条目不超过 {{maxPlot}} 条
+【选择限制�?
+- 总数不超�?{{maxPick}} �?
+- 人物条目不超�?{{maxCharacters}} �?
+- 装备条目不超�?{{maxEquipments}} �?
+- 势力条目不超�?{{maxFactions}} �?
+- 成就条目不超�?{{maxAchievements}} �?
+- 副职业条目不超过 {{maxSubProfessions}} �?
+- 任务条目不超�?{{maxQuests}} �?
+- 剧情条目不超�?{{maxPlot}} �?
 
-请从候选中选出与当前剧情最相关的条目，优先选择：与当前提到的人物/装备相关的条目、时间较久远的相关剧情。仅输出 JSON。`;
+请从候选中选出与当前剧情最相关的条目，优先选择：与当前提到的人�?装备相关的条目、时间较久远的相关剧情。仅输出 JSON。`;
 
-const INDEX_JSON_REQUIREMENT = `输出要求：
-- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。
-- JSON 结构必须为：{"pickedNames": string[]}。
-- pickedNames 必须是候选列表里的 name（即世界书条目名称，例如：[mvu_plot]成就｜弑星者｜ACH-001）。
-- 返回的 pickedNames 数量 <= maxPick。`;
+const INDEX_JSON_REQUIREMENT = `输出要求�?
+- 只输出严�?JSON，不�?Markdown、不要代码块、不要任何多余文字�?
+- JSON 结构必须为：{"pickedNames": string[]}�?
+- pickedNames 必须是候选列表里�?name（即世界书条目名称，例如：[mvu_plot]成就｜弑星者｜ACH-001）�?
+- 返回�?pickedNames 数量 <= maxPick。`;
 
 
-// ===== 结构化世界书条目提示词默认值 =====
-const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一个"剧情记忆管理"助手，负责从对话片段中提取结构化信息用于长期记忆。
+// ===== 结构化世界书条目提示词默认�?=====
+const DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT = `你是一�?剧情记忆管理"助手，负责从对话片段中提取结构化信息用于长期记忆�?
 
-【任务】
+【任务�?
 1. 识别本次对话中出现的重要 NPC（不含主角）
-2. 识别主角当前持有/装备的关键物品
-3. 识别主角物品栏内的重要道具/材料/消耗品（含数量与状态）
-4. 识别剧情中出现/变化的重要势力
+2. 识别主角当前持有/装备的关键物�?
+3. 识别主角物品栏内的重要道�?材料/消耗品（含数量与状态）
+4. 识别剧情中出�?变化的重要势�?
 5. 识别剧情中的成就记录
 6. 识别主角的副职业变化
 7. 识别当前或新增的任务记录
 8. 识别主角征服的女性角色（猎艳录）
-9. 识别需要删除的条目（死亡的角色、卖掉/分解的装备等）
+9. 识别需要删除的条目（死亡的角色、卖�?分解的装备等�?
 9. 生成档案式的客观第三人称描述
 
-【筛选标准】
-- NPC：只记录有名有姓的角色，忽略杂兵、无名NPC、普通敌人
+【筛选标准�?
+- NPC：只记录有名有姓的角色，忽略杂兵、无名NPC、普通敌�?
 - 装备：只记录绿色品质以上的装备，或紫色品质以上的重要物品
 - 物品栏：记录与剧情有关的关键道具/材料/消耗品（避免过度琐碎）
 
-【去重规则（重要）】
+【去重规则（重要）�?
 - 仔细检查【已知人物列表】、【已知装备列表】、【已知物品栏列表】、【已知势力列表】、【已知成就列表】、【已知副职业列表】、【已知任务列表】、【已知猎艳录列表】，避免重复创建条目
-- 同一角色可能有多种写法（如繁体/简体、英文/中文翻译），必须识别为同一人
+- 同一角色可能有多种写法（如繁�?简体、英�?中文翻译），必须识别为同一�?
 - 如果发现角色已存在于列表中，使用 isUpdated=true 更新而不是创建新条目
-- 将不同名称写法添加到 aliases 数组中
+- 将不同名称写法添加到 aliases 数组�?
 
-【删除条目规则】
-- 若角色在对话中明确死亡/永久离开，将其加入 deletedCharacters 数组
-- 若装备被卖掉/分解/丢弃/彻底损坏，将其加入 deletedEquipments 数组
-- 若物品被消耗/丢弃/转移且不再持有，将其加入 deletedInventories 数组
-- 若势力解散/覆灭/被吞并，将其加入 deletedFactions 数组
-- 若成就被撤销/失效，将其加入 deletedAchievements 数组
-- 若副职业被放弃/失去，将其加入 deletedSubProfessions 数组
-- 若任务完成/失败/取消，将其加入 deletedQuests 数组
-- 若猎艳录角色关系破裂/离开，将其加入 deletedConquests 数组
+【删除条目规则�?
+- 若角色在对话中明确死�?永久离开，将其加�?deletedCharacters 数组
+- 若装备被卖掉/分解/丢弃/彻底损坏，将其加�?deletedEquipments 数组
+- 若物品被消�?丢弃/转移且不再持有，将其加入 deletedInventories 数组
+- 若势力解�?覆灭/被吞并，将其加入 deletedFactions 数组
+- 若成就被撤销/失效，将其加�?deletedAchievements 数组
+- 若副职业被放�?失去，将其加�?deletedSubProfessions 数组
+- 若任务完�?失败/取消，将其加�?deletedQuests 数组
+- 若猎艳录角色关系破裂/离开，将其加�?deletedConquests 数组
 
-【重要】
-- 若提供了 statData，请从中提取该角色/物品的**关键数值**（如属性、等级、状态），精简为1-2行
-- 不要完整复制 statData，只提取最重要的信息
-- 重点描述：与主角的关系发展、角色背景、性格特点、关键事件
+【重要�?
+- 若提供了 statData，请从中提取该角�?物品�?*关键数�?*（如属性、等级、状态），精简�?-2�?
+- 不要完整复制 statData，只提取最重要的信�?
+- 重点描述：与主角的关系发展、角色背景、性格特点、关键事�?
 
-【性格铆钉】
+【性格铆钉�?
 - 为每个重要NPC提取「核心性格」：不会因剧情发展而轻易改变的根本特质
 - 提取「角色动机」：该角色自己的目标/追求，不是围绕主角转
 - 评估「关系阶段」：陌生/初识/熟悉/信任/亲密，关系发展应循序渐进`;
-const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V1 = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}`;
-const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V2 = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}\\n【已知势力列表】\\n{{knownFactions}}`;
-const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}\\n【对话片段】\\n{{chunk}}\\n【已知人物列表】\\n{{knownCharacters}}\\n【已知装备列表】\\n{{knownEquipments}}\\n【已知物品栏列表】\\n{{knownInventories}}\\n【已知势力列表】\\n{{knownFactions}}\\n【已知成就列表】\\n{{knownAchievements}}\\n【已知副职业列表】\\n{{knownSubProfessions}}\\n【已知任务列表】\\n{{knownQuests}}\\n【已知猎艳录列表】\\n{{knownConquests}}`;
+const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V1 = `【楼层范围】{{fromFloor}}-{{toFloor}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【对话片段】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{chunk}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知人物列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownCharacters}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知装备列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownEquipments}}`;
+const LEGACY_STRUCTURED_ENTRIES_USER_TEMPLATE_V2 = `【楼层范围】{{fromFloor}}-{{toFloor}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【对话片段】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{chunk}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知人物列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownCharacters}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知装备列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownEquipments}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知势力列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownFactions}}`;
+const DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE = `【楼层范围】{{fromFloor}}-{{toFloor}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【对话片段】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{chunk}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知人物列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownCharacters}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知装备列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownEquipments}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知物品栏列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownInventories}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知势力列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownFactions}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知成就列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownAchievements}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知副职业列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownSubProfessions}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知任务列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownQuests}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【已知猎艳录列表】\        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{knownConquests}}`;
 const DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE = `【人物】{{name}}
 别名：{{aliases}}
 阵营/身份：{{faction}}
@@ -195,7 +195,7 @@ const DEFAULT_STRUCTURED_CHARACTER_ENTRY_TEMPLATE = `【人物】{{name}}
 背景：{{background}}
 六维属性：{{sixStats}}
 装备：{{equipment}}
-技能/天赋：{{skillsTalents}}
+技�?天赋：{{skillsTalents}}
 物品栏：{{inventory}}
 性生活（仅女性）：{{sexLife}}
 【核心性格锚点】{{corePersonality}}
@@ -271,23 +271,23 @@ const DEFAULT_STRUCTURED_QUEST_ENTRY_TEMPLATE = `【任务】{{name}}
 关键事件：{{keyEvents}}
 数值信息：{{statInfo}}
 {{extraFields}}`;
-const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人。
+const DEFAULT_STRUCTURED_CHARACTER_PROMPT = `只记录有名有姓的重要NPC（不含主角），忽略杂兵、无名敌人、路人�?
 
-【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件、六维属性、技能/天赋、当前装备、物品栏
+【必填字段】阵营身份、性格特点、背景故事、与主角关系及发展、关键事件、六维属性、技�?天赋、当前装备、物品栏
 【仅女性字段】性生活（仅女性时填写 sexLife，非女性留空）
 
-【性格铆钉字段（重要）】
-- corePersonality：核心性格锚点，不会轻易改变的根本特质（如"傲慢"、"多疑"、"重义"），即使与主角关系改善也会保持
-- motivation：角色自己的独立目标/动机，不应为了主角而放弃
-- relationshipStage：与主角的关系阶段（陌生/初识/熟悉/信任/亲密），关系不应跳跃式发展
+【性格铆钉字段（重要）�?
+- corePersonality：核心性格锚点，不会轻易改变的根本特质（如"傲慢"�?多疑"�?重义"），即使与主角关系改善也会保�?
+- motivation：角色自己的独立目标/动机，不应为了主角而放�?
+- relationshipStage：与主角的关系阶段（陌生/初识/熟悉/信任/亲密），关系不应跳跃式发�?
 
-若角色死亡/永久离开，将其名字加入 deletedCharacters。若有 statData，请用于补全六维属性/装备/技能/物品栏。信息不足写"待确认"。`;
-const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻造/奖励等）、当前状态。若有强化/升级，描述主角如何培养这件装备。若装备被卖掉/分解/丢弃/损坏，将其名字加入 deletedEquipments。若有 statData，精简总结其属性。`;
-const DEFAULT_STRUCTURED_INVENTORY_PROMPT = `记录主角物品栏中的重要道具/材料/消耗品（避免过度琐碎）。必须记录：数量、来源、当前状态/用途。若物品被消耗/丢弃/转移且不再持有，将其名字加入 deletedInventories。若有 statData，精简总结其属性。`;
-const DEFAULT_STRUCTURED_FACTION_PROMPT = `记录重要势力/组织/阵营。说明性质、范围、领导者、理念、与主角关系、当前状态。若势力解散/覆灭/被吞并，将其名字加入 deletedFactions。若有 statData，精简总结其数值。`;
-const DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT = `记录主角获得的成就。说明达成条件、影响、获得时间与当前状态。若成就被撤销/失效，将其名字加入 deletedAchievements。若有 statData，精简总结其数值。`;
-const DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT = `记录主角的副职业/第二职业。说明定位、等级/进度、核心技能、获得方式、当前状态。若副职业被放弃/失去，将其名字加入 deletedSubProfessions。若有 statData，精简总结其数值。`;
-const DEFAULT_STRUCTURED_QUEST_PROMPT = `记录任务/委托。说明目标、发布者、进度、奖励、期限/地点。若任务完成/失败/取消，将其名字加入 deletedQuests。若有 statData，精简总结其数值。`;
+若角色死�?永久离开，将其名字加�?deletedCharacters。若�?statData，请用于补全六维属�?装备/技�?物品栏。信息不足写"待确�?。`;
+const DEFAULT_STRUCTURED_EQUIPMENT_PROMPT = `只记录绿色品质以上的装备，或紫色品质以上的重要物品（忽略白色/灰色普通物品）。必须记录：获得时间、获得地点、来源（掉落/购买/锻�?奖励等）、当前状态。若有强�?升级，描述主角如何培养这件装备。若装备被卖�?分解/丢弃/损坏，将其名字加�?deletedEquipments。若�?statData，精简总结其属性。`;
+const DEFAULT_STRUCTURED_INVENTORY_PROMPT = `记录主角物品栏中的重要道�?材料/消耗品（避免过度琐碎）。必须记录：数量、来源、当前状�?用途。若物品被消�?丢弃/转移且不再持有，将其名字加入 deletedInventories。若�?statData，精简总结其属性。`;
+const DEFAULT_STRUCTURED_FACTION_PROMPT = `记录重要势力/组织/阵营。说明性质、范围、领导者、理念、与主角关系、当前状态。若势力解散/覆灭/被吞并，将其名字加入 deletedFactions。若�?statData，精简总结其数值。`;
+const DEFAULT_STRUCTURED_ACHIEVEMENT_PROMPT = `记录主角获得的成就。说明达成条件、影响、获得时间与当前状态。若成就被撤销/失效，将其名字加�?deletedAchievements。若�?statData，精简总结其数值。`;
+const DEFAULT_STRUCTURED_SUBPROFESSION_PROMPT = `记录主角的副职业/第二职业。说明定位、等�?进度、核心技能、获得方式、当前状态。若副职业被放弃/失去，将其名字加�?deletedSubProfessions。若�?statData，精简总结其数值。`;
+const DEFAULT_STRUCTURED_QUEST_PROMPT = `记录任务/委托。说明目标、发布者、进度、奖励、期�?地点。若任务完成/失败/取消，将其名字加�?deletedQuests。若�?statData，精简总结其数值。`;
 const DEFAULT_STRUCTURED_CONQUEST_ENTRY_TEMPLATE = `【猎艳录】{{name}}
 别名：{{aliases}}
 身份：{{identity}}
@@ -301,60 +301,60 @@ const DEFAULT_STRUCTURED_CONQUEST_ENTRY_TEMPLATE = `【猎艳录】{{name}}
 关键事件：{{keyEvents}}
 数值信息：{{statInfo}}
 {{extraFields}}`;
-const DEFAULT_STRUCTURED_CONQUEST_PROMPT = `记录主角征服/攻略的女性角色。说明身份背景、初遇情境、征服过程、征服时间、当前关系状态、特殊技巧/喜好、身体特征。若关系破裂/角色离开，将其名字加入 deletedConquests。若有 statData，精简总结其数值。`;
+const DEFAULT_STRUCTURED_CONQUEST_PROMPT = `记录主角征服/攻略的女性角色。说明身份背景、初遇情境、征服过程、征服时间、当前关系状态、特殊技�?喜好、身体特征。若关系破裂/角色离开，将其名字加�?deletedConquests。若�?statData，精简总结其数值。`;
 
 // ===== 平行世界（NPC离屏模拟）默认提示词 =====
-const DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT = `你是一个"平行世界模拟器"，负责推演主角视角之外的NPC离屏活动以及势力/组织的动态变化。
+const DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT = `你是一�?平行世界模拟�?，负责推演主角视角之外的NPC离屏活动以及势力/组织的动态变化�?
 
-【核心任务】
+【核心任务�?
 1. 为每个被追踪的NPC生成 1~3 件离屏事件（在主角不在场时发生的事）
-2. 为每个被追踪的势力/组织生成 1~2 件势力事件（势力扩张、冲突、联盟、资源变动等）
+2. 为每个被追踪的势�?组织生成 1~2 件势力事件（势力扩张、冲突、联盟、资源变动等�?
 3. 事件必须符合角色/势力的特点和当前处境
-4. NPC之间、势力之间可以产生互动（合作、冲突、交易、对话等）
-5. 推进世界时钟，反映时间流逝
+4. NPC之间、势力之间可以产生互动（合作、冲突、交易、对话等�?
+5. 推进世界时钟，反映时间流�?
 
-【推演原则】
+【推演原则�?
 - NPC有自己的生活和目标，不应始终围绕主角
-- 势力有自己的议程和内部动态
+- 势力有自己的议程和内部动�?
 - 事件应有合理的因果关系，不能凭空出现
-- 重大变化应循序渐进
-- 保持世界的内在一致性
+- 重大变化应循序渐�?
+- 保持世界的内在一致�?
 
-【事件类型参考】
-NPC: 日常活动、目标推进、意外遭遇、关系变化、情绪/状态变化
-势力: 领地扩张/收缩、资源采集/消耗、内部政治变动、外交结盟/对立、战争/冲突、经济活动
+【事件类型参考�?
+NPC: 日常活动、目标推进、意外遭遇、关系变化、情�?状态变�?
+势力: 领地扩张/收缩、资源采�?消耗、内部政治变动、外交结�?对立、战�?冲突、经济活�?
 
-【输出要求】
-- 只输出严格 JSON，不要 Markdown 代码块
-- 每个NPC/势力的事件应简洁但有意义（每件事 1~2 句话）
+【输出要求�?
+- 只输出严�?JSON，不�?Markdown 代码�?
+- 每个NPC/势力的事件应简洁但有意义（每件�?1~2 句话�?
 - impact 说明此事件的具体影响`;
 
 const DEFAULT_PARALLEL_WORLD_USER_TEMPLATE = `【世界时钟】{{worldTime}}
 
-【最近剧情上下文】
+【最近剧情上下文�?
 {{recentContext}}
 
-【被追踪的NPC档案】
+【被追踪的NPC档案�?
 {{npcProfiles}}
 
-【被追踪的势力/组织】
+【被追踪的势�?组织�?
 {{factionProfiles}}
 
 请为以上每个NPC和势力推演离屏事件，推进世界时钟。`;
 
-const PARALLEL_WORLD_JSON_REQUIREMENT = `输出要求：
-- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。
+const PARALLEL_WORLD_JSON_REQUIREMENT = `输出要求�?
+- 只输出严�?JSON，不�?Markdown、不要代码块、不要任何多余文字�?
 - JSON 结构必须为：
 {
-  "worldTime": "更新后的世界时间（如：第3天 傍晚）",
+  "worldTime": "更新后的世界时间（如：第3�?傍晚�?,
   "npcUpdates": [
     {
       "name": "NPC名称",
       "location": "当前位置",
-      "mood": "当前情绪/状态",
+      "mood": "当前情绪/状�?,
       "currentGoal": "当前目标",
       "events": [
-        { "time": "事件时间", "event": "事件描述", "impact": "对NPC的影响" }
+        { "time": "事件时间", "event": "事件描述", "impact": "对NPC的影�? }
       ]
     }
   ],
@@ -367,17 +367,17 @@ const PARALLEL_WORLD_JSON_REQUIREMENT = `输出要求：
     }
   ]
 }
-- npcUpdates 数组中每个 NPC 对应一个对象，events 为 1~3 件离屏事件。
-- factionUpdates 数组中每个势力对应一个对象，events 为 1~2 件势力事件。
+- npcUpdates 数组中每�?NPC 对应一个对象，events �?1~3 件离屏事件�?
+- factionUpdates 数组中每个势力对应一个对象，events �?1~2 件势力事件�?
 - 如果没有被追踪的势力，factionUpdates 可为空数组。`;
 
-const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。
-对于【已知条目】（已出现在已知列表中）：你只需要输出有变化或新增的字段，未变内容无需输出。对于【新条目】：必须输出完整字段。
-statInfo 只填关键数值的精简总结（1-2行）。人物条目请使用 sixStats/skillsTalents 等字段，不输出 statInfo。
+const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON�?
+对于【已知条目】（已出现在已知列表中）：你只需要输出有变化或新增的字段，未变内容无需输出。对于【新条目】：必须输出完整字段�?
+statInfo 只填关键数值的精简总结�?-2行）。人物条目请使用 sixStats/skillsTalents 等字段，不输�?statInfo�?
 
 结构：{"characters":[...],"equipments":[...],"inventories":[...],"factions":[...],"achievements":[...],"subProfessions":[...],"quests":[...],"conquests":[...],"deletedCharacters":[...],"deletedEquipments":[...],"deletedInventories":[...],"deletedFactions":[...],"deletedAchievements":[...],"deletedSubProfessions":[...],"deletedQuests":[...],"deletedConquests":[...]}
 
-characters 条目结构：{name,uid,aliases[],gender,faction,status,personality,corePersonality:"核心性格锚点（不轻易改变）",motivation:"角色独立动机/目标",relationshipStage:"陌生|初识|熟悉|信任|亲密",background,relationToProtagonist,keyEvents[],sixStats,equipment,skillsTalents,inventory,sexLife(仅女性),isNew,isUpdated}
+characters 条目结构：{name,uid,aliases[],gender,faction,status,personality,corePersonality:"核心性格锚点（不轻易改变�?,motivation:"角色独立动机/目标",relationshipStage:"陌生|初识|熟悉|信任|亲密",background,relationToProtagonist,keyEvents[],sixStats,equipment,skillsTalents,inventory,sexLife(仅女�?,isNew,isUpdated}
 
 equipments 条目结构：{name,uid,type,rarity,effects,source,currentState,statInfo,boundEvents[],isNew}
 
@@ -395,9 +395,9 @@ conquests 条目结构：{name,uid,aliases[],identity,firstEncounter,conquestPro
 
 // ===== ROLL 判定默认配置 =====
 const DEFAULT_ROLL_ACTIONS = Object.freeze([
-  { key: 'combat', label: '战斗', keywords: ['战斗', '攻击', '出手', '挥剑', '射击', '格挡', '闪避', '搏斗', '砍', '杀', '打', 'fight', 'attack', 'strike'] },
+  { key: 'combat', label: '战斗', keywords: ['战斗', '攻击', '出手', '挥剑', '射击', '格挡', '闪避', '搏斗', '�?, '杀', '�?, 'fight', 'attack', 'strike'] },
   { key: 'persuade', label: '劝说', keywords: ['劝说', '说服', '谈判', '交涉', '威胁', '恐吓', '欺骗', 'persuade', 'negotiate', 'intimidate', 'deceive'] },
-  { key: 'learn', label: '学习', keywords: ['学习', '修炼', '练习', '研究', '掌握', '学会', '技能', 'learn', 'train', 'practice'] },
+  { key: 'learn', label: '学习', keywords: ['学习', '修炼', '练习', '研究', '掌握', '学会', '技�?, 'learn', 'train', 'practice'] },
 ]);
 const DEFAULT_ROLL_FORMULAS = Object.freeze({
   combat: '(PC.str + PC.dex + PC.atk + MOD.total + CTX.bonus + CTX.penalty) / 4',
@@ -406,82 +406,82 @@ const DEFAULT_ROLL_FORMULAS = Object.freeze({
   default: 'MOD.total',
 });
 const DEFAULT_ROLL_MODIFIER_SOURCES = Object.freeze(['skill', 'talent', 'trait', 'buff', 'equipment']);
-const DEFAULT_ROLL_SYSTEM_PROMPT = `你是一个专业的TRPG/ROLL点裁判。
+const DEFAULT_ROLL_SYSTEM_PROMPT = `你是一个专业的TRPG/ROLL点裁判�?
 
-【任务】
-- 根据用户行为与属性数据 (statDataJson) 进行动作判定。
-- 难度模式 difficulty：simple (简单) / normal (普通) / hard (困难) / hell (地狱)。
-- 设定 成功阈值/DC (Difficulty Class)：
+【任务�?
+- 根据用户行为与属性数�?(statDataJson) 进行动作判定�?
+- 难度模式 difficulty：simple (简�? / normal (普�? / hard (困难) / hell (地狱)�?
+- 设定 成功阈�?DC (Difficulty Class)�?
   - normal: DC 15~20
   - hard: DC 20~25
   - hell: DC 25~30
-  - 成功判定基于 margin (final - threshold)：
-    - margin >= 8 : critical_success (大成功)
+  - 成功判定基于 margin (final - threshold)�?
+    - margin >= 8 : critical_success (大成�?
     - margin 0 ~ 7 : success (成功)
     - margin -1 ~ -7 : failure (失败)
-    - margin <= -8 : fumble (大失败)
+    - margin <= -8 : fumble (大失�?
 
-【数值映射建议】
-- 将文本描述的等级转化为数值修正 (MOD)：
+【数值映射建议�?
+- 将文本描述的等级转化为数值修�?(MOD)�?
   - F=0, E=+0.5, D=+1, C=+2, B=+3, A=+4, S=+6, SS=+8, SSS=+10
-  - 若为数值 (如 Lv.5)，则直接取值 (如 +5)。
-- 品级修正：若装备/技能有稀有度划分，可参考上述映射给予额外加值。
-- Buff/Debuff：根据上下文给予 +/- 1~5 的临时调整。
+  - 若为数�?(�?Lv.5)，则直接取�?(�?+5)�?
+- 品级修正：若装备/技能有稀有度划分，可参考上述映射给予额外加值�?
+- Buff/Debuff：根据上下文给予 +/- 1~5 的临时调整�?
 
-【D20 规则参考】
-- 核心公式：d20 + 属性修正 + 熟练值 + 其他修正 >= DC
-- randomRoll (1~100) 换算为 d20 = ceil(randomRoll / 5)。
-- 大成功/大失败：
-  - d20 = 20 (即 randomRoll 96~100) 视为“大成功”(不论数值，除非 DC 极高)。
-  - d20 = 1 (即 randomRoll 1~5) 视为“大失败”。
+【D20 规则参考�?
+- 核心公式：d20 + 属性修�?+ 熟练�?+ 其他修正 >= DC
+- randomRoll (1~100) 换算�?d20 = ceil(randomRoll / 5)�?
+- 大成�?大失败：
+  - d20 = 20 (�?randomRoll 96~100) 视为“大成功�?不论数值，除非 DC 极高)�?
+  - d20 = 1 (�?randomRoll 1~5) 视为“大失败”�?
 
-【计算流程】
-1. 确定 action (动作类型) 与 formula (计算公式)。
-2. 计算 base (基础值) 与 mods (所有修正来源之和)。
-3. 计算 final = base + mods + 随机要素。
-4. 比较 final 与 threshold，得出 success (true/false) 与 outcomeTier。
+【计算流程�?
+1. 确定 action (动作类型) �?formula (计算公式)�?
+2. 计算 base (基础�? �?mods (所有修正来源之�?�?
+3. 计算 final = base + mods + 随机要素�?
+4. 比较 final �?threshold，得�?success (true/false) �?outcomeTier�?
 
-【输出要求】
-- 必须输出符合 JSON Requirement 的 JSON 格式。
-- explanation: 简短描述判定过程与结果 (1~2句)。
-- analysisSummary: 汇总修正来源与关键映射逻辑。
+【输出要求�?
+- 必须输出符合 JSON Requirement �?JSON 格式�?
+- explanation: 简短描述判定过程与结果 (1~2�?�?
+- analysisSummary: 汇总修正来源与关键映射逻辑�?
 `;
 
-const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}\n公式={{formula}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nmodifierSources={{modifierSourcesJson}}\nstatDataJson={{statDataJson}}`;
-const ROLL_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}\n- analysisSummary 可选，用于日志显示，建议包含“修正来源汇总/映射应用”两段；explanation 建议 1~2 句。`;
-const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严格 JSON）：\n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
+const DEFAULT_ROLL_USER_TEMPLATE = `动作={{action}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n公式={{formula}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;nrandomWeight={{randomWeight}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;ndifficulty={{difficulty}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;nrandomRoll={{randomRoll}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;nmodifierSources={{modifierSourcesJson}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;nstatDataJson={{statDataJson}}`;
+const ROLL_JSON_REQUIREMENT = `输出要求（严�?JSON）：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{"action": string, "formula": string, "base": number, "mods": [{"source": string, "value": number}], "random": {"roll": number, "weight": number}, "final": number, "threshold": number, "success": boolean, "outcomeTier": string, "explanation": string, "analysisSummary"?: string}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n- analysisSummary 可选，用于日志显示，建议包含“修正来源汇�?映射应用”两段；explanation 建议 1~2 句。`;
+const ROLL_DECISION_JSON_REQUIREMENT = `输出要求（严�?JSON）：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n- 若无需判定：只输出 {"needRoll": false}。\n- 若需要判定：输出 {"needRoll": true, "result": {action, formula, base, mods, random, final, threshold, success, outcomeTier, explanation, analysisSummary?}}。\n- 不要 Markdown、不要代码块、不要任何多余文字。`;
 
-const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是一个判定动作是否需要ROLL点的辅助AI。
+const DEFAULT_ROLL_DECISION_SYSTEM_PROMPT = `你是一个判定动作是否需要ROLL点的辅助AI�?
 
-【任务】
-- 核心任务是判断用户的行为是否需要进行随机性判定 (ROLL)。
-- 只有当行为具有不确定性、挑战性或对抗性时才需要 ROLL。
-- 若 needRoll=true，则同时进行判定计算。
+【任务�?
+- 核心任务是判断用户的行为是否需要进行随机性判�?(ROLL)�?
+- 只有当行为具有不确定性、挑战性或对抗性时才需�?ROLL�?
+- �?needRoll=true，则同时进行判定计算�?
 
-【判定原则 (needRoll)】
+【判定原�?(needRoll)�?
 - needRoll = false: 
-  - 日常行为 (吃饭/走路/闲聊)。
-  - 必定成功的行为 (没有干扰/难度极低)。
-  - 纯粹的情感表达或心理活动。
+  - 日常行为 (吃饭/走路/闲聊)�?
+  - 必定成功的行�?(没有干扰/难度极低)�?
+  - 纯粹的情感表达或心理活动�?
 - needRoll = true:
-  - 战斗/攻击/防御。
-  - 尝试说服/欺骗/恐吓他人。
-  - 具有风险或难度的动作 (撬锁/攀爬/潜行)。
-  - 知识检定/感知检定 (发现隐藏线索)。
+  - 战斗/攻击/防御�?
+  - 尝试说服/欺骗/恐吓他人�?
+  - 具有风险或难度的动作 (撬锁/攀�?潜行)�?
+  - 知识检�?感知检�?(发现隐藏线索)�?
 
-【若 needRoll=true，计算参考】
-- 难度模式 difficulty 与 成功阈值/DC (simple/normal/hard/hell)。
-- 数值映射建议：F=0, E=+0.5, D=+1, C=+2, B=+3, A=+4, S=+6, SS=+8, SSS=+10。
-- 品级修正：参考装备/技能品级。
-- margin 判定：>=8 大成功，0~7 成功，-1~-7 失败，<=-8 大失败。
+【若 needRoll=true，计算参考�?
+- 难度模式 difficulty �?成功阈�?DC (simple/normal/hard/hell)�?
+- 数值映射建议：F=0, E=+0.5, D=+1, C=+2, B=+3, A=+4, S=+6, SS=+8, SSS=+10�?
+- 品级修正：参考装�?技能品级�?
+- margin 判定�?=8 大成功，0~7 成功�?1~-7 失败�?=-8 大失败�?
 
-【输出要求】
+【输出要求�?
 - 若无需判定：{"needRoll": false}
 - 若需要判定：{"needRoll": true, "result": { ...完整计算过程... }}
-- 严格遵循 JSON Requirement 格式，不要输出 Markdown 代码块。
+- 严格遵循 JSON Requirement 格式，不要输�?Markdown 代码块�?
 `;
 
-const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}\nrandomWeight={{randomWeight}}\ndifficulty={{difficulty}}\nrandomRoll={{randomRoll}}\nstatDataJson={{statDataJson}}`;
+const DEFAULT_ROLL_DECISION_USER_TEMPLATE = `用户输入={{userText}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;nrandomWeight={{randomWeight}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;ndifficulty={{difficulty}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;nrandomRoll={{randomRoll}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;nstatDataJson={{statDataJson}}`;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
@@ -492,7 +492,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   includeUser: true,
   includeAssistant: true,
 
-  // 生成控制（仍保留剧透与 temperature；更多风格可通过自定义 system/constraints 做）
+  // 生成控制（仍保留剧透与 temperature；更多风格可通过自定�?system/constraints 做）
   spoilerLevel: 'mild', // none | mild | full
   temperature: 0.4,
 
@@ -501,19 +501,19 @@ const DEFAULT_SETTINGS = Object.freeze({
   autoRefreshOn: 'received', // received | sent | both
   debounceMs: 1200,
 
-  // 自动追加到正文末尾
+  // 自动追加到正文末�?
   autoAppendBox: true,
   appendMode: 'compact', // compact | standard
   appendDebounceMs: 700,
 
-  // 追加框展示哪些模块
+  // 追加框展示哪些模�?
   inlineModulesSource: 'inline', // inline | panel | all
-  inlineShowEmpty: false,        // 是否显示空字段占位
+  inlineShowEmpty: false,        // 是否显示空字段占�?
 
   // provider
   provider: 'st', // st | custom
 
-  // custom API（建议填“API基础URL”，如 https://api.openai.com/v1 ）
+  // custom API（建议填“API基础URL”，�?https://api.openai.com/v1 �?
   customEndpoint: '',
   customApiKey: '',
   customModel: 'gpt-4o-mini',
@@ -556,15 +556,15 @@ const DEFAULT_SETTINGS = Object.freeze({
   sexGuidePresetList: '[]',
   sexGuidePresetActive: '',
 
-  // ===== 总结功能（独立于剧情提示的 API 设置） =====
+  // ===== 总结功能（独立于剧情提示�?API 设置�?=====
   summaryEnabled: false,
-  // 多少“楼层”总结一次（楼层统计方式见 summaryCountMode）
+  // 多少“楼层”总结一次（楼层统计方式�?summaryCountMode�?
   summaryEvery: 20,
-  // 手动楼层范围总结：是否按“每 N 层”拆分生成多条（N=summaryEvery）
+  // 手动楼层范围总结：是否按“每 N 层”拆分生成多条（N=summaryEvery�?
   summaryManualSplit: false,
-  // assistant: 仅统计 AI 回复；all: 统计全部消息（用户+AI）
+  // assistant: 仅统�?AI 回复；all: 统计全部消息（用�?AI�?
   summaryCountMode: 'assistant',
-  // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最近 summaryEvery 段
+  // 自动总结时，默认只总结“上次总结之后新增”的内容；首次则总结最�?summaryEvery �?
   summaryMaxCharsPerMessage: 4000,
   summaryMaxTotalChars: 24000,
 
@@ -574,13 +574,13 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // 结构化条目频率（按楼层计数）
   structuredEntriesEvery: 1,
-  // 结构化条目读取楼层（最多读取最近 N 层）
+  // 结构化条目读取楼层（最多读取最�?N 层）
   structuredEntriesReadFloors: 1,
   structuredEntriesCountMode: 'assistant',
   // 结构化条目读取蓝灯世界书（与索引设置一致）
   structuredWorldbookEnabled: false,
   structuredWorldbookMode: 'active', // active | all
-  // 结构化条目内容格式
+  // 结构化条目内容格�?
   structuredEntryContentFormat: 'markdown', // text | markdown
   // Character entry template (optional)
   structuredCharacterEntryTemplate: '',
@@ -592,7 +592,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   structuredQuestEntryTemplate: '',
   structuredConquestEntryTemplate: '',
 
-  // 总结调用方式：st=走酒馆当前已连接的 LLM；custom=独立 OpenAI 兼容 API
+  // 总结调用方式：st=走酒馆当前已连接�?LLM；custom=独立 OpenAI 兼容 API
   summaryProvider: 'st',
   summaryTemperature: 0.4,
 
@@ -608,61 +608,61 @@ const DEFAULT_SETTINGS = Object.freeze({
 
   // 自定义总结提示词（可选）
   // - system：决定总结风格/重点
-  // - userTemplate：决定如何把楼层范围/对话片段塞给模型（支持占位符）
+  // - userTemplate：决定如何把楼层范围/对话片段塞给模型（支持占位符�?
   summarySystemPrompt: DEFAULT_SUMMARY_SYSTEM_PROMPT,
   summaryUserTemplate: DEFAULT_SUMMARY_USER_TEMPLATE,
   summaryCustomEndpoint: '',
   summaryCustomApiKey: '',
   summaryCustomModel: 'gpt-4o-mini',
   summaryCustomModelsCache: [],
-  // 缓存世界书文件列表（来自 ST 后端，用于下拉选择）
+  // 缓存世界书文件列表（来自 ST 后端，用于下拉选择�?
   summaryWorldInfoFilesCache: [],
   summaryCustomMaxTokens: 2048,
   summaryCustomStream: false,
 
-  // 总结结果写入世界书（Lorebook / World Info）
-  // —— 绿灯世界书（关键词触发）——
+  // 总结结果写入世界书（Lorebook / World Info�?
+  // —�?绿灯世界书（关键词触发）—�?
   summaryToWorldInfo: true,
   // 写入指定世界书文件名
   summaryWorldInfoTarget: 'file',
   summaryWorldInfoFile: '',
   summaryWorldInfoCommentPrefix: '剧情总结',
 
-  // 总结写入世界书 key（触发词）的来源
-  // - keywords: 使用模型输出的 keywords（默认）
-  // - indexId: 使用自动生成的索引编号（如 A-001），只写 1 个触发词，触发更精确
+  // 总结写入世界�?key（触发词）的来源
+  // - keywords: 使用模型输出�?keywords（默认）
+  // - indexId: 使用自动生成的索引编号（�?A-001），只写 1 个触发词，触发更精确
   summaryWorldInfoKeyMode: 'keywords',
-  // 当 keyMode=indexId 时：索引编号格式
+  // �?keyMode=indexId 时：索引编号格式
   summaryIndexPrefix: 'A-',
   summaryIndexPad: 3,
   summaryIndexStart: 1,
-  // 是否把索引编号写入条目标题（comment），便于世界书列表定位
+  // 是否把索引编号写入条目标题（comment），便于世界书列表定�?
   summaryIndexInComment: true,
 
-  // —— 蓝灯世界书（常开索引：给本插件做检索用）——
-  // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个。
+  // —�?蓝灯世界书（常开索引：给本插件做检索用）—�?
+  // 注意：蓝灯世界书建议写入“指定世界书文件名”，因为 chatbook 通常只有一个�?
   summaryToBlueWorldInfo: true,
   summaryBlueWorldInfoFile: '',
   summaryBlueWorldInfoCommentPrefix: '剧情总结',
   summaryAutoRollback: false,
   structuredAutoRollback: false,
 
-  // —— 蓝灯索引 → 绿灯触发 ——
+  // —�?蓝灯索引 �?绿灯触发 —�?
   wiTriggerEnabled: false,
 
-  // 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API）
+  // 匹配方式：local=本地相似度；llm=LLM 综合判断（可自定义提示词 & 独立 API�?
   wiTriggerMatchMode: 'local',
 
-  // —— 索引 LLM（独立于总结 API 的第二套配置）——
+  // —�?索引 LLM（独立于总结 API 的第二套配置）—�?
   wiIndexProvider: 'st',         // st | custom
   wiIndexTemperature: 0.2,
   wiIndexTopP: 0.95,
   wiIndexSystemPrompt: DEFAULT_INDEX_SYSTEM_PROMPT,
   wiIndexUserTemplate: DEFAULT_INDEX_USER_TEMPLATE,
 
-  // LLM 模式：先用本地相似度预筛选 TopK，再交给模型综合判断（更省 tokens）
+  // LLM 模式：先用本地相似度预筛�?TopK，再交给模型综合判断（更�?tokens�?
   wiIndexPrefilterTopK: 24,
-  // 每条候选摘要截断字符（控制 tokens）
+  // 每条候选摘要截断字符（控制 tokens�?
   wiIndexCandidateMaxChars: 420,
 
   // 索引独立 OpenAI 兼容 API
@@ -673,15 +673,15 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiIndexCustomMaxTokens: 1024,
   wiIndexCustomStream: false,
 
-  // 在用户发送消息前（MESSAGE_SENT）读取“最近 N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目。
+  // 在用户发送消息前（MESSAGE_SENT）读取“最�?N 条消息正文”（不含当前条），从蓝灯索引里挑相关条目�?
   wiTriggerLookbackMessages: 20,
-  // 是否把“本次用户输入”纳入索引匹配（综合判断）。
+  // 是否把“本次用户输入”纳入索引匹配（综合判断）�?
   wiTriggerIncludeUserMessage: true,
-  // 本次用户输入在相似度向量中的权重（越大越看重用户输入；1=与最近正文同权重）
+  // 本次用户输入在相似度向量中的权重（越大越看重用户输入�?=与最近正文同权重�?
   wiTriggerUserMessageWeight: 1.6,
-  // 至少已有 N 条 AI 回复（楼层）才开始索引触发；0=立即
+  // 至少已有 N �?AI 回复（楼层）才开始索引触发；0=立即
   wiTriggerStartAfterAssistantMessages: 0,
-  // 最多选择多少条 summary 条目来触发
+  // 最多选择多少�?summary 条目来触�?
   wiTriggerMaxEntries: 4,
   // 分类最大索引数
   wiTriggerMaxCharacters: 2, // 最多索引多少个人物条目
@@ -691,20 +691,20 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiTriggerMaxSubProfessions: 2,
   wiTriggerMaxQuests: 2,
   wiTriggerMaxPlot: 3,       // 最多索引多少个剧情条目（优先较久远的）
-  // 相关度阈值（0~1，越大越严格）
+  // 相关度阈值（0~1，越大越严格�?
   wiTriggerMinScore: 0.08,
   // 最多注入多少个触发词（去重后）
   wiTriggerMaxKeywords: 24,
-  // 注入模式：appendToUser = 追加到用户消息末尾
+  // 注入模式：appendToUser = 追加到用户消息末�?
   wiTriggerInjectMode: 'appendToUser',
   // 注入样式：hidden=HTML 注释隐藏；plain=直接文本（更稳）
   wiTriggerInjectStyle: 'hidden',
   wiTriggerTag: 'SG_WI_TRIGGERS',
   wiTriggerDebugLog: false,
 
-  // ROLL 判定（本回合行动判定）
+  // ROLL 判定（本回合行动判定�?
   wiRollEnabled: false,
-  wiRollStatSource: 'variable', // variable (综合多来源) | template | latest
+  wiRollStatSource: 'variable', // variable (综合多来�? | template | latest
   wiRollStatVarName: 'stat_data',
   wiRollRandomWeight: 0.3,
   wiRollDifficulty: 'normal',
@@ -722,25 +722,25 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiRollCustomTemperature: 0.2,
   wiRollCustomStream: false,
 
-  // 蓝灯索引读取方式：默认“实时读取蓝灯世界书文件”
-  // - live：每次触发前会按需拉取蓝灯世界书（带缓存/节流）
-  // - cache：只使用导入/缓存的 summaryBlueIndex
+  // 蓝灯索引读取方式：默认“实时读取蓝灯世界书文件�?
+  // - live：每次触发前会按需拉取蓝灯世界书（带缓�?节流�?
+  // - cache：只使用导入/缓存�?summaryBlueIndex
   wiBlueIndexMode: 'live',
   // 读取蓝灯索引时使用的世界书文件名；留空则回退使用 summaryBlueWorldInfoFile
   wiBlueIndexFile: '',
-  // 实时读取的最小刷新间隔（秒），防止每条消息都请求一次
+  // 实时读取的最小刷新间隔（秒），防止每条消息都请求一�?
   wiBlueIndexMinRefreshSec: 20,
 
-  // 蓝灯索引缓存（可选：用于检索；每条为 {title, summary, keywords, range?}）
+  // 蓝灯索引缓存（可选：用于检索；每条�?{title, summary, keywords, range?}�?
   summaryBlueIndex: [],
 
-  // 模块自定义（JSON 字符串 + 解析备份）
+  // 模块自定义（JSON 字符�?+ 解析备份�?
   modulesJson: '',
-  // 额外可自定义提示词“骨架”
-  customSystemPreamble: '',     // 附加在默认 system 之后
-  customConstraints: '',        // 附加在默认 constraints 之后
+  // 额外可自定义提示词“骨架�?
+  customSystemPreamble: '',     // 附加在默�?system 之后
+  customConstraints: '',        // 附加在默�?constraints 之后
 
-  // ===== 结构化世界书条目（人物/装备/物品栏/势力/成就/副职业/任务） =====
+  // ===== 结构化世界书条目（人�?装备/物品�?势力/成就/副职�?任务�?=====
   structuredEntriesEnabled: true,
   characterEntriesEnabled: true,
   equipmentEntriesEnabled: true,
@@ -753,12 +753,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   conquestEntriesEnabled: false,
   characterEntryPrefix: '人物',
   equipmentEntryPrefix: '装备',
-  inventoryEntryPrefix: '物品栏',
+  inventoryEntryPrefix: '物品�?,
   factionEntryPrefix: '势力',
   achievementEntryPrefix: '成就',
-  subProfessionEntryPrefix: '副职业',
+  subProfessionEntryPrefix: '副职�?,
   questEntryPrefix: '任务',
-  conquestEntryPrefix: '猎艳录',
+  conquestEntryPrefix: '猎艳�?,
   structuredEntriesSystemPrompt: '',
   structuredEntriesUserTemplate: '',
   structuredPresetList: '[]',
@@ -778,7 +778,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   // 预设默认选项（JSON 字符串）: [{label, prompt}]
   quickOptionsJson: JSON.stringify([
     { label: '继续', prompt: '继续当前剧情发展' },
-    { label: '详述', prompt: '请更详细地描述当前场景' },
+    { label: '详述', prompt: '请更详细地描述当前场�? },
     { label: '对话', prompt: '让角色之间展开更多对话' },
     { label: '行动', prompt: '描述接下来的具体行动' },
   ], null, 2),
@@ -786,30 +786,30 @@ const DEFAULT_SETTINGS = Object.freeze({
   // ===== 地图功能 =====
   mapEnabled: false,
   mapAutoUpdate: true,
-  mapSystemPrompt: `从对话中提取地点信息，并尽量还原空间关系：
+  mapSystemPrompt: `从对话中提取地点信息，并尽量还原空间关系�?
   1. 识别当前主角所在的地点名称
   2. 识别提及的新地点
-  3. 判断地点之间的连接关系（哪些地点相邻/可通行，方向感如：北/南/东/西/楼上/楼下）
-  4. 记录该地点发生的重要事件（事件用一句话，包含触发条件/影响）
-  5. 若文本明确提到相对位置/楼层/方位，请给出 row/col（网格坐标）或相邻关系
-  6. 在原著世界观下，结合谷歌搜索的原著资料补充“待探索地点”，并为每个地点写明可能触发的任务/简介
-  7. 待探索地点数量不超过 6 个，避免与已有地点重复；若对话中地点较少，至少补充 2 个待探索地点
-  8. 若无法给出 row/col，至少给出 connectedTo 或方位词
+  3. 判断地点之间的连接关系（哪些地点相邻/可通行，方向感如：�?�?�?�?楼上/楼下�?
+  4. 记录该地点发生的重要事件（事件用一句话，包含触发条�?影响�?
+  5. 若文本明确提到相对位�?楼层/方位，请给出 row/col（网格坐标）或相邻关�?
+  6. 在原著世界观下，结合谷歌搜索的原著资料补充“待探索地点”，并为每个地点写明可能触发的任�?简�?
+  7. 待探索地点数量不超过 6 个，避免与已有地点重复；若对话中地点较少，至少补�?2 个待探索地点
+  8. 若无法给�?row/col，至少给�?connectedTo 或方位词
   9. 没有明确依据时用“待确认”描述，不要乱猜
-  10. 必须输出 currentLocation/newLocations/events 三个字段，数组可为空但字段必须存在；newLocations 总数不少于 3（含待探索地点）
-  11. 为地点补充分组/图层信息：group（室外/室内/楼层区域等），layer（如“一层/二层/地下”）
-  12. 事件允许附带 tags（如：战斗/任务/对话/解谜/探索），每个事件 1~3 个标签
-  13. 避免同义地点重复：输出前先合并同义词（如 豪宅/宅邸/府邸/公馆；学园/学院/学校；城堡/要塞/王城；寺庙/神殿/道观/教堂；洞穴/洞窟；遗迹/秘境）
-  14. 仅依据对话/设定/原著信息进行推断，不要引入无根据的信息
+  10. 必须输出 currentLocation/newLocations/events 三个字段，数组可为空但字段必须存在；newLocations 总数不少�?3（含待探索地点）
+  11. 为地点补充分�?图层信息：group（室�?室内/楼层区域等），layer（如“一�?二层/地下”）
+  12. 事件允许附带 tags（如：战�?任务/对话/解谜/探索），每个事件 1~3 个标�?
+  13. 避免同义地点重复：输出前先合并同义词（如 豪宅/宅邸/府邸/公馆；学�?学院/学校；城�?要塞/王城；寺�?神殿/道观/教堂；洞�?洞窟；遗�?秘境�?
+  14. 仅依据对�?设定/原著信息进行推断，不要引入无根据的信�?
   
-  输出 JSON 格式：
+  输出 JSON 格式�?
   {
-    "currentLocation": "主角当前所在地点",
+    "currentLocation": "主角当前所在地�?,
     "newLocations": [
-      { "name": "地点名", "description": "简述", "connectedTo": ["相邻地点1"], "row": 0, "col": 0, "group": "室外", "layer": "一层" }
+      { "name": "地点�?, "description": "简�?, "connectedTo": ["相邻地点1"], "row": 0, "col": 0, "group": "室外", "layer": "一�? }
     ],
     "events": [
-      { "location": "地点名", "event": "事件描述", "tags": ["任务"] }
+      { "location": "地点�?, "event": "事件描述", "tags": ["任务"] }
     ]
   }`,
 
@@ -840,25 +840,25 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenCustomModel: 'gpt-4o-mini',
   imageGenCustomMaxTokens: 1024,
 
-  imageGenSystemPrompt: `你是专业的 AI 绘画提示词生成器。根据提供的故事内容，分析场景或角色，只输出 Novel AI 可用的 Danbooru 标签。
+  imageGenSystemPrompt: `你是专业�?AI 绘画提示词生成器。根据提供的故事内容，分析场景或角色，只输出 Novel AI 可用�?Danbooru 标签�?
 
-目标：尽可能完整地还原正文中出现的角色/场景细节，让标签更丰富、更具体。
+目标：尽可能完整地还原正文中出现的角�?场景细节，让标签更丰富、更具体�?
 
-要求：
-1. 仅输出英文标签，逗号分隔；不要解释、不要额外文字
-2. positive / negative 字段必须是标签串（只给 Novel AI 看）
-3. 标签要“多且具体”，优先补齐以下信息：
-   - 角色：发色/瞳色/发型/发长、体型、年龄段、肤色、表情、动作、姿势、服装材质/风格/配饰、鞋袜、武器/道具
-   - 场景：地点类型、建筑/室内外、时间(白天/夜晚/黄昏)、天气、光照/光影、氛围、主色调、构图视角/镜头距离
-4. 若正文信息不足，使用常见合理标签补全（如 light rays, depth of field, cinematic lighting），但不要臆造关键设定
-5. 标签按重要性排序，重要的放前面；避免重复
-6. 如果是角色，以 "1girl" 或 "1boy" 等人数标签开头
-7. 如果是场景，以场景类型标签开头（如 scenery, landscape, indoor）
-8. 输出严格 JSON，不要 Markdown、不要代码块
+要求�?
+1. 仅输出英文标签，逗号分隔；不要解释、不要额外文�?
+2. positive / negative 字段必须是标签串（只�?Novel AI 看）
+3. 标签要“多且具体”，优先补齐以下信息�?
+   - 角色：发�?瞳色/发型/发长、体型、年龄段、肤色、表情、动作、姿势、服装材�?风格/配饰、鞋袜、武�?道具
+   - 场景：地点类型、建�?室内外、时�?白天/夜晚/黄昏)、天气、光�?光影、氛围、主色调、构图视�?镜头距离
+4. 若正文信息不足，使用常见合理标签补全（如 light rays, depth of field, cinematic lighting），但不要臆造关键设�?
+5. 标签按重要性排序，重要的放前面；避免重�?
+6. 如果是角色，�?"1girl" �?"1boy" 等人数标签开�?
+7. 如果是场景，以场景类型标签开头（�?scenery, landscape, indoor�?
+8. 输出严格 JSON，不�?Markdown、不要代码块
 
-输出格式：
+输出格式�?
 {
-  "type": "character" 或 "scene",
+  "type": "character" �?"scene",
   "subject": "简短中文描述生成对象（如：黑发少女战斗姿态）",
   "positive": "1girl, long black hair, red eyes, ...",
   "negative": "额外的负面标签（可选，留空则使用默认）"
@@ -872,18 +872,18 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenProfilesExpanded: false,
   imageGenBatchEnabled: true,
   imageGenBatchPatterns: JSON.stringify([
-    { label: '剧情-1', type: 'story', detail: '正文第一段的代表性画面' },
-    { label: '剧情-2', type: 'story', detail: '正文第二段的代表性画面' },
-    { label: '剧情-3', type: 'story', detail: '正文第三段的代表性画面' },
-    { label: '剧情-4', type: 'story', detail: '正文第四段的代表性画面' },
-    { label: '剧情-5', type: 'story', detail: '正文第五段的代表性画面' },
-    { label: '单人-近景', type: 'character_close', detail: '单人女性近景特写，强调脸部与表情' },
-    { label: '单人-全身', type: 'character_full', detail: '单人女性全身立绘，展示服装与姿态' },
+    { label: '剧情-1', type: 'story', detail: '正文第一段的代表性画�? },
+    { label: '剧情-2', type: 'story', detail: '正文第二段的代表性画�? },
+    { label: '剧情-3', type: 'story', detail: '正文第三段的代表性画�? },
+    { label: '剧情-4', type: 'story', detail: '正文第四段的代表性画�? },
+    { label: '剧情-5', type: 'story', detail: '正文第五段的代表性画�? },
+    { label: '单人-近景', type: 'character_close', detail: '单人女性近景特写，强调脸部与表�? },
+    { label: '单人-全身', type: 'character_full', detail: '单人女性全身立绘，展示服装与姿�? },
     { label: '双人', type: 'duo', detail: '双人同框互动，突出动作关系与情绪交流' },
     { label: '场景', type: 'scene', detail: '场景为主，强调空间、环境细节与氛围光影' },
     { label: '彩蛋', type: 'bonus', detail: '当前角色/场景做与剧情无关的轻松行为，自由发挥' },
-    { label: '自定义-1', type: 'custom_female_1', detail: '使用自定义女性提示词 1' },
-    { label: '自定义-2', type: 'custom_female_2', detail: '使用自定义女性提示词 2' }
+    { label: '自定�?1', type: 'custom_female_1', detail: '使用自定义女性提示词 1' },
+    { label: '自定�?2', type: 'custom_female_2', detail: '使用自定义女性提示词 2' }
   ], null, 2),
 
 
@@ -893,12 +893,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGalleryUrl: '',
   imageGalleryCache: [],
   imageGalleryCacheTime: 0,
-  imageGalleryMatchPrompt: '你是图片选择助手。根据故事内容，从图库中选择最合适的图片。规则：1.优先匹配角色名称 2.其次匹配场景类型 3.再匹配情绪/氛围。输出JSON：{"matchedId":"图片id","reason":"匹配原因"}',
+  imageGalleryMatchPrompt: '你是图片选择助手。根据故事内容，从图库中选择最合适的图片。规则：1.优先匹配角色名称 2.其次匹配场景类型 3.再匹配情�?氛围。输出JSON：{"matchedId":"图片id","reason":"匹配原因"}',
 
   imageGenCharacterProfilesEnabled: false,
   imageGenCharacterProfiles: [],
 
-  // ===== 自定义角色生成 =====
+  // ===== 自定义角色生�?=====
   characterProvider: 'st',
   characterTemperature: 0.7,
   characterCustomEndpoint: '',
@@ -917,7 +917,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   characterContractId: '',
   characterAttributes: { con: 0, int: 0, cha: 0, str: 0, agi: 0, luk: 0 },
 
-  // ===== 平行世界（NPC离屏模拟） =====
+  // ===== 平行世界（NPC离屏模拟�?=====
   parallelWorldEnabled: false,
   parallelWorldAutoTrigger: false,
   parallelWorldAutoEvery: 5,
@@ -934,7 +934,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   parallelWorldUserTemplate: DEFAULT_PARALLEL_WORLD_USER_TEMPLATE,
   parallelWorldTrackedNpcs: [],
   parallelWorldTrackedFactions: [],
-  parallelWorldClock: '第1天',
+  parallelWorldClock: '�?�?,
   parallelWorldWriteToWorldbook: true,
   parallelWorldInjectContext: true,
   parallelWorldMaxEventsPerNpc: 10,
@@ -973,7 +973,7 @@ let structuredCancelled = false;
 let structuredAbortController = null;
 let sgToastTimer = null;
 
-// 图像生成批次状态（悬浮面板）
+// 图像生成批次状态（悬浮面板�?
 let imageGenBatchPrompts = [];
 let imageGenBatchIndex = 0;
 let imageGenImageUrls = [];
@@ -989,10 +989,10 @@ let imageGenPreviewExpanded = true;
 let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
 let structuredWorldbookLiveCache = { file: '', loadedAt: 0, mode: 'active', totalEntries: 0, usedEntries: 0, tokens: 0, text: '', lastError: '' };
 
-// ============== 关键：DOM 追加缓存 & 观察者（抗重渲染） ==============
+// ============== 关键：DOM 追加缓存 & 观察者（抗重渲染�?==============
 /**
  * inlineCache: Map<mesKey, { htmlInner: string, collapsed: boolean, createdAt: number }>
- * mesKey 优先用 DOM 的 mesid（如果拿不到则用 chatIndex）
+ * mesKey 优先�?DOM �?mesid（如果拿不到则用 chatIndex�?
  */
 const inlineCache = new Map();
 const panelCache = new Map(); // <mesKey, { htmlInner, collapsed, createdAt }>
@@ -1094,7 +1094,7 @@ function ensureSettings() {
   }
   if (typeof extensionSettings[MODULE_NAME].wiRollSystemPrompt === 'string') {
     const cur = extensionSettings[MODULE_NAME].wiRollSystemPrompt;
-    const hasMojibake = /\?{5,}/.test(cur);
+    const hasMojibake = /        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;?{5,}/.test(cur);
     if (hasMojibake) {
       extensionSettings[MODULE_NAME].wiRollSystemPrompt = DEFAULT_ROLL_SYSTEM_PROMPT;
       saveSettingsDebounced();
@@ -1107,12 +1107,12 @@ function ensureSettings() {
       saveSettingsDebounced();
     }
   }
-  // 迁移：删除了 chatbook 选项，强制使用 file 模式
+  // 迁移：删除了 chatbook 选项，强制使�?file 模式
   if (extensionSettings[MODULE_NAME].summaryWorldInfoTarget === 'chatbook') {
     extensionSettings[MODULE_NAME].summaryWorldInfoTarget = 'file';
     saveSettingsDebounced();
   }
-  // 迁移：蓝灯世界书默认开启
+  // 迁移：蓝灯世界书默认开�?
   if (extensionSettings[MODULE_NAME].summaryToBlueWorldInfo === false) {
     extensionSettings[MODULE_NAME].summaryToBlueWorldInfo = true;
     saveSettingsDebounced();
@@ -1126,7 +1126,7 @@ function ensureSettings() {
     }
   }
 
-  // 迁移：结构化条目从“能力”改为“势力”
+  // 迁移：结构化条目从“能力”改为“势力�?
   let factionSettingsMigrated = false;
   if (extensionSettings[MODULE_NAME].factionEntriesEnabled === undefined && extensionSettings[MODULE_NAME].abilityEntriesEnabled !== undefined) {
     extensionSettings[MODULE_NAME].factionEntriesEnabled = extensionSettings[MODULE_NAME].abilityEntriesEnabled;
@@ -1142,7 +1142,7 @@ function ensureSettings() {
   }
   if (factionSettingsMigrated) saveSettingsDebounced();
 
-  // 迁移：批量提示词模板更新（仅在仍为旧模板或为空时）
+  // 迁移：批量提示词模板更新（仅在仍为旧模板或为空时�?
   const batchRaw = String(extensionSettings[MODULE_NAME].imageGenBatchPatterns || '').trim();
   const isOldBatch = batchRaw && batchRaw.includes('单人-1') && !batchRaw.includes('单人-近景');
   if (!batchRaw || isOldBatch) {
@@ -1176,7 +1176,7 @@ function exportPreset() {
     _exportedAt: new Date().toISOString(),
     settings: { ...s }
   };
-  // 移除敏感信息（API Key）
+  // 移除敏感信息（API Key�?
   delete preset.settings.customApiKey;
   delete preset.settings.summaryCustomApiKey;
   delete preset.settings.wiIndexCustomApiKey;
@@ -1201,7 +1201,7 @@ function exportPreset() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  showToast('预设已导出 ✅', { kind: 'ok' });
+  showToast('预设已导�?�?, { kind: 'ok' });
 }
 
 // 导入全局预设
@@ -1214,7 +1214,7 @@ async function importPreset(file) {
 
     // 验证格式
     if (preset._type !== 'StoryGuide_Preset') {
-      showToast('无效的预设文件格式', { kind: 'err' });
+      showToast('无效的预设文件格�?, { kind: 'err' });
       return;
     }
 
@@ -1223,7 +1223,7 @@ async function importPreset(file) {
       return;
     }
 
-    // 获取当前设置并保留敏感信息
+    // 获取当前设置并保留敏感信�?
     const currentSettings = ensureSettings();
     const preservedKeys = [
       'customApiKey', 'summaryCustomApiKey', 'wiIndexCustomApiKey', 'wiRollCustomApiKey',
@@ -1239,7 +1239,7 @@ async function importPreset(file) {
       }
     }
 
-    // 应用新设置
+    // 应用新设�?
     const { extensionSettings } = SillyTavern.getContext();
     Object.assign(extensionSettings[MODULE_NAME], newSettings);
     saveSettings();
@@ -1247,7 +1247,7 @@ async function importPreset(file) {
     // 刷新 UI
     pullSettingsToUi();
 
-    showToast(`预设已导入 ✅\n版本: ${preset._version || '未知'}\n导出时间: ${preset._exportedAt || '未知'}`, { kind: 'ok', duration: 3000 });
+    showToast(`预设已导�?✅\n版本: ${preset._version || '未知'}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n导出时间: ${preset._exportedAt || '未知'}`, { kind: 'ok', duration: 3000 });
   } catch (e) {
     console.error('[StoryGuide] Import preset failed:', e);
     showToast(`导入失败: ${e.message}`, { kind: 'err' });
@@ -1256,7 +1256,7 @@ async function importPreset(file) {
 
 function stripHtml(input) {
   if (!input) return '';
-  return String(input).replace(/<[^>]*>/g, '').replace(/\s+\n/g, '\n').trim();
+  return String(input).replace(/<[^>]*>/g, '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n/g, '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n').trim();
 }
 
 function escapeHtml(input) {
@@ -1284,7 +1284,7 @@ function clampFloat(v, min, max, fallback) {
 // 简易模板替换：支持 {{fromFloor}} / {{toFloor}} / {{chunk}} 等占位符
 function renderTemplate(tpl, vars = {}) {
   const str = String(tpl ?? '');
-  return str.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, k) => {
+  return str.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*([a-zA-Z0-9_]+)        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}/g, (_, k) => {
     const v = vars?.[k];
     return v == null ? '' : String(v);
   });
@@ -1316,7 +1316,7 @@ function applyPromptRules(text, rulesText) {
   const raw = String(rulesText || '').trim();
   if (!raw) return input;
 
-  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#') && !l.startsWith('//'));
+  const lines = raw.split(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;r?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n/).map(l => l.trim()).filter(l => l && !l.startsWith('#') && !l.startsWith('//'));
   if (!lines.length) return input;
 
   let output = input;
@@ -1332,16 +1332,16 @@ function applyPromptRules(text, rulesText) {
     const payload = pipe === -1 ? rest : rest.slice(pipe + 1).trim();
     if (!payload) continue;
 
-    const escapedTrigger = trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedTrigger = trigger.replace(/[.*+?^${}()|[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]/g, '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;$&');
     const re = new RegExp(escapedTrigger, 'gi');
 
-    if (action === '前置前') {
+    if (action === '前置�?) {
       output = output.replace(re, (match) => `${payload}, ${match}`);
-    } else if (action === '前置后') {
+    } else if (action === '前置�?) {
       output = output.replace(re, (match) => `${match}, ${payload}`);
-    } else if (action === '后置前') {
+    } else if (action === '后置�?) {
       output = output.replace(re, (match) => `${payload}, ${match}`);
-    } else if (action === '后置后') {
+    } else if (action === '后置�?) {
       output = output.replace(re, (match) => `${match}, ${payload}`);
     } else if (action === '最后置' || action === '末尾') {
       if (re.test(output)) output = `${output}, ${payload}`;
@@ -1357,9 +1357,9 @@ function applyPromptRules(text, rulesText) {
 
 
 function normalizeMapName(name) {
-  let out = String(name || '').replace(/\s+/g, ' ').trim();
+  let out = String(name || '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+/g, ' ').trim();
   // common CN place variants (reduce duplicates like "豪宅/宅邸/府邸/公馆")
-  out = out.replace(/(家|宅)(豪宅|宅邸|府邸|公馆|别墅|庄园|大宅|府|宅|宅子)$/g, '宅邸');
+  out = out.replace(/(家|�?(豪宅|宅邸|府邸|公馆|别墅|庄园|大宅|府|宅|宅子)$/g, '宅邸');
   out = out.replace(/(豪宅|府邸|公馆|别墅|庄园|大宅|府|宅|宅子)$/g, '宅邸');
   out = out.replace(/宅邸$/g, '宅邸');
   // broader suffix normalization
@@ -1368,34 +1368,34 @@ function normalizeMapName(name) {
     [/学园$/g, '学校'],
     [/学院$/g, '学校'],
     [/大学$/g, '学校'],
-    [/大桥$/g, '桥'],
-    [/桥梁$/g, '桥'],
-    [/桥$/g, '桥'],
-    [/大道$/g, '路'],
-    [/大街$/g, '街'],
-    [/街道$/g, '街'],
-    [/街$/g, '街'],
-    [/商业街区$/g, '商业街'],
-    [/商业街$/g, '商业街'],
-    [/步行街$/g, '商业街'],
+    [/大桥$/g, '�?],
+    [/桥梁$/g, '�?],
+    [/�?/g, '�?],
+    [/大道$/g, '�?],
+    [/大街$/g, '�?],
+    [/街道$/g, '�?],
+    [/�?/g, '�?],
+    [/商业街区$/g, '商业�?],
+    [/商业�?/g, '商业�?],
+    [/步行�?/g, '商业�?],
     [/购物中心$/g, '商场'],
     [/商城$/g, '商场'],
     [/商场$/g, '商场'],
-    [/商业区$/g, '商业区'],
+    [/商业�?/g, '商业�?],
     [/广场$/g, '广场'],
     [/公园$/g, '公园'],
     [/园区$/g, '公园'],
-    [/体育馆$/g, '体育馆'],
-    [/运动馆$/g, '体育馆'],
-    [/体育中心$/g, '体育馆'],
-    [/图书馆$/g, '图书馆'],
-    [/阅览室$/g, '图书馆'],
+    [/体育�?/g, '体育�?],
+    [/运动�?/g, '体育�?],
+    [/体育中心$/g, '体育�?],
+    [/图书�?/g, '图书�?],
+    [/阅览�?/g, '图书�?],
     [/医院$/g, '医院'],
     [/诊所$/g, '医院'],
     [/车站$/g, '车站'],
     [/站点$/g, '车站'],
-    [/地铁站$/g, '地铁站'],
-    [/地铁口$/g, '地铁站'],
+    [/地铁�?/g, '地铁�?],
+    [/地铁�?/g, '地铁�?],
     [/机场$/g, '机场'],
     [/港口$/g, '港口'],
     [/码头$/g, '港口'],
@@ -1410,16 +1410,16 @@ function normalizeMapName(name) {
     [/森林$/g, '森林'],
     [/林地$/g, '森林'],
     [/树林$/g, '森林'],
-    [/山脉$/g, '山'],
-    [/高地$/g, '山'],
-    [/河流$/g, '河'],
-    [/河$/g, '河'],
-    [/湖泊$/g, '湖'],
-    [/湖$/g, '湖'],
+    [/山脉$/g, '�?],
+    [/高地$/g, '�?],
+    [/河流$/g, '�?],
+    [/�?/g, '�?],
+    [/湖泊$/g, '�?],
+    [/�?/g, '�?],
     [/海岸$/g, '海边'],
     [/海滩$/g, '海边'],
     [/海边$/g, '海边'],
-    [/地下室$/g, '地下'],
+    [/地下�?/g, '地下'],
     [/地底$/g, '地下'],
     [/地下$/g, '地下'],
     // fantasy/setting-specific systems
@@ -1433,8 +1433,8 @@ function normalizeMapName(name) {
     [/寺庙$/g, '寺庙'],
     [/道观$/g, '寺庙'],
     [/教堂$/g, '寺庙'],
-    [/大教堂$/g, '寺庙'],
-    [/修道院$/g, '寺庙'],
+    [/大教�?/g, '寺庙'],
+    [/修道�?/g, '寺庙'],
     [/洞穴$/g, '洞穴'],
     [/洞窟$/g, '洞穴'],
     [/遗迹$/g, '遗迹'],
@@ -1498,7 +1498,7 @@ function bindMapEventPanelHandler() {
         const tagsHtml = tags.length
           ? `<span class= "sg-map-event-tags" > ${tags.map(t => `<span class="sg-map-event-tag">${escapeHtml(String(t || ''))}</span>`).join('')}</span> `
           : '';
-        return `<li > <span class="sg-map-event-text">${text || '（无内容）'}</span>${tagsHtml}</li> `;
+        return `<li > <span class="sg-map-event-text">${text || '（无内容�?}</span>${tagsHtml}</li> `;
       }).join('');
       listHtml = `<ul class= "sg-map-event-list" > ${items}</ul> `;
     } else {
@@ -1620,7 +1620,7 @@ function getQuickOptions() {
 
   try {
     let arr = JSON.parse(raw);
-    // 支持 [[label, prompt], ...] 和 [{label, prompt}, ...] 两种格式
+    // 支持 [[label, prompt], ...] �?[{label, prompt}, ...] 两种格式
     if (!Array.isArray(arr)) return [];
     return arr.map((item, i) => {
       if (Array.isArray(item)) {
@@ -1637,7 +1637,7 @@ function getQuickOptions() {
 }
 
 function injectToUserInput(text) {
-  // 尝试多种可能的输入框选择器
+  // 尝试多种可能的输入框选择�?
   const selectors = ['#send_textarea', 'textarea#send_textarea', '.send_textarea', 'textarea.send_textarea'];
   let textarea = null;
 
@@ -1651,16 +1651,16 @@ function injectToUserInput(text) {
     return false;
   }
 
-  // 设置文本值
+  // 设置文本�?
   textarea.value = String(text || '');
 
   // 触发 input 事件以通知 SillyTavern
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
-  // 聚焦输入框
+  // 聚焦输入�?
   textarea.focus();
 
-  // 将光标移到末尾
+  // 将光标移到末�?
   if (textarea.setSelectionRange) {
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }
@@ -1688,7 +1688,7 @@ function renderQuickOptionsHtml(context = 'inline') {
   return `<div class="sg-quick-options" > ${buttons}</div> `;
 }
 
-// 渲染AI生成的动态快捷选项（从分析结果的quick_actions数组生成按钮，直接显示选项内容）
+// 渲染AI生成的动态快捷选项（从分析结果的quick_actions数组生成按钮，直接显示选项内容�?
 function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
   const s = ensureSettings();
 
@@ -1701,8 +1701,8 @@ function renderDynamicQuickActionsHtml(quickActions, context = 'inline') {
     const text = String(action || '').trim();
     if (!text) return '';
 
-    // 移除可能的编号前缀如 "【1】" 或 "1."
-    const cleaned = text.replace(/^【\d+】\s*/, '').replace(/^\d+[\.\)\:：]\s*/, '').trim();
+    // 移除可能的编号前缀�?"�?�? �?"1."
+    const cleaned = text.replace(/^【\d+】\s*/, '').replace(/^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;.        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;)        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;:：]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*/, '').trim();
     if (!cleaned) return '';
 
     const escapedText = escapeHtml(cleaned);
@@ -1770,7 +1770,7 @@ function getDefaultSummaryMeta() {
     structuredHistory: [], // [{createdAt, range:{fromFloor,toFloor,fromIdx,toIdx}, structuredChanges:[]}]
     wiTriggerLogs: [], // [{ts,userText,picked:[{title,score,keywordsPreview}], injectedKeywords, lookback, style, tag}]
     rollLogs: [], // [{ts, action, summary, final, success, userText}]
-    // 结构化条目缓存（用于去重与更新 - 方案C混合策略）
+    // 结构化条目缓存（用于去重与更�?- 方案C混合策略�?
     characterEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     equipmentEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
     inventoryEntries: {}, // { uid: { name, aliases, lastUpdated, wiEntryUid, content } }
@@ -1907,11 +1907,11 @@ async function setMapData(mapData) {
   await setChatMetaValue(META_KEYS.mapData, JSON.stringify(mapData ?? getDefaultMapData()));
 }
 
-// ===== 平行世界（NPC离屏模拟）核心函数 =====
+// ===== 平行世界（NPC离屏模拟）核心函�?=====
 
 function getDefaultParallelWorldData() {
   return {
-    worldClock: '第1天',
+    worldClock: '�?�?,
     trackedNpcs: [],   // [{ name, enabled }]
     eventLog: [],      // [{ npcName, time, event, impact, simRunId }]
     lastRunFloor: 0,
@@ -1951,16 +1951,16 @@ function setParallelWorldStatus(text, kind = '') {
  * 收集被追踪NPC的档案信息（从结构化条目缓存中获取）
  */
 /**
- * 通用：从蓝灯世界书中按 prefix 提取条目（去重）。
- * 如果蓝灯读取失败或为空，回退到 meta[metaFallbackKey]。
+ * 通用：从蓝灯世界书中�?prefix 提取条目（去重）�?
+ * 如果蓝灯读取失败或为空，回退�?meta[metaFallbackKey]�?
  * @param {string} prefix  条目前缀，如 "人物" "势力"
  * @param {string} metaFallbackKey  meta 中的回退 key，如 "characterEntries" "factionEntries"
  * @param {string} label  日志标签，如 "角色" "势力"
  */
 async function collectBlueWorldbookEntriesByPrefix(prefix, metaFallbackKey, label) {
   const file = pickBlueIndexFileName();
-  const cleanPrefix = prefix.replace(/\[[^\]]*\]\s*/g, '').trim();
-  console.log(`[StoryGuide][平行世界] 蓝灯世界书查找${label}: 文件="${file}", 前缀="${cleanPrefix}"`);
+  const cleanPrefix = prefix.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;[[^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*/g, '').trim();
+  console.log(`[StoryGuide][平行世界] 蓝灯世界书查�?{label}: 文件="${file}", 前缀="${cleanPrefix}"`);
 
   if (file) {
     try {
@@ -1970,19 +1970,19 @@ async function collectBlueWorldbookEntriesByPrefix(prefix, metaFallbackKey, labe
 
       for (const e of entries) {
         let comment = String(e.comment || e.title || '').trim();
-        const cleanComment = comment.replace(/\[[^\]]*\]\s*/g, '').trim();
+        const cleanComment = comment.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;[[^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*/g, '').trim();
         if (!cleanComment.startsWith(cleanPrefix)) continue;
 
         const parts = comment.split(/[｜|]/);
-        const namePart = (parts.length >= 2 ? parts[1] : comment.replace(prefix, '')).replace(/^[-_：:\s]+/, '').trim();
+        const namePart = (parts.length >= 2 ? parts[1] : comment.replace(prefix, '')).replace(/^[-_�?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s]+/, '').trim();
 
         const content = String(e.content || '');
         let parsed = null;
-        const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)```/);
+        const jsonBlockMatch = content.match(/```json        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*([        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*?)```/);
         if (jsonBlockMatch) { try { parsed = JSON.parse(jsonBlockMatch[1]); } catch { } }
         if (!parsed) { try { parsed = JSON.parse(content); } catch { } }
         if (!parsed) {
-          const braceMatch = content.match(/\{[\s\S]*\}/);
+          const braceMatch = content.match(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}/);
           if (braceMatch) { try { parsed = JSON.parse(braceMatch[0]); } catch { } }
         }
 
@@ -1995,7 +1995,7 @@ async function collectBlueWorldbookEntriesByPrefix(prefix, metaFallbackKey, labe
       }
 
       if (Object.keys(resultMap).length > 0) {
-        console.log(`[StoryGuide][平行世界] 从蓝灯世界书提取 ${Object.keys(resultMap).length} 个${label}`);
+        console.log(`[StoryGuide][平行世界] 从蓝灯世界书提取 ${Object.keys(resultMap).length} �?{label}`);
         return resultMap;
       }
       console.warn(`[StoryGuide][平行世界] 蓝灯世界书未找到${label}条目，回退 meta`);
@@ -2004,7 +2004,7 @@ async function collectBlueWorldbookEntriesByPrefix(prefix, metaFallbackKey, labe
     }
   }
 
-  // 回退: 从 meta 读取
+  // 回退: �?meta 读取
   const meta = getSummaryMeta();
   const fallback = meta[metaFallbackKey] || {};
   const resultMap = {};
@@ -2014,7 +2014,7 @@ async function collectBlueWorldbookEntriesByPrefix(prefix, metaFallbackKey, labe
       resultMap[name] = ce;
     }
   }
-  console.log(`[StoryGuide][平行世界] 回退 meta: ${Object.keys(resultMap).length} 个${label}`);
+  console.log(`[StoryGuide][平行世界] 回退 meta: ${Object.keys(resultMap).length} �?{label}`);
   return resultMap;
 }
 
@@ -2037,7 +2037,7 @@ async function collectBlueWorldbookFactionEntries() {
 }
 
 function collectTrackedNpcProfiles(trackedNpcs, pwData) {
-  // 使用上层传入的蓝灯角色缓存（如果有），否则回退到 meta
+  // 使用上层传入的蓝灯角色缓存（如果有），否则回退�?meta
   const charEntries = pwData._blueCharEntries || getSummaryMeta().characterEntries || {};
   const profiles = [];
 
@@ -2059,76 +2059,76 @@ function collectTrackedNpcProfiles(trackedNpcs, pwData) {
       }
     }
 
-    // 构建档案文本：优先使用世界书条目的原始内容
-    let profile = `【${name}】\n`;
+    // 构建档案文本：优先使用世界书条目的原始内�?
+    let profile = `�?{name}】\n`;
     if (found && found._rawContent) {
-      // 直接使用蓝灯世界书中的条目内容
-      profile += found._rawContent + '\n';
+      // 直接使用蓝灯世界书中的条目内�?
+      profile += found._rawContent + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n';
     } else if (found) {
-      if (found.personality) profile += `性格: ${found.personality}\n`;
-      if (found.corePersonality) profile += `核心性格: ${found.corePersonality}\n`;
-      if (found.motivation) profile += `动机: ${found.motivation}\n`;
-      if (found.faction) profile += `阵营: ${found.faction}\n`;
-      if (found.status) profile += `状态: ${found.status}\n`;
-      if (found.relationToProtagonist) profile += `与主角关系: ${found.relationToProtagonist}\n`;
-      if (found.relationshipStage) profile += `关系阶段: ${found.relationshipStage}\n`;
-      if (found.background) profile += `背景: ${found.background}\n`;
+      if (found.personality) profile += `性格: ${found.personality}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (found.corePersonality) profile += `核心性格: ${found.corePersonality}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (found.motivation) profile += `动机: ${found.motivation}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (found.faction) profile += `阵营: ${found.faction}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (found.status) profile += `状�? ${found.status}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (found.relationToProtagonist) profile += `与主角关�? ${found.relationToProtagonist}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (found.relationshipStage) profile += `关系阶段: ${found.relationshipStage}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (found.background) profile += `背景: ${found.background}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
     } else {
-      profile += `(无详细档案)\n`;
+      profile += `(无详细档�?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
     }
 
     // 附加最近的离屏事件
     const recentEvents = (pwData.eventLog || []).filter(e => e.npcName === name).slice(-3);
     if (recentEvents.length > 0) {
-      profile += `最近离屏事件:\n`;
+      profile += `最近离屏事�?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
       for (const ev of recentEvents) {
-        profile += `  - [${ev.time}] ${ev.event}${ev.impact ? ` (影响: ${ev.impact})` : ''}\n`;
+        profile += `  - [${ev.time}] ${ev.event}${ev.impact ? ` (影响: ${ev.impact})` : ''}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
       }
     }
 
     profiles.push(profile);
   }
-  return profiles.join('\n');
+  return profiles.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 /**
  * 收集势力/组织的档案信息，用于平行世界推演
  */
 function collectFactionProfiles(factionEntries, pwData) {
-  if (!factionEntries || Object.keys(factionEntries).length === 0) return '(无势力/组织数据)';
+  if (!factionEntries || Object.keys(factionEntries).length === 0) return '(无势�?组织数据)';
 
   const profiles = [];
   for (const [name, entry] of Object.entries(factionEntries)) {
-    let profile = `【势力: ${name}】\n`;
+    let profile = `【势�? ${name}】\n`;
     if (entry._rawContent) {
-      profile += entry._rawContent + '\n';
+      profile += entry._rawContent + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n';
     } else {
-      if (entry.description) profile += `描述: ${entry.description}\n`;
-      if (entry.leader) profile += `领袖: ${entry.leader}\n`;
-      if (entry.territory) profile += `领地: ${entry.territory}\n`;
-      if (entry.status) profile += `状态: ${entry.status}\n`;
-      if (entry.goal) profile += `目标: ${entry.goal}\n`;
+      if (entry.description) profile += `描述: ${entry.description}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (entry.leader) profile += `领袖: ${entry.leader}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (entry.territory) profile += `领地: ${entry.territory}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (entry.status) profile += `状�? ${entry.status}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+      if (entry.goal) profile += `目标: ${entry.goal}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
     }
 
     // 附加最近的离屏事件
     const recentEvents = (pwData.factionEventLog || []).filter(e => e.factionName === name).slice(-3);
     if (recentEvents.length > 0) {
-      profile += `最近势力事件:\n`;
+      profile += `最近势力事�?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
       for (const ev of recentEvents) {
-        profile += `  - [${ev.time}] ${ev.event}${ev.impact ? ` (影响: ${ev.impact})` : ''}\n`;
+        profile += `  - [${ev.time}] ${ev.event}${ev.impact ? ` (影响: ${ev.impact})` : ''}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
       }
     }
     profiles.push(profile);
   }
-  return profiles.join('\n');
+  return profiles.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 /**
- * 从聊天记录中读取最近 N 楼的正文内容，用于平行世界推演
+ * 从聊天记录中读取最�?N 楼的正文内容，用于平行世界推�?
  */
 function readRecentChatForParallelWorld(n = 5) {
   const ctx = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
   const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-  if (chat.length === 0) return '(无可用正文)';
+  if (chat.length === 0) return '(无可用正�?';
 
   const floors = Math.max(1, Math.min(50, n));
   const picked = [];
@@ -2140,33 +2140,33 @@ function readRecentChatForParallelWorld(n = 5) {
     let text = stripHtml(m.mes ?? m.message ?? '');
     if (!text) continue;
     // 限制每条消息最大字符数
-    if (text.length > 4000) text = text.slice(0, 4000) + '…(截断)';
-    picked.push(`【${name}】${text}`);
+    if (text.length > 4000) text = text.slice(0, 4000) + '�?截断)';
+    picked.push(`�?{name}�?{text}`);
   }
   picked.reverse();
-  if (picked.length === 0) return '(无可用正文)';
-  return picked.join('\n\n');
+  if (picked.length === 0) return '(无可用正�?';
+  return picked.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 /**
- * 从聊天文本中提取时间信息，用于更新世界时钟。
- * 优先提取最接近末尾（最新）的时间描述。
+ * 从聊天文本中提取时间信息，用于更新世界时钟�?
+ * 优先提取最接近末尾（最新）的时间描述�?
  */
 function extractTimeFromChat(chatText) {
-  if (!chatText || chatText === '(无可用正文)') return null;
+  if (!chatText || chatText === '(无可用正�?') return null;
 
   // 常见时间模式（中文叙事常见格式）
   const patterns = [
-    // "第X天" "第X日" "第X夜"
-    /第\s*[零一二三四五六七八九十百千万\d]+\s*[天日夜]/g,
-    // "X月X日" "X年X月"
-    /[\d一二三四五六七八九十]+\s*[月年]\s*[\d一二三四五六七八九十]*\s*[日号]?/g,
-    // 具体时间：上午/下午/清晨/黄昏/午夜/傍晚/正午/深夜/拂晓/黎明
+    // "第X�? "第X�? "第X�?
+    /第\s*[零一二三四五六七八九十百千万        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d]+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[天日夜]/g,
+    // "X月X�? "X年X�?
+    /[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d一二三四五六七八九十]+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[月年]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d一二三四五六七八九十]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[日号]?/g,
+    // 具体时间：上�?下午/清晨/黄昏/午夜/傍晚/正午/深夜/拂晓/黎明
     /(?:清晨|拂晓|黎明|早晨|早上|上午|中午|正午|下午|傍晚|黄昏|日落|夜晚|深夜|午夜|凌晨|子时|丑时|寅时|卯时|辰时|巳时|午时|未时|申时|酉时|戌时|亥时)/g,
     // "XX:XX" 时钟格式
-    /\d{1,2}:\d{2}/g,
-    // "X时" "X点"
-    /[\d一二三四五六七八九十]+\s*[时点](?:\s*[\d一二三四五六七八九十]+\s*分)?/g,
+    /        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d{1,2}:        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d{2}/g,
+    // "X�? "X�?
+    /[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d一二三四五六七八九十]+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[时点](?:        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d一二三四五六七八九十]+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*�??/g,
   ];
 
   let lastMatch = null;
@@ -2182,11 +2182,11 @@ function extractTimeFromChat(chatText) {
     }
   }
 
-  // 尝试组合：如果 "第X天" + 时间段 相邻，合并
+  // 尝试组合：如�?"第X�? + 时间�?相邻，合�?
   if (lastMatch) {
-    // 在 lastMatch 附近也查找日期组合
+    // �?lastMatch 附近也查找日期组�?
     const nearbyText = chatText.slice(Math.max(0, lastPos - 30), lastPos + lastMatch.length + 30);
-    const dayMatch = nearbyText.match(/第\s*[零一二三四五六七八九十百千万\d]+\s*[天日夜]/);
+    const dayMatch = nearbyText.match(/第\s*[零一二三四五六七八九十百千万        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d]+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[天日夜]/);
     const timeMatch = nearbyText.match(/(?:清晨|拂晓|黎明|早晨|早上|上午|中午|正午|下午|傍晚|黄昏|日落|夜晚|深夜|午夜|凌晨)/);
     if (dayMatch && timeMatch) {
       return `${dayMatch[0]} ${timeMatch[0]}`;
@@ -2206,25 +2206,25 @@ function buildParallelWorldPromptMessages(snapshotText, npcProfilesText, worldCl
   const usrTpl = String(s.parallelWorldUserTemplate || DEFAULT_PARALLEL_WORLD_USER_TEMPLATE);
 
   const userContent = renderTemplate(usrTpl, {
-    worldTime: worldClock || '第1天',
+    worldTime: worldClock || '�?�?,
     recentContext: snapshotText || '(无可用上下文)',
     npcProfiles: npcProfilesText || '(无NPC)',
-    factionProfiles: factionProfilesText || '(无势力/组织)',
+    factionProfiles: factionProfilesText || '(无势�?组织)',
   });
 
   return [
-    { role: 'system', content: sysTpl + '\n\n' + PARALLEL_WORLD_JSON_REQUIREMENT },
+    { role: 'system', content: sysTpl + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n' + PARALLEL_WORLD_JSON_REQUIREMENT },
     { role: 'user', content: userContent },
   ];
 }
 
 /**
- * 核心推演函数：调用 LLM 推演所有被追踪 NPC 的离屏事件
+ * 核心推演函数：调�?LLM 推演所有被追踪 NPC 的离屏事�?
  */
 async function runParallelWorldSimulation() {
   const s = ensureSettings();
   if (!s.parallelWorldEnabled) {
-    setParallelWorldStatus('平行世界未启用', 'warn');
+    setParallelWorldStatus('平行世界未启�?, 'warn');
     return false;
   }
 
@@ -2234,12 +2234,12 @@ async function runParallelWorldSimulation() {
   const trackedFactions = (s.parallelWorldTrackedFactions || []).filter(t => t.enabled);
 
   if (trackedNpcs.length === 0 && trackedFactions.length === 0) {
-    setParallelWorldStatus('没有被追踪的NPC或势力，请刷新列表并勾选', 'warn');
+    setParallelWorldStatus('没有被追踪的NPC或势力，请刷新列表并勾�?, 'warn');
     return false;
   }
 
-  setParallelWorldStatus('正在推演离屏事件…', 'warn');
-  showToast('🌍 平行世界推演中…', { kind: 'info', spinner: true, sticky: true });
+  setParallelWorldStatus('正在推演离屏事件�?, 'warn');
+  showToast('🌍 平行世界推演中�?, { kind: 'info', spinner: true, sticky: true });
 
   try {
     // 1. 收集上下文（从蓝灯世界书读取角色+势力 + 最新正文）
@@ -2250,7 +2250,7 @@ async function runParallelWorldSimulation() {
     const chatContext = readRecentChatForParallelWorld(readFloors);
     const npcProfilesText = collectTrackedNpcProfiles(trackedNpcs, pwData);
 
-    // 过滤只处理被追踪的势力
+    // 过滤只处理被追踪的势�?
     const trackedFactionNames = new Set(trackedFactions.map(t => t.name));
     const filteredFactionEntries = {};
     for (const [k, v] of Object.entries(blueFactionEntries)) {
@@ -2259,12 +2259,12 @@ async function runParallelWorldSimulation() {
     const factionProfilesText = collectFactionProfiles(filteredFactionEntries, pwData);
     delete pwData._blueCharEntries;
 
-    // 世界时钟：从正文中提取时间
+    // 世界时钟：从正文中提取时�?
     const extractedTime = extractTimeFromChat(chatContext);
     if (extractedTime) {
       pwData.worldClock = extractedTime;
     }
-    const worldClock = pwData.worldClock || s.parallelWorldClock || '第1天';
+    const worldClock = pwData.worldClock || s.parallelWorldClock || '�?�?;
 
     // 2. 构建 prompt
     const messages = buildParallelWorldPromptMessages(chatContext, npcProfilesText, worldClock, factionProfilesText);
@@ -2294,7 +2294,7 @@ async function runParallelWorldSimulation() {
       return false;
     }
 
-    // 5. 处理结果：更新事件日志
+    // 5. 处理结果：更新事件日�?
     const maxEvents = s.parallelWorldMaxEventsPerNpc || 10;
     const simRunId = Date.now();
 
@@ -2306,7 +2306,7 @@ async function runParallelWorldSimulation() {
       const npcName = String(npcUpdate.name || '').trim();
       if (!npcName) continue;
 
-      // 添加事件到日志
+      // 添加事件到日�?
       if (Array.isArray(npcUpdate.events)) {
         for (const evt of npcUpdate.events) {
           pwData.eventLog.push({
@@ -2319,7 +2319,7 @@ async function runParallelWorldSimulation() {
         }
       }
 
-      // 按NPC修剪事件数
+      // 按NPC修剪事件�?
       const npcEvents = pwData.eventLog.filter(e => e.npcName === npcName);
       if (npcEvents.length > maxEvents) {
         const excess = npcEvents.length - maxEvents;
@@ -2354,7 +2354,7 @@ async function runParallelWorldSimulation() {
           }
         }
 
-        // 修剪势力事件数
+        // 修剪势力事件�?
         const fEvents = pwData.factionEventLog.filter(e => e.factionName === factionName);
         if (fEvents.length > maxEvents) {
           const excess = fEvents.length - maxEvents;
@@ -2393,26 +2393,26 @@ async function runParallelWorldSimulation() {
 
     const totalNewEvents = parsed.npcUpdates.reduce((sum, u) => sum + (u.events?.length || 0), 0);
     const totalFactionEvents = Array.isArray(parsed.factionUpdates) ? parsed.factionUpdates.reduce((sum, u) => sum + (u.events?.length || 0), 0) : 0;
-    const factionPart = totalFactionEvents > 0 ? `, ${parsed.factionUpdates.length} 个势力, ${totalFactionEvents} 件势力事件` : '';
-    setParallelWorldStatus(`✅ 推演完成：${parsed.npcUpdates.length} 个NPC, ${totalNewEvents} 件事件${factionPart}`, 'ok');
+    const factionPart = totalFactionEvents > 0 ? `, ${parsed.factionUpdates.length} 个势�? ${totalFactionEvents} 件势力事件` : '';
+    setParallelWorldStatus(`�?推演完成�?{parsed.npcUpdates.length} 个NPC, ${totalNewEvents} 件事�?{factionPart}`, 'ok');
     hideToast();
     return true;
 
   } catch (e) {
     console.error('[StoryGuide] 平行世界推演失败:', e);
-    setParallelWorldStatus(`❌ 推演失败: ${e?.message || e}`, 'err');
+    setParallelWorldStatus(`�?推演失败: ${e?.message || e}`, 'err');
     hideToast();
     return false;
   }
 }
 
 /**
- * 将推演结果写入专用「平行事件」世界书条目（同时写入蓝灯和绿灯）。
- * 条目以所有被追踪NPC的名字为关键词,由索引模块负责触发与上下文注入。
+ * 将推演结果写入专用「平行事件」世界书条目（同时写入蓝灯和绿灯）�?
+ * 条目以所有被追踪NPC的名字为关键�?由索引模块负责触发与上下文注入�?
  */
 async function writeParallelEventsEntry(pwData, settings) {
   const s = settings || ensureSettings();
-  const prefix = String(s.characterEntryPrefix || '人物').replace(/\[[^\]]*\]\s*/g, '').trim();
+  const prefix = String(s.characterEntryPrefix || '人物').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;[[^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*/g, '').trim();
   const trackedNpcs = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
   const trackedFactions = (s.parallelWorldTrackedFactions || []).filter(t => t.enabled);
 
@@ -2426,9 +2426,9 @@ async function writeParallelEventsEntry(pwData, settings) {
   const allEvents = [...eventLog, ...factionEventLog];
   const lastRunId = allEvents.reduce((max, ev) => Math.max(max, ev.simRunId || 0), 0);
 
-  const worldClock = pwData.worldClock || s.parallelWorldClock || '第1天';
+  const worldClock = pwData.worldClock || s.parallelWorldClock || '�?�?;
 
-  // 按 NPC 分组构建内容
+  // �?NPC 分组构建内容
   const lines = [`[平行世界事件记录]`, `世界时间: ${worldClock}`, ''];
   for (const tn of trackedNpcs) {
     const name = String(tn.name || '').trim();
@@ -2436,7 +2436,7 @@ async function writeParallelEventsEntry(pwData, settings) {
     // Only show events from the LATEST run
     const npcEvents = eventLog.filter(e => e.npcName === name && e.simRunId === lastRunId);
     if (npcEvents.length === 0) continue;
-    lines.push(`【${name}】`);
+    lines.push(`�?{name}】`);
     for (const ev of npcEvents) {
       let line = `- [${ev.time}] ${ev.event}`;
       if (ev.impact) line += ` (影响: ${ev.impact})`;
@@ -2445,7 +2445,7 @@ async function writeParallelEventsEntry(pwData, settings) {
     lines.push('');
   }
 
-  // 按势力分组构建内容 (只包含最新一次推演的事件)
+  // 按势力分组构建内�?(只包含最新一次推演的事件)
   // const factionEventLog = ... (already declared at top)
   const currentFactionEvents = factionEventLog.filter(e => e.simRunId === lastRunId);
   const factionNames = new Set();
@@ -2460,7 +2460,7 @@ async function writeParallelEventsEntry(pwData, settings) {
       factionNames.add(fn);
     }
     for (const [fn, recent] of Object.entries(factionGroups)) {
-      lines.push(`【势力: ${fn}】`);
+      lines.push(`【势�? ${fn}】`);
       for (const ev of recent) {
         let line = `- [${ev.time}] ${ev.event}`;
         if (ev.impact) line += ` (影响: ${ev.impact})`;
@@ -2470,27 +2470,27 @@ async function writeParallelEventsEntry(pwData, settings) {
     }
   }
 
-  if (lines.length <= 3) return; // 无事件，不写入
+  if (lines.length <= 3) return; // 无事件，不写�?
 
-  const content = lines.join('\n');
-  // 关键词 = 所有被追踪NPC的名字 + 被追踪势力名字,以便索引模块能匹配触发
-  // 关键词只保留 "平行事件" + 唯一标识符 (用户要求)
+  const content = lines.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
+  // 关键�?= 所有被追踪NPC的名�?+ 被追踪势力名�?以便索引模块能匹配触�?
+  // 关键词只保留 "平行事件" + 唯一标识�?(用户要求)
   const keywords = ['平行事件', '__SG_PARALLEL_WORLD_EVENT__'];
 
   const entryComment = `[mvu_plot]平行事件`;
   const meta = getSummaryMeta();
 
-  // 使用 writeOrUpdateStructuredEntry 写入蓝灯和绿灯
+  // 使用 writeOrUpdateStructuredEntry 写入蓝灯和绿�?
   const entryData = {
     name: '[mvu_plot]平行事件',
     isUpdated: true,
     isNew: false,
   };
 
-  // 构建写入数据（直接使用底层 STscript 写入,不走角色条目流程）
+  // 构建写入数据（直接使用底�?STscript 写入,不走角色条目流程�?
   const dualWriteSettings = { ...s, summaryToWorldInfo: true, summaryToBlueWorldInfo: true };
 
-  // 写绿灯
+  // 写绿�?
   try {
     const greenTarget = resolveGreenWorldInfoTarget(dualWriteSettings);
     if (greenTarget.file) {
@@ -2508,7 +2508,7 @@ async function writeParallelEventsEntry(pwData, settings) {
     console.warn('[StoryGuide][平行世界] 写入绿灯失败:', e);
   }
 
-  // 写蓝灯
+  // 写蓝�?
   try {
     const blueFile = normalizeWorldInfoFileName(dualWriteSettings.summaryBlueWorldInfoFile);
     if (blueFile) {
@@ -2528,22 +2528,22 @@ async function writeParallelEventsEntry(pwData, settings) {
 }
 
 /**
- * 直接使用 STscript 写入/更新世界书条目（通用底层方法）
+ * 直接使用 STscript 写入/更新世界书条目（通用底层方法�?
  */
 async function writeWorldInfoEntryDirect({ file, comment, content, keys, constant = 0, searchKey }) {
   if (!file || (!comment && !searchKey)) return;
 
   const qFile = quoteSlashValue(file);
   // SillyTavern might parse [bracket] as macro, so escape them in comment/title
-  const qComment = quoteSlashValue(comment ? comment.replace(/\[/g, '\\[').replace(/\]/g, '\\]') : '');
-  const qContent = quoteSlashValue(content.replace(/\|/g, '｜'));
+  const qComment = quoteSlashValue(comment ? comment.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;[/g, '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;[').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]/g, '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]') : '');
+  const qContent = quoteSlashValue(content.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?));
   const keyStr = Array.isArray(keys) ? keys.join(',') : String(keys || '');
   const qKey = quoteSlashValue(keyStr);
   const uidVar = '__sg_pw_uid';
 
   let uid = null;
 
-  // 1. 优先尝试按 searchKey 查找 (更精准,避免同名覆盖)
+  // 1. 优先尝试�?searchKey 查找 (更精�?避免同名覆盖)
   if (searchKey) {
     try {
       const qSearchKey = quoteSlashValue(searchKey);
@@ -2554,7 +2554,7 @@ async function writeWorldInfoEntryDirect({ file, comment, content, keys, constan
     } catch { }
   }
 
-  // 2. 如果没找到，再尝试按 comment 查找 (兼容旧数据)
+  // 2. 如果没找到，再尝试按 comment 查找 (兼容旧数�?
   if (!uid && comment) {
     try {
       const findScript = `/findentry file=${qFile} field=comment ${qComment} | /setvar key=${uidVar}`;
@@ -2568,11 +2568,11 @@ async function writeWorldInfoEntryDirect({ file, comment, content, keys, constan
     const updateParts = [
       `/setentryfield file=${qFile} uid=${uid} field=content ${qContent}`,
       `/setentryfield file=${qFile} uid=${uid} field=key ${qKey}`,
-      `/setentryfield file=${qFile} uid=${uid} field=comment ${qComment}`, // 确保标题也更新
+      `/setentryfield file=${qFile} uid=${uid} field=comment ${qComment}`, // 确保标题也更�?
       `/setentryfield file=${qFile} uid=${uid} field=disable 0`,
     ];
     await execSlash(updateParts.join(' | '));
-    console.log(`[StoryGuide][平行世界] 已更新条目 uid=${uid} (file=${file})`);
+    console.log(`[StoryGuide][平行世界] 已更新条�?uid=${uid} (file=${file})`);
     return;
   }
 
@@ -2583,7 +2583,7 @@ async function writeWorldInfoEntryDirect({ file, comment, content, keys, constan
   ];
   await execSlash(createParts.join(' | '));
 
-  // 使用 {{getvar::}} 引用刚创建的 uid 来设置字段
+  // 使用 {{getvar::}} 引用刚创建的 uid 来设置字�?
   const setupParts = [
     `/setentryfield file=${qFile} uid={{getvar::${uidVar}}} field=comment ${qComment}`,
     `/setentryfield file=${qFile} uid={{getvar::${uidVar}}} field=content ${qContent}`,
@@ -2609,13 +2609,13 @@ async function maybeAutoRunParallelWorld() {
   const every = Math.max(1, s.parallelWorldAutoEvery || 5);
 
   if (currentFloor - lastFloor >= every) {
-    console.log(`[StoryGuide] 平行世界: 自动推演触发 (楼层 ${lastFloor} → ${currentFloor}, 间隔 ${every})`);
+    console.log(`[StoryGuide] 平行世界: 自动推演触发 (楼层 ${lastFloor} �?${currentFloor}, 间隔 ${every})`);
     await runParallelWorldSimulation();
   }
 }
 
 /**
- * 构建平行世界上下文注入（注入到 AI 回复前的消息中）
+ * 构建平行世界上下文注入（注入�?AI 回复前的消息中）
  */
 function buildParallelWorldContextInjection() {
   const s = ensureSettings();
@@ -2659,7 +2659,7 @@ function renderParallelWorldEventLog(pwDataOverride) {
   const factionEvents = pwData.factionEventLog || [];
 
   if (events.length === 0 && factionEvents.length === 0) {
-    $container.html('<div class="sg-hint">暂无事件记录。点击「立即推演」开始模拟。</div>');
+    $container.html('<div class="sg-hint">暂无事件记录。点击「立即推演」开始模拟�?/div>');
     return;
   }
 
@@ -2674,7 +2674,7 @@ function renderParallelWorldEventLog(pwDataOverride) {
   let html = '';
   for (const [npcName, npcEvents] of Object.entries(grouped)) {
     html += `<div class="sg-pw-npc-group">`;
-    html += `<div class="sg-pw-npc-group-title">${escapeHtml(npcName)} <span class="sg-pw-count">(${npcEvents.length}件)</span></div>`;
+    html += `<div class="sg-pw-npc-group-title">${escapeHtml(npcName)} <span class="sg-pw-count">(${npcEvents.length}�?</span></div>`;
     html += `<div class="sg-pw-npc-events">`;
     const recent = npcEvents.slice(-5).reverse();
     for (const ev of recent) {
@@ -2682,17 +2682,17 @@ function renderParallelWorldEventLog(pwDataOverride) {
       html += `<span class="sg-pw-event-time">${escapeHtml(ev.time || '')}</span> `;
       html += `<span class="sg-pw-event-text">${escapeHtml(ev.event || '')}</span>`;
       if (ev.impact) {
-        html += `<span class="sg-pw-event-impact"> → ${escapeHtml(ev.impact)}</span>`;
+        html += `<span class="sg-pw-event-impact"> �?${escapeHtml(ev.impact)}</span>`;
       }
       html += `</div>`;
     }
     if (npcEvents.length > 5) {
-      html += `<div class="sg-hint">…还有 ${npcEvents.length - 5} 条更早的记录</div>`;
+      html += `<div class="sg-hint">…还�?${npcEvents.length - 5} 条更早的记录</div>`;
     }
     html += `</div></div>`;
   }
 
-  // 按势力分组
+  // 按势力分�?
   if (factionEvents.length > 0) {
     const factionGrouped = {};
     for (const ev of factionEvents) {
@@ -2702,7 +2702,7 @@ function renderParallelWorldEventLog(pwDataOverride) {
     }
     for (const [fName, fEvents] of Object.entries(factionGrouped)) {
       html += `<div class="sg-pw-npc-group">`;
-      html += `<div class="sg-pw-npc-group-title">[势力] ${escapeHtml(fName)} <span class="sg-pw-count">(${fEvents.length}件)</span></div>`;
+      html += `<div class="sg-pw-npc-group-title">[势力] ${escapeHtml(fName)} <span class="sg-pw-count">(${fEvents.length}�?</span></div>`;
       html += `<div class="sg-pw-npc-events">`;
       const recent = fEvents.slice(-5).reverse();
       for (const ev of recent) {
@@ -2710,12 +2710,12 @@ function renderParallelWorldEventLog(pwDataOverride) {
         html += `<span class="sg-pw-event-time">${escapeHtml(ev.time || '')}</span> `;
         html += `<span class="sg-pw-event-text">${escapeHtml(ev.event || '')}</span>`;
         if (ev.impact) {
-          html += `<span class="sg-pw-event-impact"> → ${escapeHtml(ev.impact)}</span>`;
+          html += `<span class="sg-pw-event-impact"> �?${escapeHtml(ev.impact)}</span>`;
         }
         html += `</div>`;
       }
       if (fEvents.length > 5) {
-        html += `<div class="sg-hint">…还有 ${fEvents.length - 5} 条更早的记录</div>`;
+        html += `<div class="sg-hint">…还�?${fEvents.length - 5} 条更早的记录</div>`;
       }
       html += `</div></div>`;
     }
@@ -2726,11 +2726,11 @@ function renderParallelWorldEventLog(pwDataOverride) {
 
 function updateParallelWorldClockDisplay(clockText) {
   const $el = $('#sg_pwClockDisplay');
-  if ($el.length) $el.text(clockText || '第1天');
+  if ($el.length) $el.text(clockText || '�?�?);
 }
 
 /**
- * 刷新 NPC 和 势力 追踪列表（从蓝灯世界书中获取）
+ * 刷新 NPC �?势力 追踪列表（从蓝灯世界书中获取�?
  */
 async function refreshParallelWorldTrackedLists() {
   try {
@@ -2740,8 +2740,8 @@ async function refreshParallelWorldTrackedLists() {
     if (!$npcList.length && !$factionList.length) return;
 
     const s = ensureSettings();
-    $npcList.html('<div class="sg-hint">正在读取蓝灯世界书…</div>');
-    $factionList.html('<div class="sg-hint">正在读取蓝灯世界书…</div>');
+    $npcList.html('<div class="sg-hint">正在读取蓝灯世界书�?/div>');
+    $factionList.html('<div class="sg-hint">正在读取蓝灯世界书�?/div>');
 
     // 并行读取
     const [blueCharEntries, blueFactionEntries] = await Promise.all([
@@ -2762,7 +2762,7 @@ async function refreshParallelWorldTrackedLists() {
       }
 
       if (allNames.length === 0) {
-        $npcList.html('<div class="sg-hint">暂无角色条目。</div>');
+        $npcList.html('<div class="sg-hint">暂无角色条目�?/div>');
       } else {
         const trackedMap = {};
         for (const t of (s.parallelWorldTrackedNpcs || [])) {
@@ -2794,7 +2794,7 @@ async function refreshParallelWorldTrackedLists() {
       }
 
       if (allNames.length === 0) {
-        $factionList.html('<div class="sg-hint">暂无势力条目。</div>');
+        $factionList.html('<div class="sg-hint">暂无势力条目�?/div>');
       } else {
         const trackedMap = {};
         for (const t of (s.parallelWorldTrackedFactions || [])) {
@@ -2863,9 +2863,9 @@ async function refreshParallelWorldModels() {
     return;
   }
   $btn.prop('disabled', true);
-  setParallelWorldStatus('正在刷新模型列表…', 'warn');
+  setParallelWorldStatus('正在刷新模型列表�?, 'warn');
   try {
-    const modelsUrl = base.replace(/\/$/, '') + '/models';
+    const modelsUrl = base.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/$/, '') + '/models';
     const headers = {};
     if (s.parallelWorldCustomApiKey) headers['Authorization'] = `Bearer ${s.parallelWorldCustomApiKey}`;
 
@@ -2892,10 +2892,10 @@ async function refreshParallelWorldModels() {
       s.parallelWorldCustomModelsCache = modelIds;
       saveSettings();
       fillParallelWorldModelSelect(modelIds, s.parallelWorldCustomModel);
-      setParallelWorldStatus(`✅ 获取到 ${modelIds.length} 个模型`, 'ok');
+      setParallelWorldStatus(`�?获取�?${modelIds.length} 个模型`, 'ok');
     }
   } catch (e) {
-    setParallelWorldStatus(`❌ 刷新失败: ${e?.message || e}`, 'err');
+    setParallelWorldStatus(`�?刷新失败: ${e?.message || e}`, 'err');
   } finally {
     $btn.prop('disabled', false);
   }
@@ -2935,8 +2935,8 @@ function updateMapPreview() {
   }
 }
 
-const MAP_JSON_REQUIREMENT = `输出要求：
-- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。`;
+const MAP_JSON_REQUIREMENT = `输出要求�?
+- 只输出严�?JSON，不�?Markdown、不要代码块、不要任何多余文字。`;
 
 function getMapSchema() {
   return {
@@ -2983,7 +2983,7 @@ function buildMapPromptMessages(snapshotText) {
   const s = ensureSettings();
   let sys = String(s.mapSystemPrompt || '').trim();
   if (!sys) sys = String(DEFAULT_SETTINGS.mapSystemPrompt || '').trim();
-  sys = sys + '\n\n' + MAP_JSON_REQUIREMENT;
+  sys = sys + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n' + MAP_JSON_REQUIREMENT;
   const user = String(snapshotText || '').trim();
   return [
     { role: 'system', content: sys },
@@ -3032,7 +3032,7 @@ async function updateMapFromSnapshot(snapshotText) {
   }
 }
 
-// 合并静态模块缓存到分析结果中
+// 合并静态模块缓存到分析结果�?
 function mergeStaticModulesIntoResult(parsedJson, modules) {
   const cache = getStaticModulesCache();
   const result = { ...parsedJson };
@@ -3049,14 +3049,14 @@ function mergeStaticModulesIntoResult(parsedJson, modules) {
   return result;
 }
 
-// 更新静态模块缓存
+// 更新静态模块缓�?
 async function updateStaticModulesCache(parsedJson, modules) {
   const cache = getStaticModulesCache();
   let changed = false;
 
   for (const m of modules) {
     if (m.static && parsedJson[m.key] !== undefined && parsedJson[m.key] !== null && parsedJson[m.key] !== '') {
-      // 只在首次生成或值有变化时更新缓存
+      // 只在首次生成或值有变化时更新缓�?
       if (cache[m.key] === undefined || JSON.stringify(cache[m.key]) !== JSON.stringify(parsedJson[m.key])) {
         cache[m.key] = parsedJson[m.key];
         changed = true;
@@ -3071,7 +3071,7 @@ async function updateStaticModulesCache(parsedJson, modules) {
 
 // ===== 地图功能：提取和渲染 =====
 
-// 从 LLM 响应中提取地图数据
+// �?LLM 响应中提取地图数�?
 function parseMapLLMResponse(responseText) {
   const parsed = safeJsonParse(responseText);
   if (!parsed) return null;
@@ -3097,7 +3097,7 @@ function ensureMapMinimums(parsed) {
   let exploreCount = 0;
   for (const loc of out.newLocations) {
     const desc = String(loc?.description || '').trim();
-    if (desc.includes('待探索')) exploreCount += 1;
+    if (desc.includes('待探�?)) exploreCount += 1;
   }
 
   const desiredMin = 3;
@@ -3107,7 +3107,7 @@ function ensureMapMinimums(parsed) {
   const addCount = Math.max(neededTotal, neededExplore);
 
   if (addCount > 0) {
-    const baseName = out.currentLocation ? `${out.currentLocation}·待探索` : '待探索地点';
+    const baseName = out.currentLocation ? `${out.currentLocation}·待探索` : '待探索地�?;
     for (let i = 0; i < addCount; i++) {
       let name = `${baseName}${i + 1} `;
       let n = 1;
@@ -3118,7 +3118,7 @@ function ensureMapMinimums(parsed) {
       existingNames.add(name);
       out.newLocations.push({
         name,
-        description: '待探索',
+        description: '待探�?,
         connectedTo: out.currentLocation ? [out.currentLocation] : [],
         group: '',
         layer: '',
@@ -3211,7 +3211,7 @@ function mergeMapData(existingMap, newData) {
     map.locations[map.protagonistLocation].visited = true;
   }
 
-  // 添加新地点
+  // 添加新地�?
   for (const loc of newData.newLocations) {
     const name = String(loc.name || '').trim();
     if (!name) continue;
@@ -3249,7 +3249,7 @@ function mergeMapData(existingMap, newData) {
       ensureGridSize(map, row, col);
       if (!existingKey && normalized) existingNameMap.set(normalized, targetKey);
     } else {
-      // 更新现有地点的连接
+      // 更新现有地点的连�?
       if (Array.isArray(loc.connectedTo)) {
         for (const conn of loc.connectedTo) {
           if (!map.locations[targetKey].connections.includes(conn)) {
@@ -3329,7 +3329,7 @@ function ensureGridSize(map, row, col) {
   if (c >= map.gridSize.cols) map.gridSize.cols = c + 1;
 }
 
-// 寻找网格中的下一个空位
+// 寻找网格中的下一个空�?
 function findNextGridPosition(map) {
   const occupied = new Set();
   for (const loc of Object.values(map.locations)) {
@@ -3348,10 +3348,10 @@ function findNextGridPosition(map) {
   return { row: map.gridSize.rows - 1, col: 0 };
 }
 
-// 渲染网格地图为 HTML（纯 HTML/CSS 网格）
+// 渲染网格地图�?HTML（纯 HTML/CSS 网格�?
 function renderGridMap(mapData) {
   if (!mapData || Object.keys(mapData.locations).length === 0) {
-    return `<div class="sg-map-empty" > 暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成。</div> `;
+    return `<div class="sg-map-empty" > 暂无地图数据。开启地图功能并进行剧情分析后，地图将自动生成�?/div> `;
   }
 
   const locList = Object.values(mapData.locations);
@@ -3404,7 +3404,7 @@ function renderGridMap(mapData) {
     }
   }
 
-  // 渲染 HTML（使用 CSS Grid）
+  // 渲染 HTML（使�?CSS Grid�?
   const gridInlineStyle = `display: grid; grid-template-columns: repeat(${cols}, 80px); grid-auto-rows: 50px; gap: 4px; justify-content: center; `;
   const baseCellStyle = 'width:80px;height:50px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;text-align:center;position:relative;';
   const emptyCellStyle = baseCellStyle + 'background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.08);';
@@ -3424,8 +3424,8 @@ function renderGridMap(mapData) {
         if (hasEvents) classes.push('sg-map-has-events');
         if (!cell.visited) classes.push('sg-map-unvisited');
 
-        const eventList = hasEvents ? cell.events.map(e => `• ${formatMapEventText(e)} `).join('\n') : '';
-        const tooltip = `${cell.name}${cell.description ? '\n' + cell.description : ''}${eventList ? '\n---\n' + eventList : ''} `;
+        const eventList = hasEvents ? cell.events.map(e => `�?${formatMapEventText(e)} `).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n') : '';
+        const tooltip = `${cell.name}${cell.description ? '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n' + cell.description : ''}${eventList ? '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n---        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n' + eventList : ''} `;
 
         let inlineStyle = locationBaseStyle;
         if (isProtagonist) inlineStyle += 'background:rgba(100,200,100,0.25);border-color:rgba(100,200,100,0.5);box-shadow:0 0 8px rgba(100,200,100,0.3);';
@@ -3444,8 +3444,8 @@ function renderGridMap(mapData) {
           html += `</div> `;
         }
         html += `<span class="sg-map-name" > ${escapeHtml(cell.name)}</span> `;
-        if (isProtagonist) html += '<span class="sg-map-marker">★</span>';
-        if (hasEvents) html += '<span class="sg-map-event-marker">⚔</span>';
+        if (isProtagonist) html += '<span class="sg-map-marker">�?/span>';
+        if (hasEvents) html += '<span class="sg-map-event-marker">�?/span>';
         html += '</div>';
       } else {
         html += `<div class="sg-map-cell sg-map-empty-cell" style= "${emptyCellStyle}" ></div> `;
@@ -3454,7 +3454,7 @@ function renderGridMap(mapData) {
   }
 
   html += '</div>';
-  html += '<div class="sg-map-legend">★ 主角位置 | ⚔ 有事件 | 灰色 = 未探索</div>';
+  html += '<div class="sg-map-legend">�?主角位置 | �?有事�?| 灰色 = 未探�?/div>';
   html += '<div class="sg-map-event-panel">点击地点查看事件列表</div>';
   html += '</div>';
 
@@ -3466,7 +3466,7 @@ async function clearStaticModulesCache() {
   await setStaticModulesCache({});
 }
 
-// 清除结构化条目缓存（人物/装备/势力/成就/副职业/任务）
+// 清除结构化条目缓存（人物/装备/势力/成就/副职�?任务�?
 async function clearStructuredEntriesCache() {
   const meta = getSummaryMeta();
   meta.characterEntries = {};
@@ -3551,7 +3551,7 @@ function updateCharacterAttributeSummary() {
   const total = Object.values(attrs).reduce((sum, val) => sum + val, 0);
   const remain = max - total;
   $('#sg_char_attr_total').text(`已分配：${total}`);
-  $('#sg_char_attr_remain').text(`剩余：${remain}`).toggleClass('sg-character-over', remain < 0);
+  $('#sg_char_attr_remain').text(`剩余�?{remain}`).toggleClass('sg-character-over', remain < 0);
 }
 
 function updateCharacterForm() {
@@ -3614,14 +3614,14 @@ function allocateRandomAttributes(maxPoints) {
 function randomizeCharacterLocal() {
   const parkCustomNames = ['灰雾乐园', '霜烬乐园', '星痕乐园', '寂潮乐园', '暮影乐园'];
   const parkTraits = [
-    '规则偏向高风险试炼，奖励倾向增幅型契约。',
-    '惩罚与补偿并行，任务节奏偏向短而密集。',
-    '鼓励情报交换与团队协同，独行者收益衰减。',
-    '以存活为先，任务失败会触发连锁惩戒。',
-    '偏向潜行与智谋型任务，正面突破收益降低。'
+    '规则偏向高风险试炼，奖励倾向增幅型契约�?,
+    '惩罚与补偿并行，任务节奏偏向短而密集�?,
+    '鼓励情报交换与团队协同，独行者收益衰减�?,
+    '以存活为先，任务失败会触发连锁惩戒�?,
+    '偏向潜行与智谋型任务，正面突破收益降低�?
   ];
-  const raceCustomNames = ['灰雾族', '霜纹族', '星砂族', '赤潮裔', '幽烬裔'];
-  const talentCustomNames = ['雾行者', '刻印猎手', '逆光共鸣', '星幕行旅', '零度誓约'];
+  const raceCustomNames = ['灰雾�?, '霜纹�?, '星砂�?, '赤潮�?, '幽烬�?];
+  const talentCustomNames = ['雾行�?, '刻印猎手', '逆光共鸣', '星幕行旅', '零度誓约'];
 
   randomSelectOption($('#sg_char_park'), true, () => {
     $('#sg_char_park_custom').val(randomChoice(parkCustomNames));
@@ -3649,22 +3649,22 @@ function randomizeCharacterLocal() {
 
 async function randomizeCharacterWithLLM() {
   const s = ensureSettings();
-  setCharacterStatus('· 正在请求 AI 随机设定… ·', 'warn');
+  setCharacterStatus('· 正在请求 AI 随机设定�?·', 'warn');
 
   // Construct prompt
   const customPrompt = String(s.characterRandomPrompt || '').trim();
-  const userPrompt = customPrompt || `请为“轮回乐园”设计一个全新的契约者角色。
-要求：
-1. 随机选择一个乐园（轮回/圣域/守望/圣光/死亡/天启）。
-2. 随机选择一个种族（人类/精灵/兽人/半魔/机巧/异界）。
-3. 随机设计一个初始天赋（名字+简述）。
-4. 设定难度为"30"（灰雾常阶）。
-5. 分配30点属性（体质/智力/魅力/力量/敏捷/幸运），每项0-20，总和必须等于30。
-6. 输出 JSON 格式：
+  const userPrompt = customPrompt || `请为“轮回乐园”设计一个全新的契约者角色�?
+要求�?
+1. 随机选择一个乐园（轮回/圣域/守望/圣光/死亡/天启）�?
+2. 随机选择一个种族（人类/精灵/兽人/半魔/机巧/异界）�?
+3. 随机设计一个初始天赋（名字+简述）�?
+4. 设定难度�?30"（灰雾常阶）�?
+5. 分配30点属性（体质/智力/魅力/力量/敏捷/幸运），每项0-20，总和必须等于30�?
+6. 输出 JSON 格式�?
 {
-  "park": "乐园名",
-  "race": "种族名",
-  "talent": "天赋名",
+  "park": "乐园�?,
+  "race": "种族�?,
+  "talent": "天赋�?,
   "attrs": { "con": 5, "int": 5, "cha": 5, "str": 5, "agi": 5, "luk": 5 }
 }`;
 
@@ -3689,24 +3689,24 @@ async function randomizeCharacterWithLLM() {
     // Parse JSON
     // 1. Try to find JSON block code
     let text = result;
-    const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
+    const codeBlockMatch = text.match(/```(?:json)?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*(        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;})        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*```/i);
     if (codeBlockMatch) {
       text = codeBlockMatch[1];
     } else {
       // 2. Fallback: match first { to last }
-      const braceMatch = text.match(/\{[\s\S]*\}/);
+      const braceMatch = text.match(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}/);
       if (braceMatch) text = braceMatch[0];
     }
 
     // 3. Cleanup comments if any (simple)
-    // text = text.replace(/\/\/.*$/gm, ''); // risky if url contains //
+    // text = text.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/.*$/gm, ''); // risky if url contains //
 
     let data;
     try {
       data = JSON.parse(text);
     } catch (err) {
       console.error('JSON Parse Error:', err, text);
-      throw new Error('AI 返回数据格式错误（非标准 JSON）');
+      throw new Error('AI 返回数据格式错误（非标准 JSON�?);
     }
 
     if (!data.park || !data.race || !data.talent || !data.attrs) throw new Error('JSON 缺少必要字段');
@@ -3730,12 +3730,12 @@ async function randomizeCharacterWithLLM() {
         if (val.desc) return String(val.desc);
         // Construct desc from talent fields if available
         let parts = [];
-        if (val.mechanism) parts.push(`机制：${val.mechanism}`);
-        if (val.benefit) parts.push(`收益：${val.benefit}`);
-        if (val.cost) parts.push(`代价：${val.cost}`);
-        if (val.trigger) parts.push(`触发：${val.trigger}`);
-        if (val.growth) parts.push(`成长：${val.growth}`);
-        if (parts.length) return parts.join('\n');
+        if (val.mechanism) parts.push(`机制�?{val.mechanism}`);
+        if (val.benefit) parts.push(`收益�?{val.benefit}`);
+        if (val.cost) parts.push(`代价�?{val.cost}`);
+        if (val.trigger) parts.push(`触发�?{val.trigger}`);
+        if (val.growth) parts.push(`成长�?{val.growth}`);
+        if (parts.length) return parts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
       }
       return '';
     };
@@ -3787,11 +3787,11 @@ async function randomizeCharacterWithLLM() {
     // Explicitly show desc rows if they have content
     if ($('#sg_char_race_desc').val()) $('#sg_char_race_desc_row').show();
     if ($('#sg_char_talent_desc').val()) $('#sg_char_talent_desc_row').show();
-    setCharacterStatus('· AI 随机设定已完成 ·', 'ok');
+    setCharacterStatus('· AI 随机设定已完�?·', 'ok');
 
   } catch (e) {
     console.error('AI Random Failed:', e);
-    setCharacterStatus(`· AI 随机失败：${e.message} ·`, 'err');
+    setCharacterStatus(`· AI 随机失败�?{e.message} ·`, 'err');
   }
 }
 
@@ -3814,11 +3814,11 @@ function buildCharacterPayload() {
   const attrs = getCharacterAttributes();
   const total = Object.values(attrs).reduce((sum, val) => sum + val, 0);
 
-  if (!park) return { error: '请选择乐园或填写自定义乐园。' };
-  if (!race) return { error: '请选择种族或填写自定义种族。' };
-  if (!talent) return { error: '请选择天赋或填写自定义天赋。' };
-  if (total > difficulty) return { error: '属性点超出当前难度上限。' };
-  if (Object.values(attrs).some((v) => v > 20)) return { error: '单项属性不得超过20。' };
+  if (!park) return { error: '请选择乐园或填写自定义乐园�? };
+  if (!race) return { error: '请选择种族或填写自定义种族�? };
+  if (!talent) return { error: '请选择天赋或填写自定义天赋�? };
+  if (total > difficulty) return { error: '属性点超出当前难度上限�? };
+  if (Object.values(attrs).some((v) => v > 20)) return { error: '单项属性不得超�?0�? };
 
   return {
     park,
@@ -3843,32 +3843,32 @@ async function generateCharacterText() {
   }
 
   const attributeText = `体质${payload.attrs.con} 智力${payload.attrs.int} 魅力${payload.attrs.cha} 力量${payload.attrs.str} 敏捷${payload.attrs.agi} 幸运${payload.attrs.luk}`;
-  const parkTraits = payload.parkTraits ? payload.parkTraits : '未登记';
-  const raceDesc = payload.raceDesc ? payload.raceDesc : '未详细描述';
-  const talentDesc = payload.talentDesc ? payload.talentDesc : '未详细描述';
-  const contractId = payload.contractId || '随机分配中';
+  const parkTraits = payload.parkTraits ? payload.parkTraits : '未登�?;
+  const raceDesc = payload.raceDesc ? payload.raceDesc : '未详细描�?;
+  const talentDesc = payload.talentDesc ? payload.talentDesc : '未详细描�?;
+  const contractId = payload.contractId || '随机分配�?;
 
   const customOpeningPrompt = String(s.characterOpeningPrompt || '').trim();
-  const systemPrompt = customOpeningPrompt || '你是“轮回乐园”世界观的开场文本写作助手。只输出正文文本，不要 JSON，不要代码块。';
+  const systemPrompt = customOpeningPrompt || '你是“轮回乐园”世界观的开场文本写作助手。只输出正文文本，不�?JSON，不要代码块�?;
 
   const userPrompt =
-    `根据以下设定生成开场文本，中文，约 500~900 字：\n` +
-    `- 所属乐园：${payload.park}\n` +
-    `- 乐园特点：${parkTraits}\n` +
-    `- 种族：${payload.race}\n` +
-    `- 种族描述：${raceDesc}\n` +
-    `- 初始天赋：${payload.talent}\n` +
-    `- 天赋详情：${talentDesc}\n` +
-    `- 契约者编号：${contractId}\n` +
-    `- 六维属性：${attributeText}（总计${payload.total}/${payload.difficulty}，单项<=20）\n` +
-    `要求：必须包含一段系统提示块（Markdown 引用 >），其中列出乐园/种族/天赋/编号/六维属性/乐园特点。最后以“触碰印记”作为收束。`;
+    `根据以下设定生成开场文本，中文，约 500~900 字：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+    `- 所属乐园：${payload.park}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+    `- 乐园特点�?{parkTraits}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+    `- 种族�?{payload.race}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+    `- 种族描述�?{raceDesc}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+    `- 初始天赋�?{payload.talent}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+    `- 天赋详情�?{talentDesc}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+    `- 契约者编号：${contractId}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+    `- 六维属性：${attributeText}（总计${payload.total}/${payload.difficulty}，单�?=20）\n` +
+    `要求：必须包含一段系统提示块（Markdown 引用 >），其中列出乐园/种族/天赋/编号/六维属�?乐园特点。最后以“触碰印记”作为收束。`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ];
 
-  setCharacterStatus('· 正在生成开场文本… ·', 'warn');
+  setCharacterStatus('· 正在生成开场文本�?·', 'warn');
 
   try {
     let text = '';
@@ -3890,7 +3890,7 @@ async function generateCharacterText() {
     setCharacterStatus('· 已生成：可复制或填入聊天输入框（不会自动发送） ·', 'ok');
   } catch (e) {
     console.error('[StoryGuide] 角色生成失败:', e);
-    setCharacterStatus(`· 生成失败：${e?.message ?? e} ·`, 'err');
+    setCharacterStatus(`· 生成失败�?{e?.message ?? e} ·`, 'err');
   }
 }
 
@@ -3952,7 +3952,7 @@ function showPane(name) {
 
 function validateAndNormalizeModules(raw) {
   const mods = Array.isArray(raw) ? raw : null;
-  if (!mods) return { ok: false, error: '模块配置必须是 JSON 数组。', modules: null };
+  if (!mods) return { ok: false, error: '模块配置必须�?JSON 数组�?, modules: null };
 
   const seen = new Set();
   const normalized = [];
@@ -3961,11 +3961,11 @@ function validateAndNormalizeModules(raw) {
     if (!m || typeof m !== 'object') continue;
     const key = String(m.key || '').trim();
     if (!key) continue;
-    if (seen.has(key)) return { ok: false, error: `模块 key 重复：${key}`, modules: null };
+    if (seen.has(key)) return { ok: false, error: `模块 key 重复�?{key}`, modules: null };
     seen.add(key);
 
     const type = String(m.type || 'text').trim();
-    if (type !== 'text' && type !== 'list') return { ok: false, error: `模块 ${key} 的 type 必须是 "text" 或 "list"`, modules: null };
+    if (type !== 'text' && type !== 'list') return { ok: false, error: `模块 ${key} �?type 必须�?"text" �?"list"`, modules: null };
 
     const title = String(m.title || key).trim();
     const prompt = String(m.prompt || '').trim();
@@ -3973,14 +3973,14 @@ function validateAndNormalizeModules(raw) {
     const required = m.required !== false; // default true
     const panel = m.panel !== false;       // default true
     const inline = m.inline === true;      // default false unless explicitly true
-    const isStatic = m.static === true;    // default false: 静态模块只在首次或手动刷新时生成
+    const isStatic = m.static === true;    // default false: 静态模块只在首次或手动刷新时生�?
 
     const maxItems = (type === 'list' && Number.isFinite(Number(m.maxItems))) ? clampInt(m.maxItems, 1, 50, 8) : undefined;
 
     normalized.push({ key, title, type, prompt, required, panel, inline, static: isStatic, ...(maxItems ? { maxItems } : {}) });
   }
 
-  if (!normalized.length) return { ok: false, error: '模块配置为空：至少需要 1 个模块。', modules: null };
+  if (!normalized.length) return { ok: false, error: '模块配置为空：至少需�?1 个模块�?, modules: null };
   return { ok: true, error: '', modules: normalized };
 }
 
@@ -4122,7 +4122,7 @@ function resolveSexGuidePresetFromSillyPreset(rawText, nameFallback) {
       .map(p => String(p.content || '').trim())
       .filter(Boolean);
     if (systemParts.length) {
-      snapshot.sexGuideSystemPrompt = systemParts.join('\n\n');
+      snapshot.sexGuideSystemPrompt = systemParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
     }
   }
 
@@ -4208,7 +4208,7 @@ function resolveStructuredPresetFromSillyPreset(rawText, nameFallback) {
       .map(p => String(p.content || '').trim())
       .filter(Boolean);
     if (systemParts.length) {
-      snapshot.structuredEntriesSystemPrompt = systemParts.join('\n\n');
+      snapshot.structuredEntriesSystemPrompt = systemParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
     }
   }
 
@@ -4349,7 +4349,7 @@ function resolveImageGenPresetFromSillyPreset(rawText, nameFallback) {
       .map(p => String(p.content || '').trim())
       .filter(Boolean);
     if (systemParts.length) {
-      snapshot.imageGenSystemPrompt = systemParts.join('\n\n');
+      snapshot.imageGenSystemPrompt = systemParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
     }
   }
 
@@ -4357,7 +4357,7 @@ function resolveImageGenPresetFromSillyPreset(rawText, nameFallback) {
 }
 
 
-// 尝试解析 SillyTavern 世界书导出 JSON（不同版本结构可能不同）
+// 尝试解析 SillyTavern 世界书导�?JSON（不同版本结构可能不同）
 // 返回：[{ title, keys: string[], content: string }]
 function parseWorldbookJson(rawText) {
   if (!rawText) return [];
@@ -4443,7 +4443,7 @@ function parseWorldbookJson(rawText) {
 
   function splitKeys(str) {
     return String(str || '')
-      .split(/[\n,，;；\|]+/g)
+      .split(/[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n,�?；\|]+/g)
       .map(s => s.trim())
       .filter(Boolean);
   }
@@ -4501,13 +4501,13 @@ function parseWorldbookJson(rawText) {
     const disabled = (disabledRaw === 1 || disabledRaw === '1' || disabledRaw === true);
 
     if (!content) continue;
-    const resolvedTitle = title || (keys[0] ? `条目：${keys[0]}` : '条目');
+    const resolvedTitle = title || (keys[0] ? `条目�?{keys[0]}` : '条目');
     norm.push({ title: resolvedTitle, comment: comment || resolvedTitle, keys, content, disabled });
   }
   return norm;
 }
 
-// -------------------- 实时读取蓝灯世界书（World Info / Lorebook） --------------------
+// -------------------- 实时读取蓝灯世界书（World Info / Lorebook�?--------------------
 
 function pickBlueIndexFileName() {
   const s = ensureSettings();
@@ -4515,7 +4515,7 @@ function pickBlueIndexFileName() {
   if (explicit) return explicit;
   const fromBlueWrite = String(s.summaryBlueWorldInfoFile || '').trim();
   if (fromBlueWrite) return fromBlueWrite;
-  // 最后兜底：若用户把蓝灯索引建在绿灯同文件里，也能读到（不推荐，但不阻断）
+  // 最后兜底：若用户把蓝灯索引建在绿灯同文件里，也能读到（不推荐，但不阻断�?
   const fromGreen = String(s.summaryWorldInfoFile || '').trim();
   return fromGreen;
 }
@@ -4525,7 +4525,7 @@ async function fetchJsonCompat(url, options) {
   const res = await fetch(url, { ...(options || {}), headers });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    const err = new Error(`HTTP ${res.status} ${res.statusText}${text ? `\n${text}` : ''}`);
+    const err = new Error(`HTTP ${res.status} ${res.statusText}${text ? `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${text}` : ''}`);
     err.status = res.status;
     throw err;
   }
@@ -4536,7 +4536,7 @@ async function fetchJsonCompat(url, options) {
   try { return JSON.parse(t); } catch { return { text: t }; }
 }
 
-// 尝试从 ST 后端读取指定世界书文件（不同版本的参数名/方法可能不同）
+// 尝试�?ST 后端读取指定世界书文件（不同版本的参数名/方法可能不同�?
 async function fetchWorldInfoFileJsonCompat(fileName) {
   const raw = String(fileName || '').trim();
   if (!raw) throw new Error('蓝灯世界书文件名为空');
@@ -4591,7 +4591,7 @@ async function fetchWorldInfoFileJsonCompat(fileName) {
       lastErr = e;
     }
   }
-  throw lastErr || new Error('读取世界书失败');
+  throw lastErr || new Error('读取世界书失�?);
 }
 
 function parseWorldbookList(raw) {
@@ -4694,7 +4694,7 @@ function collectWorldbookNamesFromAny(root) {
   for (const r of roots) {
     if (!r || typeof r !== 'object') continue;
 
-    // 只从“可能是世界书列表”的键里取，避免扫出条目/预设等
+    // 只从“可能是世界书列表”的键里取，避免扫出条目/预设�?
     const candidates = [
       r.worldInfo,
       r.world_info,
@@ -4757,8 +4757,8 @@ async function fetchWorldInfoListCompat() {
         const txt = String($(this).text() || '').trim();
         const val = String($(this).val() || '').trim();
         // skip empty / placeholder / pure-number-index values
-        const raw = (txt && !/^[\s\-—()（）]*$/.test(txt) && txt !== 'None' && txt !== '---') ? txt : val;
-        if (!raw || /^\d+$/.test(raw)) return; // skip numeric-only (index)
+        const raw = (txt && !/^[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;-�?)（）]*$/.test(txt) && txt !== 'None' && txt !== '---') ? txt : val;
+        if (!raw || /^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+$/.test(raw)) return; // skip numeric-only (index)
         const n = normalizeWorldInfoFileName(raw);
         if (n) names.push(n);
       });
@@ -4836,7 +4836,7 @@ function buildBlueIndexFromWorldInfoJson(worldInfoJson, prefixFilter = '') {
   // 蓝灯索引使用“全量条目”，以便结构化条目也能被索引命中
   const items = base
     .map(e => ({
-      title: String(e.comment || e.title || '').trim() || (e.keys?.[0] ? `条目：${e.keys[0]}` : '条目'),
+      title: String(e.comment || e.title || '').trim() || (e.keys?.[0] ? `条目�?{e.keys[0]}` : '条目'),
       summary: String(e.content || '').trim(),
       keywords: Array.isArray(e.keys) ? e.keys.slice(0, 120) : [],
       importedAt: Date.now(),
@@ -4873,7 +4873,7 @@ async function ensureBlueIndexLive(force = false, forceRead = false) {
 
     blueIndexLiveCache = { file, loadedAt: now, entries, lastError: '' };
 
-    // 同步到设置里，便于 UI 显示（同时也是“缓存”兜底）
+    // 同步到设置里，便�?UI 显示（同时也是“缓存”兜底）
     s.summaryBlueIndex = entries;
     saveSettings();
     updateBlueIndexInfoLabel();
@@ -4881,7 +4881,7 @@ async function ensureBlueIndexLive(force = false, forceRead = false) {
     return entries;
   } catch (e) {
     blueIndexLiveCache.lastError = String(e?.message ?? e);
-    // 读取失败就回退到现有缓存
+    // 读取失败就回退到现有缓�?
     const fallback = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
     return fallback;
   }
@@ -4894,10 +4894,10 @@ function buildStructuredWorldbookText(entries, maxChars) {
   for (const e of (entries || [])) {
     const content = String(e?.content || '').trim();
     if (!content) continue;
-    const title = getWorldInfoEntryLabel(e) || (Array.isArray(e?.keys) && e.keys[0] ? `条目：${e.keys[0]}` : '条目');
+    const title = getWorldInfoEntryLabel(e) || (Array.isArray(e?.keys) && e.keys[0] ? `条目�?{e.keys[0]}` : '条目');
     const keys = Array.isArray(e?.keys) ? e.keys.filter(Boolean) : [];
-    const head = `- 《${title}》${keys.length ? `（触发：${keys.slice(0, 6).join(' / ')}）` : ''}\n`;
-    const chunk = head + content + '\n\n';
+    const head = `- �?{title}�?{keys.length ? `（触发：${keys.slice(0, 6).join(' / ')}）` : ''}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+    const chunk = head + content + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n';
     if (limit > 0 && (acc.length + chunk.length) > limit) break;
     acc += chunk;
     used += 1;
@@ -5013,8 +5013,8 @@ function estimateTokens(text) {
   // Fallback heuristic:
   // - CJK chars ~ 1 token each
   // - other chars ~ 1 token per 4 chars
-  const cjk = (s.match(/[\u4e00-\u9fff]/g) || []).length;
-  const rest = s.replace(/[\u4e00-\u9fff]/g, '').replace(/\s+/g, '');
+  const cjk = (s.match(/[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e00-        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9fff]/g) || []).length;
+  const rest = s.replace(/[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e00-        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9fff]/g, '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+/g, '');
   const other = rest.length;
   return cjk + Math.ceil(other / 4);
 }
@@ -5041,7 +5041,7 @@ function computeWorldbookInjection() {
   result.importedEntries = entries.length;
   if (!entries.length) return result;
 
-  // 如果未启用注入：仅返回“导入数量”，不计算注入内容（UI 也能看到导入成功）
+  // 如果未启用注入：仅返回“导入数量”，不计算注入内容（UI 也能看到导入成功�?
   if (!enabled) return result;
 
   // recent window text for activation
@@ -5055,7 +5055,7 @@ function computeWorldbookInjection() {
     const t = stripHtml(m.mes ?? m.message ?? '');
     if (t) pickedMsgs.push(t);
   }
-  const recentText = pickedMsgs.reverse().join('\n');
+  const recentText = pickedMsgs.reverse().join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 
   let use = entries;
   if (result.mode === 'active') {
@@ -5071,9 +5071,9 @@ function computeWorldbookInjection() {
   let used = 0;
 
   for (const e of use) {
-    const head = `- 【${e.title}】${(e.keys && e.keys.length) ? `（触发：${e.keys.slice(0, 6).join(' / ')}）` : ''}\n`;
-    const body = e.content.trim() + '\n';
-    const chunk = head + body + '\n';
+    const head = `- �?{e.title}�?{(e.keys && e.keys.length) ? `（触发：${e.keys.slice(0, 6).join(' / ')}）` : ''}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+    const body = e.content.trim() + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n';
+    const chunk = head + body + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n';
     if ((acc.length + chunk.length) > maxChars) break;
     acc += chunk;
     used += 1;
@@ -5095,7 +5095,7 @@ function buildWorldbookBlock() {
 
   if (!info.enabled) return '';
   if (!info.text) return '';
-  return `\n【世界书/World Info（已导入：${info.importedEntries}条，本次注入：${info.injectedEntries}条，约${info.injectedTokens} tokens）】\n${info.text}\n`;
+  return `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【世界书/World Info（已导入�?{info.importedEntries}条，本次注入�?{info.injectedEntries}条，�?{info.injectedTokens} tokens）】\n${info.text}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
 }
 
 // -------------------- sex guide worldbooks --------------------
@@ -5119,7 +5119,7 @@ function normalizeSexGuideWorldbooks(list) {
   const now = Date.now();
   return list.map((wb, idx) => {
     if (!wb || typeof wb !== 'object') return null;
-    const name = String(wb.name || wb.file || wb.title || `世界书${idx + 1}`).trim() || `世界书${idx + 1}`;
+    const name = String(wb.name || wb.file || wb.title || `世界�?{idx + 1}`).trim() || `世界�?{idx + 1}`;
     const json = String(wb.json || wb.raw || wb.text || '').trim();
     if (!json) return null;
     let id = String(wb.id || '').trim();
@@ -5197,8 +5197,8 @@ function computeSexGuideWorldbookInjection() {
     const remain = maxChars > 0 ? Math.max(0, maxChars - acc.length) : 0;
     const partial = buildStructuredWorldbookText(entriesAll, remain);
     if (partial.text) {
-      if (acc) acc += '\n';
-      acc += partial.text.trim() + '\n';
+      if (acc) acc += '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n';
+      acc += partial.text.trim() + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n';
       result.injectedEntries += partial.used;
       result.usedWorldbooks.push(wb.name);
     }
@@ -5225,8 +5225,8 @@ function buildSexGuideWorldbookBlock() {
   sexGuideWorldbookStats = info;
   if (!info.enabled || !info.text) return '';
   const enabledNames = getSexGuideWorldbooks().filter(w => w.enabled).map(w => w.name);
-  const dirs = enabledNames.length ? enabledNames.join(' / ') : '无';
-  return `\n【性爱指导世界书（目录：${dirs}，本次注入：${info.injectedEntries}条，约${info.injectedTokens} tokens）】\n${info.text}\n`;
+  const dirs = enabledNames.length ? enabledNames.join(' / ') : '�?;
+  return `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【性爱指导世界书（目录�?{dirs}，本次注入：${info.injectedEntries}条，�?{info.injectedTokens} tokens）】\n${info.text}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
 }
 function getModules(mode /* panel|append */) {
   const s = ensureSettings();
@@ -5251,10 +5251,10 @@ function getModules(mode /* panel|append */) {
 
 function spoilerPolicyText(level) {
   switch (level) {
-    case 'none': return `【剧透策略】严格不剧透：不要透露原著明确未来事件与真相；只给“行动建议/风险提示”，避免点名关键反转。`;
-    case 'full': return `【剧透策略】允许全剧透：可以直接指出原著后续的关键事件/真相，并解释如何影响当前路线。`;
+    case 'none': return `【剧透策略】严格不剧透：不要透露原著明确未来事件与真相；只给“行动建�?风险提示”，避免点名关键反转。`;
+    case 'full': return `【剧透策略】允许全剧透：可以直接指出原著后续的关键事�?真相，并解释如何影响当前路线。`;
     case 'mild':
-    default: return `【剧透策略】轻剧透：可以用“隐晦提示 + 关键风险点”，避免把原著后续完整摊开；必要时可点到为止。`;
+    default: return `【剧透策略】轻剧透：可以用“隐晦提�?+ 关键风险点”，避免把原著后续完整摊开；必要时可点到为止。`;
   }
 }
 
@@ -5291,18 +5291,18 @@ function buildSchemaFromModules(modules) {
 }
 
 function buildOutputFieldsText(modules) {
-  // 每个模块一行：key: title — prompt
+  // 每个模块一行：key: title �?prompt
   const lines = [];
   for (const m of modules) {
-    const p = m.prompt ? ` — ${m.prompt}` : '';
-    const t = m.title ? `（${m.title}）` : '';
+    const p = m.prompt ? ` �?${m.prompt}` : '';
+    const t = m.title ? `�?{m.title}）` : '';
     if (m.type === 'list') {
       lines.push(`- ${m.key}${t}: string[]${m.maxItems ? ` (<=${m.maxItems})` : ''}${p}`);
     } else {
       lines.push(`- ${m.key}${t}: string${p}`);
     }
   }
-  return lines.join('\n');
+  return lines.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 function buildPromptMessages(snapshotText, spoilerLevel, modules, mode /* panel|append */) {
@@ -5317,22 +5317,22 @@ function buildPromptMessages(snapshotText, spoilerLevel, modules, mode /* panel|
   const system = [
     `---BEGIN PROMPT---`,
     `[System]`,
-    `你是执行型“剧情指导/编剧顾问”。从“正在经历的世界”（聊天+设定）提炼结构，并给出后续引导。`,
+    `你是执行型“剧情指�?编剧顾问”。从“正在经历的世界”（聊天+设定）提炼结构，并给出后续引导。`,
     spoilerPolicyText(spoilerLevel),
     compactHint,
-    extraSystem ? `\n【自定义 System 补充】\n${extraSystem}` : ``,
+    extraSystem ? `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【自定义 System 补充】\n${extraSystem}` : ``,
     ``,
     `[Constraints]`,
-    `1) 不要凭空杜撰世界观/人物/地点；不确定写“未知/待确认”。`,
+    `1) 不要凭空杜撰世界�?人物/地点；不确定写“未�?待确认”。`,
     `2) 不要复述流水账；只提炼关键矛盾、动机、风险与走向。`,
-    `3) 输出必须是 JSON 对象本体（无 Markdown、无代码块、无多余解释）。`,
+    `3) 输出必须�?JSON 对象本体（无 Markdown、无代码块、无多余解释）。`,
     `4) 只输出下面列出的字段，不要额外字段。`,
-    extraConstraints ? `\n【自定义 Constraints 补充】\n${extraConstraints}` : ``,
+    extraConstraints ? `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【自定义 Constraints 补充】\n${extraConstraints}` : ``,
     ``,
     `[Output Fields]`,
     buildOutputFieldsText(modules),
     `---END PROMPT---`
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 
   return [
     { role: 'system', content: system },
@@ -5362,11 +5362,11 @@ function buildSnapshot() {
         const first = c.first_mes ?? c.first_message ?? '';
         charBlock =
           `【角色卡】\n` +
-          `- 名称：${stripHtml(name)}\n` +
-          `- 描述：${stripHtml(desc)}\n` +
-          `- 性格：${stripHtml(personality)}\n` +
-          `- 场景/设定：${stripHtml(scenario)}\n` +
-          (first ? `- 开场白：${stripHtml(first)}\n` : '');
+          `- 名称�?{stripHtml(name)}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+          `- 描述�?{stripHtml(desc)}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+          `- 性格�?{stripHtml(personality)}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+          `- 场景/设定�?{stripHtml(scenario)}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` +
+          (first ? `- 开场白�?{stripHtml(first)}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` : '');
       }
     }
   } catch (e) { console.warn('[StoryGuide] character read failed:', e); }
@@ -5386,8 +5386,8 @@ function buildSnapshot() {
     const name = stripHtml(m.name || (isUser ? 'User' : 'Assistant'));
     let text = stripHtml(m.mes ?? m.message ?? '');
     if (!text) continue;
-    if (text.length > maxChars) text = text.slice(0, maxChars) + '…(截断)';
-    picked.push(`【${name}】${text}`);
+    if (text.length > maxChars) text = text.slice(0, maxChars) + '�?截断)';
+    picked.push(`�?{name}�?{text}`);
   }
   picked.reverse();
 
@@ -5404,12 +5404,12 @@ function buildSnapshot() {
     ``,
     charBlock ? charBlock : `【角色卡】（未获取到/可能是群聊）`,
     ``,
-    world ? `【世界观/设定补充】\n${world}\n` : `【世界观/设定补充】（未提供）\n`,
-    canon ? `【原著后续/大纲】\n${canon}\n` : `【原著后续/大纲】（未提供）\n`,
+    world ? `【世界观/设定补充】\n${world}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` : `【世界观/设定补充】（未提供）        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`,
+    canon ? `【原著后�?大纲】\n${canon}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` : `【原著后�?大纲】（未提供）        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`,
     buildWorldbookBlock(),
-    `【聊天记录（最近${picked.length}条）】`,
-    picked.length ? picked.join('\n\n') : '（空）'
-  ].join('\n');
+    `【聊天记录（最�?{picked.length}条）】`,
+    picked.length ? picked.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n') : '（空�?
+  ].join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 
   return { snapshotText, sourceSummary };
 }
@@ -5435,10 +5435,10 @@ function buildRecentChatTextSexGuide(chat, maxMessages = 6, maxCharsPerMessage =
     const name = stripHtml(m.name || (m.is_user ? 'User' : 'Assistant'));
     let text = stripHtml(m.mes ?? m.message ?? '');
     if (!text) continue;
-    if (text.length > maxCharsPerMessage) text = text.slice(0, maxCharsPerMessage) + '…(截断)';
-    picked.push(`【${name}】${text}`);
+    if (text.length > maxCharsPerMessage) text = text.slice(0, maxCharsPerMessage) + '�?截断)';
+    picked.push(`�?{name}�?{text}`);
   }
-  return picked.reverse().join('\n');
+  return picked.reverse().join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 function buildSexGuidePromptMessages(snapshotText, worldbookText, settings, options = {}) {
@@ -5466,8 +5466,8 @@ function buildSexGuidePromptMessages(snapshotText, worldbookText, settings, opti
     recentText,
     userNeed
   });
-  if (worldbookText && !/\{\{\s*worldbook\s*\}\}/i.test(tpl)) {
-    user = String(user || '').trim() + `\n\n【性爱指导世界书】\n${worldbookText}`;
+  if (worldbookText && !/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*worldbook        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}/i.test(tpl)) {
+    user = String(user || '').trim() + `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【性爱指导世界书】\n${worldbookText}`;
   }
 
   return [
@@ -5494,7 +5494,7 @@ async function callViaSillyTavern(messages, schema, temperature, signal) {
     const txt = await globalThis.TavernHelper.generateRaw({ ordered_prompts: messages, should_stream: false });
     return String(txt || '');
   }
-  throw new Error('未找到可用的生成函数（generateRaw/generateQuietPrompt）。');
+  throw new Error('未找到可用的生成函数（generateRaw/generateQuietPrompt）�?);
 }
 
 async function fallbackAskJson(messages, temperature) {
@@ -5503,7 +5503,7 @@ async function fallbackAskJson(messages, temperature) {
   retry.unshift({ role: 'system', content: `再次强调：只输出 JSON 对象本体，不要任何额外文字。` });
   if (typeof ctx.generateRaw === 'function') return await ctx.generateRaw({ prompt: retry, temperature });
   if (typeof ctx.generateQuietPrompt === 'function') return await ctx.generateQuietPrompt({ messages: retry, temperature });
-  throw new Error('fallback 失败：缺少 generateRaw/generateQuietPrompt');
+  throw new Error('fallback 失败：缺�?generateRaw/generateQuietPrompt');
 }
 
 async function fallbackAskJsonCustom(apiBaseUrl, apiKey, model, messages, temperature, maxTokens, topP, stream, signal) {
@@ -5530,18 +5530,18 @@ function hasAnyModuleKey(obj, modules) {
 function normalizeBaseUrl(input) {
   let u = String(input || '').trim();
   if (!u) return '';
-  u = u.replace(/\/+$/, '');
-  u = u.replace(/\/v1\/chat\/completions$/i, '');
-  u = u.replace(/\/chat\/completions$/i, '');
-  u = u.replace(/\/v1\/completions$/i, '');
-  u = u.replace(/\/completions$/i, '');
+  u = u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/+$/, '');
+  u = u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/chat        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/completions$/i, '');
+  u = u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/chat        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/completions$/i, '');
+  u = u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/completions$/i, '');
+  u = u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/completions$/i, '');
   return u;
 }
 function deriveChatCompletionsUrl(base) {
   const u = normalizeBaseUrl(base);
   if (!u) return '';
-  if (/\/v1$/.test(u)) return u + '/chat/completions';
-  if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/chat/completions';
+  if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1$/.test(u)) return u + '/chat/completions';
+  if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/i.test(u)) return u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/+$/, '') + '/chat/completions';
   return u + '/v1/chat/completions';
 }
 
@@ -5566,7 +5566,7 @@ async function readStreamedChatCompletionToText(res) {
 
     // process line by line
     let idx;
-    while ((idx = buffer.indexOf('\n')) !== -1) {
+    while ((idx = buffer.indexOf('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n')) !== -1) {
       const line = buffer.slice(0, idx).trimEnd();
       buffer = buffer.slice(idx + 1);
 
@@ -5642,7 +5642,7 @@ async function callViaCustomBackendProxy(apiBaseUrl, apiKey, model, messages, te
 
   const requestBody = {
     messages,
-    model: String(model || '').replace(/^models\//, '') || 'gpt-4o-mini',
+    model: String(model || '').replace(/^models        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;//, '') || 'gpt-4o-mini',
     max_tokens: maxTokens ?? 8192,
     temperature: temperature ?? 0.7,
     top_p: topP ?? 0.95,
@@ -5658,7 +5658,7 @@ async function callViaCustomBackendProxy(apiBaseUrl, apiKey, model, messages, te
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    const err = new Error(`后端代理请求失败: HTTP ${res.status} ${res.statusText}\n${text}`);
+    const err = new Error(`后端代理请求失败: HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${text}`);
     err.status = res.status;
     throw err;
   }
@@ -5680,7 +5680,7 @@ async function callViaCustomBackendProxy(apiBaseUrl, apiKey, model, messages, te
   // Google Gemini (candidates) - sometimes leaks through proxy
   if (data?.candidates?.[0]?.content?.parts?.[0]?.text) return String(data.candidates[0].content.parts[0].text);
 
-  if (!Object.keys(data).length) throw new Error('API 返回了空数据 ({})。请检查网络，或尝试取消勾选“流式返回”。');
+  if (!Object.keys(data).length) throw new Error('API 返回了空数据 ({})。请检查网络，或尝试取消勾选“流式返回”�?);
 
   return JSON.stringify(data ?? '');
 }
@@ -5703,7 +5703,7 @@ async function callViaCustomBrowserDirect(apiBaseUrl, apiKey, model, messages, t
   const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`直连请求失败: HTTP ${res.status} ${res.statusText}\n${text}`);
+    throw new Error(`直连请求失败: HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${text}`);
   }
 
   const ct = String(res.headers.get('content-type') || '');
@@ -5718,7 +5718,7 @@ async function callViaCustomBrowserDirect(apiBaseUrl, apiKey, model, messages, t
 
 async function callViaCustom(apiBaseUrl, apiKey, model, messages, temperature, maxTokens, topP, stream, signal) {
   const base = normalizeBaseUrl(apiBaseUrl);
-  if (!base) throw new Error('custom 模式需要填写 API基础URL');
+  if (!base) throw new Error('custom 模式需要填�?API基础URL');
 
   try {
     return await callViaCustomBackendProxy(base, apiKey, model, messages, temperature, maxTokens, topP, stream, signal);
@@ -5746,7 +5746,7 @@ function renderReportMarkdownFromModules(parsedJson, modules) {
     if (m.type === 'list') {
       const arr = Array.isArray(val) ? val : [];
       if (!arr.length) {
-        lines.push('（空）');
+        lines.push('（空�?);
       } else {
         // tips 用有序列表更舒服
         if (m.key === 'tips') {
@@ -5756,21 +5756,21 @@ function renderReportMarkdownFromModules(parsedJson, modules) {
         }
       }
     } else {
-      lines.push(val ? String(val) : '（空）');
+      lines.push(val ? String(val) : '（空�?);
     }
     lines.push('');
   }
 
-  return lines.join('\n').trim();
+  return lines.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n').trim();
 }
 
 // -------------------- panel analysis --------------------
 
 async function runAnalysis() {
   const s = ensureSettings();
-  if (!s.enabled) { setStatus('插件未启用', 'warn'); return; }
+  if (!s.enabled) { setStatus('插件未启�?, 'warn'); return; }
 
-  setStatus('分析中…', 'warn');
+  setStatus('分析中�?, 'warn');
   $('#sg_analyze').prop('disabled', true);
 
   try {
@@ -5804,7 +5804,7 @@ async function runAnalysis() {
       // 同步原文到聊天末尾（解析失败时也不至于“聊天里看不到”）
       try { syncPanelOutputToChat(String(jsonText || lastJsonText || ''), true); } catch { /* ignore */ }
       showPane('json');
-      throw new Error('模型输出无法解析为 JSON（已切到 JSON 标签，看看原文）');
+      throw new Error('模型输出无法解析�?JSON（已切到 JSON 标签，看看原文）');
     }
 
     const md = renderReportMarkdownFromModules(parsed, modules);
@@ -5813,15 +5813,15 @@ async function runAnalysis() {
 
     await updateMapFromSnapshot(snapshotText);
 
-    // 同步面板报告到聊天末尾
+    // 同步面板报告到聊天末�?
     try { syncPanelOutputToChat(md, false); } catch { /* ignore */ }
 
     updateButtonsEnabled();
     showPane('md');
-    setStatus('完成 ✅', 'ok');
+    setStatus('完成 �?, 'ok');
   } catch (e) {
     console.error('[StoryGuide] analysis failed:', e);
-    setStatus(`分析失败：${e?.message ?? e}`, 'err');
+    setStatus(`分析失败�?{e?.message ?? e}`, 'err');
   } finally {
     $('#sg_analyze').prop('disabled', false);
   }
@@ -5832,16 +5832,16 @@ async function runAnalysis() {
 async function runSexGuide(options = {}) {
   const s = ensureSettings();
   if (!s.sexGuideEnabled) {
-    setSexGuideStatus('性爱指导未启用', 'warn');
-    setSexGuidePanelStatus('性爱指导未启用', 'warn');
+    setSexGuideStatus('性爱指导未启�?, 'warn');
+    setSexGuidePanelStatus('性爱指导未启�?, 'warn');
     return;
   }
 
   const updateNeed = options?.userNeedOverride !== undefined;
   const userNeed = updateNeed ? String(options.userNeedOverride || '').trim() : String(s.sexGuideUserNeed || '').trim();
 
-  setSexGuideStatus('正在生成…', 'warn');
-  setSexGuidePanelStatus('正在生成…', 'warn');
+  setSexGuideStatus('正在生成�?, 'warn');
+  setSexGuidePanelStatus('正在生成�?, 'warn');
   $('#sg_sex_generate, #sg_sex_panel_generate').prop('disabled', true);
 
   try {
@@ -5876,8 +5876,8 @@ async function runSexGuide(options = {}) {
     setSexGuidePanelStatus('生成完成', 'ok');
   } catch (e) {
     console.error('[StoryGuide] sex guide failed:', e);
-    setSexGuideStatus(`生成失败：${e?.message ?? e}`, 'err');
-    setSexGuidePanelStatus(`生成失败：${e?.message ?? e}`, 'err');
+    setSexGuideStatus(`生成失败�?{e?.message ?? e}`, 'err');
+    setSexGuidePanelStatus(`生成失败�?{e?.message ?? e}`, 'err');
   } finally {
     $('#sg_sex_generate, #sg_sex_panel_generate').prop('disabled', false);
   }
@@ -5939,13 +5939,13 @@ function buildSummaryChunkText(chat, startIdx, maxCharsPerMessage, maxTotalChars
     const who = m.is_user === true ? '用户' : (m.name || 'AI');
     let txt = stripHtml(m.mes || '');
     if (!txt) continue;
-    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '…';
-    const block = `【${who}】${txt}`;
+    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '�?;
+    const block = `�?{who}�?{txt}`;
     if (total + block.length + 2 > totalMax) break;
     parts.push(block);
     total += block.length + 2;
   }
-  return parts.join('\n');
+  return parts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 // 手动楼层范围总结：按 floor 号定位到聊天索引
@@ -5976,7 +5976,7 @@ function resolveChatRangeByFloors(chat, mode, fromFloor, toFloor, includeHidden 
   let endIdx = findChatIndexByFloor(chat, mode, b, includeHidden, includeSystem);
   if (startIdx < 0 || endIdx < 0) return null;
 
-  // 在 assistant 模式下，为了更贴近“回合”，把起始 assistant 楼层前一条用户消息也纳入（若存在）。
+  // �?assistant 模式下，为了更贴近“回合”，把起�?assistant 楼层前一条用户消息也纳入（若存在）�?
   if (mode === 'assistant' && startIdx > 0) {
     const prev = chat[startIdx - 1];
     if (prev && prev.is_user === true && isCountableMessage(prev, includeHidden, includeSystem)) startIdx -= 1;
@@ -6001,13 +6001,13 @@ function buildSummaryChunkTextRange(chat, startIdx, endIdx, maxCharsPerMessage, 
     const who = m.is_user === true ? '用户' : (m.name || 'AI');
     let txt = stripHtml(m.mes || '');
     if (!txt) continue;
-    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '…';
-    const block = `【${who}】${txt}`;
+    if (txt.length > perMsg) txt = txt.slice(0, perMsg) + '�?;
+    const block = `�?{who}�?{txt}`;
     if (total + block.length + 2 > totalMax) break;
     parts.push(block);
     total += block.length + 2;
   }
-  return parts.join('\n');
+  return parts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 function getSummarySchema() {
@@ -6026,29 +6026,29 @@ function getSummarySchema() {
 function buildMegaSummaryItemsText(items) {
   return items.map((h, idx) => {
     const title = String(h.title || '').trim() || `条目${idx + 1}`;
-    const range = h?.range ? `（${h.range.fromFloor}-${h.range.toFloor}）` : '';
+    const range = h?.range ? `�?{h.range.fromFloor}-${h.range.toFloor}）` : '';
     const kws = Array.isArray(h.keywords) ? h.keywords.filter(Boolean) : [];
     const summary = String(h.summary || '').trim();
-    const lines = [`【${idx + 1}】${title}${range}`];
-    if (kws.length) lines.push(`关键词：${kws.join('、')}`);
-    if (summary) lines.push(`摘要：${summary}`);
-    return lines.join('\n');
-  }).join('\n\n');
+    const lines = [`�?{idx + 1}�?{title}${range}`];
+    if (kws.length) lines.push(`关键词：${kws.join('�?)}`);
+    if (summary) lines.push(`摘要�?{summary}`);
+    return lines.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
+  }).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 function buildMegaSummaryPromptMessages(items, settings) {
   const s = settings || ensureSettings();
   let sys = String(s.megaSummarySystemPrompt || '').trim();
   if (!sys) sys = DEFAULT_MEGA_SUMMARY_SYSTEM_PROMPT;
-  sys = sys + '\n\n' + SUMMARY_JSON_REQUIREMENT;
+  sys = sys + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n' + SUMMARY_JSON_REQUIREMENT;
 
   const itemsText = buildMegaSummaryItemsText(items);
   let tpl = String(s.megaSummaryUserTemplate || '').trim();
   if (!tpl) tpl = DEFAULT_MEGA_SUMMARY_USER_TEMPLATE;
 
   let user = renderTemplate(tpl, { items: itemsText });
-  if (!/{{\s*items\s*}}/i.test(tpl) && !String(user).includes(itemsText.slice(0, 12))) {
-    user = String(user || '').trim() + `\n\n【待汇总条目】\n${itemsText}`;
+  if (!/{{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*items        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*}}/i.test(tpl) && !String(user).includes(itemsText.slice(0, 12))) {
+    user = String(user || '').trim() + `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【待汇总条目】\n${itemsText}`;
   }
   return [
     { role: 'system', content: sys },
@@ -6063,7 +6063,7 @@ function parseSummaryIndexInput(input, settings) {
   const num = Number.parseInt(raw, 10);
   if (Number.isFinite(num)) return num;
   const prefix = String(s.summaryIndexPrefix || 'A-');
-  const re = new RegExp('^' + escapeRegExp(prefix) + '(\\d+)$', 'i');
+  const re = new RegExp('^' + escapeRegExp(prefix) + '(        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+)$', 'i');
   const m = raw.match(re);
   return m ? (Number.parseInt(m[1], 10) || 0) : 0;
 }
@@ -6141,7 +6141,7 @@ function extractWorldbookEntriesDetailed(rawJson) {
 
   function splitKeys(str) {
     return String(str || '')
-      .split(/[\n,，;；\|]+/g)
+      .split(/[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n,�?；\|]+/g)
       .map(s => s.trim())
       .filter(Boolean);
   }
@@ -6150,7 +6150,7 @@ function extractWorldbookEntriesDetailed(rawJson) {
   for (const e of entries) {
     if (!e || typeof e !== 'object') continue;
     const comment = String(e.comment ?? e.title ?? e.name ?? e.uid ?? e.id ?? '').trim();
-    const title = comment || (Array.isArray(e.keys) && e.keys[0] ? `条目：${e.keys[0]}` : '条目');
+    const title = comment || (Array.isArray(e.keys) && e.keys[0] ? `条目�?{e.keys[0]}` : '条目');
     const kRaw =
       e.keys ??
       e.key ??
@@ -6196,7 +6196,7 @@ function extractWorldbookEntriesDetailed(rawJson) {
 function extractIndexFromText(text, settings) {
   const s = settings || ensureSettings();
   const prefix = String(s.summaryIndexPrefix || 'A-');
-  const re = new RegExp(escapeRegExp(prefix) + '(\\d+)', 'i');
+  const re = new RegExp(escapeRegExp(prefix) + '(        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+)', 'i');
   const m = String(text || '').match(re);
   return m ? `${prefix}${String(m[1]).padStart(3, '0')}` : '';
 }
@@ -6245,7 +6245,7 @@ function filterMegaSummaryCandidates(meta, settings) {
   const s = settings || ensureSettings();
   const sourcePrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
   const indexPrefix = String(s.summaryIndexPrefix || 'A-');
-  const indexRe = new RegExp('^' + escapeRegExp(indexPrefix) + '(\\d+)$');
+  const indexRe = new RegExp('^' + escapeRegExp(indexPrefix) + '(        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+)$');
   const parseIndex = (id) => {
     const m = String(id || '').trim().match(indexRe);
     return m ? (Number.parseInt(m[1], 10) || 0) : 0;
@@ -6296,7 +6296,7 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
     if (!Number.isFinite(Number(meta.nextMegaIndex))) {
       let maxN = 0;
       const pref = String(s.megaSummaryIndexPrefix || 'R-');
-      const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
+      const re = new RegExp('^' + escapeRegExp(pref) + '(        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+)$');
       for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
         if (!h?.isMega) continue;
         const id0 = String(h?.indexId || '').trim();
@@ -6416,7 +6416,7 @@ async function runMegaSummaryManual(fromIndex, toIndex) {
   const fromNum = parseSummaryIndexInput(fromIndex, s);
   const toNum = parseSummaryIndexInput(toIndex, s);
   if (!fromNum || !toNum || fromNum > toNum) {
-    setStatus('大总结范围无效，请填写正确索引号', 'warn');
+    setStatus('大总结范围无效，请填写正确索引�?, 'warn');
     return 0;
   }
 
@@ -6447,7 +6447,7 @@ async function runMegaSummaryManual(fromIndex, toIndex) {
 
   renderSummaryPaneFromMeta();
   if (created > 0) {
-    setStatus(`已生成大总结 ${created} 条 ✅`, 'ok');
+    setStatus(`已生成大总结 ${created} �?✅`, 'ok');
   }
   return created;
 }
@@ -6465,14 +6465,14 @@ function buildSummaryCoreTitle(rawTitle, indexId, settings, commentPrefix = '', 
   if (name) parts.push(name);
   if (indexId && includeIndex) parts.push(indexId);
 
-  return parts.join('｜').replace(/｜｜+/g, '｜');
+  return parts.join('�?).replace(/｜｜+/g, '�?);
 }
 
 function buildSummaryComment(rec, settings, commentPrefix = '') {
   const s = settings || ensureSettings();
   const range = rec?.range ? `${rec.range.fromFloor}-${rec.range.toFloor}` : '';
   const base = buildSummaryCoreTitle(rec.title, rec.indexId, s, commentPrefix);
-  return `${base}${range ? `（${range}）` : ''}`;
+  return `${base}${range ? `�?{range}）` : ''}`;
 }
 
 async function disableSummaryWorldInfoEntry(rec, settings, {
@@ -6515,7 +6515,7 @@ async function disableWorldInfoEntryByComment(comment, settings, {
   if (findText && findText !== 'null' && findText !== 'undefined') {
     const parsed = safeJsonParse(findText);
     if (parsed && parsed.uid) uid = parsed.uid;
-    else if (/^\d+$/.test(findText.trim())) uid = findText.trim();
+    else if (/^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+$/.test(findText.trim())) uid = findText.trim();
   }
   if (!uid) return null;
 
@@ -6569,7 +6569,7 @@ async function deleteWorldInfoEntryByComment(comment, settings, {
   if (findText && findText !== 'null' && findText !== 'undefined') {
     const parsed = safeJsonParse(findText);
     if (parsed && parsed.uid) uid = parsed.uid;
-    else if (/^\d+$/.test(findText.trim())) uid = findText.trim();
+    else if (/^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+$/.test(findText.trim())) uid = findText.trim();
   }
   if (!uid) return null;
 
@@ -6583,8 +6583,6 @@ async function deleteWorldInfoEntryByComment(comment, settings, {
   }
 
   await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=disable 1`);
-  const deletedComment = `[已删除] ${comment}`;
-  await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=comment ${quoteSlashValue(deletedComment)}`);
   await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=key ""`);
   await execSlash(`/setentryfield file=${fileExpr} uid=${uid} field=content ""`);
 
@@ -6608,7 +6606,7 @@ async function updateWorldInfoEntryByComment(comment, settings, {
   const fileName = normalizeWorldInfoFileName(file || '');
   if (targetMode === 'file' && !fileName) return null;
 
-  const safeFindComment = String(comment || '').replace(/\|/g, '｜').trim();
+  const safeFindComment = String(comment || '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?).trim();
   if (!safeFindComment) return null;
 
   let findExpr;
@@ -6640,7 +6638,7 @@ async function updateWorldInfoEntryByComment(comment, settings, {
 
   const parts = [];
   if (content !== undefined) {
-    const safeContent = String(content ?? '').replace(/\|/g, '｜');
+    const safeContent = String(content ?? '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?);
     parts.push(`/setentryfield file=${fileExpr} uid=${uid} field=content ${quoteSlashValue(safeContent)}`);
   }
   if (key !== undefined) {
@@ -6648,7 +6646,7 @@ async function updateWorldInfoEntryByComment(comment, settings, {
     parts.push(`/setentryfield file=${fileExpr} uid=${uid} field=key ${quoteSlashValue(safeKey)}`);
   }
   if (newComment !== undefined) {
-    const safeComment = String(newComment ?? '').replace(/\|/g, '｜').trim();
+    const safeComment = String(newComment ?? '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?).trim();
     parts.push(`/setentryfield file=${fileExpr} uid=${uid} field=comment ${quoteSlashValue(safeComment)}`);
   }
   if (disable !== undefined) {
@@ -6678,7 +6676,7 @@ function parseFindEntryUid(findResult) {
   if (typeof findResult === 'number') return String(findResult);
   if (typeof findResult === 'string') {
     const trimmed = findResult.trim();
-    if (trimmed.match(/^\d+$/)) return trimmed;
+    if (trimmed.match(/^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+$/)) return trimmed;
     try {
       const parsed = JSON.parse(trimmed);
       if (typeof parsed === 'number') return String(parsed);
@@ -6710,8 +6708,8 @@ async function createWorldInfoEntryInFile(fileName, { keys = [], content = '', c
   if (!file) throw new Error('世界书文件名为空');
 
   const keyValue = Array.isArray(keys) ? keys.filter(Boolean).join(',') : String(keys || '');
-  const safeContent = String(content || '').replace(/\|/g, '｜').trim();
-  const safeComment = String(comment || '').replace(/\|/g, '｜').trim();
+  const safeContent = String(content || '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?).trim();
+  const safeComment = String(comment || '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?).trim();
   const uidVar = '__sg_sync_uid';
   const fileExpr = quoteSlashValue(file);
   const constantVal = (Number(constant) === 1) ? 1 : 0;
@@ -6728,7 +6726,7 @@ async function createWorldInfoEntryInFile(fileName, { keys = [], content = '', c
 
   const out = await execSlash(parts.join(' | '));
   if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
-    throw new Error(`写入世界书失败（返回：${safeStringifyShort(out)}）`);
+    throw new Error(`写入世界书失败（返回�?{safeStringifyShort(out)}）`);
   }
 }
 
@@ -6749,8 +6747,8 @@ async function createWorldInfoEntryInTarget(targetMode, fileName, { key = '', co
   const uidVar = '__sg_create_uid';
   const fileVar = '__sg_create_wbfile';
   const keyValue = String(key || '');
-  const safeContent = String(content || '').replace(/\|/g, '｜').trim();
-  const safeComment = String(comment || '').replace(/\|/g, '｜').trim();
+  const safeContent = String(content || '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?).trim();
+  const safeComment = String(comment || '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?).trim();
   const constantVal = (Number(constant) === 1) ? 1 : 0;
   const disableVal = (Number(disable) === 1) ? 1 : 0;
 
@@ -6768,7 +6766,7 @@ async function createWorldInfoEntryInTarget(targetMode, fileName, { key = '', co
 
   const out = await execSlash(parts.join(' | '));
   if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
-    throw new Error(`写入世界书失败（返回：${safeStringifyShort(out)}）`);
+    throw new Error(`写入世界书失败（返回�?{safeStringifyShort(out)}）`);
   }
 }
 
@@ -6786,8 +6784,8 @@ async function syncGreenWorldInfoFromBlue() {
     return;
   }
 
-  setStatus('正在对齐蓝灯→绿灯…', 'warn');
-  showToast('正在对齐绿灯世界书…', { kind: 'warn', spinner: true, sticky: true });
+  setStatus('正在对齐蓝灯→绿灯�?, 'warn');
+  showToast('正在对齐绿灯世界书�?, { kind: 'warn', spinner: true, sticky: true });
 
   try {
     const [blueJson, greenJson] = await Promise.all([
@@ -6822,7 +6820,7 @@ async function syncGreenWorldInfoFromBlue() {
     if (created > 0) setStatus(`对齐完成 ✅（补全 ${created} 条）`, 'ok');
     else setStatus('对齐完成 ✅（无缺失条目）', 'ok');
   } catch (e) {
-    setStatus(`对齐失败：${e?.message ?? e}`, 'err');
+    setStatus(`对齐失败�?{e?.message ?? e}`, 'err');
   } finally {
     try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
   }
@@ -6865,14 +6863,14 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = nu
   // system prompt
   let sys = String(s.summarySystemPrompt || '').trim();
   if (!sys) sys = DEFAULT_SUMMARY_SYSTEM_PROMPT;
-  // 强制追加 JSON 结构要求，避免用户自定义提示词导致解析失败
-  sys = sys + '\n\n' + SUMMARY_JSON_REQUIREMENT;
+  // 强制追加 JSON 结构要求，避免用户自定义提示词导致解析失�?
+  sys = sys + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n' + SUMMARY_JSON_REQUIREMENT;
 
   // user template (supports placeholders)
   let tpl = String(s.summaryUserTemplate || '').trim();
   if (!tpl) tpl = DEFAULT_SUMMARY_USER_TEMPLATE;
 
-  // 格式化 statData（如果有）
+  // 格式�?statData（如果有�?
   let statDataJson = '';
   if (statData) {
     if (typeof statData === 'string') statDataJson = statData.trim();
@@ -6885,13 +6883,13 @@ function buildSummaryPromptMessages(chunkText, fromFloor, toFloor, statData = nu
     chunk: String(chunkText || ''),
     statData: statDataJson,
   });
-  // 如果用户模板里没有包含 chunk，占位补回去，防止误配导致无内容
-  if (!/{{\s*chunk\s*}}/i.test(tpl) && !String(user).includes(String(chunkText || '').slice(0, 12))) {
-    user = String(user || '').trim() + `\n\n【对话片段】\n${chunkText}`;
+  // 如果用户模板里没有包�?chunk，占位补回去，防止误配导致无内容
+  if (!/{{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*chunk        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*}}/i.test(tpl) && !String(user).includes(String(chunkText || '').slice(0, 12))) {
+    user = String(user || '').trim() + `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【对话片段】\n${chunkText}`;
   }
-  // 如果有 statData 且用户模板里没有包含，追加到末尾
-  if (statData && !/{{\s*statData\s*}}/i.test(tpl)) {
-    user = String(user || '').trim() + `\n\n【角色状态数据】\n${statDataJson}`;
+  // 如果�?statData 且用户模板里没有包含，追加到末尾
+  if (statData && !/{{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*statData        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*}}/i.test(tpl)) {
+    user = String(user || '').trim() + `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【角色状态数据】\n${statDataJson}`;
   }
   return [
     { role: 'system', content: sys },
@@ -6907,9 +6905,9 @@ function sanitizeKeywords(kws, opts = {}) {
   for (const k of (Array.isArray(kws) ? kws : [])) {
     let t = String(k ?? '').trim();
     if (!t) continue;
-    t = t.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
+    t = t.replace(/[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;r        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;t]/g, ' ').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+/g, ' ').trim();
     // split by common delimiters
-    const split = t.split(/[,，、;；/|]+/g).map(x => x.trim()).filter(Boolean);
+    const split = t.split(/[,，�?�?|]+/g).map(x => x.trim()).filter(Boolean);
     for (const s of split) {
       if (s.length < minLen) continue;
       if (s.length > maxLen) continue;
@@ -6932,7 +6930,7 @@ function appendToBlueIndexCache(rec) {
     range: rec?.range ?? undefined,
   };
   if (!item.summary) return;
-  if (!item.title) item.title = item.keywords?.[0] ? `条目：${item.keywords[0]}` : '条目';
+  if (!item.title) item.title = item.keywords?.[0] ? `条目�?{item.keywords[0]}` : '条目';
   const arr = Array.isArray(s.summaryBlueIndex) ? s.summaryBlueIndex : [];
   // de-dup (only check recent items)
   for (let i = arr.length - 1; i >= 0 && i >= arr.length - 10; i--) {
@@ -6950,7 +6948,7 @@ function appendToBlueIndexCache(rec) {
   updateBlueIndexInfoLabel();
 }
 
-// 深合并助手：将 source 合并到 target，处理对象和数组
+// 深合并助手：�?source 合并�?target，处理对象和数组
 function deepMergeStructuredData(target, source) {
   if (!source || typeof source !== 'object') return target;
   if (!target || typeof target !== 'object') return source;
@@ -6960,14 +6958,14 @@ function deepMergeStructuredData(target, source) {
     if (value === undefined || value === null || value === '') continue;
 
     if (Array.isArray(value)) {
-      // 数组处理：去重合并
+      // 数组处理：去重合�?
       const oldArr = Array.isArray(target[key]) ? target[key] : [];
       result[key] = Array.from(new Set([...oldArr, ...value]));
     } else if (typeof value === 'object' && !Array.isArray(value)) {
       // 对象处理：递归合并
       result[key] = deepMergeStructuredData(target[key] || {}, value);
     } else {
-      // 基本类型：覆盖
+      // 基本类型：覆�?
       result[key] = value;
     }
   }
@@ -6999,14 +6997,14 @@ async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloo
     `【任务条目要求】\n${questPrompt}`,
     `【猎艳录条目要求】\n${conquestPrompt}`,
     STRUCTURED_ENTRIES_JSON_REQUIREMENT,
-  ].join('\n\n');
+  ].join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 
   const formatKnown = (entries) => {
     return Object.values(entries || {}).map(c => {
       const aliases = Array.isArray(c.aliases) && c.aliases.length > 0 ? `[别名:${c.aliases.join('/')}]` : '';
       const flag = !c.raw ? '(!需要完整信息进行初始化)' : '';
       return `${c.name}${aliases}${flag}`;
-    }).join('、') || '无';
+    }).join('�?) || '�?;
   };
 
   const knownChars = formatKnown(meta.characterEntries);
@@ -7019,7 +7017,7 @@ async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloo
   const knownConquests = formatKnown(meta.conquestEntries);
 
 
-  // 格式化 statData
+  // 格式�?statData
   let statDataJson = '';
   if (statData) {
     if (typeof statData === 'string') statDataJson = statData.trim();
@@ -7053,15 +7051,15 @@ async function buildStructuredEntriesPromptMessages(chunkText, fromFloor, toFloo
   });
 
   if (user.includes('(!需要完整信息进行初始化)')) {
-    user += `\n\n【注意】：标记为 (!需要完整信息进行初始化) 的已知条目，请务必在 JSON 中输出其所有字段（即使未变化），以便系统初始化长期记忆。`;
+    user += `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【注意】：标记�?(!需要完整信息进行初始化) 的已知条目，请务必在 JSON 中输出其所有字段（即使未变化），以便系统初始化长期记忆。`;
   }
 
-  if (structuredWorldbookText && !/\{\{\s*structuredWorldbook\s*\}\}/i.test(tpl)) {
-    user = String(user || '').trim() + `\n\n【蓝灯世界书】\n${structuredWorldbookText}`;
+  if (structuredWorldbookText && !/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*structuredWorldbook        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}/i.test(tpl)) {
+    user = String(user || '').trim() + `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【蓝灯世界书】\n${structuredWorldbookText}`;
   }
-  // 如果有 statData 且模板里没有包含，追加到末尾
-  if (statData && !/\{\{\s*statData\s*\}\}/i.test(tpl)) {
-    user = String(user || '').trim() + `\n\n【角色状态数据 statData】\n${statDataJson}`;
+  // 如果�?statData 且模板里没有包含，追加到末尾
+  if (statData && !/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*statData        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}/i.test(tpl)) {
+    user = String(user || '').trim() + `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【角色状态数�?statData】\n${statDataJson}`;
   }
   return [
     { role: 'system', content: sys },
@@ -7156,7 +7154,7 @@ async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta
   const structuredResult = await generateStructuredEntries(chunkText, fromFloor, toFloor, meta, s, statData);
   if (!structuredResult) return false;
 
-  // 写入/更新人物条目（去重由 writeOrUpdate 内部处理）
+  // 写入/更新人物条目（去重由 writeOrUpdate 内部处理�?
   if (s.characterEntriesEnabled && structuredResult.characters?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.characters.length} character(s)`);
     for (const char of structuredResult.characters) {
@@ -7195,7 +7193,7 @@ async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta
       recordChange(r);
     }
   }
-  // 写入/更新副职业条目
+  // 写入/更新副职业条�?
   if (s.subProfessionEntriesEnabled && structuredResult.subProfessions?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.subProfessions.length} sub profession(s)`);
     for (const subProfession of structuredResult.subProfessions) {
@@ -7211,7 +7209,7 @@ async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta
       recordChange(r);
     }
   }
-  // 写入/更新猎艳录条目
+  // 写入/更新猎艳录条�?
   if (s.conquestEntriesEnabled && structuredResult.conquests?.length) {
     console.log(`[StoryGuide] Processing ${structuredResult.conquests.length} conquest(s)`);
     for (const conquest of structuredResult.conquests) {
@@ -7220,7 +7218,7 @@ async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta
     }
   }
 
-  // 处理删除的条目
+  // 处理删除的条�?
   if (structuredResult.deletedCharacters?.length) {
     console.log(`[StoryGuide] Deleting ${structuredResult.deletedCharacters.length} character(s)`);
     for (const charName of structuredResult.deletedCharacters) {
@@ -7282,9 +7280,9 @@ async function processStructuredEntriesChunk(chunkText, fromFloor, toFloor, meta
   return true;
 }
 
-// 构建条目的 key（用于世界书触发词和去重）
+// 构建条目�?key（用于世界书触发词和去重�?
 function buildStructuredEntryKey(prefix, name, indexId) {
-  return `${prefix}｜${name}｜${indexId}`;
+  return `${prefix}�?{name}�?{indexId}`;
 }
 
 const STRUCTURED_ENTRY_CACHE_FIELDS = Object.freeze({
@@ -7315,26 +7313,26 @@ function formatStructuredValue(value, mode = 'text', depth = 0) {
     const items = value.map(v => formatStructuredValue(v, mode, depth + 1)).filter(Boolean);
     if (!items.length) return '';
     if (mode === 'markdown') {
-      return items.map(v => `- ${v.replace(/\n/g, '\n  ')}`).join('\n');
+      return items.map(v => `- ${v.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n/g, '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n  ')}`).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
     }
-    return items.join('、');
+    return items.join('�?);
   }
   if (t === 'object') {
     const pairs = [];
     for (const [k, v] of Object.entries(value)) {
       const rendered = formatStructuredValue(v, mode, depth + 1);
       if (!rendered) continue;
-      if (mode === 'markdown' && rendered.includes('\n')) {
+      if (mode === 'markdown' && rendered.includes('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n')) {
         pairs.push(`${k}：\n${rendered}`);
       } else {
-        pairs.push(`${k}：${rendered}`);
+        pairs.push(`${k}�?{rendered}`);
       }
     }
     if (!pairs.length) return '';
     if (mode === 'markdown') {
-      return pairs.map(p => `- ${p.replace(/\n/g, '\n  ')}`).join('\n');
+      return pairs.map(p => `- ${p.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n/g, '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n  ')}`).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
     }
-    return pairs.join('；');
+    return pairs.join('�?);
   }
   return String(value).trim();
 }
@@ -7342,10 +7340,10 @@ function formatStructuredValue(value, mode = 'text', depth = 0) {
 function pushStructuredLabel(parts, label, value, mode) {
   const rendered = formatStructuredValue(value, mode);
   if (!rendered) return;
-  if (mode === 'markdown' && rendered.includes('\n')) {
+  if (mode === 'markdown' && rendered.includes('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n')) {
     parts.push(`${label}：\n${rendered}`);
   } else {
-    parts.push(`${label}：${rendered}`);
+    parts.push(`${label}�?{rendered}`);
   }
 }
 
@@ -7379,15 +7377,15 @@ function appendExtraFields(parts, data, knownKeys) {
 
     const rendered = formatStructuredValue(value, mode);
     if (!rendered) continue;
-    if (mode === 'markdown' && rendered.includes('\n')) {
+    if (mode === 'markdown' && rendered.includes('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n')) {
       parts.push(`${key}：\n${rendered}`);
     } else {
-      parts.push(`${key}：${rendered}`);
+      parts.push(`${key}�?{rendered}`);
     }
   }
 }
 
-// 构建条目内容（档案式描述）
+// 构建条目内容（档案式描述�?
 function formatTemplateField(value, mode) {
   if (value === null || value === undefined) return '';
   if (Array.isArray(value)) {
@@ -7396,18 +7394,18 @@ function formatTemplateField(value, mode) {
       const items = value.map(v => String(v ?? '').trim()).filter(Boolean);
       if (!items.length) return '';
       if (mode === 'markdown') {
-        const list = items.map(item => `- ${item}`).join('\n');
-        return list ? `\n${list}` : '';
+        const list = items.map(item => `- ${item}`).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
+        return list ? `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${list}` : '';
       }
       return items.join(', ');
     }
     const rendered = formatStructuredValue(value, mode);
-    if (mode === 'markdown' && rendered.includes('\n') && !rendered.startsWith('\n')) return `\n${rendered}`;
+    if (mode === 'markdown' && rendered.includes('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n') && !rendered.startsWith('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n')) return `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${rendered}`;
     return rendered;
   }
   if (typeof value === 'object') {
     const rendered = formatStructuredValue(value, mode);
-    if (mode === 'markdown' && rendered.includes('\n') && !rendered.startsWith('\n')) return `\n${rendered}`;
+    if (mode === 'markdown' && rendered.includes('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n') && !rendered.startsWith('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n')) return `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${rendered}`;
     return rendered;
   }
   const text = String(value).trim();
@@ -7415,29 +7413,29 @@ function formatTemplateField(value, mode) {
 }
 
 function cleanupStructuredTemplateOutput(text) {
-  const lines = String(text || '').split(/\r?\n/);
+  const lines = String(text || '').split(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;r?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n/);
   const cleaned = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
     if (!trimmed) continue;
-    if (/[:\uFF1A]\s*$/.test(trimmed)) {
+    if (/[:        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;uFF1A]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*$/.test(trimmed)) {
       let j = i + 1;
       while (j < lines.length && !lines[j].trim()) j++;
-      if (j < lines.length && /^([-*]|\d+\.)/.test(lines[j].trim())) {
+      if (j < lines.length && /^([-*]|        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;.)/.test(lines[j].trim())) {
         cleaned.push(line);
       }
       continue;
     }
     cleaned.push(line);
   }
-  return cleaned.join('\n');
+  return cleaned.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 function isFemaleCharacter(char) {
   const gender = String(char?.gender || '').trim().toLowerCase();
   if (!gender) return false;
-  if (/\u5973/.test(gender)) return true;
+  if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5973/.test(gender)) return true;
   if (gender === 'f') return true;
   if (gender.includes('female') || gender.includes('woman') || gender.includes('girl')) return true;
   return false;
@@ -7470,7 +7468,7 @@ function buildCharacterContent(char) {
   const extraParts = [];
   knownKeys.__mode = mode;
   appendExtraFields(extraParts, char, knownKeys);
-  const extraFields = extraParts.join('\n');
+  const extraFields = extraParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
   const vars = {
     name: formatTemplateField(char?.name, mode),
     aliases: formatTemplateField(char?.aliases, mode),
@@ -7513,7 +7511,7 @@ function buildEquipmentContent(equip) {
     currentState: formatTemplateField(equip?.currentState, mode),
     statInfo: formatTemplateField(equip?.statInfo, mode),
     boundEvents: formatTemplateField(equip?.boundEvents, mode),
-    extraFields: extraParts.join('\n'),
+    extraFields: extraParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n'),
   };
   return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
@@ -7537,7 +7535,7 @@ function buildInventoryContent(item) {
     currentState: formatTemplateField(item?.currentState, mode),
     statInfo: formatTemplateField(item?.statInfo, mode),
     boundEvents: formatTemplateField(item?.boundEvents, mode),
-    extraFields: extraParts.join('\n'),
+    extraFields: extraParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n'),
   };
   return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
@@ -7561,7 +7559,7 @@ function buildFactionContent(faction) {
     status: formatTemplateField(faction?.status, mode),
     keyEvents: formatTemplateField(faction?.keyEvents, mode),
     statInfo: formatTemplateField(faction?.statInfo, mode),
-    extraFields: extraParts.join('\n'),
+    extraFields: extraParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n'),
   };
   return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
@@ -7583,7 +7581,7 @@ function buildAchievementContent(achievement) {
     effects: formatTemplateField(achievement?.effects, mode),
     keyEvents: formatTemplateField(achievement?.keyEvents, mode),
     statInfo: formatTemplateField(achievement?.statInfo, mode),
-    extraFields: extraParts.join('\n'),
+    extraFields: extraParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n'),
   };
   return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
@@ -7606,7 +7604,7 @@ function buildSubProfessionContent(subProfession) {
     status: formatTemplateField(subProfession?.status, mode),
     keyEvents: formatTemplateField(subProfession?.keyEvents, mode),
     statInfo: formatTemplateField(subProfession?.statInfo, mode),
-    extraFields: extraParts.join('\n'),
+    extraFields: extraParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n'),
   };
   return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
@@ -7630,7 +7628,7 @@ function buildQuestContent(quest) {
     location: formatTemplateField(quest?.location, mode),
     keyEvents: formatTemplateField(quest?.keyEvents, mode),
     statInfo: formatTemplateField(quest?.statInfo, mode),
-    extraFields: extraParts.join('\n'),
+    extraFields: extraParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n'),
   };
   return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
@@ -7656,13 +7654,13 @@ function buildConquestContent(conquest) {
     status: formatTemplateField(conquest?.status, mode),
     keyEvents: formatTemplateField(conquest?.keyEvents, mode),
     statInfo: formatTemplateField(conquest?.statInfo, mode),
-    extraFields: extraParts.join('\n'),
+    extraFields: extraParts.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n'),
   };
   return cleanupStructuredTemplateOutput(renderTemplate(template, vars));
 }
 
 // 写入或更新结构化条目（方案C：混合策略）
-// targetType: 'green' = 绿灯世界书（触发词触发）, 'blue' = 蓝灯世界书（常开索引）
+// targetType: 'green' = 绿灯世界书（触发词触发）, 'blue' = 蓝灯世界书（常开索引�?
 async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings, {
   buildContent,
   entriesCache,
@@ -7670,22 +7668,22 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   prefix,
   targetType = 'green', // 'green' | 'blue'
 }) {
-  // 使用规范化的名称作为唯一标识符（忽略 LLM 提供的 uid，因为不可靠）
+  // 使用规范化的名称作为唯一标识符（忽略 LLM 提供�?uid，因为不可靠�?
   const entryName = String(entryData.name || '').trim();
   if (!entryName) return null;
 
-  // 规范化名称：移除特殊字符，用于缓存 key
-  const normalizedName = entryName.replace(/[|｜,，\s]/g, '_').toLowerCase();
+  // 规范化名称：移除特殊字符，用于缓�?key
+  const normalizedName = entryName.replace(/[|�?，\s]/g, '_').toLowerCase();
   const cacheKey = `${normalizedName}_${targetType}`;
 
-  // 首先按 cacheKey 直接查找
+  // 首先�?cacheKey 直接查找
   let cached = entriesCache[cacheKey];
 
-  // 如果直接查找失败，遍历缓存按名称模糊匹配（处理同一人物不同写法）
+  // 如果直接查找失败，遍历缓存按名称模糊匹配（处理同一人物不同写法�?
   if (!cached) {
     for (const [key, value] of Object.entries(entriesCache)) {
       if (!key.endsWith(`_${targetType}`)) continue;
-      const cachedNameNorm = String(value.name || '').replace(/[|｜,，\s]/g, '_').toLowerCase();
+      const cachedNameNorm = String(value.name || '').replace(/[|�?，\s]/g, '_').toLowerCase();
       const cachedAliases = Array.isArray(value.aliases) ? value.aliases.map(a => String(a).toLowerCase().trim()) : [];
       const newAliases = Array.isArray(entryData.aliases) ? entryData.aliases.map(a => String(a).toLowerCase().trim()) : [];
       const nameMatch = cachedNameNorm === normalizedName; // Disable aggressive fuzzy match: || cachedNameNorm.includes(normalizedName) || normalizedName.includes(cachedNameNorm);
@@ -7716,25 +7714,25 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     console.log(`[StoryGuide] Deep merged incremental data for ${entryType}: ${entryName}`);
   }
 
-  const content = buildContent(finalEntryData).replace(/\|/g, '｜');
+  const content = buildContent(finalEntryData).replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?);
 
-  // 根据 targetType 选择世界书目标
+  // 根据 targetType 选择世界书目�?
   let target, file, constant;
   if (targetType === 'blue') {
     target = 'file';
     file = normalizeWorldInfoFileName(settings.summaryBlueWorldInfoFile);
     constant = 1; // 蓝灯=常开
-    if (!file) return null; // 蓝灯必须指定文件名
+    if (!file) return null; // 蓝灯必须指定文件�?
   } else {
     const greenTarget = resolveGreenWorldInfoTarget(settings);
     target = greenTarget.target;
     file = greenTarget.file;
-    constant = 0; // 绿灯=触发词触发
-    if (!file) return null; // 绿灯强制 file，无文件名直接跳过
+    constant = 0; // 绿灯=触发词触�?
+    if (!file) return null; // 绿灯强制 file，无文件名直接跳�?
   }
   const fileExprForQuery = (target === 'chatbook') ? '{{getchatbook}}' : file;
 
-  // 去重和更新检查：如果本地缓存已有此条目
+  // 去重和更新检查：如果本地缓存已有此条�?
   if (cached) {
     const prevCacheEntry = clone(cached);
     // 内容相同 -> 跳过
@@ -7743,20 +7741,20 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       return { skipped: true, name: entryName, entryType, targetType, cacheKey, reason: 'unchanged' };
     }
 
-    // 内容不同 -> 尝试使用 /findentry 查找并更新
+    // 内容不同 -> 尝试使用 /findentry 查找并更�?
     console.log(`[StoryGuide] Content changed for ${entryType} (${targetType}): ${entryName}, attempting update via /findentry...`);
     try {
       // 使用 /findentry 通过 comment 字段查找条目 UID
-      // comment 格式为: "人物｜角色名｜CHA-001"
+      // comment 格式�? "人物｜角色名｜CHA-001"
       const searchName = String(cached?.name || entryName).trim() || entryName;
-      const searchIndexSuffix = cached?.indexId ? `｜${cached.indexId}` : '';
+      const searchIndexSuffix = cached?.indexId ? `�?{cached.indexId}` : '';
       const searchPatterns = [
-        `${prefix}｜${searchName}${searchIndexSuffix}`,
-        `[已删除] ${prefix}｜${searchName}${searchIndexSuffix}`
+        `${prefix}�?{searchName}${searchIndexSuffix}`,
+        `[已删除] ${prefix}�?{searchName}${searchIndexSuffix}`
       ];
       if (searchIndexSuffix) {
-        searchPatterns.push(`${prefix}｜${searchName}`);
-        // searchPatterns.push(`[已删除] ${prefix}｜${searchName}`);
+        searchPatterns.push(`${prefix}�?{searchName}`);
+        // searchPatterns.push(`[已删除] ${prefix}�?{searchName}`);
       }
 
       console.log(`[StoryGuide] DEBUG Update Search: Patterns=${JSON.stringify(searchPatterns)}`);
@@ -7780,7 +7778,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
         const findResult = await execSlash(findParts.join(' | '));
 
-        // DEBUG: 查看 findentry 返回值
+        // DEBUG: 查看 findentry 返回�?
         console.log(`[StoryGuide] DEBUG /findentry result:`, findResult, `type:`, typeof findResult, `pattern:`, searchPattern);
 
         foundUid = parseFindEntryUid(findResult);
@@ -7796,24 +7794,23 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       }
 
       if (foundUid) {
-        // 找到条目，更新内容
+        // 找到条目，更新内�?
         let updateParts = [];
         const updateFileVar = '__sg_update_file';
 
         const shouldReenable = !!settings.structuredReenableEntriesEnabled;
         const commentName = String(cached?.name || entryName).trim() || entryName;
-        const indexSuffix = cached?.indexId ? `｜${cached.indexId}` : '';
-        const newComment = `${prefix}｜${commentName}${indexSuffix}`;
+        const indexSuffix = cached?.indexId ? `�?{cached.indexId}` : '';
+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;
         const newKey = cached?.indexId ? buildStructuredEntryKey(prefix, commentName, cached.indexId) : '';
 
         if (target === 'chatbook') {
-          // chatbook 模式需要先获取文件名
+          // chatbook 模式需要先获取文件�?
           updateParts.push('/getchatbook');
           updateParts.push(`/setvar key=${updateFileVar}`);
           updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=content ${quoteSlashValue(content)}`);
           if (shouldReenable) {
             updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=disable 0`);
-            updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=comment ${quoteSlashValue(newComment)}`);
             if (newKey) updateParts.push(`/setentryfield file={{getvar::${updateFileVar}}} uid=${foundUid} field=key ${quoteSlashValue(newKey)}`);
           }
           updateParts.push(`/flushvar ${updateFileVar}`);
@@ -7821,7 +7818,6 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
           updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=content ${quoteSlashValue(content)}`);
           if (shouldReenable) {
             updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=disable 0`);
-            updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=comment ${quoteSlashValue(newComment)}`);
             if (newKey) updateParts.push(`/setentryfield file=${quoteSlashValue(file)} uid=${foundUid} field=key ${quoteSlashValue(newKey)}`);
           }
         }
@@ -7830,8 +7826,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
         cached.content = content;
         cached.raw = finalEntryData;
         cached.lastUpdated = Date.now();
+        if (!cached.comment && stableComment) cached.comment = stableComment;
         console.log(`[StoryGuide] Updated ${entryType} (${targetType}): ${entryName} -> UID ${foundUid}`);
-        const comment = newComment;
+        const comment = stableComment;
         const key = newKey;
         return {
           updated: true,
@@ -7853,15 +7850,15 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
     }
   }
 
-  // 创建新条目 (或更新查无此人的缓存条目)
-  // 对于蓝灯条目，先检查是否有对应的绿灯条目，复用其 indexId
+  // 创建新条�?(或更新查无此人的缓存条目)
+  // 对于蓝灯条目，先检查是否有对应的绿灯条目，复用�?indexId
   let indexId = cached?.indexId;
   if (!indexId) {
     const greenCacheKey = `${normalizedName}_green`;
     const existingGreenEntry = entriesCache[greenCacheKey];
 
     if (targetType === 'blue' && existingGreenEntry?.indexId) {
-      // 蓝灯复用绿灯的 indexId
+      // 蓝灯复用绿灯�?indexId
       indexId = existingGreenEntry.indexId;
       console.log(`[StoryGuide] Reusing green indexId for blue: ${entryName} -> ${indexId}`);
     } else {
@@ -7874,7 +7871,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   }
 
   const keyValue = buildStructuredEntryKey(prefix, entryName, indexId);
-  const comment = `${prefix}｜${entryName}｜${indexId}`;
+  const comment = `${prefix}�?{entryName}�?{indexId}`;
 
   const uidVar = '__sg_struct_uid';
   const fileVar = '__sg_struct_wbfile';
@@ -7903,6 +7900,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       lastUpdated: Date.now(),
       indexId,
       targetType,
+      comment,
       raw: finalEntryData,
     };
     if (targetType === 'green' && !existingGreenEntry) {
@@ -7931,7 +7929,7 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 async function writeOrUpdateCharacterEntry(char, meta, settings) {
   if (!char?.name) return null;
   const results = [];
-  // 写入绿灯世界书
+  // 写入绿灯世界�?
   if (settings.summaryToWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('character', char, meta, settings, {
       buildContent: buildCharacterContent,
@@ -7942,7 +7940,7 @@ async function writeOrUpdateCharacterEntry(char, meta, settings) {
     });
     if (r) results.push(r);
   }
-  // 写入蓝灯世界书
+  // 写入蓝灯世界�?
   if (settings.summaryToBlueWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('character', char, meta, settings, {
       buildContent: buildCharacterContent,
@@ -7959,7 +7957,7 @@ async function writeOrUpdateCharacterEntry(char, meta, settings) {
 async function writeOrUpdateEquipmentEntry(equip, meta, settings) {
   if (!equip?.name) return null;
   const results = [];
-  // 写入绿灯世界书
+  // 写入绿灯世界�?
   if (settings.summaryToWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('equipment', equip, meta, settings, {
       buildContent: buildEquipmentContent,
@@ -7970,7 +7968,7 @@ async function writeOrUpdateEquipmentEntry(equip, meta, settings) {
     });
     if (r) results.push(r);
   }
-  // 写入蓝灯世界书
+  // 写入蓝灯世界�?
   if (settings.summaryToBlueWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('equipment', equip, meta, settings, {
       buildContent: buildEquipmentContent,
@@ -7987,7 +7985,7 @@ async function writeOrUpdateEquipmentEntry(equip, meta, settings) {
 async function writeOrUpdateFactionEntry(faction, meta, settings) {
   if (!faction?.name) return null;
   const results = [];
-  // 写入绿灯世界书
+  // 写入绿灯世界�?
   if (settings.summaryToWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('faction', faction, meta, settings, {
       buildContent: buildFactionContent,
@@ -7998,7 +7996,7 @@ async function writeOrUpdateFactionEntry(faction, meta, settings) {
     });
     if (r) results.push(r);
   }
-  // 写入蓝灯世界书
+  // 写入蓝灯世界�?
   if (settings.summaryToBlueWorldInfo) {
     const r = await writeOrUpdateStructuredEntry('faction', faction, meta, settings, {
       buildContent: buildFactionContent,
@@ -8020,7 +8018,7 @@ async function writeOrUpdateInventoryEntry(item, meta, settings) {
       buildContent: buildInventoryContent,
       entriesCache: meta.inventoryEntries,
       nextIndexKey: 'nextInventoryIndex',
-      prefix: settings.inventoryEntryPrefix || '物品栏',
+      prefix: settings.inventoryEntryPrefix || '物品�?,
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -8030,7 +8028,7 @@ async function writeOrUpdateInventoryEntry(item, meta, settings) {
       buildContent: buildInventoryContent,
       entriesCache: meta.inventoryEntries,
       nextIndexKey: 'nextInventoryIndex',
-      prefix: settings.inventoryEntryPrefix || '物品栏',
+      prefix: settings.inventoryEntryPrefix || '物品�?,
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -8072,7 +8070,7 @@ async function writeOrUpdateSubProfessionEntry(subProfession, meta, settings) {
       buildContent: buildSubProfessionContent,
       entriesCache: meta.subProfessionEntries,
       nextIndexKey: 'nextSubProfessionIndex',
-      prefix: settings.subProfessionEntryPrefix || '副职业',
+      prefix: settings.subProfessionEntryPrefix || '副职�?,
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -8082,7 +8080,7 @@ async function writeOrUpdateSubProfessionEntry(subProfession, meta, settings) {
       buildContent: buildSubProfessionContent,
       entriesCache: meta.subProfessionEntries,
       nextIndexKey: 'nextSubProfessionIndex',
-      prefix: settings.subProfessionEntryPrefix || '副职业',
+      prefix: settings.subProfessionEntryPrefix || '副职�?,
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -8124,7 +8122,7 @@ async function writeOrUpdateConquestEntry(conquest, meta, settings) {
       buildContent: buildConquestContent,
       entriesCache: meta.conquestEntries,
       nextIndexKey: 'nextConquestIndex',
-      prefix: settings.conquestEntryPrefix || '猎艳录',
+      prefix: settings.conquestEntryPrefix || '猎艳�?,
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -8134,7 +8132,7 @@ async function writeOrUpdateConquestEntry(conquest, meta, settings) {
       buildContent: buildConquestContent,
       entriesCache: meta.conquestEntries,
       nextIndexKey: 'nextConquestIndex',
-      prefix: settings.conquestEntryPrefix || '猎艳录',
+      prefix: settings.conquestEntryPrefix || '猎艳�?,
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -8142,7 +8140,7 @@ async function writeOrUpdateConquestEntry(conquest, meta, settings) {
   return results.length ? results : null;
 }
 
-// 删除结构化条目（从世界书中删除死亡角色、卖掉装备等）
+// 删除结构化条目（从世界书中删除死亡角色、卖掉装备等�?
 async function deleteStructuredEntry(entryType, entryName, meta, settings, {
   entriesCache,
   prefix,
@@ -8160,13 +8158,13 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
   }
   const cacheEntry = clone(cached);
 
-  // 构建 comment 用于查找世界书条目
-  const comment = `${prefix}｜${cached.name}｜${cached.indexId}`;
+  // 构建 comment 用于查找世界书条�?
+  const comment = `${prefix}�?{cached.name}�?{cached.indexId}`;
   const key = cached?.indexId ? buildStructuredEntryKey(prefix, cached.name, cached.indexId) : '';
 
   // [Safety Check] 防止删除别名/合并条目时误删主条目
-  // 如果当前要删除的名字 (entryName) 与缓存的主名字 (cached.name) 不一致，
-  // 说明这是一个“被合并”的条目（指针）。删除它不应影响主条目。
+  // 如果当前要删除的名字 (entryName) 与缓存的主名�?(cached.name) 不一致，
+  // 说明这是一个“被合并”的条目（指针）。删除它不应影响主条目�?
   const cachedNameNormCheck = String(cached.name || '').trim().toLowerCase();
   if (normalizedName !== cachedNameNormCheck) {
     console.log(`[StoryGuide] Safety Guard: Deleting alias "${entryName}" (points to "${cached.name}"). Skipping Worldbook deletion.`);
@@ -8185,7 +8183,7 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     };
   }
 
-  // 确定目标世界书
+  // 确定目标世界�?
   let target = 'chatbook';
   let file = '';
   if (targetType === 'blue') {
@@ -8206,7 +8204,7 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     let findExpr;
     const findFileVar = 'sgTmpFindFile';
     if (target === 'chatbook') {
-      // 使用 setvar/getvar 管道获取 chatbook 文件名
+      // 使用 setvar/getvar 管道获取 chatbook 文件�?
       await execSlash(`/getchatbook | /setvar key=${findFileVar}`);
       findExpr = `/findentry file={{getvar::${findFileVar}}} field=comment ${quoteSlashValue(comment)}`;
     } else {
@@ -8229,7 +8227,7 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
       const parsed = safeJsonParse(findText);
       if (parsed && parsed.uid) {
         uid = parsed.uid;
-      } else if (/^\d+$/.test(findText.trim())) {
+      } else if (/^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+$/.test(findText.trim())) {
         uid = findText.trim();
       }
     }
@@ -8257,13 +8255,13 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
 
     // SillyTavern 没有 /delentry 命令，改为禁用条目并标记为已删除
     // 1. 设置 disable=1（禁用条目）
-    // 2. 清空内容或标记为已删除
+    // 2. 清空内容或标记为已删�?
 
     // 构建文件表达式（chatbook 需要特殊处理）
     let fileExpr;
     const fileVar = 'sgTmpDeleteFile';
     if (target === 'chatbook') {
-      // 使用 setvar/getvar 管道获取 chatbook 文件名
+      // 使用 setvar/getvar 管道获取 chatbook 文件�?
       await execSlash(`/getchatbook | /setvar key=${fileVar}`);
       fileExpr = `{{getvar::${fileVar}}}`;
     } else {
@@ -8274,10 +8272,6 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     await execSlash(disableExpr);
 
     // 修改 comment 为已删除标记
-    const deletedComment = `[已删除] ${comment}`;
-    const commentExpr = `/setentryfield file=${fileExpr} uid=${uid} field=comment ${quoteSlashValue(deletedComment)}`;
-    await execSlash(commentExpr);
-
     // 清空触发词（避免被触发）
     const keyExpr = `/setentryfield file=${fileExpr} uid=${uid} field=key ""`;
     await execSlash(keyExpr);
@@ -8377,13 +8371,13 @@ async function deleteFactionEntry(factionName, meta, settings) {
   return results.length ? results : null;
 }
 
-// 删除物品栏条目
+// 删除物品栏条�?
 async function deleteInventoryEntry(itemName, meta, settings) {
   const results = [];
   if (settings.summaryToWorldInfo) {
     const r = await deleteStructuredEntry('inventory', itemName, meta, settings, {
       entriesCache: meta.inventoryEntries,
-      prefix: settings.inventoryEntryPrefix || '物品栏',
+      prefix: settings.inventoryEntryPrefix || '物品�?,
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -8391,7 +8385,7 @@ async function deleteInventoryEntry(itemName, meta, settings) {
   if (settings.summaryToBlueWorldInfo) {
     const r = await deleteStructuredEntry('inventory', itemName, meta, settings, {
       entriesCache: meta.inventoryEntries,
-      prefix: settings.inventoryEntryPrefix || '物品栏',
+      prefix: settings.inventoryEntryPrefix || '物品�?,
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -8421,13 +8415,13 @@ async function deleteAchievementEntry(achievementName, meta, settings) {
   return results.length ? results : null;
 }
 
-// 删除副职业条目
+// 删除副职业条�?
 async function deleteSubProfessionEntry(subProfessionName, meta, settings) {
   const results = [];
   if (settings.summaryToWorldInfo) {
     const r = await deleteStructuredEntry('subProfession', subProfessionName, meta, settings, {
       entriesCache: meta.subProfessionEntries,
-      prefix: settings.subProfessionEntryPrefix || '副职业',
+      prefix: settings.subProfessionEntryPrefix || '副职�?,
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -8435,7 +8429,7 @@ async function deleteSubProfessionEntry(subProfessionName, meta, settings) {
   if (settings.summaryToBlueWorldInfo) {
     const r = await deleteStructuredEntry('subProfession', subProfessionName, meta, settings, {
       entriesCache: meta.subProfessionEntries,
-      prefix: settings.subProfessionEntryPrefix || '副职业',
+      prefix: settings.subProfessionEntryPrefix || '副职�?,
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -8465,13 +8459,13 @@ async function deleteQuestEntry(questName, meta, settings) {
   return results.length ? results : null;
 }
 
-// 删除猎艳录条目
+// 删除猎艳录条�?
 async function deleteConquestEntry(conquestName, meta, settings) {
   const results = [];
   if (settings.summaryToWorldInfo) {
     const r = await deleteStructuredEntry('conquest', conquestName, meta, settings, {
       entriesCache: meta.conquestEntries,
-      prefix: settings.conquestEntryPrefix || '猎艳录',
+      prefix: settings.conquestEntryPrefix || '猎艳�?,
       targetType: 'green',
     });
     if (r) results.push(r);
@@ -8479,7 +8473,7 @@ async function deleteConquestEntry(conquestName, meta, settings) {
   if (settings.summaryToBlueWorldInfo) {
     const r = await deleteStructuredEntry('conquest', conquestName, meta, settings, {
       entriesCache: meta.conquestEntries,
-      prefix: settings.conquestEntryPrefix || '猎艳录',
+      prefix: settings.conquestEntryPrefix || '猎艳�?,
       targetType: 'blue',
     });
     if (r) results.push(r);
@@ -8561,7 +8555,7 @@ async function getSlashExecutor() {
   }
 
   cachedSlashExecutor = null;
-  throw new Error('未找到可用的 STscript/SlashCommand 执行函数（无法自动写入世界书）。');
+  throw new Error('未找到可用的 STscript/SlashCommand 执行函数（无法自动写入世界书）�?);
 }
 
 async function execSlash(cmd) {
@@ -8590,7 +8584,7 @@ function safeStringifyShort(v, maxLen = 260) {
  * - string
  * - number/boolean
  * - array
- * - object（常见字段：text/output/message/result/value/data/html...）
+ * - object（常见字段：text/output/message/result/value/data/html...�?
  */
 function slashOutputToText(out, seen = new Set()) {
   if (out == null) return '';
@@ -8599,7 +8593,7 @@ function slashOutputToText(out, seen = new Set()) {
   if (t === 'number' || t === 'boolean') return String(out);
 
   if (Array.isArray(out)) {
-    return out.map(x => slashOutputToText(x, seen)).filter(Boolean).join('\n');
+    return out.map(x => slashOutputToText(x, seen)).filter(Boolean).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
   }
 
   if (t === 'object') {
@@ -8627,8 +8621,8 @@ function slashOutputToText(out, seen = new Set()) {
 }
 
 /**
- * 从 SlashCommand 输出中提取世界书条目 UID
- * - 支持 text / object / array 多种形态
+ * �?SlashCommand 输出中提取世界书条目 UID
+ * - 支持 text / object / array 多种形�?
  * - 支持 uid=123、UID:123、以及返回对象里直接包含 uid 字段
  */
 function extractUid(out, seen = new Set()) {
@@ -8643,9 +8637,9 @@ function extractUid(out, seen = new Set()) {
 
   if (t === 'string') {
     const s = out;
-    const m1 = s.match(/\buid\s*[:=]\s*(\d{1,12})\b/i);
+    const m1 = s.match(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;buid        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[:=]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*(        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d{1,12})        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/i);
     if (m1) return Number.parseInt(m1[1], 10);
-    const m2 = s.match(/\b(\d{1,12})\b/);
+    const m2 = s.match(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b(        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d{1,12})        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/);
     if (m2) return Number.parseInt(m2[1], 10);
     return null;
   }
@@ -8698,7 +8692,7 @@ function extractUid(out, seen = new Set()) {
 }
 
 function quoteSlashValue(v) {
-  const s = String(v ?? '').replace(/"/g, '\\"');
+  const s = String(v ?? '').replace(/"/g, '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;"');
   return `"${s}"`;
 }
 
@@ -8714,14 +8708,14 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
 
   // normalize content and make it safe for slash parser (avoid accidental pipe split)
   const content = String(rec.summary || '')
-    .replace(/\s*\n+\s*/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*/g, ' ')
+    .replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+/g, ' ')
     .trim()
-    .replace(/\|/g, '｜');
+    .replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;|/g, '�?);
 
   const t = String(target || 'file');
   const f = normalizeWorldInfoFileName(file || '');
-  if (t === 'file' && !f) throw new Error('WorldInfo 目标为 file 时必须填写世界书文件名。');
+  if (t === 'file' && !f) throw new Error('WorldInfo 目标�?file 时必须填写世界书文件名�?);
 
   // We purposely avoid parsing UID in JS, because some ST builds return only a status object
   // (e.g. {pipe:"0", ...}) even when the command pipes the UID internally.
@@ -8765,7 +8759,7 @@ async function writeSummaryToWorldInfoEntry(rec, meta, {
   const script = parts.join(' | ');
   const out = await execSlash(script);
   if (out && typeof out === 'object' && (out.isError || out.isAborted || out.isQuietlyAborted)) {
-    throw new Error(`写入世界书失败（返回：${safeStringifyShort(out)}）`);
+    throw new Error(`写入世界书失败（返回�?{safeStringifyShort(out)}）`);
   }
 
   // store link (UID is intentionally omitted because it may be inaccessible from JS in some ST builds)
@@ -8846,7 +8840,7 @@ async function rollbackStructuredChangesForRecord(rec, meta, settings, {
       ? { target: 'file', file: String(s.summaryBlueWorldInfoFile || '').trim() }
       : greenTarget;
     if (!targetInfo?.file) {
-      errors.push(`结构化：${change.entryType || '条目'}（${change.targetType || 'green'}）世界书文件名为空`);
+      errors.push(`结构化：${change.entryType || '条目'}�?{change.targetType || 'green'}）世界书文件名为空`);
       continue;
     }
 
@@ -8873,7 +8867,7 @@ async function rollbackStructuredChangesForRecord(rec, meta, settings, {
       });
       ok = !!r;
       if (!ok) {
-        // 尝试使用 [已删除] 前缀兜底（以防回滚前条目正好被手动禁用了）
+        // 尝试使用 [已删除] 前缀兜底（以防回滚前条目正好被手动禁用了�?
         const fallbackComment = `[已删除] ${comment}`;
         const r2 = await updateWorldInfoEntryByComment(fallbackComment, s, {
           target: targetInfo.target,
@@ -8916,7 +8910,7 @@ async function rollbackStructuredChangesForRecord(rec, meta, settings, {
           });
           restored = { created: true };
         } catch (e) {
-          errors.push(`结构化：${change.entryType || '条目'}恢复失败（${e?.message ?? e}）`);
+          errors.push(`结构化：${change.entryType || '条目'}恢复失败�?{e?.message ?? e}）`);
         }
       }
       ok = !!restored;
@@ -8954,8 +8948,8 @@ async function rollbackLastSummary(options = {}) {
 
   const rec = hist[idx];
   if (!silent) {
-    setStatus('正在撤销最近一次总结…', 'warn');
-    showToast('正在撤销最近一次总结…', { kind: 'warn', spinner: true, sticky: true });
+    setStatus('正在撤销最近一次总结�?, 'warn');
+    showToast('正在撤销最近一次总结�?, { kind: 'warn', spinner: true, sticky: true });
   } else {
     console.log('[StoryGuide] Auto-rolling back last summary due to message deletion');
   }
@@ -8978,10 +8972,10 @@ async function rollbackLastSummary(options = {}) {
       }
       if (!greenOk) errors.push('绿灯：未找到条目');
     } catch (e) {
-      errors.push(`绿灯：${e?.message ?? e}`);
+      errors.push(`绿灯�?{e?.message ?? e}`);
     }
   } else {
-    errors.push('绿灯：世界书文件名为空');
+    errors.push('绿灯：世界书文件名为�?);
   }
 
   const blueFile = String(s.summaryBlueWorldInfoFile || '').trim();
@@ -8999,10 +8993,10 @@ async function rollbackLastSummary(options = {}) {
       }
       if (!blueOk) errors.push('蓝灯：未找到条目');
     } catch (e) {
-      errors.push(`蓝灯：${e?.message ?? e}`);
+      errors.push(`蓝灯�?{e?.message ?? e}`);
     }
   } else {
-    errors.push('蓝灯：世界书文件名为空');
+    errors.push('蓝灯：世界书文件名为�?);
   }
 
   hist.splice(idx, 1);
@@ -9031,9 +9025,9 @@ async function rollbackLastSummary(options = {}) {
   try { if ($('#sg_toast').hasClass('spinner')) hideToast(); } catch { /* ignore */ }
 
   if (errors.length) {
-    setStatus(`撤销完成（${errors[0]}）`, 'warn');
+    setStatus(`撤销完成�?{errors[0]}）`, 'warn');
   } else {
-    setStatus(`已撤销最近一次总结 ✅（绿灯${greenOk ? '已删' : '未删'}｜蓝灯${blueOk ? '已删' : '未删'}）`, 'ok');
+    setStatus(`已撤销最近一次总结 ✅（绿灯${greenOk ? '已删' : '未删'}｜蓝�?{blueOk ? '已删' : '未删'}）`, 'ok');
   }
 }
 
@@ -9077,8 +9071,8 @@ async function rollbackLastStructuredEntries(options = {}) {
 
   const rec = fromSummary ? sumRec : hist[idx];
   if (!silent) {
-    setStatus('正在撤销最近一次结构化条目…', 'warn');
-    showToast('正在撤销最近一次结构化条目…', { kind: 'warn', spinner: true, sticky: true });
+    setStatus('正在撤销最近一次结构化条目�?, 'warn');
+    showToast('正在撤销最近一次结构化条目�?, { kind: 'warn', spinner: true, sticky: true });
   } else {
     console.log('[StoryGuide] Auto-rolling back last structured entries due to message deletion');
   }
@@ -9110,7 +9104,7 @@ async function rollbackLastStructuredEntries(options = {}) {
     return;
   }
   if (result.errors.length) {
-    if (!silent) setStatus(`结构化撤销完成（${result.errors[0]}）`, 'warn');
+    if (!silent) setStatus(`结构化撤销完成�?{result.errors[0]}）`, 'warn');
   } else {
     if (!silent) setStatus(`已撤销最近一次结构化条目 ✅（${result.rolled}/${result.total}）`, 'ok');
     else setStatus(`已自动撤回结构化条目 ✅`, 'ok');
@@ -9201,8 +9195,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
   if (isSummarizing) return;
   isSummarizing = true;
   summaryCancelled = false;
-  setStatus('总结中…', 'warn');
-  showToast('正在总结…', { kind: 'warn', spinner: true, sticky: true });
+  setStatus('总结中�?, 'warn');
+  showToast('正在总结�?, { kind: 'warn', spinner: true, sticky: true });
 
   try {
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -9255,8 +9249,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
 
     const totalSeg = segments.length;
     if (!totalSeg) {
-      setStatus('没有可总结的内容（范围为空）', 'warn');
-      showToast('没有可总结的内容（范围为空）', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
+      setStatus('没有可总结的内容（范围为空�?, 'warn');
+      showToast('没有可总结的内容（范围为空�?, { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
       return;
     }
 
@@ -9297,8 +9291,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     for (let i = 0; i < segments.length; i++) {
       // 检查是否被取消
       if (summaryCancelled) {
-        setStatus('总结已取消', 'warn');
-        showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+        setStatus('总结已取�?, 'warn');
+        showToast('总结已取�?, { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
         cancelledEarly = true;
         break;
       }
@@ -9309,8 +9303,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       const fromFloor = seg.fromFloor;
       const toFloor = seg.toFloor;
 
-      if (totalSeg > 1) setStatus(`手动分段总结中…（${i + 1}/${totalSeg}｜${fromFloor}-${toFloor}）`, 'warn');
-      else setStatus('总结中…', 'warn');
+      if (totalSeg > 1) setStatus(`手动分段总结中…（${i + 1}/${totalSeg}�?{fromFloor}-${toFloor}）`, 'warn');
+      else setStatus('总结中�?, 'warn');
 
       const chunkText = buildSummaryChunkTextRange(chat, startIdx, endIdx, s.summaryMaxCharsPerMessage, s.summaryMaxTotalChars, true, true);
       if (!chunkText) {
@@ -9340,8 +9334,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         }
       } catch (e) {
         if (summaryCancelled || isAbortError(e)) {
-          setStatus('总结已取消', 'warn');
-          showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+          setStatus('总结已取�?, 'warn');
+          showToast('总结已取�?, { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
           cancelledEarly = true;
           break;
         }
@@ -9351,15 +9345,15 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       }
 
       if (summaryCancelled) {
-        setStatus('总结已取消', 'warn');
-        showToast('总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+        setStatus('总结已取�?, 'warn');
+        showToast('总结已取�?, { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
         cancelledEarly = true;
         break;
       }
 
       const parsed = safeJsonParse(jsonText);
       if (!parsed || !parsed.summary) {
-        runErrs.push(`${fromFloor}-${toFloor}：总结输出无法解析为 JSON`);
+        runErrs.push(`${fromFloor}-${toFloor}：总结输出无法解析�?JSON`);
         continue;
       }
 
@@ -9375,7 +9369,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         if (!Number.isFinite(Number(meta.nextIndex))) {
           let maxN = 0;
           const pref = String(s.summaryIndexPrefix || 'A-');
-          const re = new RegExp('^' + escapeRegExp(pref) + '(\\d+)$');
+          const re = new RegExp('^' + escapeRegExp(pref) + '(        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+)$');
           for (const h of (Array.isArray(meta.history) ? meta.history : [])) {
             const id0 = String(h?.indexId || '').trim();
             const m = id0.match(re);
@@ -9426,7 +9420,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       // 同步进蓝灯索引缓存（用于本地匹配/预筛选）
       try { appendToBlueIndexCache(rec); } catch { /* ignore */ }
 
-      // 生成结构化世界书条目（人物/装备/物品栏/势力/成就/副职业/任务 - 与剧情总结同一事务）
+      // 生成结构化世界书条目（人�?装备/物品�?势力/成就/副职�?任务 - 与剧情总结同一事务�?
       if (s.structuredEntriesEnabled && (s.summaryToWorldInfo || s.summaryToBlueWorldInfo)) {
         const structuredChanges = [];
         try {
@@ -9454,7 +9448,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
           }
         } catch (e) {
           console.warn('[StoryGuide] Structured entries generation failed:', e);
-          // 结构化条目生成失败不阻断主流程
+          // 结构化条目生成失败不阻断主流�?
         }
       }
 
@@ -9476,7 +9470,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
             }
           } catch (e) {
             console.warn('[StoryGuide] write green world info failed:', e);
-            writeErrs.push(`${fromFloor}-${toFloor} 绿灯：${e?.message ?? e}`);
+            writeErrs.push(`${fromFloor}-${toFloor} 绿灯�?{e?.message ?? e}`);
           }
         }
 
@@ -9491,11 +9485,11 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
             wroteBlueOk += 1;
           } catch (e) {
             console.warn('[StoryGuide] write blue world info failed:', e);
-            writeErrs.push(`${fromFloor}-${toFloor} 蓝灯：${e?.message ?? e}`);
+            writeErrs.push(`${fromFloor}-${toFloor} 蓝灯�?{e?.message ?? e}`);
           }
         }
 
-        // 生成大总结（到达阈值时自动触发）
+        // 生成大总结（到达阈值时自动触发�?
         try {
           const megaCreated = await maybeGenerateMegaSummary(meta, s);
           if (megaCreated > 0) {
@@ -9510,7 +9504,7 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
     updateSummaryInfoLabel();
     renderSummaryPaneFromMeta();
 
-    // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓存
+    // 若启用实时读取索引：在手动分段写入蓝灯后，尽快刷新一次缓�?
     if (s.summaryToBlueWorldInfo && String(ensureSettings().wiBlueIndexMode || 'live') === 'live') {
       ensureBlueIndexLive(true).catch(() => void 0);
     }
@@ -9529,14 +9523,14 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         const wrote = [];
         if (s.summaryToWorldInfo) wrote.push(`绿灯 ${wroteGreenOk}/${created}`);
         if (s.summaryToBlueWorldInfo) wrote.push(`蓝灯 ${wroteBlueOk}/${created}`);
-        if (wrote.length) parts.push(`写入：${wrote.join('｜')}`);
+        if (wrote.length) parts.push(`写入�?{wrote.join('�?)}`);
       }
       const errCount = writeErrs.length + runErrs.length;
       if (errCount) {
-        const sample = (writeErrs.concat(runErrs)).slice(0, 2).join('；');
-        setStatus(`手动分段总结完成 ✅（${parts.join('｜')}｜失败：${errCount}｜${sample}${errCount > 2 ? '…' : ''}）`, 'warn');
+        const sample = (writeErrs.concat(runErrs)).slice(0, 2).join('�?);
+        setStatus(`手动分段总结完成 ✅（${parts.join('�?)}｜失败：${errCount}�?{sample}${errCount > 2 ? '�? : ''}）`, 'warn');
       } else {
-        setStatus(`手动分段总结完成 ✅（${parts.join('｜')}）`, 'ok');
+        setStatus(`手动分段总结完成 ✅（${parts.join('�?)}）`, 'ok');
       }
     } else {
       // single
@@ -9544,17 +9538,17 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
         const ok = [];
         const err = [];
         if (s.summaryToWorldInfo) {
-          if (wroteGreenOk >= 1) ok.push('绿灯世界书');
+          if (wroteGreenOk >= 1) ok.push('绿灯世界�?);
           else if (writeErrs.find(x => x.includes('绿灯'))) err.push(writeErrs.find(x => x.includes('绿灯')));
         }
         if (s.summaryToBlueWorldInfo) {
-          if (wroteBlueOk >= 1) ok.push('蓝灯世界书');
+          if (wroteBlueOk >= 1) ok.push('蓝灯世界�?);
           else if (writeErrs.find(x => x.includes('蓝灯'))) err.push(writeErrs.find(x => x.includes('蓝灯')));
         }
-        if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ') || '（无）'}）`, 'ok');
-        else setStatus(`总结完成 ✅（写入失败：${err.join('；')}）`, 'warn');
+        if (!err.length) setStatus(`总结完成 ✅（已写入：${ok.join(' + ') || '（无�?}）`, 'ok');
+        else setStatus(`总结完成 ✅（写入失败�?{err.join('�?)}）`, 'warn');
       } else {
-        setStatus('总结完成 ✅', 'ok');
+        setStatus('总结完成 �?, 'ok');
       }
     }
 
@@ -9563,8 +9557,8 @@ async function runSummary({ reason = 'manual', manualFromFloor = null, manualToF
       const errCount = (writeErrs?.length || 0) + (runErrs?.length || 0);
       const kind = errCount ? 'warn' : 'ok';
       const text = (totalSeg > 1)
-        ? (errCount ? '分段总结完成 ⚠️' : '分段总结完成 ✅')
-        : (errCount ? '总结完成 ⚠️' : '总结完成 ✅');
+        ? (errCount ? '分段总结完成 ⚠️' : '分段总结完成 �?)
+        : (errCount ? '总结完成 ⚠️' : '总结完成 �?);
       showToast(text, { kind, spinner: false, sticky: false, duration: errCount ? 2600 : 1700 });
     } catch { /* ignore toast errors */ }
 
@@ -9674,8 +9668,8 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
 
   isStructuring = true;
   structuredCancelled = false;
-  setStatus('正在生成结构化条目…', 'warn');
-  showToast('正在生成结构化条目…', { kind: 'warn', spinner: true, sticky: true });
+  setStatus('正在生成结构化条目�?, 'warn');
+  showToast('正在生成结构化条目�?, { kind: 'warn', spinner: true, sticky: true });
   try {
     const ctx = SillyTavern.getContext();
     const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
@@ -9714,8 +9708,8 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
     let cancelledEarly = false;
     for (const seg of segments) {
       if (structuredCancelled) {
-        setStatus('结构化总结已取消', 'warn');
-        showToast('结构化总结已取消', { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
+        setStatus('结构化总结已取�?, 'warn');
+        showToast('结构化总结已取�?, { kind: 'warn', spinner: false, sticky: false, duration: 2000 });
         cancelledEarly = true;
         break;
       }
@@ -9742,7 +9736,7 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
       await setSummaryMeta(meta);
     }
 
-    if (processed > 0) setStatus(`结构化条目完成 ✅（${processed} 段）`, 'ok');
+    if (processed > 0) setStatus(`结构化条目完�?✅（${processed} 段）`, 'ok');
     else setStatus('结构化条目未生成', 'warn');
     return processed;
   } catch (e) {
@@ -9755,18 +9749,18 @@ async function runStructuredEntries({ reason = 'auto' } = {}) {
   }
 }
 
-// -------------------- 蓝灯索引 → 绿灯触发（发送消息时注入触发词） --------------------
+// -------------------- 蓝灯索引 �?绿灯触发（发送消息时注入触发词） --------------------
 
 function escapeRegExp(str) {
-  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(str || '').replace(/[.*+?^${}()|[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]/g, '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;$&');
 }
 
 function stripTriggerInjection(text, tag = 'SG_WI_TRIGGERS') {
   const t = String(text || '');
   const et = escapeRegExp(tag);
   // remove all existing injections of this tag (safe)
-  const reComment = new RegExp(`\\n?\\s*<!--\\s*${et}\\b[\\s\\S]*?-->`, 'g');
-  const rePlain = new RegExp(`\\n?\\s*\\[${et}\\][^\\n]*\\n?`, 'g');
+  const reComment = new RegExp(`        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*<!--        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*${et}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*?-->`, 'g');
+  const rePlain = new RegExp(`        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;[${et}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;][^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n?`, 'g');
   return t.replace(reComment, '').replace(rePlain, '').trimEnd();
 }
 
@@ -9775,11 +9769,11 @@ function buildTriggerInjection(keywords, tag = 'SG_WI_TRIGGERS', style = 'hidden
   if (!kws.length) return '';
   if (String(style || 'hidden') === 'plain') {
     // Visible but most reliable for world-info scan.
-    return `\n\n[${tag}] ${kws.join(' ')}\n`;
+    return `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n[${tag}] ${kws.join(' ')}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
   }
   // Hidden comment: put each keyword on its own line, so substring match is very likely to hit.
-  const body = kws.join('\n');
-  return `\n\n<!--${tag}\n${body}\n-->`;
+  const body = kws.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
+  return `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n<!--${tag}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${body}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n-->`;
 }
 
 // -------------------- ROLL 判定 --------------------
@@ -9821,7 +9815,7 @@ function detectRollAction(text, actions) {
 function extractStatusBlock(text, tagName = 'status_current_variable') {
   const t = String(text || '');
   if (!t) return '';
-  const re = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'gi');
+  const re = new RegExp(`<${tagName}>([        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*?)<        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/${tagName}>`, 'gi');
   let m = null;
   let last = '';
   while ((m = re.exec(t))) {
@@ -9836,9 +9830,9 @@ function parseStatData(text, mode = 'json') {
 
   if (String(mode || 'json') === 'kv') {
     const out = { pc: {}, mods: {}, context: {} };
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const lines = raw.split(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;r?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n/).map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
-      const m = line.match(/^([a-zA-Z0-9_.\[\]-]+)\s*[:=]\s*([+-]?\d+(?:\.\d+)?)\s*$/);
+      const m = line.match(/^([a-zA-Z0-9_.        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]-]+)        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*[:=]        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*([+-]?        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+(?:        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;.        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+)?)        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*$/);
       if (!m) continue;
       const path = m[1];
       const val = Number(m[2]);
@@ -9983,7 +9977,7 @@ function buildRollPromptMessages(actionKey, statData, settings, formula, randomW
     .replaceAll('{{modifierSourcesJson}}', modifierSourcesJson)
     .replaceAll('{{statDataJson}}', statDataJson);
 
-  const enforced = user + `\n\n` + ROLL_JSON_REQUIREMENT;
+  const enforced = user + `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` + ROLL_JSON_REQUIREMENT;
   return [
     { role: 'system', content: sys },
     { role: 'user', content: enforced },
@@ -10007,7 +10001,7 @@ function buildRollDecisionPromptMessages(userText, statData, settings, randomRol
     .replaceAll('{{randomRoll}}', String(randomRoll))
     .replaceAll('{{statDataJson}}', statDataJson);
 
-  const enforced = user + `\n\n` + ROLL_DECISION_JSON_REQUIREMENT;
+  const enforced = user + `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n` + ROLL_DECISION_JSON_REQUIREMENT;
   return [
     { role: 'system', content: sys },
     { role: 'user', content: enforced },
@@ -10082,10 +10076,10 @@ function buildRollInjectionFromResult(res, tag = 'SG_ROLL', style = 'hidden') {
   const outcome = String(res.outcomeTier || '').trim() || (success == null ? 'N/A' : (success ? '成功' : '失败'));
 
   if (String(style || 'hidden') === 'plain') {
-    return `\n\n[${tag}] 动作=${action} | 结果=${outcome} | 最终=${final.toFixed(2)} | 阈值>=${threshold == null ? 'N/A' : threshold} | 基础=${base.toFixed(2)} | 随机=1d100:${roll}*${weight} | 修正=${modLine} | 公式=${formula}\n`;
+    return `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n[${tag}] 动作=${action} | 结果=${outcome} | 最�?${final.toFixed(2)} | 阈�?=${threshold == null ? 'N/A' : threshold} | 基础=${base.toFixed(2)} | 随机=1d100:${roll}*${weight} | 修正=${modLine} | 公式=${formula}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
   }
 
-  return `\n\n<!--${tag}\n动作=${action}\n结果=${outcome}\n最终=${final.toFixed(2)}\n阈值>=${threshold == null ? 'N/A' : threshold}\n基础=${base.toFixed(2)}\n随机=1d100:${roll}*${weight}\n修正=${modLine}\n公式=${formula}\n-->`;
+  return `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n<!--${tag}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n动作=${action}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n结果=${outcome}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n最�?${final.toFixed(2)}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n阈�?=${threshold == null ? 'N/A' : threshold}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n基础=${base.toFixed(2)}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n随机=1d100:${roll}*${weight}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n修正=${modLine}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n公式=${formula}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n-->`;
 }
 
 function getLatestAssistantText(chat, strip = true) {
@@ -10115,9 +10109,9 @@ function resolveStatDataFromVariableStore(settings) {
   if (!key) return { statData: null, rawText: '' };
   const ctx = SillyTavern.getContext?.() ?? {};
 
-  // 扩展所有可能的变量来源，按优先级排序
+  // 扩展所有可能的变量来源，按优先级排�?
   const sources = [
-    // 优先从 context 获取（最新值）
+    // 优先�?context 获取（最新值）
     ctx?.variables,
     ctx?.chatMetadata?.variables,
     ctx?.chatMetadata,
@@ -10169,7 +10163,7 @@ function resolveStatDataFromVariableStore(settings) {
 
 async function resolveStatDataFromTemplate(settings) {
   const s = settings || ensureSettings();
-  const tpl = `<status_current_variable>\n{{format_message_variable::stat_data}}\n</status_current_variable>`;
+  const tpl = `<status_current_variable>        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{{format_message_variable::stat_data}}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n</status_current_variable>`;
   const ctx = SillyTavern.getContext?.() ?? {};
   const fns = [
     ctx?.renderTemplateAsync,
@@ -10201,7 +10195,7 @@ async function resolveStatDataFromTemplate(settings) {
 /**
  * 最稳定的变量读取方式：通过 /getvar 斜杠命令读取变量
  * 由于 SillyTavern 变量系统可能存在缓存或上下文不同步问题，
- * 使用 slash command 可以确保读取到最新的变量值
+ * 使用 slash command 可以确保读取到最新的变量�?
  */
 async function resolveStatDataViaSlashCommand(settings) {
   const s = settings || ensureSettings();
@@ -10228,14 +10222,14 @@ async function resolveStatDataViaSlashCommand(settings) {
 
     return { statData: null, rawText: raw };
   } catch (e) {
-    // /getvar 命令失败时静默处理，回退到其他方法
+    // /getvar 命令失败时静默处理，回退到其他方�?
     console.debug('[StoryGuide] resolveStatDataViaSlashCommand failed:', e);
     return { statData: null, rawText: '' };
   }
 }
 
 /**
- * 扩展的变量读取：尝试从 chat 数组中的最新消息读取变量（直接读取 DOM）
+ * 扩展的变量读取：尝试�?chat 数组中的最新消息读取变量（直接读取 DOM�?
  * 作为变量存储和模板方法的补充回退方案
  */
 function resolveStatDataFromChatDOM(settings) {
@@ -10244,7 +10238,7 @@ function resolveStatDataFromChatDOM(settings) {
   if (!key) return { statData: null, rawText: '' };
 
   try {
-    // 尝试从 DOM 中查找最近的状态块
+    // 尝试�?DOM 中查找最近的状态块
     const chatContainer = document.querySelector('#chat, .chat, [id*="chat"]');
     if (!chatContainer) return { statData: null, rawText: '' };
 
@@ -10285,18 +10279,18 @@ function resolveStatDataFromChatDOM(settings) {
 }
 
 /**
- * 综合查找变量数据：尝试多种来源以确保能读取到最新数据
- * 按优先级依次尝试：
- * 1. /getvar 斜杠命令（最稳定）
+ * 综合查找变量数据：尝试多种来源以确保能读取到最新数�?
+ * 按优先级依次尝试�?
+ * 1. /getvar 斜杠命令（最稳定�?
  * 2. 变量存储对象
  * 3. 模板渲染
- * 4. 从 DOM 读取
- * 5. 从最新 AI 回复读取
+ * 4. �?DOM 读取
+ * 5. 从最�?AI 回复读取
  */
 async function resolveStatDataComprehensive(chat, settings) {
   const s = settings || ensureSettings();
 
-  // 方法1：使用 /getvar 斜杠命令（最稳定）
+  // 方法1：使�?/getvar 斜杠命令（最稳定�?
   try {
     const { statData, rawText } = await resolveStatDataViaSlashCommand(s);
     if (statData) {
@@ -10332,7 +10326,7 @@ async function resolveStatDataComprehensive(chat, settings) {
     }
   } catch { /* continue */ }
 
-  // 方法5：从最新 AI 回复读取
+  // 方法5：从最�?AI 回复读取
   try {
     const { statData, rawText } = resolveStatDataFromLatestAssistant(chat, s);
     if (statData) {
@@ -10408,14 +10402,14 @@ async function maybeInjectRollResult(reason = 'msg_sent') {
       varSource = 'latestAssistant';
     }
   } else {
-    // 默认使用综合方法（最稳定）
+    // 默认使用综合方法（最稳定�?
     const result = await resolveStatDataComprehensive(chat, s);
     statData = result.statData;
     varSource = result.source || '';
   }
   if (!statData) {
     const name = String(s.wiRollStatVarName || 'stat_data').trim() || 'stat_data';
-    logStatus(`ROLL 未触发：未读取到变量（${name}）`, 'warn');
+    logStatus(`ROLL 未触发：未读取到变量�?{name}）`, 'warn');
     return;
   }
   if (s.wiRollDebugLog && varSource) {
@@ -10508,14 +10502,14 @@ async function buildRollInjectionForText(userText, chat, settings, logStatus) {
       varSource = 'latestAssistant';
     }
   } else {
-    // 默认使用综合方法（最稳定）
+    // 默认使用综合方法（最稳定�?
     const result = await resolveStatDataComprehensive(chat, s);
     statData = result.statData;
     varSource = result.source || '';
   }
   if (!statData) {
     const name = String(s.wiRollStatVarName || 'stat_data').trim() || 'stat_data';
-    logStatus?.(`ROLL 未触发：未读取到变量（${name}）`, 'warn');
+    logStatus?.(`ROLL 未触发：未读取到变量�?{name}）`, 'warn');
     return null;
   }
   if (s.wiRollDebugLog && varSource) {
@@ -10639,7 +10633,7 @@ async function buildTriggerInjectionForText(userText, chat, settings, logStatus)
 
   const style = String(s.wiTriggerInjectStyle || 'hidden').trim() || 'hidden';
   const injected = buildTriggerInjection(keywords, tagForStrip, style);
-  if (injected) logStatus?.(`索引已注入：${pickedNames.slice(0, 4).join('、')}${pickedNames.length > 4 ? '…' : ''}`, 'ok');
+  if (injected) logStatus?.(`索引已注入：${pickedNames.slice(0, 4).join('�?)}${pickedNames.length > 4 ? '�? : ''}`, 'ok');
   return injected || null;
 }
 
@@ -10893,7 +10887,7 @@ function tokenizeForSimilarity(text) {
   for (const w of latin) add(w, 1);
 
   // CJK sequences -> bigrams (better than single-char)
-  const cjkSeqs = s.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  const cjkSeqs = s.match(/[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e00-        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9fff]{2,}/g) || [];
   for (const seq of cjkSeqs) {
     // include short full seq for exact hits
     if (seq.length <= 6) add(seq, 2);
@@ -10941,7 +10935,7 @@ function buildRecentChatText(chat, lookback, excludeLast = true, stripTags = '')
     }
     if (t) msgs.push(t);
   }
-  return msgs.reverse().join('\n');
+  return msgs.reverse().join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 function getBlueIndexEntriesFast() {
@@ -10967,8 +10961,8 @@ function getBlueIndexEntriesFast() {
   const ageMs = now - Number(blueIndexLiveCache.loadedAt || 0);
   const need = (blueIndexLiveCache.file !== file) || ageMs > (minSec * 1000);
 
-  // 注意：为了尽量不阻塞 MESSAGE_SENT（确保触发词注入在生成前完成），这里不 await。
-  // 如果需要刷新，就后台拉取一次，下次消息即可使用最新索引。
+  // 注意：为了尽量不阻塞 MESSAGE_SENT（确保触发词注入在生成前完成），这里�?await�?
+  // 如果需要刷新，就后台拉取一次，下次消息即可使用最新索引�?
   if (need) {
     ensureBlueIndexLive(false).catch(() => void 0);
   }
@@ -10986,7 +10980,7 @@ function detectIndexEntryTypeByTitle(title, settings) {
     { type: 'equipment', prefix: String(s.equipmentEntryPrefix || '装备') },
     { type: 'faction', prefix: String(s.factionEntryPrefix || '势力') },
     { type: 'achievement', prefix: String(s.achievementEntryPrefix || '成就') },
-    { type: 'subProfession', prefix: String(s.subProfessionEntryPrefix || '副职业') },
+    { type: 'subProfession', prefix: String(s.subProfessionEntryPrefix || '副职�?) },
     { type: 'quest', prefix: String(s.questEntryPrefix || '任务') },
   ];
   for (const p of prefixes) {
@@ -11015,7 +11009,7 @@ function addStructuredIndexCandidates(out, entriesCache, prefix, type, seen) {
     if (seen && seen.has(dedupKey)) continue;
     if (seen) seen.add(dedupKey);
     out.push({
-      title: `${prefix}｜${entry.name}`,
+      title: `${prefix}�?{entry.name}`,
       summary: String(entry.content || '').trim(),
       keywords: kws,
       type,
@@ -11038,7 +11032,7 @@ function collectBlueIndexCandidates() {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
-      title: title || (keywords[0] ? `条目：${keywords[0]}` : '条目'),
+      title: title || (keywords[0] ? `条目�?{keywords[0]}` : '条目'),
       summary,
       keywords,
       type: detectIndexEntryTypeByTitle(title, s),
@@ -11112,7 +11106,7 @@ function pickRelevantIndexEntries(recentText, userText, candidates, maxEntries, 
   }
   const scored = [];
   for (const e of candidates) {
-    const txt = `${e.title || ''}\n${e.summary || ''}\n${(Array.isArray(e.keywords) ? e.keywords.join(' ') : '')}`;
+    const txt = `${e.title || ''}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${e.summary || ''}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${(Array.isArray(e.keywords) ? e.keywords.join(' ') : '')}`;
     const vec = tokenizeForSimilarity(txt);
     const score = cosineSimilarity(recentVec, vec);
     if (score >= minScore) scored.push({ e, score });
@@ -11170,7 +11164,7 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
     const e = x.e || x;
     const title = String(e.title || '').trim();
     const summary0 = String(e.summary || '').trim();
-    const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '…') : summary0;
+    const summary = summary0.length > candMaxChars ? (summary0.slice(0, candMaxChars) + '�?) : summary0;
     const kws = Array.isArray(e.keywords) ? e.keywords.slice(0, 24) : [];
     const name = title || '条目';
     return { id: i, name, title: name, summary, keywords: kws, type: normalizeIndexEntryType(e, s) };
@@ -11252,7 +11246,7 @@ async function pickRelevantIndexEntriesLLM(recentText, userText, candidates, max
       if (picked.length >= maxEntries) break;
       continue;
     }
-    if (/^\d+$/.test(norm)) {
+    if (/^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;d+$/.test(norm)) {
       pushByIndex(Number(norm));
       if (picked.length >= maxEntries) break;
     }
@@ -11283,7 +11277,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   if (!lastText || lastText.startsWith('/')) return;
   if (lastText.includes(String(s.wiTriggerTag || 'SG_WI_TRIGGERS'))) return;
 
-  // 仅在达到指定 AI 楼层后才开始索引触发（避免前期噪声/浪费）
+  // 仅在达到指定 AI 楼层后才开始索引触发（避免前期噪声/浪费�?
   const startAfter = clampInt(s.wiTriggerStartAfterAssistantMessages, 0, 200000, 0);
   if (startAfter > 0) {
     const assistantFloors = computeFloorCount(chat, 'assistant');
@@ -11307,7 +11301,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   }
 
   const lookback = clampInt(s.wiTriggerLookbackMessages, 5, 120, 20);
-  // 最近正文（不含本次用户输入）；为避免“触发词注入”污染相似度，先剔除同 tag 的注入片段。
+  // 最近正文（不含本次用户输入）；为避免“触发词注入”污染相似度，先剔除�?tag 的注入片段�?
   const tagForStrip = String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS';
   lastText = stripTriggerInjection(lastText, tagForStrip);
   const recentText = buildRecentChatText(chat, lookback, true, [tagForStrip, rollTag]);
@@ -11337,12 +11331,12 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   const maxKeywords = clampInt(s.wiTriggerMaxKeywords, 1, 200, 24);
   const kwSet = new Set();
   const pickedTitles = []; // debug display with score
-  const pickedNames = [];  // entry names (等价于将触发的绿灯条目名称)
+  const pickedNames = [];  // entry names (等价于将触发的绿灯条目名�?
   const pickedForLog = [];
   for (const { e, score } of picked) {
     const name = String(e.title || '').trim() || '条目';
     pickedNames.push(name);
-    pickedTitles.push(`${name}（${score.toFixed(2)}）`);
+    pickedTitles.push(`${name}�?{score.toFixed(2)}）`);
     pickedForLog.push({
       title: name,
       score: Number(score),
@@ -11386,7 +11380,7 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
   // debug status (only when pane open or explicitly enabled)
   const modalOpen = $('#sg_modal_backdrop').is(':visible');
   if (modalOpen || s.wiTriggerDebugLog) {
-    setStatus(`已注入触发词：${keywords.slice(0, 12).join('、')}${keywords.length > 12 ? '…' : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('；')}` : `｜将触发：${pickedNames.slice(0, 4).join('；')}${pickedNames.length > 4 ? '…' : ''}`}`, 'ok');
+    setStatus(`已注入触发词�?{keywords.slice(0, 12).join('�?)}${keywords.length > 12 ? '�? : ''}${s.wiTriggerDebugLog ? `｜命中：${pickedTitles.join('�?)}` : `｜将触发�?{pickedNames.slice(0, 4).join('�?)}${pickedNames.length > 4 ? '�? : ''}`}`, 'ok');
   }
 }
 
@@ -11395,8 +11389,8 @@ async function maybeInjectWorldInfoTriggers(reason = 'msg_sent') {
 function indentForListItem(md) {
   const s = String(md || '');
   const pad = '    '; // 4 spaces to ensure nested blocks stay inside the module card
-  if (!s) return pad + '（空）';
-  return s.split('\n').map(line => pad + line).join('\n');
+  if (!s) return pad + '（空�?;
+  return s.split('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n').map(line => pad + line).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 function normalizeNumberedHints(arr) {
@@ -11404,9 +11398,9 @@ function normalizeNumberedHints(arr) {
   for (let i = 0; i < arr.length; i++) {
     const t = String(arr[i] ?? '').trim();
     if (!t) continue;
-    // If the item already starts with 【n】, keep it; else prefix with 【i+1】
-    if (/^【\d+】/.test(t)) out.push(t);
-    else out.push(`【${i + 1}】 ${t}`);
+    // If the item already starts with 【n�? keep it; else prefix with 【i+1�?
+    if (/^【\d+�?.test(t)) out.push(t);
+    else out.push(`�?{i + 1}�?${t}`);
   }
   return out;
 }
@@ -11427,7 +11421,7 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
     if (m.type === 'list') {
       const arr = Array.isArray(val) ? val : [];
       if (!arr.length) {
-        if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空）')}`);
+        if (showEmpty) lines.push(`- **${title}**        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${indentForListItem('（空�?)}`);
         continue;
       }
 
@@ -11437,30 +11431,30 @@ function buildInlineMarkdownFromModules(parsedJson, modules, mode, showEmpty) {
         lines.push(`- **${title}**
 ${indentForListItem(picked.join(' / '))}`);
       } else {
-        // 标准模式：把整个列表合并到同一个模块卡片内（以【1】等为分隔提示）
+        // 标准模式：把整个列表合并到同一个模块卡片内（以�?】等为分隔提示）
         const normalized = normalizeNumberedHints(arr);
-        const joined = normalized.join('\n\n');
-        lines.push(`- **${title}**\n${indentForListItem(joined)}`);
+        const joined = normalized.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
+        lines.push(`- **${title}**        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${indentForListItem(joined)}`);
       }
     } else {
       const text = (val !== undefined && val !== null) ? String(val).trim() : '';
       if (!text) {
-        if (showEmpty) lines.push(`- **${title}**\n${indentForListItem('（空）')}`);
+        if (showEmpty) lines.push(`- **${title}**        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${indentForListItem('（空�?)}`);
         continue;
       }
 
       if (mode === 'compact') {
-        const short = (text.length > 140 ? text.slice(0, 140) + '…' : text);
+        const short = (text.length > 140 ? text.slice(0, 140) + '�? : text);
         lines.push(`- **${title}**
 ${indentForListItem(short)}`);
       } else {
-        // 标准模式：把内容缩进到 list item 内，避免内部列表/编号变成“同级卡片”
-        lines.push(`- **${title}**\n${indentForListItem(text)}`);
+        // 标准模式：把内容缩进�?list item 内，避免内部列表/编号变成“同级卡片�?
+        lines.push(`- **${title}**        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${indentForListItem(text)}`);
       }
     }
   }
 
-  return lines.join('\n');
+  return lines.join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 // -------------------- message locating & box creation --------------------
@@ -11541,7 +11535,7 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed, quickActions) {
   box.className = 'sg-inline-box';
   box.dataset.sgMesKey = String(mesKey);
 
-  // 只渲染AI生成的动态选项（不再使用静态配置的选项）
+  // 只渲染AI生成的动态选项（不再使用静态配置的选项�?
   let quickOptionsHtml = '';
   if (Array.isArray(quickActions) && quickActions.length) {
     quickOptionsHtml = renderDynamicQuickActionsHtml(quickActions, 'inline');
@@ -11552,14 +11546,14 @@ function createInlineBoxElement(mesKey, htmlInner, collapsed, quickActions) {
       <span class="sg-inline-badge">📘</span>
       <span class="sg-inline-title">剧情指导</span>
       <span class="sg-inline-sub">（剧情分析）</span>
-      <span class="sg-inline-chevron">▾</span>
+      <span class="sg-inline-chevron">�?/span>
     </div>
     <div class="sg-inline-body">${htmlInner}</div>
     ${quickOptionsHtml}
-    <div class="sg-inline-foot" title="点击折叠并回到正文">
-      <span class="sg-inline-foot-icon">▴</span>
-      <span class="sg-inline-foot-text">收起并回到正文</span>
-      <span class="sg-inline-foot-icon">▴</span>
+    <div class="sg-inline-foot" title="点击折叠并回到正�?>
+      <span class="sg-inline-foot-icon">�?/span>
+      <span class="sg-inline-foot-text">收起并回到正�?/span>
+      <span class="sg-inline-foot-icon">�?/span>
     </div>`.trim();
 
   setCollapsed(box, !!collapsed);
@@ -11608,7 +11602,7 @@ function createPanelBoxElement(mesKey, htmlInner, collapsed) {
   box.className = 'sg-panel-box';
   box.dataset.sgMesKey = String(mesKey);
 
-  // panel 模式暂不显示快捷选项（只在 inline 模式显示）
+  // panel 模式暂不显示快捷选项（只�?inline 模式显示�?
   const quickOptionsHtml = '';
 
   box.innerHTML = `
@@ -11616,14 +11610,14 @@ function createPanelBoxElement(mesKey, htmlInner, collapsed) {
       <span class="sg-inline-badge">🧭</span>
       <span class="sg-inline-title">剧情指导</span>
       <span class="sg-inline-sub">（面板报告）</span>
-      <span class="sg-inline-chevron">▾</span>
+      <span class="sg-inline-chevron">�?/span>
     </div>
     <div class="sg-panel-body">${htmlInner}</div>
     ${quickOptionsHtml}
-    <div class="sg-panel-foot" title="点击折叠并回到正文">
-      <span class="sg-inline-foot-icon">▴</span>
-      <span class="sg-inline-foot-text">收起并回到正文</span>
-      <span class="sg-inline-foot-icon">▴</span>
+    <div class="sg-panel-foot" title="点击折叠并回到正�?>
+      <span class="sg-inline-foot-icon">�?/span>
+      <span class="sg-inline-foot-text">收起并回到正�?/span>
+      <span class="sg-inline-foot-icon">�?/span>
     </div>`.trim();
 
   setCollapsed(box, !!collapsed);
@@ -11667,7 +11661,7 @@ function syncPanelOutputToChat(markdownOrText, asCodeBlock = false) {
 
   if (asCodeBlock) {
     // show raw output safely
-    md = '```text\n' + md + '\n```';
+    md = '```text        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n' + md + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n```';
   }
 
   const htmlInner = renderMarkdownToHtml(md);
@@ -11702,7 +11696,7 @@ function ensureInlineBoxPresent(mesKey) {
     // 更新 body（有时候被覆盖成空壳）
     const body = existing.querySelector('.sg-inline-body');
     if (body && cached.htmlInner && body.innerHTML !== cached.htmlInner) body.innerHTML = cached.htmlInner;
-    // 更新动态选项（如果有变化）
+    // 更新动态选项（如果有变化�?
     const optionsContainer = existing.querySelector('.sg-dynamic-options');
     if (!optionsContainer && Array.isArray(cached.quickActions) && cached.quickActions.length) {
       const newOptionsHtml = renderDynamicQuickActionsHtml(cached.quickActions, 'inline');
@@ -11744,7 +11738,7 @@ async function runInlineAppendForLastMessage(opts = {}) {
   const force = !!opts.force;
   const allow = !!opts.allowWhenDisabled;
   if (!s.enabled) return;
-  // 手动按钮允许在关闭“自动追加”时也生成
+  // 手动按钮允许在关闭“自动追加”时也生�?
   if (!s.autoAppendBox && !allow) return;
 
   const ref = getLastAssistantMessageRef();
@@ -11756,7 +11750,7 @@ async function runInlineAppendForLastMessage(opts = {}) {
     inlineCache.delete(String(mesKey));
   }
 
-  // 如果已经缓存过：非强制则只补贴一次；强制则重新请求
+  // 如果已经缓存过：非强制则只补贴一次；强制则重新请�?
   if (inlineCache.has(String(mesKey)) && !force) {
     ensureInlineBoxPresent(mesKey);
     return;
@@ -11766,15 +11760,15 @@ async function runInlineAppendForLastMessage(opts = {}) {
     const { snapshotText } = buildSnapshot();
 
     const modules = getModules('append');
-    // append 里 schema 按 inline 模块生成；如果用户把 inline 全关了，就不生成
+    // append �?schema �?inline 模块生成；如果用户把 inline 全关了，就不生成
     if (!modules.length) return;
 
     await updateMapFromSnapshot(snapshotText);
 
-    // 对 “compact/standard” 给一点暗示（不强制），避免用户模块 prompt 很长时没起作用
+    // �?“compact/standard�?给一点暗示（不强制），避免用户模�?prompt 很长时没起作�?
     const modeHint = (s.appendMode === 'standard')
-      ? `\n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
-      : `\n【附加要求】inline 输出尽量短：每个字段尽量 1~2 句/2 条以内。\n`;
+      ? `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【附加要求】inline 输出可比面板更短，但不要丢掉关键信息。\n`
+      : `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【附加要求】inline 输出尽量短：每个字段尽量 1~2 �?2 条以内。\n`;
 
     const schema = buildSchemaFromModules(modules);
     const messages = buildPromptMessages(snapshotText + modeHint, s.spoilerLevel, modules, 'append');
@@ -11796,10 +11790,10 @@ async function runInlineAppendForLastMessage(opts = {}) {
 
     const parsed = safeJsonParse(jsonText);
     if (!parsed) {
-      // 解析失败：也把原文追加到聊天末尾，避免“有输出但看不到”
+      // 解析失败：也把原文追加到聊天末尾，避免“有输出但看不到�?
       const raw = String(jsonText || '').trim();
-      const rawMd = raw ? ('```text\n' + raw + '\n```') : '（空）';
-      const mdFail = `**剧情指导（解析失败）**\n\n${rawMd}`;
+      const rawMd = raw ? ('```text        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n' + raw + '        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n```') : '（空�?;
+      const mdFail = `**剧情指导（解析失败）**        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${rawMd}`;
       const htmlInnerFail = renderMarkdownToHtml(mdFail);
 
       inlineCache.set(String(mesKey), { htmlInner: htmlInnerFail, collapsed: false, createdAt: Date.now() });
@@ -11853,7 +11847,7 @@ function fillModelSelect(modelIds, selected) {
   const $sel = $('#sg_modelSelect');
   if (!$sel.length) return;
   $sel.empty();
-  $sel.append(`<option value="">（选择模型）</option>`);
+  $sel.append(`<option value="">（选择模型�?/option>`);
   (modelIds || []).forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
@@ -11868,7 +11862,7 @@ function fillSummaryModelSelect(modelIds, selected) {
   const $sel = $('#sg_summaryModelSelect');
   if (!$sel.length) return;
   $sel.empty();
-  $sel.append(`<option value="">（选择模型）</option>`);
+  $sel.append(`<option value="">（选择模型�?/option>`);
   (modelIds || []).forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
@@ -11882,7 +11876,7 @@ function fillSummaryModelSelect(modelIds, selected) {
 function fillWorldbookSelect($sel, names, selected) {
   if (!$sel || !$sel.length) return;
   $sel.empty();
-  $sel.append(`<option value="">(选择世界书)</option>`);
+  $sel.append(`<option value="">(选择世界�?</option>`);
   (names || []).forEach((name) => {
     const opt = document.createElement('option');
     opt.value = name;
@@ -11943,7 +11937,7 @@ async function refreshSummaryModels() {
   const apiBase = normalizeBaseUrl(raw);
   if (!apiBase) { setStatus('请先填写“总结独立API基础URL”再刷新模型', 'warn'); return; }
 
-  setStatus('正在刷新“总结独立API”模型列表…', 'warn');
+  setStatus('正在刷新“总结独立API”模型列表�?, 'warn');
 
   const apiKey = String($('#sg_summaryCustomApiKey').val() || s.summaryCustomApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -11962,7 +11956,7 @@ async function refreshSummaryModels() {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -11980,14 +11974,14 @@ async function refreshSummaryModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
       return;
     }
 
     s.summaryCustomModelsCache = ids;
     saveSettings();
     fillSummaryModelSelect(ids, s.summaryCustomModel);
-    setStatus(`已刷新总结模型：${ids.length} 个（后端代理）`, 'ok');
+    setStatus(`已刷新总结模型�?{ids.length} 个（后端代理）`, 'ok');
     return;
   } catch (e) {
     const status = e?.status;
@@ -11999,8 +11993,8 @@ async function refreshSummaryModels() {
     const modelsUrl = (function (base) {
       const u = normalizeBaseUrl(base);
       if (!u) return '';
-      if (/\/v1$/.test(u)) return u + '/models';
-      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1$/.test(u)) return u + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/i.test(u)) return u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/+$/, '') + '/models';
       return u + '/v1/models';
     })(apiBase);
 
@@ -12010,7 +12004,7 @@ async function refreshSummaryModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -12024,20 +12018,20 @@ async function refreshSummaryModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
 
     s.summaryCustomModelsCache = ids;
     saveSettings();
     fillSummaryModelSelect(ids, s.summaryCustomModel);
-    setStatus(`已刷新总结模型：${ids.length} 个（直连 fallback）`, 'ok');
+    setStatus(`已刷新总结模型�?{ids.length} 个（直连 fallback）`, 'ok');
   } catch (e) {
-    setStatus(`刷新总结模型失败：${e?.message ?? e}`, 'err');
+    setStatus(`刷新总结模型失败�?{e?.message ?? e}`, 'err');
   }
 }
 
 async function refreshWorldbookList() {
   const s = ensureSettings();
-  setStatus('正在读取酒馆世界书列表…', 'warn');
+  setStatus('正在读取酒馆世界书列表�?, 'warn');
   try {
     const names = await fetchWorldInfoListCompat();
     if (!names.length) {
@@ -12048,7 +12042,7 @@ async function refreshWorldbookList() {
     saveSettings();
     fillWorldbookSelect($('#sg_summaryWorldbookSelect'), names, normalizeWorldInfoFileName(s.summaryWorldInfoFile));
     fillWorldbookSelect($('#sg_summaryBlueWorldbookSelect'), names, normalizeWorldInfoFileName(s.summaryBlueWorldInfoFile));
-    setStatus(`已刷新世界书列表：${names.length} 本`, 'ok');
+    setStatus(`已刷新世界书列表�?{names.length} 本`, 'ok');
   } catch (e) {
     setStatus(`刷新世界书列表失败：${e?.message ?? e}`, 'err');
   }
@@ -12060,7 +12054,7 @@ async function refreshSexGuideModels() {
   const apiBase = normalizeBaseUrl(raw);
   if (!apiBase) { setSexGuideStatus('请先填写“性爱指导独立API基础URL”再刷新模型', 'warn'); return; }
 
-  setSexGuideStatus('正在刷新“性爱指导独立API”模型列表…', 'warn');
+  setSexGuideStatus('正在刷新“性爱指导独立API”模型列表�?, 'warn');
 
   const apiKey = String($('#sg_sexCustomApiKey').val() || s.sexGuideCustomApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -12078,7 +12072,7 @@ async function refreshSexGuideModels() {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -12096,14 +12090,14 @@ async function refreshSexGuideModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setSexGuideStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      setSexGuideStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
       return;
     }
 
     s.sexGuideCustomModelsCache = ids;
     saveSettings();
     fillSexGuideModelSelect(ids, s.sexGuideCustomModel);
-    setSexGuideStatus(`已刷新性爱指导模型：${ids.length} 个（后端代理）`, 'ok');
+    setSexGuideStatus(`已刷新性爱指导模型�?{ids.length} 个（后端代理）`, 'ok');
     return;
   } catch (e) {
     const status = e?.status;
@@ -12114,8 +12108,8 @@ async function refreshSexGuideModels() {
     const modelsUrl = (function (base) {
       const u = normalizeBaseUrl(base);
       if (!u) return '';
-      if (/\/v1$/.test(u)) return u + '/models';
-      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1$/.test(u)) return u + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/i.test(u)) return u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/+$/, '') + '/models';
       return u + '/v1/models';
     })(apiBase);
 
@@ -12125,7 +12119,7 @@ async function refreshSexGuideModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -12139,14 +12133,14 @@ async function refreshSexGuideModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setSexGuideStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+    if (!ids.length) { setSexGuideStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
 
     s.sexGuideCustomModelsCache = ids;
     saveSettings();
     fillSexGuideModelSelect(ids, s.sexGuideCustomModel);
-    setSexGuideStatus(`已刷新性爱指导模型：${ids.length} 个（直连 fallback）`, 'ok');
+    setSexGuideStatus(`已刷新性爱指导模型�?{ids.length} 个（直连 fallback）`, 'ok');
   } catch (e) {
-    setSexGuideStatus(`刷新性爱指导模型失败：${e?.message ?? e}`, 'err');
+    setSexGuideStatus(`刷新性爱指导模型失败�?{e?.message ?? e}`, 'err');
   }
 }
 
@@ -12157,7 +12151,7 @@ async function refreshIndexModels() {
   const apiBase = normalizeBaseUrl(raw);
   if (!apiBase) { setStatus('请先填写“索引独立API基础URL”再刷新模型', 'warn'); return; }
 
-  setStatus('正在刷新“索引独立API”模型列表…', 'warn');
+  setStatus('正在刷新“索引独立API”模型列表�?, 'warn');
 
   const apiKey = String($('#sg_wiIndexCustomApiKey').val() || s.wiIndexCustomApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -12175,7 +12169,7 @@ async function refreshIndexModels() {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -12193,7 +12187,7 @@ async function refreshIndexModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
       return;
     }
 
@@ -12211,8 +12205,8 @@ async function refreshIndexModels() {
     const modelsUrl = (function (base) {
       const u = normalizeBaseUrl(base);
       if (!u) return '';
-      if (/\/v1$/.test(u)) return u + '/models';
-      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1$/.test(u)) return u + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/i.test(u)) return u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/+$/, '') + '/models';
       return u + '/v1/models';
     })(apiBase);
 
@@ -12222,7 +12216,7 @@ async function refreshIndexModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -12236,14 +12230,14 @@ async function refreshIndexModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
 
     s.wiIndexCustomModelsCache = ids;
     saveSettings();
     fillIndexModelSelect(ids, s.wiIndexCustomModel);
     setStatus(`已刷新索引模型：${ids.length} 个（直连 fallback）`, 'ok');
   } catch (e) {
-    setStatus(`刷新索引模型失败：${e?.message ?? e}`, 'err');
+    setStatus(`刷新索引模型失败�?{e?.message ?? e}`, 'err');
   }
 }
 
@@ -12253,9 +12247,9 @@ async function refreshRollModels() {
   const s = ensureSettings();
   const raw = String($('#sg_wiRollCustomEndpoint').val() || s.wiRollCustomEndpoint || '').trim();
   const apiBase = normalizeBaseUrl(raw);
-  if (!apiBase) { setStatus('请先填写"ROLL独立API基础URL"再刷新模型', 'warn'); return; }
+  if (!apiBase) { setStatus('请先填写"ROLL独立API基础URL"再刷新模�?, 'warn'); return; }
 
-  setStatus('正在刷新"ROLL独立API"模型列表…', 'warn');
+  setStatus('正在刷新"ROLL独立API"模型列表�?, 'warn');
 
   const apiKey = String($('#sg_wiRollCustomApiKey').val() || s.wiRollCustomApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -12273,7 +12267,7 @@ async function refreshRollModels() {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -12291,14 +12285,14 @@ async function refreshRollModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
       return;
     }
 
     s.wiRollCustomModelsCache = ids;
     saveSettings();
     fillRollModelSelect(ids, s.wiRollCustomModel);
-    setStatus(`已刷新ROLL模型：${ids.length} 个（后端代理）`, 'ok');
+    setStatus(`已刷新ROLL模型�?{ids.length} 个（后端代理）`, 'ok');
     return;
   } catch (e) {
     const status = e?.status;
@@ -12309,8 +12303,8 @@ async function refreshRollModels() {
     const modelsUrl = (function (base) {
       const u = normalizeBaseUrl(base);
       if (!u) return '';
-      if (/\/v1$/.test(u)) return u + '/models';
-      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1$/.test(u)) return u + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/i.test(u)) return u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/+$/, '') + '/models';
       return u + '/v1/models';
     })(apiBase);
 
@@ -12320,7 +12314,7 @@ async function refreshRollModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -12334,14 +12328,14 @@ async function refreshRollModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
 
     s.wiRollCustomModelsCache = ids;
     saveSettings();
     fillRollModelSelect(ids, s.wiRollCustomModel);
-    setStatus(`已刷新ROLL模型：${ids.length} 个（直连 fallback）`, 'ok');
+    setStatus(`已刷新ROLL模型�?{ids.length} 个（直连 fallback）`, 'ok');
   } catch (e) {
-    setStatus(`刷新ROLL模型失败：${e?.message ?? e}`, 'err');
+    setStatus(`刷新ROLL模型失败�?{e?.message ?? e}`, 'err');
   }
 }
 
@@ -12351,7 +12345,7 @@ async function refreshRollModels() {
 function getRecentStoryContent(count) {
   const chat = SillyTavern.getContext().chat || [];
   const messages = chat.slice(-count).filter(m => m.mes && !m.is_system);
-  return messages.map(m => m.mes).join('\n\n');
+  return messages.map(m => m.mes).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 }
 
 function setImageGenStatus(text, kind = '') {
@@ -12398,14 +12392,14 @@ function openImagePreviewModal(src, altText = 'Image preview') {
 }
 
 
-// 通用 LLM 调用函数（使用图像生成模块独立 API）
+// 通用 LLM 调用函数（使用图像生成模块独�?API�?
 async function callLLM(messages, opts = {}) {
   const s = ensureSettings();
   const temperature = opts.temperature ?? 0.7;
   const maxTokens = opts.max_tokens ?? s.imageGenCustomMaxTokens ?? 1024;
 
 
-  // 使用图像生成模块独立的 API 配置
+  // 使用图像生成模块独立�?API 配置
   const endpoint = s.imageGenCustomEndpoint || '';
   const apiKey = s.imageGenCustomApiKey || '';
   const model = s.imageGenCustomModel || 'gpt-4o-mini';
@@ -12424,7 +12418,7 @@ async function refreshImageGenModels() {
   const apiBase = normalizeBaseUrl(raw);
   if (!apiBase) { setImageGenStatus('请先填写 LLM API 基础URL', 'warn'); return; }
 
-  setImageGenStatus('正在刷新模型列表…', 'warn');
+  setImageGenStatus('正在刷新模型列表�?, 'warn');
 
   try {
     const apiKey = String($('#sg_imageGenCustomApiKey').val() || s.imageGenCustomApiKey || '').trim();
@@ -12440,7 +12434,7 @@ async function refreshImageGenModels() {
       .filter(Boolean)
       .sort();
 
-    if (!models.length) { setImageGenStatus('未找到可用模型', 'warn'); return; }
+    if (!models.length) { setImageGenStatus('未找到可用模�?, 'warn'); return; }
 
     const $sel = $('#sg_imageGenCustomModel');
     const cur = $sel.val();
@@ -12452,10 +12446,10 @@ async function refreshImageGenModels() {
     else if (models.length) $sel.val(models[0]);
 
     pullUiToSettings(); saveSettings();
-    setImageGenStatus(`✅ 已加载 ${models.length} 个模型`, 'ok');
+    setImageGenStatus(`�?已加�?${models.length} 个模型`, 'ok');
   } catch (e) {
     console.error('[ImageGen] Refresh models failed:', e);
-    setImageGenStatus(`❌ 刷新失败: ${e?.message || e}`, 'err');
+    setImageGenStatus(`�?刷新失败: ${e?.message || e}`, 'err');
   }
 }
 
@@ -12494,7 +12488,7 @@ function renderCharacterProfilesUi() {
   const $wrap = $('#sg_imageGenProfiles');
   if (!$wrap.length) return;
   if (!list.length) {
-    $wrap.html('<div class="sg-hint">暂无人物形象，点击“添加人物”创建。</div>');
+    $wrap.html('<div class="sg-hint">暂无人物形象，点击“添加人物”创建�?/div>');
     return;
   }
 
@@ -12504,11 +12498,11 @@ function renderCharacterProfilesUi() {
       <div class="sg-profile-row" data-index="${idx}">
         <div class="sg-grid2">
           <div class="sg-field">
-            <label>人物名</label>
+            <label>人物�?/label>
             <input type="text" class="sg-profile-name" value="${escapeHtml(entry.name)}">
           </div>
           <div class="sg-field">
-            <label>关键词（逗号分隔）</label>
+            <label>关键词（逗号分隔�?/label>
             <input type="text" class="sg-profile-keys" value="${escapeHtml(keys)}">
           </div>
         </div>
@@ -12582,7 +12576,7 @@ function getImageGenBatchPatterns() {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.map((item, i) => ({
-      label: String(item?.label || `组${i + 1}`),
+      label: String(item?.label || `�?{i + 1}`),
       type: String(item?.type || 'character'),
       detail: String(item?.detail || '').trim()
     }));
@@ -12594,7 +12588,7 @@ function getImageGenBatchPatterns() {
 function splitStoryIntoParts(text, count) {
   const clean = String(text || '').trim();
   if (!clean) return Array(count).fill('');
-  const paras = clean.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const paras = clean.split(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n{2,}/).map(p => p.trim()).filter(Boolean);
   if (paras.length >= count) return paras.slice(0, count);
   const parts = [];
   const total = clean.length;
@@ -12613,17 +12607,17 @@ function splitStoryIntoParts(text, count) {
 function getBatchDistinctHint(index, total) {
   if (!Number.isFinite(index)) return '';
   const hints = [
-    '使用近景构图，强调面部表情',
+    '使用近景构图，强调面部表�?,
     '使用中景构图，强调姿态与动作',
-    '使用互动构图，强调人物关系',
+    '使用互动构图，强调人物关�?,
     '使用远景构图，强调环境与气氛',
-    '使用趣味构图，强调轻松彩蛋动作',
+    '使用趣味构图，强调轻松彩蛋动�?,
     '使用全身构图，强调姿态与服装',
     '使用对战构图，强调动感与张力',
-    '使用对话构图，强调视线互动',
-    '使用场景构图，强调空间层次',
-    '使用光影构图，强调氛围',
-    '使用情绪构图，强调情感',
+    '使用对话构图，强调视线互�?,
+    '使用场景构图，强调空间层�?,
+    '使用光影构图，强调氛�?,
+    '使用情绪构图，强调情�?,
     '使用静态构图，强调安静氛围'
   ];
   return hints[index % hints.length];
@@ -12634,20 +12628,20 @@ function renderImageGenBatchPreview() {
   const $wrap = $('#sg_imagegen_batch');
   if (!$wrap.length) return;
   if (!imageGenBatchPrompts.length) {
-    const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '尚未生成提示词');
+    const status = imageGenBatchBusy ? '生成中�? : (imageGenBatchStatus || '尚未生成提示�?);
     $wrap.html(`
       <div class="sg-floating-row">
-        <div class="sg-floating-title-sm">提示词预览</div>
+        <div class="sg-floating-title-sm">提示词预�?/div>
         <div class="sg-floating-status">${escapeHtml(status)}</div>
       </div>
-      <div class="sg-floating-empty">尚未生成提示词</div>
+      <div class="sg-floating-empty">尚未生成提示�?/div>
     `);
     return;
   }
 
   const current = imageGenBatchPrompts[imageGenPreviewIndex] || imageGenBatchPrompts[0];
   const counter = `${imageGenPreviewIndex + 1}/${imageGenBatchPrompts.length}`;
-  const status = imageGenBatchBusy ? '生成中…' : (imageGenBatchStatus || '就绪');
+  const status = imageGenBatchBusy ? '生成中�? : (imageGenBatchStatus || '就绪');
   const imgUrl = imageGenImageUrls[imageGenPreviewIndex] || '';
   const imgHtml = imgUrl
     ? `<img class="sg-floating-image sg-image-zoom" src="${escapeHtml(imgUrl)}" data-full="${escapeHtml(imgUrl)}" alt="Generated" style="cursor: zoom-in;" />`
@@ -12661,21 +12655,21 @@ function renderImageGenBatchPreview() {
   const legacy = model.includes('diffusion-4') ? (s.novelaiLegacy !== false) : true;
   const cfgRescale = clampFloat(s.novelaiCfgRescale, 0, 1, 0);
   const noiseSchedule = String(s.novelaiNoiseSchedule || 'native');
-  const varietyBoost = s.novelaiVarietyBoost ? '开' : '关';
+  const varietyBoost = s.novelaiVarietyBoost ? '开' : '�?;
   const seedLabel = s.novelaiFixedSeedEnabled ? `固定:${clampInt(s.novelaiFixedSeed, 0, 4294967295, 0)}` : '随机';
   const negative = String((s.novelaiNegativePrompt || '').trim());
-  const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '…' : ''}` : '（空）';
-  const legacyLabel = legacy ? '开' : '关';
+  const negativePreview = negative ? `${negative.slice(0, 160)}${negative.length > 160 ? '�? : ''}` : '（空�?;
+  const legacyLabel = legacy ? '开' : '�?;
   const expandLabel = imageGenPreviewExpanded ? '折叠预览' : '展开预览';
   const previewHiddenClass = imageGenPreviewExpanded ? '' : 'sg-floating-preview-collapsed';
   const paramsHtml = `
     <div class="sg-floating-params ${previewHiddenClass}">
-      <div><b>模型</b>：${escapeHtml(model)}</div>
-      <div><b>分辨率</b>：${escapeHtml(resolution)}</div>
-      <div><b>Steps</b>：${escapeHtml(String(steps))}｜<b>Scale</b>：${escapeHtml(String(scale))}</div>
-      <div><b>Sampler</b>：${escapeHtml(sampler)}｜<b>Seed</b>：${escapeHtml(seedLabel)}｜<b>Legacy</b>：${escapeHtml(legacyLabel)}</div>
-      <div><b>CFG Rescale</b>：${escapeHtml(String(cfgRescale))}｜<b>Noise</b>：${escapeHtml(noiseSchedule)}｜<b>Variety</b>：${escapeHtml(varietyBoost)}</div>
-      <div><b>负面</b>：${escapeHtml(negativePreview)}</div>
+      <div><b>模型</b>�?{escapeHtml(model)}</div>
+      <div><b>分辨�?/b>�?{escapeHtml(resolution)}</div>
+      <div><b>Steps</b>�?{escapeHtml(String(steps))}�?b>Scale</b>�?{escapeHtml(String(scale))}</div>
+      <div><b>Sampler</b>�?{escapeHtml(sampler)}�?b>Seed</b>�?{escapeHtml(seedLabel)}�?b>Legacy</b>�?{escapeHtml(legacyLabel)}</div>
+      <div><b>CFG Rescale</b>�?{escapeHtml(String(cfgRescale))}�?b>Noise</b>�?{escapeHtml(noiseSchedule)}�?b>Variety</b>�?{escapeHtml(varietyBoost)}</div>
+      <div><b>负面</b>�?{escapeHtml(negativePreview)}</div>
     </div>
     <div class="sg-floating-row sg-floating-row-actions" style="margin-top:-2px;">
       <button class="sg-floating-mini-btn" id="sg_imagegen_toggle_preview">${escapeHtml(expandLabel)}</button>
@@ -12684,16 +12678,16 @@ function renderImageGenBatchPreview() {
   `;
   $wrap.html(`
     <div class="sg-floating-row">
-      <div class="sg-floating-title-sm">提示词预览（${escapeHtml(counter)}）</div>
+      <div class="sg-floating-title-sm">提示词预览（${escapeHtml(counter)}�?/div>
       <div class="sg-floating-status">${escapeHtml(status)}</div>
     </div>
     <div class="sg-floating-prompt">${escapeHtml(String(current.positive || ''))}</div>
     ${paramsHtml}
     <div class="sg-floating-row sg-floating-row-actions">
       <button class="sg-floating-mini-btn" id="sg_imagegen_prev">◀</button>
-      <button class="sg-floating-mini-btn" id="sg_imagegen_next">▶</button>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_next">�?/button>
       <div class="sg-floating-spacer"></div>
-      <button class="sg-floating-mini-btn" id="sg_imagegen_regen" ${regenDisabled}>重生成</button>
+      <button class="sg-floating-mini-btn" id="sg_imagegen_regen" ${regenDisabled}>重生�?/button>
       <button class="sg-floating-mini-btn" id="sg_imagegen_clear">清空</button>
     </div>
     <div class="sg-floating-image-wrap">${imgHtml}</div>
@@ -12739,17 +12733,17 @@ async function generateImagePromptBatch() {
   const globalProfileTags = matchCharacterTagsFromProfiles(storyContent);
 
   const patterns = getImageGenBatchPatterns();
-  if (!patterns.length) throw new Error('未配置批次模板');
+  if (!patterns.length) throw new Error('未配置批次模�?);
 
   const storyParts = splitStoryIntoParts(storyContent, 5);
   const results = [];
 
-  let batchPrompt = `请根据以下故事内容生成一组图像提示词列表（JSON 数组）。\n\n`;
+  let batchPrompt = `请根据以下故事内容生成一组图像提示词列表（JSON 数组）。\n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
   if (statDataJson) {
-    batchPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+    batchPrompt += `【角色状态数据】：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${statDataJson}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
   }
 
-  batchPrompt += `需要生成 ${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
+  batchPrompt += `需要生�?${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
   batchPrompt += `要求：只输出 JSON 数组，不要其它文字。positive/negative 必须是英文标签串（逗号分隔）。\n`;
 
   const patternLines = patterns.map((pattern, idx) => {
@@ -12758,31 +12752,31 @@ async function generateImagePromptBatch() {
       const part = storyParts[idx] || storyContent;
       rule = `剧情代表性画面。剧情片段：${part}`;
     } else if (pattern.type === 'character_close') {
-      rule = '单人女性近景特写，强调脸部与表情。';
+      rule = '单人女性近景特写，强调脸部与表情�?;
     } else if (pattern.type === 'character_full') {
-      rule = '单人女性全身立绘，展示服装与姿态。';
+      rule = '单人女性全身立绘，展示服装与姿态�?;
     } else if (pattern.type === 'duo') {
-      rule = '双人同框互动，突出动作关系与情绪交流；即使剧情没有双人也要生成双人构图。';
+      rule = '双人同框互动，突出动作关系与情绪交流；即使剧情没有双人也要生成双人构图�?;
     } else if (pattern.type === 'scene') {
-      rule = '场景图提示词，重点描述环境和氛围。';
+      rule = '场景图提示词，重点描述环境和氛围�?;
     } else if (pattern.type === 'custom_female_1') {
       const custom = String(s.imageGenCustomFemalePrompt1 || '').trim();
-      rule = `女性角色提示词，融合自定义描述：${custom || '（空）'}`;
+      rule = `女性角色提示词，融合自定义描述�?{custom || '（空�?}`;
     } else if (pattern.type === 'custom_female_2') {
       const custom = String(s.imageGenCustomFemalePrompt2 || '').trim();
-      rule = `女性角色提示词，融合自定义描述：${custom || '（空）'}`;
+      rule = `女性角色提示词，融合自定义描述�?{custom || '（空�?}`;
     } else {
-      rule = '彩蛋图提示词，使用当前角色/场景，但内容与剧情不同。';
+      rule = '彩蛋图提示词，使用当前角�?场景，但内容与剧情不同�?;
     }
     const distinctHint = getBatchDistinctHint(idx, patterns.length);
-    const detail = pattern.detail ? `细化：${pattern.detail}` : '';
-    const hint = distinctHint ? `构图提示：${distinctHint}` : '';
+    const detail = pattern.detail ? `细化�?{pattern.detail}` : '';
+    const hint = distinctHint ? `构图提示�?{distinctHint}` : '';
     const parts = [rule, hint, detail].filter(Boolean).join(' | ');
     return `${idx + 1}. label=${pattern.label}, type=${pattern.type} => ${parts}`;
-  }).join('\n');
+  }).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 
-  batchPrompt += `\n【模板列表】：\n${patternLines}\n`;
-  batchPrompt += `\n【故事内容】：\n${storyContent}\n`;
+  batchPrompt += `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【模板列表】：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${patternLines}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+  batchPrompt += `        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【故事内容】：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${storyContent}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
 
   const messages = [
     { role: 'system', content: s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt },
@@ -12792,14 +12786,14 @@ async function generateImagePromptBatch() {
   const result = await callLLM(messages, { temperature: 0.7 });
   let parsedList;
   try {
-    const jsonMatch = result.match(/\[[\s\S]*\]/);
+    const jsonMatch = result.match(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;[[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;]/);
     if (jsonMatch) parsedList = JSON.parse(jsonMatch[0]);
   } catch {
     parsedList = null;
   }
 
   if (!Array.isArray(parsedList)) {
-    throw new Error('批量提示词解析失败，请重试');
+    throw new Error('批量提示词解析失败，请重�?);
   }
 
   for (let i = 0; i < patterns.length; i += 1) {
@@ -12861,7 +12855,7 @@ async function generateImageFromBatch() {
     imageGenBatchStatus = `已生成：${item.label}`;
     imageGenBatchIndex = (imageGenBatchIndex + 1) % imageGenBatchPrompts.length;
   } catch (e) {
-    imageGenBatchStatus = `生成失败：${e?.message || e}`;
+    imageGenBatchStatus = `生成失败�?{e?.message || e}`;
   } finally {
     imageGenBatchBusy = false;
     renderImageGenBatchPreview();
@@ -12888,7 +12882,7 @@ async function generateAllImagesFromBatch() {
       imageGenBatchStatus = `已生成：${item.label} (${i + 1}/${imageGenBatchPrompts.length})`;
       renderImageGenBatchPreview();
     } catch (e) {
-      imageGenBatchStatus = `生成失败：${item.label} (${i + 1}/${imageGenBatchPrompts.length})`;
+      imageGenBatchStatus = `生成失败�?{item.label} (${i + 1}/${imageGenBatchPrompts.length})`;
       renderImageGenBatchPreview();
       break;
     }
@@ -12903,7 +12897,7 @@ function clearImageGenBatch() {
   imageGenImageUrls = [];
   imageGenBatchIndex = 0;
   imageGenPreviewIndex = 0;
-  imageGenBatchStatus = '已清空';
+  imageGenBatchStatus = '已清�?;
   renderImageGenBatchPreview();
 }
 
@@ -12913,16 +12907,16 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
   const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
 
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
-  let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
+  let userPrompt = `请根据以下故事内容生成图像提示词。\n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
   if (genType === 'character') {
-    userPrompt += `【要求】：生成角色立绘的提示词，重点描述角色外观。\n\n`;
+    userPrompt += `【要求】：生成角色立绘的提示词，重点描述角色外观。\n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
   } else if (genType === 'scene') {
-    userPrompt += `【要求】：生成场景图的提示词，重点描述环境和氛围。\n\n`;
+    userPrompt += `【要求】：生成场景图的提示词，重点描述环境和氛围。\n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
   } else {
-    userPrompt += `【要求】：自动判断应该生成角色还是场景。\n\n`;
+    userPrompt += `【要求】：自动判断应该生成角色还是场景。\n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
   }
-  userPrompt += `【故事内容】：\n${storyContent}\n\n`;
-  userPrompt += `请输出 JSON 格式的提示词。`;
+  userPrompt += `【故事内容】：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${storyContent}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n`;
+  userPrompt += `请输�?JSON 格式的提示词。`;
 
 
   const messages = [
@@ -12936,11 +12930,11 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
 
     let parsed;
     try {
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      const jsonMatch = result.match(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}/);
       if (jsonMatch) {
         parsed = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error('未找到 JSON');
+        throw new Error('未找�?JSON');
       }
     } catch (e) {
       console.warn('[ImageGen] Failed to parse LLM response:', e, result);
@@ -12952,7 +12946,7 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
     console.error('[ImageGen] LLM call failed:', e);
     const errMsg = e?.message || String(e);
     if (errMsg.includes('not found') || errMsg.includes('404')) {
-      throw new Error(`LLM 模型不存在，请点击「🔄 刷新模型」获取可用模型列表`);
+      throw new Error(`LLM 模型不存在，请点击「�?刷新模型」获取可用模型列表`);
     }
     throw new Error(`LLM 调用失败: ${errMsg}`);
   }
@@ -13006,7 +13000,7 @@ async function generateImageWithNovelAI(positive, negative) {
         sm: false,
         sm_dyn: false,
         noise_schedule: noiseSchedule,
-        legacy: legacy,  // 启用以支持 V3 风格的 :: 权重语法
+        legacy: legacy,  // 启用以支�?V3 风格�?:: 权重语法
         legacy_v3_extend: false,
         skip_cfg_above_sigma: null,
         variety_boost: varietyBoost,
@@ -13051,7 +13045,7 @@ async function generateImageWithNovelAI(positive, negative) {
     };
   }
 
-  setImageGenStatus('正在调用 Novel AI API 生成图像…', 'warn');
+  setImageGenStatus('正在调用 Novel AI API 生成图像�?, 'warn');
 
   console.log('[ImageGen] NovelAI request params:', {
     model,
@@ -13081,12 +13075,12 @@ async function generateImageWithNovelAI(positive, negative) {
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
-    throw new Error(`Novel AI API 错误: ${response.status} ${response.statusText}\n${errText}`);
+    throw new Error(`Novel AI API 错误: ${response.status} ${response.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${errText}`);
   }
 
   const blob = await response.blob();
 
-  // 尝试用 JSZip 解压
+  // 尝试�?JSZip 解压
   try {
     if (typeof JSZip !== 'undefined') {
       const zip = await JSZip.loadAsync(blob);
@@ -13110,7 +13104,7 @@ async function runImageGeneration() {
   const lookback = s.imageGenLookbackMessages || 5;
 
   try {
-    setImageGenStatus('正在读取最近对话…', 'warn');
+    setImageGenStatus('正在读取最近对话�?, 'warn');
     let storyContent = getRecentStoryContent(lookback);
     if (s.imageGenPromptRulesEnabled && s.imageGenPromptRules) {
       storyContent = applyPromptRules(storyContent, s.imageGenPromptRules);
@@ -13119,7 +13113,7 @@ async function runImageGeneration() {
 
     if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
 
-    setImageGenStatus('正在使用 LLM 生成图像提示词…', 'warn');
+    setImageGenStatus('正在使用 LLM 生成图像提示词�?, 'warn');
     let statData = null;
     if (s.imageGenReadStatData) {
       try {
@@ -13140,9 +13134,9 @@ async function runImageGeneration() {
     const promptResult = await generateImagePromptWithLLM(storyContent, genType, statData);
 
     const normalizePositive = (text) => String(text || '')
-      .replace(/\s+/g, ' ')
-      .replace(/^\s*,+\s*/g, '')
-      .replace(/\s*,+\s*$/g, '')
+      .replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+/g, ' ')
+      .replace(/^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*,+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*/g, '')
+      .replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*,+        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s*$/g, '')
       .trim();
 
     const normalizeStatText = (data) => {
@@ -13181,15 +13175,15 @@ async function runImageGeneration() {
     $('#sg_imageResult').show();
 
 
-    setImageGenStatus(`✅ 生成成功！类型: ${promptResult.type}，主题: ${promptResult.subject}`, 'ok');
+    setImageGenStatus(`�?生成成功！类�? ${promptResult.type}，主�? ${promptResult.subject}`, 'ok');
 
     if (s.imageGenAutoSave && s.imageGenSavePath) {
-      try { await saveGeneratedImage(imageUrl); setImageGenStatus(`✅ 生成成功并已保存！`, 'ok'); }
+      try { await saveGeneratedImage(imageUrl); setImageGenStatus(`�?生成成功并已保存！`, 'ok'); }
       catch (e) { console.warn('[ImageGen] Auto-save failed:', e); }
     }
   } catch (e) {
     console.error('[ImageGen] Generation failed:', e);
-    setImageGenStatus(`❌ 生成失败: ${e?.message || e}`, 'err');
+    setImageGenStatus(`�?生成失败: ${e?.message || e}`, 'err');
   }
 }
 
@@ -13220,28 +13214,28 @@ async function loadGalleryFromGitHub() {
     return false;
   }
 
-  setImageGenStatus('正在加载图库…', 'warn');
-  $('#sg_galleryInfo').text('(加载中…)');
+  setImageGenStatus('正在加载图库�?, 'warn');
+  $('#sg_galleryInfo').text('(加载中�?');
 
   try {
     const response = await fetch(url, { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
-    if (!data.images || !Array.isArray(data.images)) throw new Error('格式错误：缺少 images 数组');
+    if (!data.images || !Array.isArray(data.images)) throw new Error('格式错误：缺�?images 数组');
 
     s.imageGalleryCache = data.images;
     s.imageGalleryCacheTime = Date.now();
-    s.imageGalleryBaseUrl = data.baseUrl || url.replace(/\/[^\/]+$/, '/');
+    s.imageGalleryBaseUrl = data.baseUrl || url.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/[^        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/]+$/, '/');
     saveSettings();
 
-    $('#sg_galleryInfo').text(`(已加载 ${data.images.length} 张)`);
-    setImageGenStatus(`✅ 图库加载成功：${data.images.length} 张图片`, 'ok');
+    $('#sg_galleryInfo').text(`(已加�?${data.images.length} �?`);
+    setImageGenStatus(`�?图库加载成功�?{data.images.length} 张图片`, 'ok');
     return true;
   } catch (e) {
     console.error('[ImageGallery] Load failed:', e);
     $('#sg_galleryInfo').text('(加载失败)');
-    setImageGenStatus(`❌ 图库加载失败: ${e?.message || e}`, 'err');
+    setImageGenStatus(`�?图库加载失败: ${e?.message || e}`, 'err');
     return false;
   }
 }
@@ -13257,26 +13251,26 @@ async function matchGalleryImage() {
   const storyContent = getRecentStoryContent(s.imageGenLookbackMessages || 5);
   if (!storyContent.trim()) { setImageGenStatus('没有找到对话内容', 'err'); return; }
 
-  setImageGenStatus('正在分析剧情并匹配图片…', 'warn');
+  setImageGenStatus('正在分析剧情并匹配图片�?, 'warn');
 
   const galleryList = s.imageGalleryCache.map(img =>
     `- id:${img.id}, tags:[${(img.tags || []).join(',')}], desc:${img.description || ''}`
-  ).join('\n');
+  ).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 
   const messages = [
     { role: 'system', content: s.imageGalleryMatchPrompt || DEFAULT_SETTINGS.imageGalleryMatchPrompt },
-    { role: 'user', content: `【剧情】：\n${storyContent}\n\n【图库】：\n${galleryList}\n\n选择最匹配的图片。` }
+    { role: 'user', content: `【剧情】：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${storyContent}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n【图库】：        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${galleryList}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n选择最匹配的图片。` }
   ];
 
   try {
     const result = await callLLM(messages, { temperature: 0.3, max_tokens: 256 });
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) { setImageGenStatus('❌ 匹配失败：无法解析响应', 'err'); return; }
+    const jsonMatch = result.match(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;{[        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;S]*        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;}/);
+    if (!jsonMatch) { setImageGenStatus('�?匹配失败：无法解析响�?, 'err'); return; }
 
     const parsed = JSON.parse(jsonMatch[0]);
     const matchedImage = s.imageGalleryCache.find(img => img.id === parsed.matchedId);
 
-    if (!matchedImage) { setImageGenStatus(`❌ 未找到 ID "${parsed.matchedId}"`, 'err'); return; }
+    if (!matchedImage) { setImageGenStatus(`�?未找�?ID "${parsed.matchedId}"`, 'err'); return; }
 
     const baseUrl = s.imageGalleryBaseUrl || '';
     const imageUrl = matchedImage.path.startsWith('http') ? matchedImage.path : baseUrl + matchedImage.path;
@@ -13286,10 +13280,10 @@ async function matchGalleryImage() {
     $('#sg_galleryMatchReason').text(`🎯 ${parsed.reason || ''}`);
     $('#sg_galleryResult').show();
 
-    setImageGenStatus(`✅ 匹配：${matchedImage.description || parsed.matchedId}`, 'ok');
+    setImageGenStatus(`�?匹配�?{matchedImage.description || parsed.matchedId}`, 'ok');
   } catch (e) {
     console.error('[ImageGallery] Match failed:', e);
-    setImageGenStatus(`❌ 匹配失败: ${e?.message || e}`, 'err');
+    setImageGenStatus(`�?匹配失败: ${e?.message || e}`, 'err');
   }
 }
 
@@ -13298,9 +13292,9 @@ async function refreshModels() {
   const s = ensureSettings();
   const raw = String($('#sg_customEndpoint').val() || s.customEndpoint || '').trim();
   const apiBase = normalizeBaseUrl(raw);
-  if (!apiBase) { setStatus('请先填写 API基础URL 再刷新模型', 'warn'); return; }
+  if (!apiBase) { setStatus('请先填写 API基础URL 再刷新模�?, 'warn'); return; }
 
-  setStatus('正在刷新模型列表…', 'warn');
+  setStatus('正在刷新模型列表�?, 'warn');
 
   const apiKey = String($('#sg_customApiKey').val() || s.customApiKey || '');
   const statusUrl = '/api/backends/chat-completions/status';
@@ -13319,7 +13313,7 @@ async function refreshModels() {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      const err = new Error(`状态检查失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      const err = new Error(`状态检查失�? HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
       err.status = res.status;
       throw err;
     }
@@ -13337,7 +13331,7 @@ async function refreshModels() {
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
     if (!ids.length) {
-      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
+      setStatus('刷新成功，但未解析到模型列表（返回格式不兼容�?, 'warn');
       return;
     }
 
@@ -13364,8 +13358,8 @@ async function refreshModels() {
     const modelsUrl = (function (base) {
       const u = normalizeBaseUrl(base);
       if (!u) return '';
-      if (/\/v1$/.test(u)) return u + '/models';
-      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1$/.test(u)) return u + '/models';
+      if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/i.test(u)) return u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/+$/, '') + '/models';
       return u + '/v1/models';
     })(apiBase);
 
@@ -13375,7 +13369,7 @@ async function refreshModels() {
     const res = await fetch(modelsUrl, { method: 'GET', headers });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+      throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
     }
     const data = await res.json().catch(() => ({}));
 
@@ -13389,7 +13383,7 @@ async function refreshModels() {
 
     ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
 
-    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
+    if (!ids.length) { setStatus('直连刷新失败：未解析到模型列�?, 'warn'); return; }
 
     s.customModelsCache = ids;
     saveSettings();
@@ -13398,7 +13392,7 @@ async function refreshModels() {
   } catch (e) {
     const status = e?.status;
     if (!(status === 404 || status === 405)) {
-      setStatus(`刷新失败：${e?.message ?? e}`, 'err');
+      setStatus(`刷新失败�?{e?.message ?? e}`, 'err');
       return;
     }
 
@@ -13408,8 +13402,8 @@ async function refreshModels() {
       const modelsUrl = (function (base) {
         const u = normalizeBaseUrl(base);
         if (!u) return '';
-        if (/\/v1$/.test(u)) return u + '/models';
-        if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+        if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1$/.test(u)) return u + '/models';
+        if (/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/v1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;b/i.test(u)) return u.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;/+$/, '') + '/models';
         return u + '/v1/models';
       })(apiBase);
 
@@ -13419,7 +13413,7 @@ async function refreshModels() {
       const res = await fetch(modelsUrl, { method: 'GET', headers });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
-        throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}\n${txt}`);
+        throw new Error(`直连 /models 失败: HTTP ${res.status} ${res.statusText}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${txt}`);
       }
 
       const data = await res.json().catch(() => ({}));
@@ -13447,7 +13441,7 @@ async function refreshModels() {
       setStatus(`已刷新模型（直连）：${ids.length} 个`, 'ok');
 
     } catch (e2) {
-      setStatus(`刷新失败：${e2?.message ?? e2}`, 'err');
+      setStatus(`刷新失败�?{e2?.message ?? e2}`, 'err');
     }
   }
 }
@@ -13582,20 +13576,20 @@ function clearFloatingPanelPos() {
 }
 
 function clampToViewport(left, top, w, h) {
-  // 放宽边界限制：允许窗口越界 50%（即至少保留 50% 或标题栏 40px 可见）
-  const minVisibleRatio = 0.5; // 至少 50% 可见（允许另外 50% 在屏幕外）
-  const minVisiblePx = 40;     // 或至少 40px（保证标题栏可拖回）
+  // 放宽边界限制：允许窗口越�?50%（即至少保留 50% 或标题栏 40px 可见�?
+  const minVisibleRatio = 0.5; // 至少 50% 可见（允许另�?50% 在屏幕外�?
+  const minVisiblePx = 40;     // 或至�?40px（保证标题栏可拖回）
 
-  // 计算水平方向需要保持可见的最小宽度
+  // 计算水平方向需要保持可见的最小宽�?
   const minVisibleW = Math.max(minVisiblePx, w * minVisibleRatio);
-  // 计算垂直方向需要保持可见的最小高度
+  // 计算垂直方向需要保持可见的最小高�?
   const minVisibleH = Math.max(minVisiblePx, h * minVisibleRatio);
 
-  // 左边界：允许负值，但确保右侧至少 minVisibleW 在屏幕内
-  // 即 left + w >= minVisibleW → left >= minVisibleW - w
+  // 左边界：允许负值，但确保右侧至�?minVisibleW 在屏幕内
+  // �?left + w >= minVisibleW �?left >= minVisibleW - w
   const minLeft = minVisibleW - w;
   // 右边界：确保左侧至少 minVisibleW 在屏幕内
-  // 即 left + minVisibleW <= window.innerWidth → left <= window.innerWidth - minVisibleW
+  // �?left + minVisibleW <= window.innerWidth �?left <= window.innerWidth - minVisibleW
   const maxLeft = window.innerWidth - minVisibleW;
 
   // 上边界：严格限制 >= 0，保证标题栏不被遮挡
@@ -13757,7 +13751,7 @@ function buildModalHtml() {
           剧情指导 <span class="sg-sub">StoryGuide v${SG_VERSION}</span>
         </div>
         <div class="sg-modal-actions">
-          <button class="menu_button sg-btn" id="sg_close">✕</button>
+          <button class="menu_button sg-btn" id="sg_close">�?/button>
         </div>
       </div>
 
@@ -13771,7 +13765,7 @@ function buildModalHtml() {
             <button class="sg-pgtab" id="sg_pgtab_roll">ROLL 设置</button>
             <button class="sg-pgtab" id="sg_pgtab_image">图像生成</button>
             <button class="sg-pgtab" id="sg_pgtab_sex">性爱指导</button>
-            <button class="sg-pgtab" id="sg_pgtab_character">自定义角色</button>
+            <button class="sg-pgtab" id="sg_pgtab_character">自定义角�?/button>
             <button class="sg-pgtab" id="sg_pgtab_parallel">平行世界</button>
           </div>
 
@@ -13789,11 +13783,11 @@ function buildModalHtml() {
               </div>
 
               <div class="sg-field">
-                <label>剧透等级</label>
+                <label>剧透等�?/label>
                 <select id="sg_spoiler">
-                  <option value="none">不剧透</option>
-                  <option value="mild">轻剧透</option>
-                  <option value="full">全剧透</option>
+                  <option value="none">不剧�?/option>
+                  <option value="mild">轻剧�?/option>
+                  <option value="full">全剧�?/option>
                 </select>
               </div>
 
@@ -13813,11 +13807,11 @@ function buildModalHtml() {
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>最近消息条数</label>
+                <label>最近消息条�?/label>
                 <input id="sg_maxMessages" type="number" min="5" max="200">
               </div>
               <div class="sg-field">
-                <label>每条最大字符</label>
+                <label>每条最大字�?/label>
                 <input id="sg_maxChars" type="number" min="200" max="8000">
               </div>
             </div>
@@ -13830,64 +13824,64 @@ function buildModalHtml() {
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_autoRefresh">自动刷新面板报告</label>
               <select id="sg_autoRefreshOn">
-                <option value="received">AI回复时</option>
+                <option value="received">AI回复�?/option>
                 <option value="sent">用户发送时</option>
                 <option value="both">两者都触发</option>
               </select>
             </div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_autoAppendBox">启用分析框（手动生成/重Roll）</label>
+              <label class="sg-check"><input type="checkbox" id="sg_autoAppendBox">启用分析框（手动生成/重Roll�?/label>
               <select id="sg_appendMode">
-                <option value="compact">简洁</option>
+                <option value="compact">简�?/option>
                 <option value="standard">标准</option>
               </select>
               <select id="sg_inlineModulesSource" title="选择追加框展示的模块来源">
-                <option value="inline">仅 inline=true 的模块</option>
-                <option value="panel">跟随面板（panel=true）</option>
+                <option value="inline">�?inline=true 的模�?/option>
+                <option value="panel">跟随面板（panel=true�?/option>
                 <option value="all">显示全部模块</option>
               </select>
-              <label class="sg-check" title="即使模型没输出该字段，也显示（空）占位">
-                <input type="checkbox" id="sg_inlineShowEmpty">显示空字段
+              <label class="sg-check" title="即使模型没输出该字段，也显示（空）占�?>
+                <input type="checkbox" id="sg_inlineShowEmpty">显示空字�?
               </label>
               <span class="sg-hint">（点击框标题可折叠）</span>
             </div>
 
             <div id="sg_custom_block" class="sg-card sg-subcard" style="display:none;">
-              <div class="sg-card-title">独立API 设置（建议填 API基础URL）</div>
+              <div class="sg-card-title">独立API 设置（建议填 API基础URL�?/div>
 
               <div class="sg-field">
-                <label>API基础URL（例如 https://api.openai.com/v1 ）</label>
+                <label>API基础URL（例�?https://api.openai.com/v1 �?/label>
                 <input id="sg_customEndpoint" type="text" placeholder="https://xxx.com/v1">
-                <div class="sg-hint sg-warn">优先走酒馆后端代理接口（/api/backends/...），比浏览器直连更不容易跨域/连不上。</div>
+                <div class="sg-hint sg-warn">优先走酒馆后端代理接口（/api/backends/...），比浏览器直连更不容易跨域/连不上�?/div>
               </div>
 
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label>API Key（可选）</label>
-                  <input id="sg_customApiKey" type="password" placeholder="可留空">
+                  <input id="sg_customApiKey" type="password" placeholder="可留�?>
                 </div>
 
                 <div class="sg-field">
-                  <label>模型（可手填）</label>
+                  <label>模型（可手填�?/label>
                   <input id="sg_customModel" type="text" placeholder="gpt-4o-mini">
                 </div>
               </div>
 
               <div class="sg-row sg-inline">
-                <button class="menu_button sg-btn" id="sg_refreshModels">检查/刷新模型</button>
+                <button class="menu_button sg-btn" id="sg_refreshModels">检�?刷新模型</button>
                 <select id="sg_modelSelect" class="sg-model-select">
-                  <option value="">（选择模型）</option>
+                  <option value="">（选择模型�?/option>
                 </select>
               </div>
 
               <div class="sg-row">
                 <div class="sg-field sg-field-full">
-                  <label>最大回复token数</label>
-                  <input id="sg_customMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如：60000">
+                  <label>最大回复token�?/label>
+                  <input id="sg_customMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如�?0000">
                 
                   <label class="sg-check" style="margin-top:8px;">
-                    <input type="checkbox" id="sg_customStream"> 使用流式返回（stream=true）
+                    <input type="checkbox" id="sg_customStream"> 使用流式返回（stream=true�?
                   </label>
 </div>
               </div>
@@ -13906,19 +13900,19 @@ function buildModalHtml() {
 
           <div class="sg-card">
             <div class="sg-card-title">快捷选项</div>
-            <div class="sg-hint">点击选项可自动将提示词输入到聊天框。可自定义选项内容。</div>
+            <div class="sg-hint">点击选项可自动将提示词输入到聊天框。可自定义选项内容�?/div>
 
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_quickOptionsEnabled">启用快捷选项</label>
               <select id="sg_quickOptionsShowIn">
                 <option value="inline">仅分析框</option>
-                <option value="panel">仅面板</option>
+                <option value="panel">仅面�?/option>
                 <option value="both">两者都显示</option>
               </select>
             </div>
 
             <div class="sg-field" style="margin-top:10px;">
-              <label>选项配置（JSON，格式：[{label, prompt}, ...]）</label>
+              <label>选项配置（JSON，格式：[{label, prompt}, ...]�?/label>
               <textarea id="sg_quickOptionsJson" rows="6" spellcheck="false" placeholder='[{"label": "继续", "prompt": "继续当前剧情发展"}]'></textarea>
               <div class="sg-actions-row">
                 <button class="menu_button sg-btn" id="sg_resetQuickOptions">恢复默认选项</button>
@@ -13928,27 +13922,27 @@ function buildModalHtml() {
           </div>
 
           <div class="sg-card">
-            <div class="sg-card-title">输出模块（JSON，可自定义字段/提示词）</div>
-            <div class="sg-hint">你可以增删模块、改 key/title/type/prompt、控制 panel/inline。保存前可点“校验”。</div>
+            <div class="sg-card-title">输出模块（JSON，可自定义字�?提示词）</div>
+            <div class="sg-hint">你可以增删模块、改 key/title/type/prompt、控�?panel/inline。保存前可点“校验”�?/div>
 
             <div class="sg-field">
               <textarea id="sg_modulesJson" rows="12" spellcheck="false"></textarea>
-              <div class="sg-hint" style="margin-top:4px;">💡 模块可添加 <code>static: true</code> 表示静态模块（只在首次生成或手动刷新时更新）</div>
+              <div class="sg-hint" style="margin-top:4px;">💡 模块可添�?<code>static: true</code> 表示静态模块（只在首次生成或手动刷新时更新�?/div>
               <div class="sg-actions-row">
                 <button class="menu_button sg-btn" id="sg_validateModules">校验</button>
                 <button class="menu_button sg-btn" id="sg_resetModules">恢复默认</button>
-                <button class="menu_button sg-btn" id="sg_applyModules">应用到设置</button>
-                <button class="menu_button sg-btn" id="sg_clearStaticCache">刷新静态模块</button>
+                <button class="menu_button sg-btn" id="sg_applyModules">应用到设�?/button>
+                <button class="menu_button sg-btn" id="sg_clearStaticCache">刷新静态模�?/button>
               </div>
             </div>
 
             <div class="sg-field">
-              <label>自定义 System 补充（可选）</label>
-              <textarea id="sg_customSystemPreamble" rows="3" placeholder="例如：更偏悬疑、强调线索、避免冗长…"></textarea>
+              <label>自定�?System 补充（可选）</label>
+              <textarea id="sg_customSystemPreamble" rows="3" placeholder="例如：更偏悬疑、强调线索、避免冗长�?></textarea>
             </div>
             <div class="sg-field">
-              <label>自定义 Constraints 补充（可选）</label>
-              <textarea id="sg_customConstraints" rows="3" placeholder="例如：必须提到关键人物动机、每条不超过20字…"></textarea>
+              <label>自定�?Constraints 补充（可选）</label>
+              <textarea id="sg_customConstraints" rows="3" placeholder="例如：必须提到关键人物动机、每条不超过20字�?></textarea>
             </div>
           </div>
 
@@ -13962,12 +13956,12 @@ function buildModalHtml() {
               <button class="menu_button sg-btn" id="sg_importPreset">导入预设</button>
             </div>
 
-            <div class="sg-hint">预设会包含：生成设置 / 独立API / 输出模块 / 世界书设置 / 自定义提示骨架。导入会覆盖当前配置。</div>
+            <div class="sg-hint">预设会包含：生成设置 / 独立API / 输出模块 / 世界书设�?/ 自定义提示骨架。导入会覆盖当前配置�?/div>
 
             <hr class="sg-hr">
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_worldbookEnabled">在分析输入中注入世界书</label>
+              <label class="sg-check"><input type="checkbox" id="sg_worldbookEnabled">在分析输入中注入世界�?/label>
               <select id="sg_worldbookMode">
                 <option value="active">仅注入“可能激活”的条目（推荐）</option>
                 <option value="all">注入全部条目</option>
@@ -13976,7 +13970,7 @@ function buildModalHtml() {
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>世界书最大注入字符</label>
+                <label>世界书最大注入字�?/label>
                 <input id="sg_worldbookMaxChars" type="number" min="500" max="50000">
               </div>
               <div class="sg-field">
@@ -13987,33 +13981,33 @@ function buildModalHtml() {
 
             <div class="sg-row sg-inline">
               <button class="menu_button sg-btn" id="sg_importWorldbook">导入世界书JSON</button>
-              <button class="menu_button sg-btn" id="sg_clearWorldbook">清空世界书</button>
-              <button class="menu_button sg-btn" id="sg_saveWorldbookSettings">保存世界书设置</button>
+              <button class="menu_button sg-btn" id="sg_clearWorldbook">清空世界�?/button>
+              <button class="menu_button sg-btn" id="sg_saveWorldbookSettings">保存世界书设�?/button>
             </div>
 
             <div class="sg-hint" id="sg_worldbookInfo">（未导入世界书）</div>
           </div>
 
           <div class="sg-card">
-            <div class="sg-card-title">🗺️ 网格地图</div>
-            <div class="sg-hint">从剧情中自动提取地点信息，生成可视化世界地图。显示主角位置和各地事件。</div>
+            <div class="sg-card-title">🗺�?网格地图</div>
+            <div class="sg-hint">从剧情中自动提取地点信息，生成可视化世界地图。显示主角位置和各地事件�?/div>
             
               <div class="sg-row sg-inline" style="margin-top: 10px;">
                 <label class="sg-check"><input type="checkbox" id="sg_mapEnabled">启用地图功能</label>
               </div>
 
               <div class="sg-field" style="margin-top: 10px;">
-                <label>地图提示词</label>
-                <textarea id="sg_mapSystemPrompt" rows="6" placeholder="可自定义地图提取规则（仍需输出 JSON）"></textarea>
+                <label>地图提示�?/label>
+                <textarea id="sg_mapSystemPrompt" rows="6" placeholder="可自定义地图提取规则（仍需输出 JSON�?></textarea>
                 <div class="sg-actions-row">
-                  <button class="menu_button sg-btn" id="sg_mapResetPrompt">恢复默认提示词</button>
+                  <button class="menu_button sg-btn" id="sg_mapResetPrompt">恢复默认提示�?/button>
                 </div>
               </div>
               
               <div class="sg-field" style="margin-top: 10px;">
-                <label>地图当前状态</label>
+                <label>地图当前状�?/label>
                 <div id="sg_mapPreview" class="sg-map-container">
-                <div class="sg-map-empty">暂无地图数据。启用后进行剧情分析将自动生成地图。</div>
+                <div class="sg-map-empty">暂无地图数据。启用后进行剧情分析将自动生成地图�?/div>
               </div>
             </div>
             
@@ -14028,16 +14022,16 @@ function buildModalHtml() {
           <div class="sg-page" id="sg_page_summary">
 
           <div class="sg-card">
-            <div class="sg-card-title">自动总结（写入世界书）</div>
+            <div class="sg-card-title">自动总结（写入世界书�?/div>
 
             <div class="sg-row sg-inline">
               <label class="sg-check"><input type="checkbox" id="sg_summaryEnabled">启用自动总结</label>
-              <span>每</span>
+              <span>�?/span>
               <input id="sg_summaryEvery" type="number" min="1" max="200" style="width:90px">
-              <span>层</span>
+              <span>�?/span>
               <select id="sg_summaryCountMode">
-                <option value="assistant">按 AI 回复计数</option>
-                <option value="all">按全部消息计数</option>
+                <option value="assistant">�?AI 回复计数</option>
+                <option value="all">按全部消息计�?/option>
               </select>
             </div>
 
@@ -14045,7 +14039,7 @@ function buildModalHtml() {
               <div class="sg-field">
                 <label>总结 Provider</label>
                 <select id="sg_summaryProvider">
-                  <option value="st">使用酒馆当前连接的模型</option>
+                  <option value="st">使用酒馆当前连接的模�?/option>
                   <option value="custom">使用独立 OpenAI 兼容 API</option>
                 </select>
               </div>
@@ -14058,18 +14052,18 @@ function buildModalHtml() {
               <div class="sg-card sg-subcard">
                 <div class="sg-field">
                   <label>自定义总结提示词（System，可选）</label>
-                  <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON）"></textarea>
+                  <textarea id="sg_summarySystemPrompt" rows="6" placeholder="例如：更强调线索/关系变化/回合制记录，或要求英文输出…（仍需输出 JSON�?></textarea>
                 </div>
                 <div class="sg-field">
                   <label>对话片段模板（User，可选）</label>
                   <textarea id="sg_summaryUserTemplate" rows="4" placeholder="支持占位符：{{fromFloor}} {{toFloor}} {{chunk}}"></textarea>
                 </div>
               <div class="sg-row sg-inline">
-                <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示词</button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{statData}}。插件会强制要求输出 JSON：{title, summary, keywords[]}。</div>
+                <button class="menu_button sg-btn" id="sg_summaryResetPrompt">恢复默认提示�?/button>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{statData}}。插件会强制要求输出 JSON：{title, summary, keywords[]}�?/div>
               </div>
               <div class="sg-row sg-inline" style="margin-top:8px">
-                <label class="sg-check"><input type="checkbox" id="sg_summaryReadStatData">读取角色状态变量</label>
+                <label class="sg-check"><input type="checkbox" id="sg_summaryReadStatData">读取角色状态变�?/label>
                 <div class="sg-field" style="flex:1;margin-left:8px">
                   <input id="sg_summaryStatVarName" type="text" placeholder="stat_data" style="width:120px">
                 </div>
@@ -14078,42 +14072,42 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card sg-subcard">
-              <div class="sg-card-title">结构化条目（人物/装备/物品栏/势力/成就/副职业/任务/猎艳录）</div>
+              <div class="sg-card-title">结构化条目（人物/装备/物品�?势力/成就/副职�?任务/猎艳录）</div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">启用结构化条目</label>
+                <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">启用结构化条�?/label>
                 <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">人物</label>
                 <label class="sg-check"><input type="checkbox" id="sg_equipmentEntriesEnabled">装备</label>
-                <label class="sg-check"><input type="checkbox" id="sg_inventoryEntriesEnabled">物品栏</label>
+                <label class="sg-check"><input type="checkbox" id="sg_inventoryEntriesEnabled">物品�?/label>
                 <label class="sg-check"><input type="checkbox" id="sg_factionEntriesEnabled">势力</label>
               </div>
               <div class="sg-row sg-inline" style="margin-top:6px">
-                <label class="sg-check"><input type="checkbox" id="sg_structuredWorldbookEnabled">读取蓝灯世界书</label>
+                <label class="sg-check"><input type="checkbox" id="sg_structuredWorldbookEnabled">读取蓝灯世界�?/label>
                 <select id="sg_structuredWorldbookMode">
                   <option value="active">active（只读取未禁用条目）</option>
                   <option value="all">all（读取所有条目）</option>
                 </select>
-                <div class="sg-hint" id="sg_structuredWorldbookInfo" style="margin-left:auto">（未读取）</div>
+                <div class="sg-hint" id="sg_structuredWorldbookInfo" style="margin-left:auto">（未读取�?/div>
               </div>
               <div class="sg-row sg-inline" style="margin-top:6px">
                 <span>更新频率</span>
-                <span>每</span>
+                <span>�?/span>
                 <input id="sg_structuredEntriesEvery" type="number" min="1" max="200" style="width:90px">
-                <span>层</span>
+                <span>�?/span>
                 <select id="sg_structuredEntriesCountMode">
-                  <option value="assistant">按 AI 回复计数</option>
-                  <option value="all">按全部消息计数</option>
+                  <option value="assistant">�?AI 回复计数</option>
+                  <option value="all">按全部消息计�?/option>
                 </select>
               </div>
               <div class="sg-row sg-inline" style="margin-top:6px">
                 <span>读取楼层</span>
-                <span>最近</span>
+                <span>最�?/span>
                 <input id="sg_structuredEntriesReadFloors" type="number" min="1" max="200" style="width:90px">
-                <span>层</span>
+                <span>�?/span>
               </div>
               <div class="sg-row sg-inline" style="margin-top:6px">
                 <span>条目内容格式</span>
                 <select id="sg_structuredEntryContentFormat">
-                  <option value="text">简洁文本</option>
+                  <option value="text">简洁文�?/option>
                   <option value="markdown">Markdown</option>
                 </select>
               </div>
@@ -14122,13 +14116,13 @@ function buildModalHtml() {
               </div>
 
               <div class="sg-card sg-subcard">
-                <div class="sg-card-title">大总结（汇总多条剧情总结）</div>
+                <div class="sg-card-title">大总结（汇总多条剧情总结�?/div>
                 <div class="sg-row sg-inline">
                   <label class="sg-check"><input type="checkbox" id="sg_megaSummaryEnabled">启用大总结</label>
                   <div class="sg-field" style="margin-left:8px">
-                    <label style="margin-right:6px">每</label>
+                    <label style="margin-right:6px">�?/label>
                     <input id="sg_megaSummaryEvery" type="number" min="5" max="5000" style="width:80px">
-                    <span class="sg-hint" style="margin-left:6px">条剧情总结生成一次</span>
+                    <span class="sg-hint" style="margin-left:6px">条剧情总结生成一�?/span>
                   </div>
                 </div>
                 <div class="sg-field">
@@ -14137,7 +14131,7 @@ function buildModalHtml() {
                 </div>
                 <div class="sg-field">
                   <label>大总结提示词（System，可选）</label>
-                  <textarea id="sg_megaSummarySystemPrompt" rows="5" placeholder="例如：强调阶段性转折/主线推进…（仍需输出 JSON）"></textarea>
+                  <textarea id="sg_megaSummarySystemPrompt" rows="5" placeholder="例如：强调阶段性转�?主线推进…（仍需输出 JSON�?></textarea>
                 </div>
                 <div class="sg-field">
                   <label>大总结模板（User，可选）</label>
@@ -14146,9 +14140,9 @@ function buildModalHtml() {
               </div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_achievementEntriesEnabled">成就</label>
-                <label class="sg-check"><input type="checkbox" id="sg_subProfessionEntriesEnabled">副职业</label>
+                <label class="sg-check"><input type="checkbox" id="sg_subProfessionEntriesEnabled">副职�?/label>
                 <label class="sg-check"><input type="checkbox" id="sg_questEntriesEnabled">任务</label>
-                <label class="sg-check"><input type="checkbox" id="sg_conquestEntriesEnabled">猎艳录</label>
+                <label class="sg-check"><input type="checkbox" id="sg_conquestEntriesEnabled">猎艳�?/label>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
@@ -14163,7 +14157,7 @@ function buildModalHtml() {
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label>物品栏条目前缀</label>
-                  <input id="sg_inventoryEntryPrefix" type="text" placeholder="物品栏">
+                  <input id="sg_inventoryEntryPrefix" type="text" placeholder="物品�?>
                 </div>
                 <div class="sg-field">
                   <label>势力条目前缀</label>
@@ -14179,7 +14173,7 @@ function buildModalHtml() {
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label>副职业条目前缀</label>
-                  <input id="sg_subProfessionEntryPrefix" type="text" placeholder="副职业">
+                  <input id="sg_subProfessionEntryPrefix" type="text" placeholder="副职�?>
                 </div>
                 <div class="sg-field">
                   <label>任务条目前缀</label>
@@ -14189,12 +14183,12 @@ function buildModalHtml() {
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label>猎艳录条目前缀</label>
-                  <input id="sg_conquestEntryPrefix" type="text" placeholder="猎艳录">
+                  <input id="sg_conquestEntryPrefix" type="text" placeholder="猎艳�?>
                 </div>
               </div>
               <div class="sg-field">
                 <label>结构化提取提示词（System，可选）</label>
-                <textarea id="sg_structuredEntriesSystemPrompt" rows="5" placeholder="例如：强调客观档案式描述、避免杜撰…"></textarea>
+                <textarea id="sg_structuredEntriesSystemPrompt" rows="5" placeholder="例如：强调客观档案式描述、避免杜撰�?></textarea>
               </div>
               <div class="sg-field">
                 <label>结构化提取模板（User，可选）</label>
@@ -14202,12 +14196,12 @@ function buildModalHtml() {
               </div>
               <div class="sg-card sg-subcard">
                 <div class="sg-card-title">条目提示词与模板管理</div>
-                <div class="sg-hint" style="margin-bottom:8px">为每种类型的条目配置独立的提取逻辑（提示词）和输出格式（模板）。</div>
+                <div class="sg-hint" style="margin-bottom:8px">为每种类型的条目配置独立的提取逻辑（提示词）和输出格式（模板）�?/div>
 
                 <div class="sg-row sg-inline" style="margin-bottom:8px">
                   <select id="sg_structuredPresetSelect" style="min-width:160px;"></select>
                   <button class="menu_button sg-btn" id="sg_structuredApplyPreset">应用</button>
-                  <button class="menu_button sg-btn" id="sg_structuredSavePreset">保存为预设</button>
+                  <button class="menu_button sg-btn" id="sg_structuredSavePreset">保存为预�?/button>
                   <button class="menu_button sg-btn" id="sg_structuredDeletePreset">删除</button>
                   <button class="menu_button sg-btn" id="sg_structuredExportPreset">导出预设</button>
                   <button class="menu_button sg-btn" id="sg_structuredImportPreset">导入预设</button>
@@ -14218,20 +14212,20 @@ function buildModalHtml() {
                   <select id="sg_structuredTypeSelector" style="flex:1">
                     <option value="character">人物 (Character)</option>
                     <option value="equipment">装备 (Equipment)</option>
-                    <option value="inventory">物品栏 (Inventory)</option>
+                    <option value="inventory">物品�?(Inventory)</option>
                     <option value="faction">势力 (Faction)</option>
                     <option value="achievement">成就 (Achievement)</option>
-                    <option value="subProfession">副职业 (Sub-profession)</option>
+                    <option value="subProfession">副职�?(Sub-profession)</option>
                     <option value="quest">任务 (Quest)</option>
-                    <option value="conquest">猎艳录 (Conquest)</option>
+                    <option value="conquest">猎艳�?(Conquest)</option>
                   </select>
                 </div>
 
                 <!-- Template Editor Area -->
                 <div id="sg_structured_template_editor">
                   <div class="sg-field">
-                    <label>提取提示词 (Prompt)</label>
-                    <textarea id="sg_structured_type_prompt" rows="3" placeholder="该类型的提取侧重点..."></textarea>
+                    <label>提取提示�?(Prompt)</label>
+                    <textarea id="sg_structured_type_prompt" rows="3" placeholder="该类型的提取侧重�?.."></textarea>
                   </div>
                   <div class="sg-field">
                     <label>输出模板 (Template)</label>
@@ -14262,8 +14256,8 @@ function buildModalHtml() {
               </div>
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_structuredResetPrompt">恢复默认结构化提示词</button>
-                <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓存</button>
-                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownInventories}} {{knownFactions}} {{knownAchievements}} {{knownSubProfessions}} {{knownQuests}} {{knownConquests}} {{structuredWorldbook}}。</div>
+                <button class="menu_button sg-btn" id="sg_clearStructuredCache">清除结构化条目缓�?/button>
+                <div class="sg-hint" style="margin-left:auto">占位符：{{fromFloor}} {{toFloor}} {{chunk}} {{knownCharacters}} {{knownEquipments}} {{knownInventories}} {{knownFactions}} {{knownAchievements}} {{knownSubProfessions}} {{knownQuests}} {{knownConquests}} {{structuredWorldbook}}�?/div>
               </div>
             </div>
 
@@ -14280,12 +14274,12 @@ function buildModalHtml() {
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>模型ID（可手填）</label>
+                  <label>模型ID（可手填�?/label>
                   <input id="sg_summaryCustomModel" type="text" placeholder="gpt-4o-mini">
                   <div class="sg-row sg-inline" style="margin-top:6px;">
                     <button class="menu_button sg-btn" id="sg_refreshSummaryModels">刷新模型</button>
                     <select id="sg_summaryModelSelect" class="sg-model-select">
-                      <option value="">（选择模型）</option>
+                      <option value="">（选择模型�?/option>
                     </select>
                   </div>
                 </div>
@@ -14294,42 +14288,42 @@ function buildModalHtml() {
                   <input id="sg_summaryCustomMaxTokens" type="number" min="128" max="200000">
                 </div>
               </div>
-              <label class="sg-check"><input type="checkbox" id="sg_summaryCustomStream">stream（若支持）</label>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryCustomStream">stream（若支持�?/label>
             </div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用）</label>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToWorldInfo">写入世界书（绿灯启用�?/label>
               <input id="sg_summaryWorldInfoFile" type="text" placeholder="世界书文件名" style="flex:1; min-width: 220px;">
               <select id="sg_summaryWorldbookSelect" class="sg-model-select" title="从酒馆世界书选择" style="min-width: 160px;">
-                <option value="">(选择世界书)</option>
+                <option value="">(选择世界�?</option>
               </select>
               <button class="menu_button sg-btn" id="sg_refreshWorldbookList" title="从酒馆读取世界书列表">刷新列表</button>
             </div>
 
             <div class="sg-row sg-inline">
-              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo" checked>同时写入蓝灯世界书（常开索引）</label>
+              <label class="sg-check"><input type="checkbox" id="sg_summaryToBlueWorldInfo" checked>同时写入蓝灯世界书（常开索引�?/label>
               <input id="sg_summaryBlueWorldInfoFile" type="text" placeholder="蓝灯世界书文件名（建议单独建一个）" style="flex:1; min-width: 260px;">
               <select id="sg_summaryBlueWorldbookSelect" class="sg-model-select" title="从酒馆世界书选择" style="min-width: 160px;">
-                <option value="">(选择世界书)</option>
+                <option value="">(选择世界�?</option>
               </select>
             </div>
 
             <div class="sg-row sg-inline" style="gap: 20px;">
-              <label class="sg-check" title="当在酒馆撤回/删除消息导致楼层减少时，自动撤销最近一次总结条目"><input type="checkbox" id="sg_summaryAutoRollback">剧本总结自动随消息撤回</label>
+              <label class="sg-check" title="当在酒馆撤回/删除消息导致楼层减少时，自动撤销最近一次总结条目"><input type="checkbox" id="sg_summaryAutoRollback">剧本总结自动随消息撤�?/label>
               <label class="sg-check" title="当在酒馆撤回/删除消息导致楼层减少时，自动回滚最近一次结构化条目变更"><input type="checkbox" id="sg_structuredAutoRollback">结构化条目自动随消息撤回</label>
             </div>
 
             <div class="sg-hint" style="margin-top: 8px; color: var(--SmartThemeQuoteColor);">
-              💡 请手动创建世界书文件，然后在上方填写文件名。绿灯选择「写入指定世界书文件名」模式。
+              💡 请手动创建世界书文件，然后在上方填写文件名。绿灯选择「写入指定世界书文件名」模式�?
             </div>
 
             <div class="sg-grid2">
               <div class="sg-field">
-                <label>条目标题前缀（写入 comment，始终在最前）</label>
+                <label>条目标题前缀（写�?comment，始终在最前）</label>
                 <input id="sg_summaryWorldInfoCommentPrefix" type="text" placeholder="剧情总结">
               </div>
               <div class="sg-field">
-                <label>限制：每条消息最多字符 / 总字符</label>
+                <label>限制：每条消息最多字�?/ 总字�?/label>
                 <div class="sg-row" style="margin-top:0">
                   <input id="sg_summaryMaxChars" type="number" min="200" max="8000" style="width:110px">
                   <input id="sg_summaryMaxTotalChars" type="number" min="2000" max="80000" style="width:120px">
@@ -14341,13 +14335,13 @@ function buildModalHtml() {
               <div class="sg-field">
                 <label>世界书触发词写入 key</label>
                 <select id="sg_summaryWorldInfoKeyMode">
-                  <option value="keywords">使用模型输出的关键词（6~14 个）</option>
-                  <option value="indexId">使用索引编号（只写 1 个，如 A-001）</option>
+                  <option value="keywords">使用模型输出的关键词�?~14 个）</option>
+                  <option value="indexId">使用索引编号（只�?1 个，�?A-001�?/option>
                 </select>
-                <div class="sg-hint">想让“主要关键词”只显示 A-001，就选“索引编号”。</div>
+                <div class="sg-hint">想让“主要关键词”只显示 A-001，就选“索引编号”�?/div>
               </div>
               <div class="sg-field" id="sg_summaryIndexFormat" style="display:none;">
-                <label>索引编号格式（keyMode=indexId）</label>
+                <label>索引编号格式（keyMode=indexId�?/label>
                 <div class="sg-row" style="margin-top:0; gap:8px; align-items:center;">
                   <input id="sg_summaryIndexPrefix" type="text" placeholder="A-" style="width:90px">
                   <span class="sg-hint">位数</span>
@@ -14355,17 +14349,17 @@ function buildModalHtml() {
                   <span class="sg-hint">起始</span>
                   <input id="sg_summaryIndexStart" type="number" min="1" max="1000000" style="width:100px">
                 </div>
-                <label class="sg-check" style="margin-top:6px;"><input type="checkbox" id="sg_summaryIndexInComment">条目标题（comment）包含编号</label>
+                <label class="sg-check" style="margin-top:6px;"><input type="checkbox" id="sg_summaryIndexInComment">条目标题（comment）包含编�?/label>
               </div>
             </div>
 
             <div class="sg-card sg-subcard">
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">启用“蓝灯索引 → 绿灯触发”（发送消息前自动注入触发词）</label>
+                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerEnabled">启用“蓝灯索�?�?绿灯触发”（发送消息前自动注入触发词）</label>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>读取前 N 条消息正文</label>
+                  <label>读取�?N 条消息正�?/label>
                   <input id="sg_wiTriggerLookbackMessages" type="number" min="5" max="120" placeholder="20">
                 </div>
                 <div class="sg-field">
@@ -14395,7 +14389,7 @@ function buildModalHtml() {
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>最多索引副职业数</label>
+                  <label>最多索引副职业�?/label>
                   <input id="sg_wiTriggerMaxSubProfessions" type="number" min="0" max="10" placeholder="2">
                 </div>
                 <div class="sg-field">
@@ -14415,13 +14409,13 @@ function buildModalHtml() {
     <label>匹配方式</label>
     <select id="sg_wiTriggerMatchMode">
       <option value="local">本地相似度（快）</option>
-      <option value="llm">LLM 综合判断（可自定义提示词）</option>
+      <option value="llm">LLM 综合判断（可自定义提示词�?/option>
     </select>
   </div>
   <div class="sg-field">
-    <label>预筛选 TopK（仅 LLM 模式）</label>
+    <label>预筛�?TopK（仅 LLM 模式�?/label>
     <input id="sg_wiIndexPrefilterTopK" type="number" min="5" max="80" placeholder="24">
-    <div class="sg-hint">先用相似度挑 TopK，再交给模型选出最相关的几条（省 tokens）。</div>
+    <div class="sg-hint">先用相似度挑 TopK，再交给模型选出最相关的几条（�?tokens）�?/div>
   </div>
 </div>
 
@@ -14430,7 +14424,7 @@ function buildModalHtml() {
     <div class="sg-field">
       <label>索引 Provider</label>
       <select id="sg_wiIndexProvider">
-        <option value="st">使用酒馆当前连接的模型</option>
+        <option value="st">使用酒馆当前连接的模�?/option>
         <option value="custom">使用独立 OpenAI 兼容 API</option>
       </select>
     </div>
@@ -14442,15 +14436,15 @@ function buildModalHtml() {
 
   <div class="sg-field">
     <label>自定义索引提示词（System，可选）</label>
-    <textarea id="sg_wiIndexSystemPrompt" rows="6" placeholder="例如：更强调人物关系/线索回收/当前目标；或要求更严格的筛选…"></textarea>
+    <textarea id="sg_wiIndexSystemPrompt" rows="6" placeholder="例如：更强调人物关系/线索回收/当前目标；或要求更严格的筛选�?></textarea>
   </div>
   <div class="sg-field">
     <label>索引模板（User，可选）</label>
     <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="支持占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}"></textarea>
   </div>
   <div class="sg-row sg-inline">
-    <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示词</button>
-    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}。插件会强制要求输出 JSON：{pickedNames:string[]}。</div>
+    <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示�?/button>
+    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}。插件会强制要求输出 JSON：{pickedNames:string[]}�?/div>
   </div>
 
   <div class="sg-card sg-subcard" id="sg_index_custom_block" style="display:none">
@@ -14466,12 +14460,12 @@ function buildModalHtml() {
     </div>
     <div class="sg-grid2">
       <div class="sg-field">
-        <label>模型ID（可手填）</label>
+        <label>模型ID（可手填�?/label>
         <input id="sg_wiIndexCustomModel" type="text" placeholder="gpt-4o-mini">
         <div class="sg-row sg-inline" style="margin-top:6px;">
           <button class="menu_button sg-btn" id="sg_refreshIndexModels">刷新模型</button>
           <select id="sg_wiIndexModelSelect" class="sg-model-select">
-            <option value="">（选择模型）</option>
+            <option value="">（选择模型�?/option>
           </select>
         </div>
       </div>
@@ -14484,7 +14478,7 @@ function buildModalHtml() {
         </div>
       </div>
     </div>
-    <label class="sg-check"><input type="checkbox" id="sg_wiIndexCustomStream">stream（若支持）</label>
+    <label class="sg-check"><input type="checkbox" id="sg_wiIndexCustomStream">stream（若支持�?/label>
   </div>
 </div>
 
@@ -14492,17 +14486,17 @@ function buildModalHtml() {
               <div class="sg-grid2">
                 <div class="sg-field">
                   <label class="sg-check"><input type="checkbox" id="sg_wiTriggerIncludeUserMessage">结合本次用户输入（综合判断）</label>
-                  <div class="sg-hint">开启后会综合“最近 N 条正文 + 你这句话”来决定与当前剧情最相关的条目。</div>
+                  <div class="sg-hint">开启后会综合“最�?N 条正�?+ 你这句话”来决定与当前剧情最相关的条目�?/div>
                 </div>
                 <div class="sg-field">
-                  <label>用户输入权重（0~10）</label>
+                  <label>用户输入权重�?~10�?/label>
                   <input id="sg_wiTriggerUserMessageWeight" type="number" min="0" max="10" step="0.1" placeholder="1.6">
-                  <div class="sg-hint">越大越看重你这句话；1=与最近正文同权重。</div>
+                  <div class="sg-hint">越大越看重你这句话；1=与最近正文同权重�?/div>
                 </div>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>相关度阈值（0~1）</label>
+                  <label>相关度阈值（0~1�?/label>
                   <input id="sg_wiTriggerMinScore" type="number" min="0" max="1" step="0.01" placeholder="0.08">
                 </div>
                 <div class="sg-field">
@@ -14512,43 +14506,43 @@ function buildModalHtml() {
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>至少已有 N 条 AI 回复才开始索引（0=立即）</label>
+                  <label>至少已有 N �?AI 回复才开始索引（0=立即�?/label>
                   <input id="sg_wiTriggerStartAfterAssistantMessages" type="number" min="0" max="200000" placeholder="0">
                 </div>
                 <div class="sg-field">
                   <label>说明</label>
-                  <div class="sg-hint" style="padding-top:8px;">（只统计 AI 回复楼层；例如填 100 表示第 100 层之后才注入）</div>
+                  <div class="sg-hint" style="padding-top:8px;">（只统计 AI 回复楼层；例如填 100 表示�?100 层之后才注入�?/div>
                 </div>
               </div>
               <div class="sg-row sg-inline">
                 <label>注入方式</label>
                 <select id="sg_wiTriggerInjectStyle" style="min-width:200px">
                   <option value="hidden">隐藏注释（推荐）</option>
-                  <option value="plain">普通文本（更稳）</option>
+                  <option value="plain">普通文本（更稳�?/option>
                 </select>
               </div>
               <div class="sg-row sg-inline">
                 <label>蓝灯索引</label>
                 <select id="sg_wiBlueIndexMode" style="min-width:180px">
-                  <option value="live">实时读取蓝灯世界书</option>
+                  <option value="live">实时读取蓝灯世界�?/option>
                   <option value="cache">使用导入/缓存</option>
                 </select>
-                <input id="sg_wiBlueIndexFile" type="text" placeholder="蓝灯世界书文件名（留空=使用上方蓝灯写入文件名）" style="flex:1; min-width: 260px;">
+                <input id="sg_wiBlueIndexFile" type="text" placeholder="蓝灯世界书文件名（留�?使用上方蓝灯写入文件名）" style="flex:1; min-width: 260px;">
                 <button class="menu_button sg-btn" id="sg_refreshBlueIndexLive">刷新</button>
               </div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerDebugLog">调试：状态栏显示命中条目/触发词</label>
+                <label class="sg-check"><input type="checkbox" id="sg_wiTriggerDebugLog">调试：状态栏显示命中条目/触发�?/label>
                 <button class="menu_button sg-btn" id="sg_importBlueIndex">导入蓝灯世界书JSON（备用）</button>
                 <button class="menu_button sg-btn" id="sg_clearBlueIndex">清空蓝灯索引</button>
                 <div class="sg-hint" id="sg_blueIndexInfo" style="margin-left:auto">（蓝灯索引：0 条）</div>
               </div>
               <div class="sg-hint">
-                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与 <b>最近 N 条正文</b>（可选再加上 <b>本次用户输入</b>）做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注释/普通文本），从而触发“绿灯世界书”的对应条目。
+                说明：本功能会用“蓝灯索引”里的每条总结（title/summary/keywords）与 <b>最�?N 条正�?/b>（可选再加上 <b>本次用户输入</b>）做相似度匹配，选出最相关的几条，把它们的 <b>keywords</b> 追加到你刚发送的消息末尾（可选隐藏注�?普通文本），从而触发“绿灯世界书”的对应条目�?
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-row sg-inline" style="margin-top:0;">
-                  <div class="sg-hint">ROLL 设置已移至独立的「ROLL 设置」标签页。</div>
+                  <div class="sg-hint">ROLL 设置已移至独立的「ROLL 设置」标签页�?/div>
                   <div class="sg-spacer"></div>
                   <button class="menu_button sg-btn" id="sg_gotoRollPage">打开 ROLL 设置</button>
                 </div>
@@ -14561,13 +14555,13 @@ function buildModalHtml() {
                   <button class="menu_button sg-btn" id="sg_clearWiLogs">清空</button>
                 </div>
                 <div class="sg-loglist" id="sg_wiLogs" style="margin-top:8px;">(暂无)</div>
-                <div class="sg-hint" style="margin-top:8px;">提示：日志记录“这次发送消息时命中了哪些索引条目（等价于将触发的绿灯条目）”以及注入了哪些关键词。</div>
+                <div class="sg-hint" style="margin-top:8px;">提示：日志记录“这次发送消息时命中了哪些索引条目（等价于将触发的绿灯条目）”以及注入了哪些关键词�?/div>
               </div>
             </div>
 
             <div class="sg-card sg-subcard" id="sg_indexMovedHint" style="margin-top:10px;">
               <div class="sg-row sg-inline" style="margin-top:0;">
-                <div class="sg-hint">索引相关设置已移至上方“索引设置”页。</div>
+                <div class="sg-hint">索引相关设置已移至上方“索引设置”页�?/div>
                 <div class="sg-spacer"></div>
                 <button class="menu_button sg-btn" id="sg_gotoIndexPage">打开索引设置</button>
               </div>
@@ -14575,11 +14569,11 @@ function buildModalHtml() {
 
             <div class="sg-row sg-inline">
               <label>手动楼层范围</label>
-              <input id="sg_summaryManualFrom" type="number" min="1" style="width:110px" placeholder="起始层">
+              <input id="sg_summaryManualFrom" type="number" min="1" style="width:110px" placeholder="起始�?>
               <span> - </span>
-              <input id="sg_summaryManualTo" type="number" min="1" style="width:110px" placeholder="结束层">
-              <button class="menu_button sg-btn" id="sg_summarizeRange">立即总结该范围</button>
-              <div class="sg-hint" id="sg_summaryManualHint" style="margin-left:auto">（可选范围：1-0）</div>
+              <input id="sg_summaryManualTo" type="number" min="1" style="width:110px" placeholder="结束�?>
+              <button class="menu_button sg-btn" id="sg_summarizeRange">立即总结该范�?/button>
+              <div class="sg-hint" id="sg_summaryManualHint" style="margin-left:auto">（可选范围：1-0�?/div>
             </div>
 
             <div class="sg-row sg-inline" style="margin-top:6px;">
@@ -14588,12 +14582,12 @@ function buildModalHtml() {
               <span> - </span>
               <input id="sg_megaSummaryTo" type="text" style="width:120px" placeholder="A-080">
               <button class="menu_button sg-btn" id="sg_megaSummarizeRange">生成大总结</button>
-              <div class="sg-hint" style="margin-left:auto">按索引号范围汇总，步长=大总结阈值</div>
+              <div class="sg-hint" style="margin-left:auto">按索引号范围汇总，步长=大总结阈�?/div>
             </div>
 
             <div class="sg-row sg-inline" style="margin-top:6px;">
               <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_summaryManualSplit">手动范围按每 N 层拆分生成多条（N=上方“每 N 层总结一次”）</label>
-              <div class="sg-hint" style="margin-left:auto">例如 1-80 且 N=40 → 2 条</div>
+              <div class="sg-hint" style="margin-left:auto">例如 1-80 �?N=40 �?2 �?/div>
             </div>
 
             <div class="sg-row sg-inline">
@@ -14602,20 +14596,20 @@ function buildModalHtml() {
               <button class="menu_button sg-btn" id="sg_resetSummaryState">重置本聊天总结进度</button>
               <button class="menu_button sg-btn" id="sg_undoLastSummary">撤销最近一次总结</button>
               <button class="menu_button sg-btn" id="sg_undoLastStructured">撤销最近一次结构化条目</button>
-              <button class="menu_button sg-btn" id="sg_syncGreenFromBlue">对齐蓝灯→绿灯</button>
-              <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成）</div>
+              <button class="menu_button sg-btn" id="sg_syncGreenFromBlue">对齐蓝灯→绿�?/button>
+              <div class="sg-hint" id="sg_summaryInfo" style="margin-left:auto">（未生成�?/div>
             </div>
 
             <div class="sg-hint">
-              自动总结会按“每 N 层”触发；每次输出会生成 <b>摘要</b> + <b>关键词</b>，并可自动创建世界书条目（disable=0 绿灯启用，关键词写入 key 作为触发词）。
+              自动总结会按“每 N 层”触发；每次输出会生�?<b>摘要</b> + <b>关键�?/b>，并可自动创建世界书条目（disable=0 绿灯启用，关键词写入 key 作为触发词）�?
             </div>
           </div>
           </div> <!-- sg_page_summary -->
 
           <div class="sg-page" id="sg_page_index">
             <div class="sg-card">
-              <div class="sg-card-title">索引设置（蓝灯索引 → 绿灯触发）</div>
-              <div class="sg-hint" style="margin-bottom:10px;">索引会从“蓝灯世界书”里挑选与当前剧情最相关的总结条目，并把对应触发词注入到你发送的消息末尾，以触发绿灯世界书条目。</div>
+              <div class="sg-card-title">索引设置（蓝灯索�?�?绿灯触发�?/div>
+              <div class="sg-hint" style="margin-bottom:10px;">索引会从“蓝灯世界书”里挑选与当前剧情最相关的总结条目，并把对应触发词注入到你发送的消息末尾，以触发绿灯世界书条目�?/div>
               <div id="sg_index_mount"></div>
             </div>
           </div> <!-- sg_page_index -->
@@ -14623,19 +14617,19 @@ function buildModalHtml() {
           <div class="sg-page" id="sg_page_roll">
             <div class="sg-card">
               <div class="sg-card-title">ROLL 设置（判定）</div>
-              <div class="sg-hint" style="margin-bottom:10px;">用于行动判定的 ROLL 注入与计算规则。ROLL 模块独立运行，不依赖总结或索引功能。</div>
+              <div class="sg-hint" style="margin-bottom:10px;">用于行动判定�?ROLL 注入与计算规则。ROLL 模块独立运行，不依赖总结或索引功能�?/div>
               
               <label class="sg-check"><input type="checkbox" id="sg_wiRollEnabled">启用 ROLL 点（战斗/劝说/学习等判定；与用户输入一起注入）</label>
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>随机权重（0~1）</label>
+                  <label>随机权重�?~1�?/label>
                   <input id="sg_wiRollRandomWeight" type="number" min="0" max="1" step="0.01" placeholder="0.3">
                 </div>
                 <div class="sg-field">
                   <label>难度模式</label>
                   <select id="sg_wiRollDifficulty">
-                    <option value="simple">简单</option>
-                    <option value="normal">普通</option>
+                    <option value="simple">简�?/option>
+                    <option value="normal">普�?/option>
                     <option value="hard">困难</option>
                     <option value="hell">地狱</option>
                   </select>
@@ -14646,32 +14640,32 @@ function buildModalHtml() {
                   <label>变量来源</label>
                   <select id="sg_wiRollStatSource">
                     <option value="variable">综合多来源（最稳定，推荐）</option>
-                    <option value="template">模板渲染（stat_data）</option>
-                    <option value="latest">最新正文末尾</option>
+                    <option value="template">模板渲染（stat_data�?/option>
+                    <option value="latest">最新正文末�?/option>
                   </select>
-                  <div class="sg-hint">综合模式按优先级尝试：/getvar命令 → 变量存储 → 模板渲染 → DOM读取 → 最新AI回复</div>
+                  <div class="sg-hint">综合模式按优先级尝试�?getvar命令 �?变量存储 �?模板渲染 �?DOM读取 �?最新AI回复</div>
                 </div>
                 <div class="sg-field">
                   <label>变量解析模式</label>
                   <select id="sg_wiRollStatParseMode">
                     <option value="json">JSON</option>
-                    <option value="kv">键值行（pc.atk=10）</option>
+                    <option value="kv">键值行（pc.atk=10�?/option>
                   </select>
                 </div>
               </div>
               <div class="sg-field">
-                <label>变量名（用于"变量存储"来源）</label>
+                <label>变量名（用于"变量存储"来源�?/label>
                 <input id="sg_wiRollStatVarName" type="text" placeholder="stat_data">
               </div>
               <div class="sg-row sg-inline">
                 <label>注入方式</label>
                 <select id="sg_wiRollInjectStyle">
                   <option value="hidden">隐藏注释</option>
-                  <option value="plain">普通文本</option>
+                  <option value="plain">普通文�?/option>
                 </select>
               </div>
               <div class="sg-row sg-inline">
-                <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_wiRollDebugLog">调试：状态栏显示判定细节/未触发原因</label>
+                <label class="sg-check" style="margin:0;"><input type="checkbox" id="sg_wiRollDebugLog">调试：状态栏显示判定细节/未触发原�?/label>
               </div>
               <div class="sg-grid2">
                 <div class="sg-field">
@@ -14700,7 +14694,7 @@ function buildModalHtml() {
                     <div class="sg-row sg-inline" style="margin-top:6px;">
                       <button class="menu_button sg-btn" id="sg_refreshRollModels">刷新模型</button>
                       <select id="sg_wiRollModelSelect" class="sg-model-select">
-                        <option value="">（选择模型）</option>
+                        <option value="">（选择模型�?/option>
                       </select>
                     </div>
                   </div>
@@ -14719,13 +14713,13 @@ function buildModalHtml() {
                     <input id="sg_wiRollCustomTopP" type="number" min="0" max="1" step="0.01">
                   </div>
                 </div>
-                <label class="sg-check"><input type="checkbox" id="sg_wiRollCustomStream">stream（若支持）</label>
+                <label class="sg-check"><input type="checkbox" id="sg_wiRollCustomStream">stream（若支持�?/label>
                 <div class="sg-field" style="margin-top:8px;">
-                  <label>ROLL 系统提示词</label>
+                  <label>ROLL 系统提示�?/label>
                   <textarea id="sg_wiRollSystemPrompt" rows="5"></textarea>
                 </div>
               </div>
-              <div class="sg-hint">AI 会先判断是否需要判定，再计算并注入结果。"综合多来源"模式会尝试多种方式读取变量，确保最大兼容性。</div>
+              <div class="sg-hint">AI 会先判断是否需要判定，再计算并注入结果�?综合多来�?模式会尝试多种方式读取变量，确保最大兼容性�?/div>
             </div>
             <div class="sg-card sg-subcard" style="margin-top:10px;">
               <div class="sg-row sg-inline" style="margin-top:0;">
@@ -14734,22 +14728,22 @@ function buildModalHtml() {
                 <button class="menu_button sg-btn" id="sg_clearRollLogs">清空</button>
               </div>
               <div class="sg-loglist" id="sg_rollLogs" style="margin-top:8px;">(暂无)</div>
-              <div class="sg-hint" style="margin-top:8px;">提示：仅记录由 ROLL API 返回的简要计算摘要。</div>
+              <div class="sg-hint" style="margin-top:8px;">提示：仅记录�?ROLL API 返回的简要计算摘要�?/div>
             </div>
           </div> <!-- sg_page_roll -->
 
           <div class="sg-page" id="sg_page_image">
             <div class="sg-card">
               <div class="sg-card-title">🎨 图像生成设置</div>
-              <div class="sg-hint" style="margin-bottom:10px;">读取最新剧情内容，使用 LLM 生成标签，调用 Novel AI API 生成角色/场景图像。</div>
+              <div class="sg-hint" style="margin-bottom:10px;">读取最新剧情内容，使用 LLM 生成标签，调�?Novel AI API 生成角色/场景图像�?/div>
 
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_imageGenEnabled">启用图像生成模块</label>
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">LLM 提示词生成 API</div>
-                <div class="sg-hint">用于将剧情内容转换为图像生成标签（Tag）</div>
+                <div class="sg-card-title" style="font-size:0.95em;">LLM 提示词生�?API</div>
+                <div class="sg-hint">用于将剧情内容转换为图像生成标签（Tag�?/div>
                 <div class="sg-grid2" style="margin-top:8px;">
                   <div class="sg-field">
                     <label>API 基础URL</label>
@@ -14780,8 +14774,8 @@ function buildModalHtml() {
               </div>
 
                <div class="sg-card sg-subcard" style="margin-top:10px;">
-                 <div class="sg-card-title" style="font-size:0.95em;">🧍 人物形象库</div>
-                 <div class="sg-hint">在剧情中匹配角色名/关键词后，会将该人物的标签自动拼到正向提示词前面。</div>
+                 <div class="sg-card-title" style="font-size:0.95em;">🧍 人物形象�?/div>
+                 <div class="sg-hint">在剧情中匹配角色�?关键词后，会将该人物的标签自动拼到正向提示词前面�?/div>
                  <div class="sg-row sg-inline" style="margin-top:8px; gap:12px;">
                    <label class="sg-check"><input type="checkbox" id="sg_imageGenProfilesEnabled">启用人物形象匹配</label>
                    <button class="menu_button sg-btn" id="sg_imageGenProfileAdd">添加人物</button>
@@ -14798,7 +14792,7 @@ function buildModalHtml() {
                 <div class="sg-field">
                   <label>Novel AI API Key</label>
                   <input id="sg_novelaiApiKey" type="password" placeholder="pst-...">
-                  <div class="sg-hint">需要 Novel AI 订阅才能使用 API</div>
+                  <div class="sg-hint">需�?Novel AI 订阅才能使用 API</div>
                 </div>
 
               <div class="sg-grid2">
@@ -14812,12 +14806,12 @@ function buildModalHtml() {
                   </select>
                 </div>
                 <div class="sg-field">
-                  <label>分辨率</label>
+                  <label>分辨�?/label>
                   <select id="sg_novelaiResolution">
                     <option value="832x1216">832×1216 (立绘)</option>
                     <option value="1216x832">1216×832 (横向)</option>
                     <option value="1024x1024">1024×1024 (方形)</option>
-                    <option value="640x640">640×640 (小)</option>
+                    <option value="640x640">640×640 (�?</option>
                   </select>
                 </div>
               </div>
@@ -14834,7 +14828,7 @@ function buildModalHtml() {
               </div>
 
                 <div class="sg-field">
-                  <label>默认负面提示词</label>
+                  <label>默认负面提示�?/label>
                   <textarea id="sg_novelaiNegativePrompt" rows="2" placeholder="lowres, bad anatomy, ..."></textarea>
                 </div>
 
@@ -14889,13 +14883,13 @@ function buildModalHtml() {
                 <hr class="sg-hr">
 
                 <div class="sg-row sg-inline">
-                  <label class="sg-check"><input type="checkbox" id="sg_imageGenAutoSave">自动保存生成的图像</label>
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenAutoSave">自动保存生成的图�?/label>
                 </div>
 
               <div class="sg-field">
-                <label>保存路径（留空则仅显示不保存）</label>
+                <label>保存路径（留空则仅显示不保存�?/label>
                 <input id="sg_imageGenSavePath" type="text" placeholder="例如：C:/Images/Generated">
-                <div class="sg-hint">图像会以时间戳命名保存到此目录</div>
+                <div class="sg-hint">图像会以时间戳命名保存到此目�?/div>
               </div>
 
               <hr class="sg-hr">
@@ -14905,23 +14899,23 @@ function buildModalHtml() {
                 <input id="sg_imageGenLookbackMessages" type="number" min="1" max="30">
               </div>
               <div class="sg-row sg-inline">
-                <label class="sg-check"><input type="checkbox" id="sg_imageGenReadStatData">读取角色状态变量</label>
+                <label class="sg-check"><input type="checkbox" id="sg_imageGenReadStatData">读取角色状态变�?/label>
                 <input id="sg_imageGenStatVarName" type="text" placeholder="stat_data" style="width:120px">
               </div>
 
               <div class="sg-field">
-                <label>标签生成提示词 (System)</label>
-                <textarea id="sg_imageGenSystemPrompt" rows="8" placeholder="用于让 LLM 生成 Danbooru 风格标签的提示词"></textarea>
+                <label>标签生成提示�?(System)</label>
+                <textarea id="sg_imageGenSystemPrompt" rows="8" placeholder="用于�?LLM 生成 Danbooru 风格标签的提示词"></textarea>
                 <div class="sg-actions-row">
-                  <button class="menu_button sg-btn" id="sg_imageGenResetPrompt">恢复默认提示词</button>
+                  <button class="menu_button sg-btn" id="sg_imageGenResetPrompt">恢复默认提示�?/button>
                 </div>
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">画师/正向提示词</div>
-                <div class="sg-hint">启用后会把该权重串追加到正向提示词最前面。</div>
+                <div class="sg-card-title" style="font-size:0.95em;">画师/正向提示�?/div>
+                <div class="sg-hint">启用后会把该权重串追加到正向提示词最前面�?/div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
-                  <label class="sg-check"><input type="checkbox" id="sg_imageGenArtistPromptEnabled">启用画师/正向提示词</label>
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenArtistPromptEnabled">启用画师/正向提示�?/label>
                 </div>
                 <div class="sg-field" style="margin-top:6px;">
                   <textarea id="sg_imageGenArtistPrompt" rows="4" placeholder="请输入权重串，如 1.2::artist:name ::, masterpiece"></textarea>
@@ -14929,33 +14923,33 @@ function buildModalHtml() {
               </div>
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">提示词替换</div>
-                <div class="sg-hint">对剧情文本进行替换/插入，再交给 LLM 生成标签（命中规则时生效）。</div>
+                <div class="sg-card-title" style="font-size:0.95em;">提示词替�?/div>
+                <div class="sg-hint">对剧情文本进行替�?插入，再交给 LLM 生成标签（命中规则时生效）�?/div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
-                  <label class="sg-check"><input type="checkbox" id="sg_imageGenPromptRulesEnabled">启用提示词替换</label>
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenPromptRulesEnabled">启用提示词替�?/label>
                 </div>
                 <div class="sg-field" style="margin-top:6px;">
-                  <textarea id="sg_imageGenPromptRules" rows="6" placeholder="触发词=前置前|插入词
-触发词=前置后|插入词
-触发词=替换|替换词
-# 以 # 或 // 开头为注释"></textarea>
+                  <textarea id="sg_imageGenPromptRules" rows="6" placeholder="触发�?前置前|插入�?
+触发�?前置后|插入�?
+触发�?替换|替换�?
+# �?# �?// 开头为注释"></textarea>
                 </div>
               </div>
 
                <div class="sg-card sg-subcard" style="margin-top:10px;">
-                <div class="sg-card-title" style="font-size:0.95em;">批量提示词模板</div>
-                <div class="sg-hint">默认会生成 12 张：5 张剧情拆分 + 7 张固定类型。一般不需要手动修改。</div>
+                <div class="sg-card-title" style="font-size:0.95em;">批量提示词模�?/div>
+                <div class="sg-hint">默认会生�?12 张：5 张剧情拆�?+ 7 张固定类型。一般不需要手动修改�?/div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
-                  <label class="sg-check"><input type="checkbox" id="sg_imageGenBatchEnabled">启用批量提示词</label>
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenBatchEnabled">启用批量提示�?/label>
                 </div>
                 <div class="sg-grid2" style="margin-top:6px;">
                   <div class="sg-field">
                     <label>自定义女性提示词 1</label>
-                    <textarea id="sg_imageGenCustomFemalePrompt1" rows="3" placeholder="例如：1girl, close-up, soft light, ..."></textarea>
+                    <textarea id="sg_imageGenCustomFemalePrompt1" rows="3" placeholder="例如�?girl, close-up, soft light, ..."></textarea>
                   </div>
                   <div class="sg-field">
                     <label>自定义女性提示词 2</label>
-                    <textarea id="sg_imageGenCustomFemalePrompt2" rows="3" placeholder="例如：1girl, full body, dynamic pose, ..."></textarea>
+                    <textarea id="sg_imageGenCustomFemalePrompt2" rows="3" placeholder="例如�?girl, full body, dynamic pose, ..."></textarea>
                   </div>
                 </div>
                 <div class="sg-field" style="margin-top:6px;">
@@ -14969,11 +14963,11 @@ function buildModalHtml() {
 
               <div class="sg-card sg-subcard" style="margin-top:10px;">
                 <div class="sg-card-title" style="font-size:0.95em;">图像生成预设</div>
-                <div class="sg-hint">保存/导入用于“正文→标签”的预设配置（支持导入 SillyTavern 对话预设 JSON）。</div>
+                <div class="sg-hint">保存/导入用于“正文→标签”的预设配置（支持导�?SillyTavern 对话预设 JSON）�?/div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
                   <select id="sg_imageGenPresetSelect" style="min-width:160px;"></select>
                   <button class="menu_button sg-btn" id="sg_imageGenApplyPreset">应用</button>
-                  <button class="menu_button sg-btn" id="sg_imageGenSavePreset">保存为预设</button>
+                  <button class="menu_button sg-btn" id="sg_imageGenSavePreset">保存为预�?/button>
                   <button class="menu_button sg-btn" id="sg_imageGenDeletePreset">删除</button>
                 </div>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
@@ -14992,7 +14986,7 @@ function buildModalHtml() {
                 <select id="sg_imageGenType">
                   <option value="auto">自动识别</option>
                   <option value="character">角色立绘</option>
-                  <option value="scene">场景图</option>
+                  <option value="scene">场景�?/option>
                 </select>
                 <button class="menu_button sg-btn-primary" id="sg_generateImage">🎨 根据剧情生成图像</button>
               </div>
@@ -15001,15 +14995,15 @@ function buildModalHtml() {
                 <label>生成的提示词</label>
                 <textarea id="sg_imagePositivePrompt" rows="3" readonly style="background: var(--SmartThemeBlurTintColor);"></textarea>
                 <div class="sg-row sg-inline" style="margin-top:6px;">
-                  <button class="menu_button sg-btn" id="sg_editPromptAndGenerate">编辑并重新生成</button>
-                  <button class="menu_button sg-btn" id="sg_copyImagePrompt">📋 复制提示词</button>
+                  <button class="menu_button sg-btn" id="sg_editPromptAndGenerate">编辑并重新生�?/button>
+                  <button class="menu_button sg-btn" id="sg_copyImagePrompt">📋 复制提示�?/button>
                 </div>
               </div>
 
               <div id="sg_imageResult" class="sg-image-result" style="display:none; margin-top:12px;">
                 <img id="sg_generatedImage" src="" alt="Generated Image" class="sg-image-zoom" style="max-width:100%; max-height:500px; border-radius:6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: zoom-in;">
                 <div class="sg-row sg-inline" style="margin-top:8px; justify-content:center;">
-                  <button class="menu_button sg-btn" id="sg_regenImage">🔄 重生成</button>
+                  <button class="menu_button sg-btn" id="sg_regenImage">🔄 重生�?/button>
                   <button class="menu_button sg-btn" id="sg_downloadImage">💾 保存图像</button>
                 </div>
               </div>
@@ -15020,7 +15014,7 @@ function buildModalHtml() {
 
             <div class="sg-card">
               <div class="sg-card-title">📚 在线图库（作者预设图片）</div>
-              <div class="sg-hint" style="margin-bottom:10px;">从 GitHub 加载作者预先生成的图片库，AI 会根据剧情自动选择最匹配的图片。</div>
+              <div class="sg-hint" style="margin-bottom:10px;">�?GitHub 加载作者预先生成的图片库，AI 会根据剧情自动选择最匹配的图片�?/div>
               
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_imageGalleryEnabled">启用在线图库</label>
@@ -15028,13 +15022,13 @@ function buildModalHtml() {
 
               <div class="sg-field">
                 <label>图库索引 URL</label>
-                <input id="sg_imageGalleryUrl" type="text" placeholder="https://raw.githubusercontent.com/用户名/仓库/main/index.json">
-                <div class="sg-hint">填入 GitHub Raw URL 指向图库的 index.json 文件</div>
+                <input id="sg_imageGalleryUrl" type="text" placeholder="https://raw.githubusercontent.com/用户�?仓库/main/index.json">
+                <div class="sg-hint">填入 GitHub Raw URL 指向图库�?index.json 文件</div>
               </div>
 
               <div class="sg-row sg-inline">
                 <button class="menu_button sg-btn" id="sg_loadGallery">📥 加载/刷新图库</button>
-                <span class="sg-hint" id="sg_galleryInfo" style="margin-left:10px;">(未加载)</span>
+                <span class="sg-hint" id="sg_galleryInfo" style="margin-left:10px;">(未加�?</span>
               </div>
 
               <div class="sg-row sg-inline" style="margin-top:10px;">
@@ -15067,7 +15061,7 @@ function buildModalHtml() {
                   <label>Provider</label>
                   <select id="sg_sex_provider">
                     <option value="st">使用当前 SillyTavern API</option>
-                    <option value="custom">独立API（OpenAI 兼容）</option>
+                    <option value="custom">独立API（OpenAI 兼容�?/option>
                   </select>
                 </div>
               </div>
@@ -15083,23 +15077,23 @@ function buildModalHtml() {
                 <div class="sg-card-title">独立API 设置</div>
 
                 <div class="sg-field">
-                  <label>API基础URL（例如 https://api.openai.com/v1）</label>
+                  <label>API基础URL（例�?https://api.openai.com/v1�?/label>
                   <input id="sg_sexCustomEndpoint" type="text" placeholder="https://xxx.com/v1">
                 </div>
 
                 <div class="sg-grid2">
                   <div class="sg-field">
                     <label>API Key（可选）</label>
-                    <input id="sg_sexCustomApiKey" type="password" placeholder="可留空">
+                    <input id="sg_sexCustomApiKey" type="password" placeholder="可留�?>
                   </div>
                   <div class="sg-field">
-                    <label>模型（可手填）</label>
+                    <label>模型（可手填�?/label>
                     <input id="sg_sexCustomModel" type="text" placeholder="gpt-4o-mini">
                   </div>
                 </div>
 
                 <div class="sg-row sg-inline">
-                  <button class="menu_button sg-btn" id="sg_sexRefreshModels">检查/刷新模型</button>
+                  <button class="menu_button sg-btn" id="sg_sexRefreshModels">检�?刷新模型</button>
                   <select id="sg_sexModelSelect" class="sg-model-select">
                     <option value="">(选择模型)</option>
                   </select>
@@ -15107,10 +15101,10 @@ function buildModalHtml() {
 
                 <div class="sg-row">
                   <div class="sg-field sg-field-full">
-                    <label>最大回复token数</label>
+                    <label>最大回复token�?/label>
                     <input id="sg_sexCustomMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如 2048">
                     <label class="sg-check" style="margin-top:8px;">
-                      <input type="checkbox" id="sg_sexCustomStream"> 使用流式返回（stream=true）
+                      <input type="checkbox" id="sg_sexCustomStream"> 使用流式返回（stream=true�?
                     </label>
                   </div>
                 </div>
@@ -15118,7 +15112,7 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card">
-              <div class="sg-card-title">性爱指导世界书</div>
+              <div class="sg-card-title">性爱指导世界�?/div>
 
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_sexWorldbookEnabled">启用注入</label>
@@ -15129,7 +15123,7 @@ function buildModalHtml() {
 
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>最大注入字符</label>
+                  <label>最大注入字�?/label>
                 <input id="sg_sexWorldbookMaxChars" type="number" min="500" max="200000">
                 </div>
               </div>
@@ -15142,7 +15136,7 @@ function buildModalHtml() {
               <div class="sg-card-title">自定义提示词</div>
               <div class="sg-field">
                 <label>System</label>
-                <textarea id="sg_sexSystemPrompt" rows="6" placeholder="用于控制风格与安全边界"></textarea>
+                <textarea id="sg_sexSystemPrompt" rows="6" placeholder="用于控制风格与安全边�?></textarea>
               </div>
               <div class="sg-field">
                 <label>User 模板</label>
@@ -15155,13 +15149,13 @@ function buildModalHtml() {
               <div class="sg-row sg-inline" style="margin-top:6px;">
                 <select id="sg_sexPresetSelect" style="min-width:160px;"></select>
                 <button class="menu_button sg-btn" id="sg_sexApplyPreset">应用</button>
-                <button class="menu_button sg-btn" id="sg_sexSavePreset">保存为预设</button>
+                <button class="menu_button sg-btn" id="sg_sexSavePreset">保存为预�?/button>
                 <button class="menu_button sg-btn" id="sg_sexDeletePreset">删除</button>
                 <button class="menu_button sg-btn" id="sg_sexExportPreset">导出预设</button>
                 <button class="menu_button sg-btn" id="sg_sexImportPreset">导入预设</button>
               </div>
               <div class="sg-actions-row">
-                <button class="menu_button sg-btn" id="sg_sexResetPrompt">恢复默认提示词</button>
+                <button class="menu_button sg-btn" id="sg_sexResetPrompt">恢复默认提示�?/button>
               </div>
             </div>
 
@@ -15169,12 +15163,12 @@ function buildModalHtml() {
               <div class="sg-card-title">生成</div>
               <div class="sg-field" style="margin-top:6px;">
                 <label>用户需求（可选）</label>
-                <textarea id="sg_sexUserNeed" rows="3" placeholder="例如：更温柔/更主动/更慢节奏/强调沟通与安全…"></textarea>
+                <textarea id="sg_sexUserNeed" rows="3" placeholder="例如：更温柔/更主�?更慢节奏/强调沟通与安全�?></textarea>
               </div>
               <div class="sg-actions-row">
                 <button class="menu_button sg-btn-primary" id="sg_sex_generate">生成性爱指导</button>
                 <button class="menu_button sg-btn" id="sg_sex_copy" disabled>复制</button>
-                <button class="menu_button sg-btn" id="sg_sex_insert" disabled>插入输入框</button>
+                <button class="menu_button sg-btn" id="sg_sex_insert" disabled>插入输入�?/button>
               </div>
               <div class="sg-field" style="margin-top:10px;">
                 <label>输出</label>
@@ -15186,24 +15180,24 @@ function buildModalHtml() {
 
           <div class="sg-page" id="sg_page_character">
             <div class="sg-card sg-character-card">
-              <div class="sg-card-title sg-character-title">轮回乐园 · 自定义角色</div>
+              <div class="sg-card-title sg-character-title">轮回乐园 · 自定义角�?/div>
 
               <div class="sg-character-grid">
                 <div class="sg-field">
                   <label>乐园</label>
                   <select id="sg_char_park">
-                    <option value="">请选择所属乐园</option>
+                    <option value="">请选择所属乐�?/option>
                     <option value="轮回乐园">轮回乐园</option>
                     <option value="圣域乐园">圣域乐园</option>
                     <option value="守望乐园">守望乐园</option>
                     <option value="圣光乐园">圣光乐园</option>
                     <option value="死亡乐园">死亡乐园</option>
                     <option value="天启乐园">天启乐园</option>
-                    <option value="CUSTOM">自定义乐园</option>
+                    <option value="CUSTOM">自定义乐�?/option>
                   </select>
                 </div>
                 <div class="sg-field" id="sg_char_park_custom_row" style="display:none;">
-                  <label>自定义乐园</label>
+                  <label>自定义乐�?/label>
                   <input id="sg_char_park_custom" type="text" placeholder="输入乐园名称，例如：灰雾乐园">
                 </div>
                 <div class="sg-field sg-character-full" id="sg_char_park_traits_row" style="display:none;">
@@ -15221,12 +15215,12 @@ function buildModalHtml() {
                     <option value="半魔">半魔</option>
                     <option value="机巧">机巧</option>
                     <option value="异界">异界</option>
-                    <option value="CUSTOM">自定义种族</option>
+                    <option value="CUSTOM">自定义种�?/option>
                   </select>
                 </div>
                 <div class="sg-field" id="sg_char_race_custom_row" style="display:none;">
-                  <label>自定义种族</label>
-                  <input id="sg_char_race_custom" type="text" placeholder="输入种族名称，例如：灰雾族">
+                  <label>自定义种�?/label>
+                  <input id="sg_char_race_custom" type="text" placeholder="输入种族名称，例如：灰雾�?>
                 </div>
                 <div class="sg-field sg-character-full" id="sg_char_race_desc_row" style="display:none;">
                   <label>种族描述</label>
@@ -15237,8 +15231,8 @@ function buildModalHtml() {
                   <label>天赋</label>
                   <select id="sg_char_talent">
                     <option value="">请选择初始天赋</option>
-                    <option value="刀术专精">刀术专精</option>
-                    <option value="重装精通">重装精通</option>
+                    <option value="刀术专�?>刀术专�?/option>
+                    <option value="重装精�?>重装精�?/option>
                     <option value="雷霆亲和">雷霆亲和</option>
                     <option value="死灵契印">死灵契印</option>
                     <option value="狙击专精">狙击专精</option>
@@ -15247,22 +15241,22 @@ function buildModalHtml() {
                     <option value="幻象支配">幻象支配</option>
                     <option value="时空敏锐">时空敏锐</option>
                     <option value="违约追猎">违约追猎</option>
-                    <option value="血脉觉醒">血脉觉醒</option>
-                    <option value="机械改造">机械改造</option>
-                    <option value="CUSTOM">自定义天赋</option>
+                    <option value="血脉觉�?>血脉觉�?/option>
+                    <option value="机械改�?>机械改�?/option>
+                    <option value="CUSTOM">自定义天�?/option>
                   </select>
                 </div>
                 <div class="sg-field" id="sg_char_talent_custom_row" style="display:none;">
-                  <label>自定义天赋</label>
-                  <input id="sg_char_talent_custom" type="text" placeholder="输入天赋名称，例如：灰雾行旅者">
+                  <label>自定义天�?/label>
+                  <input id="sg_char_talent_custom" type="text" placeholder="输入天赋名称，例如：灰雾行旅�?>
                 </div>
                 <div class="sg-field sg-character-full" id="sg_char_talent_desc_row" style="display:none;">
                   <label>天赋详情</label>
-                  <textarea id="sg_char_talent_desc" rows="3" placeholder="天赋机制、收益、代价..."></textarea>
+                  <textarea id="sg_char_talent_desc" rows="3" placeholder="天赋机制、收益、代�?.."></textarea>
                 </div>
 
                 <div class="sg-field sg-character-full">
-                  <label>契约者编号</label>
+                  <label>契约者编�?/label>
                   <input id="sg_char_contract" type="text" placeholder="可选：自定义契约者编号，例如：R-1037">
                 </div>
               </div>
@@ -15270,20 +15264,20 @@ function buildModalHtml() {
               <div class="sg-character-section-title">属性点分配</div>
               <div class="sg-character-attr-panel">
                 <div class="sg-character-attr-header">
-                  <div class="sg-character-attr-title">六维基础属性</div>
+                  <div class="sg-character-attr-title">六维基础属�?/div>
                   <div class="sg-character-attr-actions">
                     <div class="sg-field sg-character-field-inline">
                       <label>难度</label>
                       <select id="sg_char_difficulty">
-                        <option value="10">烬火绝境（10）</option>
-                        <option value="20">断崖试炼（20）</option>
-                        <option value="30">灰雾常阶（30）</option>
-                        <option value="40">星辉晋阶（40）</option>
-                        <option value="50">曙光恩典（50）</option>
+                        <option value="10">烬火绝境�?0�?/option>
+                        <option value="20">断崖试炼�?0�?/option>
+                        <option value="30">灰雾常阶�?0�?/option>
+                        <option value="40">星辉晋阶�?0�?/option>
+                        <option value="50">曙光恩典�?0�?/option>
                       </select>
                     </div>
                     <button class="menu_button sg-btn sg-character-mini" id="sg_char_random">随机设定</button>
-                    <label class="sg-check sg-character-mini" style="margin-left:8px; font-size:12px; height:28px;" title="勾选后使用 AI 生成设定（API）">
+                    <label class="sg-check sg-character-mini" style="margin-left:8px; font-size:12px; height:28px;" title="勾选后使用 AI 生成设定（API�?>
                       <input type="checkbox" id="sg_char_random_llm">AI
                     </label>
                   </div>
@@ -15318,8 +15312,8 @@ function buildModalHtml() {
 
                 <div class="sg-character-attr-meta">
                   <span id="sg_char_attr_total">已分配：0</span>
-                  <span id="sg_char_attr_remain">剩余：30</span>
-                  <span class="sg-character-cap">单项上限：20</span>
+                  <span id="sg_char_attr_remain">剩余�?0</span>
+                  <span class="sg-character-cap">单项上限�?0</span>
                 </div>
               </div>
 
@@ -15330,7 +15324,7 @@ function buildModalHtml() {
                     <label>生成API</label>
                     <select id="sg_char_provider">
                       <option value="st">使用当前 SillyTavern API（推荐）</option>
-                      <option value="custom">独立API（走酒馆后端代理）</option>
+                      <option value="custom">独立API（走酒馆后端代理�?/option>
                     </select>
                   </div>
                   <div class="sg-field">
@@ -15340,52 +15334,52 @@ function buildModalHtml() {
                 </div>
 
                 <div class="sg-card sg-subcard" id="sg_char_custom_block" style="display:none;">
-                  <div class="sg-card-title">独立API 设置（建议填 API基础URL）</div>
+                  <div class="sg-card-title">独立API 设置（建议填 API基础URL�?/div>
                   <div class="sg-field">
-                    <label>API基础URL（例如 https://api.openai.com/v1 ）</label>
+                    <label>API基础URL（例�?https://api.openai.com/v1 �?/label>
                     <input id="sg_char_customEndpoint" type="text" placeholder="https://xxx.com/v1">
                   </div>
                   <div class="sg-grid2">
                     <div class="sg-field">
                       <label>API Key（可选）</label>
-                      <input id="sg_char_customApiKey" type="password" placeholder="可留空">
+                      <input id="sg_char_customApiKey" type="password" placeholder="可留�?>
                     </div>
                     <div class="sg-field">
-                      <label>模型（可手填）</label>
+                      <label>模型（可手填�?/label>
                       <div class="sg-row sg-inline" style="gap:4px;">
                         <input id="sg_char_customModel" type="text" placeholder="gpt-4o-mini" style="flex:1;" list="sg_char_model_list">
                         <datalist id="sg_char_model_list"></datalist>
-                        <button class="menu_button sg-btn sg-character-mini" id="sg_char_refreshModels" title="刷新模型列表（仅 Custom）">🔄</button>
+                        <button class="menu_button sg-btn sg-character-mini" id="sg_char_refreshModels" title="刷新模型列表（仅 Custom�?>🔄</button>
                       </div>
                     </div>
                   </div>
                   <div class="sg-row">
                     <div class="sg-field sg-field-full">
-                      <label>最大回复token数</label>
-                      <input id="sg_char_customMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如：4096">
+                      <label>最大回复token�?/label>
+                      <input id="sg_char_customMaxTokens" type="number" min="256" max="200000" step="1" placeholder="例如�?096">
                       <label class="sg-check" style="margin-top:8px;">
-                        <input type="checkbox" id="sg_char_customStream"> 使用流式返回（stream=true）
+                        <input type="checkbox" id="sg_char_customStream"> 使用流式返回（stream=true�?
                       </label>
                     </div>
                   </div>
                 </div>
                 <div class="sg-card sg-subcard sg-character-provider">
-                 <div class="sg-card-title">提示词设置</div>
+                 <div class="sg-card-title">提示词设�?/div>
                  <div class="sg-field">
                    <label>自定义随机设定提示词（留空使用默认）</label>
-                   <textarea id="sg_char_prompt_random" rows="3" placeholder="默认：请为“轮回乐园”设计一个全新的契约者角色..."></textarea>
+                   <textarea id="sg_char_prompt_random" rows="3" placeholder="默认：请为“轮回乐园”设计一个全新的契约者角�?.."></textarea>
                  </div>
                  <div class="sg-field">
-                   <label>自定义开场白提示词（留空使用默认）</label>
-                   <textarea id="sg_char_prompt_opening" rows="3" placeholder="默认：请根据以上人物设定写一段开场剧情..."></textarea>
+                   <label>自定义开场白提示词（留空使用默认�?/label>
+                   <textarea id="sg_char_prompt_opening" rows="3" placeholder="默认：请根据以上人物设定写一段开场剧�?.."></textarea>
                  </div>
               </div>
               </div>
 
               <div class="sg-actions-row">
-                <button class="menu_button sg-btn-primary" id="sg_char_generate">生成开场文本</button>
+                <button class="menu_button sg-btn-primary" id="sg_char_generate">生成开场文�?/button>
                 <button class="menu_button sg-btn" id="sg_char_copy">复制</button>
-                <button class="menu_button sg-btn" id="sg_char_insert">填入聊天框</button>
+                <button class="menu_button sg-btn" id="sg_char_insert">填入聊天�?/button>
               </div>
 
               <div class="sg-field" style="margin-top:10px;">
@@ -15398,7 +15392,7 @@ function buildModalHtml() {
 
           <div class="sg-page" id="sg_page_parallel">
             <div class="sg-card">
-              <div class="sg-card-title">🌍 平行世界（NPC离屏模拟）</div>
+              <div class="sg-card-title">🌍 平行世界（NPC离屏模拟�?/div>
 
               <div class="sg-grid2">
                 <div class="sg-field">
@@ -15409,7 +15403,7 @@ function buildModalHtml() {
                   </label>
                 </div>
                 <div class="sg-field">
-                  <label>写回世界书</label>
+                  <label>写回世界�?/label>
                   <label class="sg-switch">
                     <input type="checkbox" id="sg_parallelWorldWriteToWorldbook">
                     <span class="sg-slider"></span>
@@ -15419,7 +15413,7 @@ function buildModalHtml() {
 
               <div class="sg-grid2">
                 <div class="sg-field">
-                  <label>注入AI上下文</label>
+                  <label>注入AI上下�?/label>
                   <label class="sg-switch">
                     <input type="checkbox" id="sg_parallelWorldInjectContext">
                     <span class="sg-slider"></span>
@@ -15436,16 +15430,16 @@ function buildModalHtml() {
               <div class="sg-card-title">世界时钟</div>
               <div class="sg-pw-clock-row">
                 <span class="sg-pw-clock-icon">🕐</span>
-                <span class="sg-pw-clock" id="sg_pwClockDisplay">第1天</span>
-                <span class="sg-hint" style="margin-left:10px;">(自动从正文提取)</span>
+                <span class="sg-pw-clock" id="sg_pwClockDisplay">�?�?/span>
+                <span class="sg-hint" style="margin-left:10px;">(自动从正文提�?</span>
               </div>
               <div class="sg-grid2" style="margin-top:8px;">
                 <div class="sg-field">
-                  <label>读取正文楼层数</label>
+                  <label>读取正文楼层�?/label>
                   <input id="sg_parallelWorldReadFloors" type="number" min="1" max="50" placeholder="5">
                 </div>
                 <div class="sg-field">
-                  <label>手动设置时间(可选)</label>
+                  <label>手动设置时间(可�?</label>
                   <div style="display:flex;gap:6px;">
                     <input id="sg_parallelWorldClock" type="text" placeholder="留空=自动提取" style="flex:1;">
                     <button class="menu_button sg-btn" id="sg_pwClockSet" style="flex-shrink:0;">设置</button>
@@ -15459,20 +15453,20 @@ function buildModalHtml() {
                 <div class="sg-pw-list-container">
                   <div class="sg-pw-list-header">
                     <span>NPC追踪列表</span>
-                    <small>勾选需要模拟离屏事件的NPC。列表来自结构化条目中的角色。</small>
+                    <small>勾选需要模拟离屏事件的NPC。列表来自结构化条目中的角色�?/small>
                   </div>
                   <div id="sg_pwNpcList" class="sg-pw-list-content">
-                    <div class="sg-hint">点击下方刷新按钮加载列表…</div>
+                    <div class="sg-hint">点击下方刷新按钮加载列表�?/div>
                   </div>
                 </div>
 
                 <div class="sg-pw-list-container" style="margin-top:10px;">
                   <div class="sg-pw-list-header">
                     <span>势力追踪列表</span>
-                    <small>勾选需要模拟离屏事件的势力。列表来自结构化条目中的势力。</small>
+                    <small>勾选需要模拟离屏事件的势力。列表来自结构化条目中的势力�?/small>
                   </div>
                   <div id="sg_pwFactionList" class="sg-pw-list-content">
-                    <div class="sg-hint">点击下方刷新按钮加载列表…</div>
+                    <div class="sg-hint">点击下方刷新按钮加载列表�?/div>
                   </div>
                 </div>
 
@@ -15505,7 +15499,7 @@ function buildModalHtml() {
               </div>
               <div class="sg-actions-row" style="margin-top:10px;">
                 <button class="menu_button sg-btn-primary" id="sg_pwRunSimulation">🌍 立即推演</button>
-                <button class="menu_button sg-btn" id="sg_pwClearLog">🗑️ 清空日志</button>
+                <button class="menu_button sg-btn" id="sg_pwClearLog">🗑�?清空日志</button>
               </div>
               <div class="sg-status" id="sg_parallelWorldStatus"></div>
             </div>
@@ -15558,7 +15552,7 @@ function buildModalHtml() {
             <div class="sg-card">
               <div class="sg-card-title">事件日志</div>
               <div id="sg_pwEventLog" class="sg-pw-event-log">
-                <div class="sg-hint">暂无事件记录。点击「立即推演」开始模拟。</div>
+                <div class="sg-hint">暂无事件记录。点击「立即推演」开始模拟�?/div>
               </div>
             </div>
 
@@ -15569,10 +15563,10 @@ function buildModalHtml() {
                 <textarea id="sg_parallelWorldSystemPrompt" rows="6" spellcheck="false"></textarea>
               </div>
               <div class="sg-field">
-                <label>User Template（支持 {{worldTime}} {{recentContext}} {{npcProfiles}}）</label>
+                <label>User Template（支�?{{worldTime}} {{recentContext}} {{npcProfiles}}�?/label>
                 <textarea id="sg_parallelWorldUserTemplate" rows="4" spellcheck="false"></textarea>
               </div>
-              <button class="menu_button sg-btn" id="sg_pwResetPrompts" style="margin-top:6px;">恢复默认提示词</button>
+              <button class="menu_button sg-btn" id="sg_pwResetPrompts" style="margin-top:6px;">恢复默认提示�?/button>
             </div>
           </div> <!-- sg_page_parallel -->
 
@@ -15604,8 +15598,8 @@ function buildModalHtml() {
               <div class="sg-card">
                 <div class="sg-card-title">性爱指导面板</div>
                 <div class="sg-field">
-                  <label>用户需求</label>
-                  <textarea id="sg_sex_panel_need" rows="3" placeholder="输入你的需求：例如更温柔/更主动/更慢节奏/强调沟通与安全…"></textarea>
+                  <label>用户需�?/label>
+                  <textarea id="sg_sex_panel_need" rows="3" placeholder="输入你的需求：例如更温�?更主�?更慢节奏/强调沟通与安全�?></textarea>
                 </div>
                 <div class="sg-actions-row">
                   <button class="menu_button sg-btn-primary" id="sg_sex_panel_generate">生成性爱指导</button>
@@ -15659,7 +15653,7 @@ function ensureModal() {
   $('#sg_saveSettings').on('click', () => {
     pullUiToSettings();
     saveSettings();
-    setStatus('已保存设置', 'ok');
+    setStatus('已保存设�?, 'ok');
   });
 
   $('#sg_analyze').on('click', async () => {
@@ -15669,40 +15663,40 @@ function ensureModal() {
   });
 
   $('#sg_saveWorld').on('click', async () => {
-    try { await setChatMetaValue(META_KEYS.world, String($('#sg_worldText').val() || '')); setStatus('已保存：世界观/设定补充（本聊天）', 'ok'); }
-    catch (e) { setStatus(`保存失败：${e?.message ?? e}`, 'err'); }
+    try { await setChatMetaValue(META_KEYS.world, String($('#sg_worldText').val() || '')); setStatus('已保存：世界�?设定补充（本聊天�?, 'ok'); }
+    catch (e) { setStatus(`保存失败�?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_saveCanon').on('click', async () => {
-    try { await setChatMetaValue(META_KEYS.canon, String($('#sg_canonText').val() || '')); setStatus('已保存：原著后续/大纲（本聊天）', 'ok'); }
-    catch (e) { setStatus(`保存失败：${e?.message ?? e}`, 'err'); }
+    try { await setChatMetaValue(META_KEYS.canon, String($('#sg_canonText').val() || '')); setStatus('已保存：原著后续/大纲（本聊天�?, 'ok'); }
+    catch (e) { setStatus(`保存失败�?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_copyMd').on('click', async () => {
     try { await navigator.clipboard.writeText(lastReport?.markdown ?? ''); setStatus('已复制：Markdown 报告', 'ok'); }
-    catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
+    catch (e) { setStatus(`复制失败�?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_copyJson').on('click', async () => {
     try { await navigator.clipboard.writeText(lastJsonText || ''); setStatus('已复制：JSON', 'ok'); }
-    catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
+    catch (e) { setStatus(`复制失败�?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_copySum').on('click', async () => {
     try { await navigator.clipboard.writeText(lastSummaryText || ''); setStatus('已复制：总结', 'ok'); }
-    catch (e) { setStatus(`复制失败：${e?.message ?? e}`, 'err'); }
+    catch (e) { setStatus(`复制失败�?{e?.message ?? e}`, 'err'); }
   });
 
   $('#sg_injectTips').on('click', () => {
     const tips = Array.isArray(lastReport?.json?.tips) ? lastReport.json.tips : [];
     const spoiler = ensureSettings().spoilerLevel;
     const text = tips.length
-      ? `/sys 【剧情指导提示｜${spoiler}】\n` + tips.map((t, i) => `${i + 1}. ${t}`).join('\n')
+      ? `/sys 【剧情指导提示｜${spoiler}】\n` + tips.map((t, i) => `${i + 1}. ${t}`).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n')
       : (lastReport?.markdown ?? '');
 
     const $ta = $('#send_textarea');
     if ($ta.length) { $ta.val(text).trigger('input'); setStatus('已把提示放入输入框（你可以手动发送）', 'ok'); }
-    else setStatus('找不到输入框 #send_textarea，无法注入', 'err');
+    else setStatus('找不到输入框 #send_textarea，无法注�?, 'err');
   });
 
   $('#sg_provider').on('change', () => {
@@ -15756,7 +15750,7 @@ function ensureModal() {
 
   // structured presets
   $('#sg_structuredSavePreset').on('click', () => {
-    const name = normalizeStructuredPresetName(prompt('预设名称？') || '');
+    const name = normalizeStructuredPresetName(prompt('预设名称�?) || '');
     if (!name) return;
     const list = getStructuredPresetList();
     const snapshot = getStructuredPresetSnapshot();
@@ -15768,7 +15762,7 @@ function ensureModal() {
     s.structuredPresetActive = name;
     saveSettings();
     pullSettingsToUi();
-    setStatus('预设已保存', 'ok');
+    setStatus('预设已保�?, 'ok');
   });
 
   $('#sg_structuredApplyPreset').on('click', () => {
@@ -15781,7 +15775,7 @@ function ensureModal() {
     const s = ensureSettings();
     s.structuredPresetActive = name;
     saveSettings();
-    setStatus('预设已应用', 'ok');
+    setStatus('预设已应�?, 'ok');
   });
 
   $('#sg_structuredDeletePreset').on('click', () => {
@@ -15793,7 +15787,7 @@ function ensureModal() {
     if (s.structuredPresetActive === name) s.structuredPresetActive = '';
     saveSettings();
     pullSettingsToUi();
-    setStatus('预设已删除', 'ok');
+    setStatus('预设已删�?, 'ok');
   });
 
   $('#sg_structuredExportPreset').on('click', () => {
@@ -15812,7 +15806,7 @@ function ensureModal() {
       snapshot: preset.snapshot
     };
     downloadTextFile(`storyguide-structured-preset-${preset.name}.json`, JSON.stringify(payload, null, 2));
-    setStatus('预设已导出', 'ok');
+    setStatus('预设已导�?, 'ok');
   });
 
   $('#sg_structuredImportPreset').on('click', async () => {
@@ -15824,7 +15818,7 @@ function ensureModal() {
       let preset = null;
 
       if (data && data._type === 'StoryGuide_StructuredPreset') {
-        const name = normalizeStructuredPresetName(data.name || '未命名');
+        const name = normalizeStructuredPresetName(data.name || '未命�?);
         if (!name) return;
         preset = { name, snapshot: data.snapshot || {} };
       } else {
@@ -15832,7 +15826,7 @@ function ensureModal() {
       }
 
       if (!preset || !preset.name) {
-        setStatus('预设文件格式不正确', 'err');
+        setStatus('预设文件格式不正�?, 'err');
         return;
       }
 
@@ -15845,9 +15839,9 @@ function ensureModal() {
       s.structuredPresetActive = preset.name;
       saveSettings();
       pullSettingsToUi();
-      setStatus('预设已导入', 'ok');
+      setStatus('预设已导�?, 'ok');
     } catch (e) {
-      setStatus(`导入失败：${e?.message ?? e}`, 'err');
+      setStatus(`导入失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -15890,7 +15884,7 @@ function ensureModal() {
     $('#sg_wiIndexUserTemplate').val(DEFAULT_INDEX_USER_TEMPLATE);
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认索引提示词 ✅', 'ok');
+    setStatus('已恢复默认索引提示词 �?, 'ok');
   });
 
 
@@ -15916,7 +15910,7 @@ function ensureModal() {
     $('#sg_summaryUserTemplate').val(DEFAULT_SUMMARY_USER_TEMPLATE);
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认总结提示词 ✅', 'ok');
+    setStatus('已恢复默认总结提示�?�?, 'ok');
   });
 
   // structured entries prompt reset + cache clear
@@ -15942,13 +15936,13 @@ function ensureModal() {
     pullUiToSettings();
     saveSettings();
     updateStructuredEditor(); // Refresh the visible textareas
-    setStatus('已恢复默认结构化提示词与模板 ✅', 'ok');
+    setStatus('已恢复默认结构化提示词与模板 �?, 'ok');
   });
 
   $('#sg_clearStructuredCache').on('click', async () => {
     try {
       await clearStructuredEntriesCache();
-      setStatus('已清除结构化条目缓存 ✅', 'ok');
+      setStatus('已清除结构化条目缓存 �?, 'ok');
     } catch (e) {
       setStatus(`清除结构化条目缓存失败：${e?.message ?? e}`, 'err');
     }
@@ -15972,7 +15966,7 @@ function ensureModal() {
       saveSettings();
       await runSummary({ reason: 'manual' });
     } catch (e) {
-      setStatus(`总结失败：${e?.message ?? e}`, 'err');
+      setStatus(`总结失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -15982,23 +15976,23 @@ function ensureModal() {
       saveSettings();
       await syncGreenWorldInfoFromBlue();
     } catch (e) {
-      setStatus(`对齐失败：${e?.message ?? e}`, 'err');
+      setStatus(`对齐失败�?{e?.message ?? e}`, 'err');
     }
   });
 
   $('#sg_stopSummary').on('click', () => {
     stopSummary();
-    setStatus('正在停止总结…', 'warn');
+    setStatus('正在停止总结�?, 'warn');
   });
 
   $('#sg_undoLastSummary').on('click', async () => {
     try {
       pullUiToSettings();
       saveSettings();
-      if (!confirm('确认撤销最近一次总结？将同时删除绿灯/蓝灯条目（不回滚结构化条目）。')) return;
+      if (!confirm('确认撤销最近一次总结？将同时删除绿灯/蓝灯条目（不回滚结构化条目）�?)) return;
       await rollbackLastSummary();
     } catch (e) {
-      setStatus(`撤销失败：${e?.message ?? e}`, 'err');
+      setStatus(`撤销失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16006,10 +16000,10 @@ function ensureModal() {
     try {
       pullUiToSettings();
       saveSettings();
-      if (!confirm('确认撤销最近一次结构化条目？不会删除剧情总结。')) return;
+      if (!confirm('确认撤销最近一次结构化条目？不会删除剧情总结�?)) return;
       await rollbackLastStructuredEntries();
     } catch (e) {
-      setStatus(`撤销失败：${e?.message ?? e}`, 'err');
+      setStatus(`撤销失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16021,7 +16015,7 @@ function ensureModal() {
       const to = clampInt($('#sg_summaryManualTo').val(), 1, 200000, 1);
       await runSummary({ reason: 'manual_range', manualFromFloor: from, manualToFloor: to });
     } catch (e) {
-      setStatus(`手动范围总结失败：${e?.message ?? e}`, 'err');
+      setStatus(`手动范围总结失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16033,7 +16027,7 @@ function ensureModal() {
       const to = String($('#sg_megaSummaryTo').val() || '').trim();
       await runMegaSummaryManual(from, to);
     } catch (e) {
-      setStatus(`手动大总结失败：${e?.message ?? e}`, 'err');
+      setStatus(`手动大总结失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16043,9 +16037,9 @@ function ensureModal() {
       await setSummaryMeta(meta);
       updateSummaryInfoLabel();
       renderSummaryPaneFromMeta();
-      setStatus('已重置本聊天总结进度 ✅', 'ok');
+      setStatus('已重置本聊天总结进度 �?, 'ok');
     } catch (e) {
-      setStatus(`重置失败：${e?.message ?? e}`, 'err');
+      setStatus(`重置失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16151,11 +16145,11 @@ function ensureModal() {
     $('#sg_imageGenBatchPatterns').val(String(DEFAULT_SETTINGS.imageGenBatchPatterns || ''));
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认批量模板 ✅', 'ok');
+    setStatus('已恢复默认批量模�?�?, 'ok');
   });
 
   $('#sg_imageGenSavePreset').on('click', () => {
-    const name = normalizeImageGenPresetName(prompt('预设名称：') || '');
+    const name = normalizeImageGenPresetName(prompt('预设名称�?) || '');
     if (!name) return;
     const list = getImageGenPresetList();
     const snapshot = getImageGenPresetSnapshot();
@@ -16167,7 +16161,7 @@ function ensureModal() {
     s.imageGenPresetActive = name;
     saveSettings();
     pullSettingsToUi();
-    setStatus('预设已保存 ✅', 'ok');
+    setStatus('预设已保�?�?, 'ok');
   });
 
   $('#sg_imageGenApplyPreset').on('click', () => {
@@ -16180,7 +16174,7 @@ function ensureModal() {
     const s = ensureSettings();
     s.imageGenPresetActive = name;
     saveSettings();
-    setStatus('预设已应用 ✅', 'ok');
+    setStatus('预设已应�?�?, 'ok');
   });
 
   $('#sg_imageGenDeletePreset').on('click', () => {
@@ -16192,7 +16186,7 @@ function ensureModal() {
     if (s.imageGenPresetActive === name) s.imageGenPresetActive = '';
     saveSettings();
     pullSettingsToUi();
-    setStatus('预设已删除', 'ok');
+    setStatus('预设已删�?, 'ok');
   });
 
   $('#sg_imageGenExportPreset').on('click', () => {
@@ -16211,7 +16205,7 @@ function ensureModal() {
       snapshot: preset.snapshot
     };
     downloadTextFile(`storyguide-imagegen-preset-${preset.name}.json`, JSON.stringify(payload, null, 2));
-    setStatus('预设已导出 ✅', 'ok');
+    setStatus('预设已导�?�?, 'ok');
   });
 
   $('#sg_imageResult, #sg_galleryResult, #sg_imagegen_float_preview, #sg_imagegen_batch').on('click', 'img', (e) => {
@@ -16229,7 +16223,7 @@ function ensureModal() {
       let preset = null;
 
       if (data && data._type === 'StoryGuide_ImageGenPreset') {
-        const name = normalizeImageGenPresetName(data.name || '未命名');
+        const name = normalizeImageGenPresetName(data.name || '未命�?);
         if (!name) return;
         preset = { name, snapshot: data.snapshot || {} };
       } else {
@@ -16237,7 +16231,7 @@ function ensureModal() {
       }
 
       if (!preset || !preset.name) {
-        setStatus('预设文件格式不正确', 'err');
+        setStatus('预设文件格式不正�?, 'err');
         return;
       }
 
@@ -16250,9 +16244,9 @@ function ensureModal() {
       s.imageGenPresetActive = preset.name;
       saveSettings();
       pullSettingsToUi();
-      setStatus('预设已导入 ✅', 'ok');
+      setStatus('预设已导�?�?, 'ok');
     } catch (e) {
-      setStatus(`导入失败：${e?.message ?? e}`, 'err');
+      setStatus(`导入失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16360,7 +16354,7 @@ function ensureModal() {
       }
       const file = pickBlueIndexFileName();
       if (!file) {
-        setStatus('蓝灯世界书文件名为空：请在“蓝灯索引”里填写文件名，或在“同时写入蓝灯世界书”里填写文件名', 'err');
+        setStatus('蓝灯世界书文件名为空：请在“蓝灯索引”里填写文件名，或在“同时写入蓝灯世界书”里填写文件�?, 'err');
         return;
       }
       const entries = await ensureBlueIndexLive(true);
@@ -16377,18 +16371,18 @@ function ensureModal() {
       const txt = await readFileText(file);
       const entries = parseWorldbookJson(txt);
       const s = ensureSettings();
-      // 仅保留必要字段
+      // 仅保留必要字�?
       s.summaryBlueIndex = entries.map(e => ({
-        title: String(e.title || '').trim() || (e.keys?.[0] ? `条目：${e.keys[0]}` : '条目'),
+        title: String(e.title || '').trim() || (e.keys?.[0] ? `条目�?{e.keys[0]}` : '条目'),
         summary: String(e.content || '').trim(),
         keywords: Array.isArray(e.keys) ? e.keys.slice(0, 80) : [],
         importedAt: Date.now(),
       })).filter(x => x.summary);
       saveSettings();
       updateBlueIndexInfoLabel();
-      setStatus(`蓝灯索引已导入 ✅（${s.summaryBlueIndex.length} 条）`, s.summaryBlueIndex.length ? 'ok' : 'warn');
+      setStatus(`蓝灯索引已导�?✅（${s.summaryBlueIndex.length} 条）`, s.summaryBlueIndex.length ? 'ok' : 'warn');
     } catch (e) {
-      setStatus(`导入蓝灯索引失败：${e?.message ?? e}`, 'err');
+      setStatus(`导入蓝灯索引失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16397,7 +16391,7 @@ function ensureModal() {
     s.summaryBlueIndex = [];
     saveSettings();
     updateBlueIndexInfoLabel();
-    setStatus('已清空蓝灯索引', 'ok');
+    setStatus('已清空蓝灯索�?, 'ok');
   });
 
   $('#sg_clearWiLogs').on('click', async () => {
@@ -16406,9 +16400,9 @@ function ensureModal() {
       meta.wiTriggerLogs = [];
       await setSummaryMeta(meta);
       renderWiTriggerLogs(meta);
-      setStatus('已清空索引日志', 'ok');
+      setStatus('已清空索引日�?, 'ok');
     } catch (e) {
-      setStatus(`清空索引日志失败：${e?.message ?? e}`, 'err');
+      setStatus(`清空索引日志失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16418,9 +16412,9 @@ function ensureModal() {
       meta.rollLogs = [];
       await setSummaryMeta(meta);
       renderRollLogs(meta);
-      setStatus('已清空 ROLL 日志', 'ok');
+      setStatus('已清�?ROLL 日志', 'ok');
     } catch (e) {
-      setStatus(`清空 ROLL 日志失败：${e?.message ?? e}`, 'err');
+      setStatus(`清空 ROLL 日志失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16437,9 +16431,9 @@ function ensureModal() {
 
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       downloadTextFile(`storyguide-preset-${stamp}.json`, JSON.stringify(out, null, 2));
-      setStatus('已导出预设 ✅', 'ok');
+      setStatus('已导出预�?�?, 'ok');
     } catch (e) {
-      setStatus(`导出失败：${e?.message ?? e}`, 'err');
+      setStatus(`导出失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16451,7 +16445,7 @@ function ensureModal() {
       const data = JSON.parse(txt);
 
       if (!data || typeof data !== 'object') {
-        setStatus('导入失败：预设文件格式不对', 'err');
+        setStatus('导入失败：预设文件格式不�?, 'err');
         return;
       }
 
@@ -16468,7 +16462,7 @@ function ensureModal() {
 
       scheduleReapplyAll('import_preset');
     } catch (e) {
-      setStatus(`导入失败：${e?.message ?? e}`, 'err');
+      setStatus(`导入失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -16485,7 +16479,7 @@ function ensureModal() {
       saveSettings();
 
       updateWorldbookInfoLabel();
-      setStatus('世界书已导入 ✅', entries.length ? 'ok' : 'warn');
+      setStatus('世界书已导入 �?, entries.length ? 'ok' : 'warn');
     } catch (e) {
       setStatus(`导入世界书失败：${e?.message ?? e}`, 'err');
     }
@@ -16504,13 +16498,13 @@ function ensureModal() {
       pullUiToSettings();
       saveSettings();
       updateWorldbookInfoLabel();
-      setStatus('世界书设置已保存 ✅', 'ok');
+      setStatus('世界书设置已保存 �?, 'ok');
     } catch (e) {
       setStatus(`保存世界书设置失败：${e?.message ?? e}`, 'err');
     }
   });
 
-  // 自动保存：世界书相关设置变更时立刻写入
+  // 自动保存：世界书相关设置变更时立刻写�?
   $('#sg_worldbookEnabled, #sg_worldbookMode').on('change', () => {
     pullUiToSettings();
     saveSettings();
@@ -16532,7 +16526,7 @@ function ensureModal() {
     $('#sg_mapSystemPrompt').val(String(DEFAULT_SETTINGS.mapSystemPrompt || ''));
     pullUiToSettings();
     saveSettings();
-    setStatus('已恢复默认地图提示词 ✅', 'ok');
+    setStatus('已恢复默认地图提示词 �?, 'ok');
   });
 
   bindMapEventPanelHandler();
@@ -16547,15 +16541,15 @@ function ensureModal() {
     try {
       await setMapData(getDefaultMapData());
       updateMapPreview();
-      setStatus('地图已重置 ✅', 'ok');
+      setStatus('地图已重�?�?, 'ok');
     } catch (e) {
-      setStatus(`重置地图失败：${e?.message ?? e}`, 'err');
+      setStatus(`重置地图失败�?{e?.message ?? e}`, 'err');
     }
   });
 
   $('#sg_refreshMapPreview').on('click', () => {
     updateMapPreview();
-    setStatus('地图预览已刷新', 'ok');
+    setStatus('地图预览已刷�?, 'ok');
   });
   $('#sg_worldbookMaxChars, #sg_worldbookWindowMessages').on('input', () => {
     pullUiToSettings();
@@ -16568,12 +16562,12 @@ function ensureModal() {
     const txt = String($('#sg_modulesJson').val() || '').trim();
     let parsed = null;
     try { parsed = JSON.parse(txt); } catch (e) {
-      setStatus(`模块 JSON 解析失败：${e?.message ?? e}`, 'err');
+      setStatus(`模块 JSON 解析失败�?{e?.message ?? e}`, 'err');
       return;
     }
     const v = validateAndNormalizeModules(parsed);
     if (!v.ok) {
-      setStatus(`模块校验失败：${v.error}`, 'err');
+      setStatus(`模块校验失败�?{v.error}`, 'err');
       return;
     }
     setStatus(`模块校验通过 ✅（${v.modules.length} 个模块）`, 'ok');
@@ -16588,11 +16582,11 @@ function ensureModal() {
     const txt = String($('#sg_modulesJson').val() || '').trim();
     let parsed = null;
     try { parsed = JSON.parse(txt); } catch (e) {
-      setStatus(`模块 JSON 解析失败：${e?.message ?? e}`, 'err');
+      setStatus(`模块 JSON 解析失败�?{e?.message ?? e}`, 'err');
       return;
     }
     const v = validateAndNormalizeModules(parsed);
-    if (!v.ok) { setStatus(`模块校验失败：${v.error}`, 'err'); return; }
+    if (!v.ok) { setStatus(`模块校验失败�?{v.error}`, 'err'); return; }
 
     const s = ensureSettings();
     s.modulesJson = JSON.stringify(v.modules, null, 2);
@@ -16601,11 +16595,11 @@ function ensureModal() {
     setStatus('模块已应用并保存 ✅（注意：追加框展示的模块由“追加框展示模块”控制）', 'ok');
   });
 
-  // 刷新静态模块缓存
+  // 刷新静态模块缓�?
   $('#sg_clearStaticCache').on('click', async () => {
     try {
       await clearStaticModulesCache();
-      setStatus('已清除静态模块缓存 ✅ 下次分析会重新生成静态模块（如"世界简介"）', 'ok');
+      setStatus('已清除静态模块缓�?�?下次分析会重新生成静态模块（�?世界简�?�?, 'ok');
     } catch (e) {
       setStatus(`清除静态模块缓存失败：${e?.message ?? e}`, 'err');
     }
@@ -16615,7 +16609,7 @@ function ensureModal() {
   $('#sg_resetQuickOptions').on('click', () => {
     const defaultOptions = JSON.stringify([
       { label: '继续', prompt: '继续当前剧情发展' },
-      { label: '详述', prompt: '请更详细地描述当前场景' },
+      { label: '详述', prompt: '请更详细地描述当前场�? },
       { label: '对话', prompt: '让角色之间展开更多对话' },
       { label: '行动', prompt: '描述接下来的具体行动' },
     ], null, 2);
@@ -16623,7 +16617,7 @@ function ensureModal() {
     const s = ensureSettings();
     s.quickOptionsJson = defaultOptions;
     saveSettings();
-    setStatus('已恢复默认快捷选项 ✅', 'ok');
+    setStatus('已恢复默认快捷选项 �?, 'ok');
   });
 
   $('#sg_applyQuickOptions').on('click', () => {
@@ -16638,9 +16632,9 @@ function ensureModal() {
       s.quickOptionsJson = JSON.stringify(arr, null, 2);
       saveSettings();
       $('#sg_quickOptionsJson').val(s.quickOptionsJson);
-      setStatus('快捷选项已应用并保存 ✅', 'ok');
+      setStatus('快捷选项已应用并保存 �?, 'ok');
     } catch (e) {
-      setStatus(`快捷选项 JSON 解析失败：${e?.message ?? e}`, 'err');
+      setStatus(`快捷选项 JSON 解析失败�?{e?.message ?? e}`, 'err');
     }
   });
 }
@@ -16678,12 +16672,12 @@ function showSettingsPage(page) {
     $('#sg_page_guide').addClass('active');
   }
 
-  // 切页后回到顶部，避免“看不到设置项”
+  // 切页后回到顶部，避免“看不到设置项�?
   try { $('.sg-left').scrollTop(0); } catch { }
 }
 
 function setupSettingsPages() {
-  // 把“索引设置块”从总结页移到索引页（保留内部所有控件 id，不影响事件绑定）
+  // 把“索引设置块”从总结页移到索引页（保留内部所有控�?id，不影响事件绑定�?
   try {
     const $mount = $('#sg_index_mount');
     const $idxWrapper = $('#sg_wiTriggerEnabled').closest('.sg-card.sg-subcard');
@@ -16727,19 +16721,19 @@ function setupSettingsPages() {
   $('#sg_regenImage').on('click', async () => {
     const positive = String($('#sg_imagePositivePrompt').val() || '').trim();
     if (!positive) {
-      setImageGenStatus('暂无提示词可重生成', 'warn');
+      setImageGenStatus('暂无提示词可重生�?, 'warn');
       return;
     }
     const negative = String($('#sg_novelaiNegativePrompt').val() || '').trim();
-    setImageGenStatus('正在重新生成图像…', 'warn');
+    setImageGenStatus('正在重新生成图像�?, 'warn');
     try {
       const imageUrl = await generateImageWithNovelAI(positive, negative);
       $('#sg_generatedImage').attr('src', imageUrl);
       $('#sg_generatedImage').attr('data-full', imageUrl);
       $('#sg_imageResult').show();
-      setImageGenStatus('✅ 已重新生成', 'ok');
+      setImageGenStatus('�?已重新生�?, 'ok');
     } catch (e) {
-      setImageGenStatus(`❌ 重生成失败: ${e?.message || e}`, 'err');
+      setImageGenStatus(`�?重生成失�? ${e?.message || e}`, 'err');
     }
   });
 
@@ -16762,19 +16756,19 @@ function setupSettingsPages() {
     const $textarea = $('#sg_imagePositivePrompt');
     if ($textarea.prop('readonly')) {
       $textarea.prop('readonly', false);
-      $('#sg_editPromptAndGenerate').text('使用编辑后的提示词生成');
+      $('#sg_editPromptAndGenerate').text('使用编辑后的提示词生�?);
     } else {
       const positive = $textarea.val();
       if (positive) {
         const s = ensureSettings();
-        setImageGenStatus('正在使用编辑后的提示词生成…', 'warn');
+        setImageGenStatus('正在使用编辑后的提示词生成�?, 'warn');
         try {
           const imageUrl = await generateImageWithNovelAI(positive, '');
           $('#sg_generatedImage').attr('src', imageUrl);
           $('#sg_imageResult').show();
-          setImageGenStatus('✅ 生成成功！', 'ok');
+          setImageGenStatus('�?生成成功�?, 'ok');
         } catch (e) {
-          setImageGenStatus(`❌ 生成失败: ${e?.message || e}`, 'err');
+          setImageGenStatus(`�?生成失败: ${e?.message || e}`, 'err');
         }
       }
     }
@@ -16848,21 +16842,21 @@ function setupCharacterPage() {
   $('#sg_char_copy').on('click', async () => {
     const text = String($('#sg_char_output').val() || '').trim();
     if (!text) {
-      setCharacterStatus('· 暂无可复制内容 ·', 'warn');
+      setCharacterStatus('· 暂无可复制内�?·', 'warn');
       return;
     }
     try {
       await navigator.clipboard.writeText(text);
-      setCharacterStatus('· 已复制到剪贴板 ·', 'ok');
+      setCharacterStatus('· 已复制到剪贴�?·', 'ok');
     } catch (e) {
-      setCharacterStatus(`· 复制失败：${e?.message ?? e} ·`, 'err');
+      setCharacterStatus(`· 复制失败�?{e?.message ?? e} ·`, 'err');
     }
   });
 
   $('#sg_char_insert').on('click', () => {
     const text = String($('#sg_char_output').val() || '').trim();
     if (!text) {
-      setCharacterStatus('· 暂无可填入内容 ·', 'warn');
+      setCharacterStatus('· 暂无可填入内�?·', 'warn');
       return;
     }
     const ok = injectToUserInput(text);
@@ -16906,7 +16900,7 @@ function setupSexGuidePage() {
   });
 
   $('#sg_sexSavePreset').on('click', () => {
-    const name = normalizeSexGuidePresetName(prompt('预设名称？') || '');
+    const name = normalizeSexGuidePresetName(prompt('预设名称�?) || '');
     if (!name) return;
     const list = getSexGuidePresetList();
     const snapshot = getSexGuidePresetSnapshot();
@@ -16918,7 +16912,7 @@ function setupSexGuidePage() {
     s.sexGuidePresetActive = name;
     saveSettings();
     pullSettingsToUi();
-    setSexGuideStatus('预设已保存', 'ok');
+    setSexGuideStatus('预设已保�?, 'ok');
   });
 
   $('#sg_sexApplyPreset').on('click', () => {
@@ -16931,7 +16925,7 @@ function setupSexGuidePage() {
     const s = ensureSettings();
     s.sexGuidePresetActive = name;
     saveSettings();
-    setSexGuideStatus('预设已应用', 'ok');
+    setSexGuideStatus('预设已应�?, 'ok');
   });
 
   $('#sg_sexDeletePreset').on('click', () => {
@@ -16943,7 +16937,7 @@ function setupSexGuidePage() {
     if (s.sexGuidePresetActive === name) s.sexGuidePresetActive = '';
     saveSettings();
     pullSettingsToUi();
-    setSexGuideStatus('预设已删除', 'ok');
+    setSexGuideStatus('预设已删�?, 'ok');
   });
 
   $('#sg_sexExportPreset').on('click', () => {
@@ -16962,7 +16956,7 @@ function setupSexGuidePage() {
       snapshot: preset.snapshot
     };
     downloadTextFile(`storyguide-sexguide-preset-${preset.name}.json`, JSON.stringify(payload, null, 2));
-    setSexGuideStatus('预设已导出', 'ok');
+    setSexGuideStatus('预设已导�?, 'ok');
   });
 
   $('#sg_sexImportPreset').on('click', async () => {
@@ -16974,7 +16968,7 @@ function setupSexGuidePage() {
       let preset = null;
 
       if (data && data._type === 'StoryGuide_SexGuidePreset') {
-        const name = normalizeSexGuidePresetName(data.name || '未命名');
+        const name = normalizeSexGuidePresetName(data.name || '未命�?);
         if (!name) return;
         preset = { name, snapshot: data.snapshot || {} };
       } else {
@@ -16982,7 +16976,7 @@ function setupSexGuidePage() {
       }
 
       if (!preset || !preset.name) {
-        setSexGuideStatus('预设文件格式不正确', 'err');
+        setSexGuideStatus('预设文件格式不正�?, 'err');
         return;
       }
 
@@ -16995,9 +16989,9 @@ function setupSexGuidePage() {
       s.sexGuidePresetActive = preset.name;
       saveSettings();
       pullSettingsToUi();
-      setSexGuideStatus('预设已导入', 'ok');
+      setSexGuideStatus('预设已导�?, 'ok');
     } catch (e) {
-      setSexGuideStatus(`导入失败：${e?.message ?? e}`, 'err');
+      setSexGuideStatus(`导入失败�?{e?.message ?? e}`, 'err');
     }
   });
 
@@ -17013,25 +17007,25 @@ function setupSexGuidePage() {
 
   $('#sg_sex_panel_send').on('click', () => {
     const text = String($('#sg_sex_panel_output').val() || '').trim();
-    if (!text) { setSexGuidePanelStatus('暂无可发送内容', 'warn'); return; }
+    if (!text) { setSexGuidePanelStatus('暂无可发送内�?, 'warn'); return; }
     const ok = injectToUserInput(text);
     setSexGuidePanelStatus(ok ? '已填入输入框（未发送）' : '未找到聊天输入框', ok ? 'ok' : 'err');
   });
 
   $('#sg_sex_copy').on('click', async () => {
     const text = String($('#sg_sex_output').val() || '').trim();
-    if (!text) { setSexGuideStatus('暂无可复制内容', 'warn'); return; }
+    if (!text) { setSexGuideStatus('暂无可复制内�?, 'warn'); return; }
     try {
       await navigator.clipboard.writeText(text);
-      setSexGuideStatus('已复制到剪贴板', 'ok');
+      setSexGuideStatus('已复制到剪贴�?, 'ok');
     } catch (e) {
-      setSexGuideStatus(`复制失败：${e?.message ?? e}`, 'err');
+      setSexGuideStatus(`复制失败�?{e?.message ?? e}`, 'err');
     }
   });
 
   $('#sg_sex_insert').on('click', () => {
     const text = String($('#sg_sex_output').val() || '').trim();
-    if (!text) { setSexGuideStatus('暂无可插入内容', 'warn'); return; }
+    if (!text) { setSexGuideStatus('暂无可插入内�?, 'warn'); return; }
     const ok = injectToUserInput(text);
     setSexGuideStatus(ok ? '已插入输入框（未发送）' : '未找到聊天输入框', ok ? 'ok' : 'err');
   });
@@ -17050,10 +17044,10 @@ function setupSexGuidePage() {
         const text = await file.text();
         const entries = parseWorldbookJson(text);
         if (!entries.length) {
-          setSexGuideStatus(`导入失败：${file.name}（未解析到条目）`, 'warn');
+          setSexGuideStatus(`导入失败�?{file.name}（未解析到条目）`, 'warn');
           continue;
         }
-        let name = file.name || `世界书${list.length + 1}`;
+        let name = file.name || `世界�?{list.length + 1}`;
         if (existingNames.has(name)) {
           let i = 2;
           while (existingNames.has(`${name} (${i})`)) i += 1;
@@ -17070,7 +17064,7 @@ function setupSexGuidePage() {
     setSexGuideWorldbooks(list);
     renderSexGuideWorldbookList();
     updateSexGuideWorldbookInfoLabel();
-    if (added) setSexGuideStatus(`已导入世界书：${added} 本`, 'ok');
+    if (added) setSexGuideStatus(`已导入世界书�?{added} 本`, 'ok');
 
     // reset file input
     e.target.value = '';
@@ -17119,7 +17113,7 @@ function setupParallelWorldPage() {
     pwData.factionEventLog = [];
     await setParallelWorldData(pwData);
     renderParallelWorldEventLog(pwData);
-    setParallelWorldStatus('日志已清空', 'ok');
+    setParallelWorldStatus('日志已清�?, 'ok');
   });
 
   // 刷新追踪列表
@@ -17142,7 +17136,7 @@ function setupParallelWorldPage() {
     saveSettings();
     $('#sg_pwManualNpcName').val('');
     refreshParallelWorldTrackedLists();
-    setParallelWorldStatus(`已添加 ${name}`, 'ok');
+    setParallelWorldStatus(`已添�?${name}`, 'ok');
   });
 
   // 世界时钟设置
@@ -17159,7 +17153,7 @@ function setupParallelWorldPage() {
     setParallelWorldStatus(`世界时钟已设置为: ${val}`, 'ok');
   });
 
-  // 恢复默认提示词
+  // 恢复默认提示�?
   $('#sg_pwResetPrompts').on('click', () => {
     $('#sg_parallelWorldSystemPrompt').val(DEFAULT_PARALLEL_WORLD_SYSTEM_PROMPT);
     $('#sg_parallelWorldUserTemplate').val(DEFAULT_PARALLEL_WORLD_USER_TEMPLATE);
@@ -17167,7 +17161,7 @@ function setupParallelWorldPage() {
     setParallelWorldStatus('已恢复默认提示词', 'ok');
   });
 
-  // Provider 切换显示自定义 API 区域
+  // Provider 切换显示自定�?API 区域
   $('#sg_parallelWorldProvider').on('change', function () {
     const isCustom = $(this).val() === 'custom';
     $('#sg_parallelCustomBlock').toggle(isCustom);
@@ -17247,7 +17241,7 @@ function pullSettingsToUi() {
 
   try {
     const count = parseWorldbookJson(String(s.worldbookJson || '')).length;
-    $('#sg_worldbookInfo').text(count ? `已导入世界书：${count} 条` : '（未导入世界书）');
+    $('#sg_worldbookInfo').text(count ? `已导入世界书�?{count} 条` : '（未导入世界书）');
   } catch {
     $('#sg_worldbookInfo').text('（未导入世界书）');
   }
@@ -17346,12 +17340,12 @@ function pullSettingsToUi() {
   $('#sg_conquestEntriesEnabled').prop('checked', !!s.conquestEntriesEnabled);
   $('#sg_characterEntryPrefix').val(String(s.characterEntryPrefix || '人物'));
   $('#sg_equipmentEntryPrefix').val(String(s.equipmentEntryPrefix || '装备'));
-  $('#sg_inventoryEntryPrefix').val(String(s.inventoryEntryPrefix || '物品栏'));
+  $('#sg_inventoryEntryPrefix').val(String(s.inventoryEntryPrefix || '物品�?));
   $('#sg_factionEntryPrefix').val(String(s.factionEntryPrefix || '势力'));
   $('#sg_achievementEntryPrefix').val(String(s.achievementEntryPrefix || '成就'));
-  $('#sg_subProfessionEntryPrefix').val(String(s.subProfessionEntryPrefix || '副职业'));
+  $('#sg_subProfessionEntryPrefix').val(String(s.subProfessionEntryPrefix || '副职�?));
   $('#sg_questEntryPrefix').val(String(s.questEntryPrefix || '任务'));
-  $('#sg_conquestEntryPrefix').val(String(s.conquestEntryPrefix || '猎艳录'));
+  $('#sg_conquestEntryPrefix').val(String(s.conquestEntryPrefix || '猎艳�?));
   $('#sg_structuredEntriesSystemPrompt').val(String(s.structuredEntriesSystemPrompt || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT));
   $('#sg_structuredEntriesUserTemplate').val(String(s.structuredEntriesUserTemplate || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE));
   $('#sg_structuredCharacterPrompt').val(String(s.structuredCharacterPrompt || DEFAULT_STRUCTURED_CHARACTER_PROMPT));
@@ -17475,7 +17469,7 @@ function pullSettingsToUi() {
     $presetSelect.empty();
     $presetSelect.append($('<option>').val('').text('选择预设'));
     for (const item of presetList) {
-      $presetSelect.append($('<option>').val(item?.name || '').text(item?.name || '未命名'));
+      $presetSelect.append($('<option>').val(item?.name || '').text(item?.name || '未命�?));
     }
     if (s.imageGenPresetActive) $presetSelect.val(s.imageGenPresetActive);
   }
@@ -17493,10 +17487,10 @@ function pullSettingsToUi() {
   $('#sg_imageGalleryEnabled').prop('checked', !!s.imageGalleryEnabled);
   $('#sg_imageGalleryUrl').val(String(s.imageGalleryUrl || ''));
   if (s.imageGalleryCache && s.imageGalleryCache.length > 0) {
-    $('#sg_galleryInfo').text(`(已缓存 ${s.imageGalleryCache.length} 张)`);
+    $('#sg_galleryInfo').text(`(已缓�?${s.imageGalleryCache.length} �?`);
   }
 
-  // 自定义角色设置
+  // 自定义角色设�?
   $('#sg_char_provider').val(String(s.characterProvider || 'st'));
   $('#sg_char_temperature').val(s.characterTemperature ?? 0.7);
   $('#sg_char_customEndpoint').val(String(s.characterCustomEndpoint || ''));
@@ -17531,7 +17525,7 @@ function pullSettingsToUi() {
   $('#sg_char_attr_luk').val(s.characterAttributes?.luk ?? 0);
   updateCharacterForm();
 
-  // 角色标签世界书设置
+  // 角色标签世界书设�?
   $('#sg_imageGenProfilesEnabled').prop('checked', !!s.imageGenCharacterProfilesEnabled);
   renderCharacterProfilesUi();
   const expanded = !!s.imageGenProfilesExpanded;
@@ -17604,7 +17598,7 @@ function pullSettingsToUi() {
   // 世界时钟显示
   try {
     const pwData = getParallelWorldData();
-    updateParallelWorldClockDisplay(pwData.worldClock || s.parallelWorldClock || '第1天');
+    updateParallelWorldClockDisplay(pwData.worldClock || s.parallelWorldClock || '�?�?);
   } catch { }
 }
 
@@ -17618,8 +17612,8 @@ function updateBlueIndexInfoLabel() {
     const file = pickBlueIndexFileName();
     const ts = blueIndexLiveCache?.loadedAt ? new Date(Number(blueIndexLiveCache.loadedAt)).toLocaleTimeString() : '';
     const err = String(blueIndexLiveCache?.lastError || '').trim();
-    const errShort = err ? err.replace(/\s+/g, ' ').slice(0, 60) + (err.length > 60 ? '…' : '') : '';
-    $info.text(`（蓝灯索引：${count} 条｜实时：${file || '未设置'}${ts ? `｜更新：${ts}` : ''}${errShort ? `｜读取失败：${errShort}` : ''}）`);
+    const errShort = err ? err.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+/g, ' ').slice(0, 60) + (err.length > 60 ? '�? : '') : '';
+    $info.text(`（蓝灯索引：${count} 条｜实时�?{file || '未设�?}${ts ? `｜更新：${ts}` : ''}${errShort ? `｜读取失败：${errShort}` : ''}）`);
   } else {
     $info.text(`（蓝灯索引：${count} 条｜缓存）`);
   }
@@ -17630,7 +17624,7 @@ function updateStructuredWorldbookInfoLabel() {
   if (!$info.length) return;
   const s = ensureSettings();
   if (!s.structuredWorldbookEnabled) {
-    $info.text('（未启用）');
+    $info.text('（未启用�?);
     return;
   }
   const stats = structuredWorldbookLiveCache || {};
@@ -17641,14 +17635,14 @@ function updateStructuredWorldbookInfoLabel() {
   const file = pickBlueIndexFileName();
   const ts = stats.loadedAt ? new Date(Number(stats.loadedAt)).toLocaleTimeString() : '';
   const err = String(stats.lastError || '').trim();
-  const errShort = err ? err.replace(/\s+/g, ' ').slice(0, 60) + (err.length > 60 ? '...' : '') : '';
+  const errShort = err ? err.replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+/g, ' ').slice(0, 60) + (err.length > 60 ? '...' : '') : '';
 
-  let text = `（蓝灯世界书：${count} 条｜约 ${tokens} tokens`;
+  let text = `（蓝灯世界书�?{count} 条｜�?${tokens} tokens`;
   if (total && total !== count) text += `/${total}`;
-  text += `｜${mode}｜${file || '未设置'}`;
+  text += `�?{mode}�?{file || '未设�?}`;
   if (ts) text += `｜更新：${ts}`;
   if (errShort) text += `｜读取失败：${errShort}`;
-  text += '）';
+  text += '�?;
   $info.text(text);
 }
 
@@ -17680,42 +17674,42 @@ function renderWiTriggerLogs(metaOverride = null) {
     const picked = Array.isArray(l.picked) ? l.picked : [];
     const titles = picked.map(x => String(x?.title || '').trim()).filter(Boolean);
     const titleShort = titles.length
-      ? (titles.slice(0, 4).join('；') + (titles.length > 4 ? '…' : ''))
-      : '（无命中条目）';
-    const user = String(l.userText || '').replace(/\s+/g, ' ').trim();
-    const userShort = user ? (user.slice(0, 120) + (user.length > 120 ? '…' : '')) : '';
+      ? (titles.slice(0, 4).join('�?) + (titles.length > 4 ? '�? : ''))
+      : '（无命中条目�?;
+    const user = String(l.userText || '').replace(/        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;s+/g, ' ').trim();
+    const userShort = user ? (user.slice(0, 120) + (user.length > 120 ? '�? : '')) : '';
     const kws = Array.isArray(l.injectedKeywords) ? l.injectedKeywords : [];
-    const kwsShort = kws.length ? (kws.slice(0, 20).join('、') + (kws.length > 20 ? '…' : '')) : '';
+    const kwsShort = kws.length ? (kws.slice(0, 20).join('�?) + (kws.length > 20 ? '�? : '')) : '';
 
     if (skipped) {
       const assistantFloors = Number(l.assistantFloors || 0);
       const startAfter = Number(l.startAfter || 0);
       const reasonKey = String(l.skippedReason || '').trim();
       const reasonText = reasonKey === 'minAssistantFloors'
-        ? `AI 回复楼层不足（${assistantFloors}/${startAfter}）`
+        ? `AI 回复楼层不足�?{assistantFloors}/${startAfter}）`
         : (reasonKey || '跳过');
       const detailsLines = [];
-      if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
-      detailsLines.push(`<div><b>未触发</b>：${escapeHtml(reasonText)}</div>`);
+      if (userShort) detailsLines.push(`<div><b>用户输入</b>�?{escapeHtml(userShort)}</div>`);
+      detailsLines.push(`<div><b>未触�?/b>�?{escapeHtml(reasonText)}</div>`);
       return `
       <details>
-        <summary>${escapeHtml(`${ts}｜未触发：${reasonText}`)}</summary>
+        <summary>${escapeHtml(`${ts}｜未触发�?{reasonText}`)}</summary>
         <div class="sg-log-body">${detailsLines.join('')}</div>
       </details>
     `;
     }
 
     const detailsLines = [];
-    if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
-    detailsLines.push(`<div><b>将触发绿灯条目</b>：${escapeHtml(titles.join('；') || '（无）')}</div>`);
-    detailsLines.push(`<div><b>注入触发词</b>：${escapeHtml(kwsShort || '（无）')}</div>`);
+    if (userShort) detailsLines.push(`<div><b>用户输入</b>�?{escapeHtml(userShort)}</div>`);
+    detailsLines.push(`<div><b>将触发绿灯条�?/b>�?{escapeHtml(titles.join('�?) || '（无�?)}</div>`);
+    detailsLines.push(`<div><b>注入触发�?/b>�?{escapeHtml(kwsShort || '（无�?)}</div>`);
     if (picked.length) {
-      const scored = picked.map(x => `${String(x.title || '').trim()}（${Number(x.score || 0).toFixed(2)}）`).join('；');
+      const scored = picked.map(x => `${String(x.title || '').trim()}�?{Number(x.score || 0).toFixed(2)}）`).join('�?);
       detailsLines.push(`<div class="sg-hint">相似度：${escapeHtml(scored)}</div>`);
     }
     return `
       <details>
-        <summary>${escapeHtml(`${ts}｜命中${titles.length}条：${titleShort}`)}</summary>
+        <summary>${escapeHtml(`${ts}｜命�?{titles.length}条：${titleShort}`)}</summary>
         <div class="sg-log-body">${detailsLines.join('')}</div>
       </details>
     `;
@@ -17730,7 +17724,7 @@ function appendWiTriggerLog(log) {
     const arr = Array.isArray(meta.wiTriggerLogs) ? meta.wiTriggerLogs : [];
     arr.unshift(log);
     meta.wiTriggerLogs = arr.slice(0, 50);
-    // 不 await：避免阻塞 MESSAGE_SENT
+    // �?await：避免阻�?MESSAGE_SENT
     setSummaryMeta(meta).catch(() => void 0);
     if ($('#sg_modal_backdrop').is(':visible')) renderWiTriggerLogs(meta);
   } catch { /* ignore */ }
@@ -17765,11 +17759,11 @@ function renderRollLogs(metaOverride = null) {
     const userShort = String(l?.userText || '').trim().slice(0, 160);
 
     const detailsLines = [];
-    if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
-    if (summary) detailsLines.push(`<div><b>摘要</b>：${escapeHtml(summary)}</div>`);
+    if (userShort) detailsLines.push(`<div><b>用户输入</b>�?{escapeHtml(userShort)}</div>`);
+    if (summary) detailsLines.push(`<div><b>摘要</b>�?{escapeHtml(summary)}</div>`);
     return `
       <details>
-        <summary>${escapeHtml(`${ts}｜${action || 'ROLL'}｜${outcome}${finalVal ? `｜最终=${finalVal}` : ''}`)}</summary>
+        <summary>${escapeHtml(`${ts}�?{action || 'ROLL'}�?{outcome}${finalVal ? `｜最�?${finalVal}` : ''}`)}</summary>
         <div class="sg-log-body">${detailsLines.join('')}</div>
       </details>
     `;
@@ -17799,18 +17793,18 @@ function updateWorldbookInfoLabel() {
       return;
     }
     const stats = computeWorldbookInjection();
-    const base = `已导入世界书：${stats.importedEntries} 条`;
+    const base = `已导入世界书�?{stats.importedEntries} 条`;
     if (!s.worldbookEnabled) {
       $info.text(`${base}（未启用注入）`);
       return;
     }
     if (stats.mode === 'active' && stats.selectedEntries === 0) {
-      $info.text(`${base}｜模式：active｜本次无条目命中（0 条）`);
+      $info.text(`${base}｜模式：active｜本次无条目命中�? 条）`);
       return;
     }
-    $info.text(`${base}｜模式：${stats.mode}｜本次注入：${stats.injectedEntries} 条｜字符：${stats.injectedChars}｜约 tokens：${stats.injectedTokens}`);
+    $info.text(`${base}｜模式：${stats.mode}｜本次注入：${stats.injectedEntries} 条｜字符�?{stats.injectedChars}｜约 tokens�?{stats.injectedTokens}`);
   } catch {
-    $info.text('（世界书信息解析失败）');
+    $info.text('（世界书信息解析失败�?);
   }
 }
 
@@ -17835,7 +17829,7 @@ function renderSexGuideWorldbookList() {
         <label class="sg-check"><input type="checkbox" class="sg-sex-wb-enabled" ${wb.enabled ? 'checked' : ''}>启用</label>
         <div class="sg-wb-meta">
           <div class="sg-wb-name">${escapeHtml(wb.name)}</div>
-          <div class="sg-wb-sub">条目：${entries} ｜ tokens：${tokens} ｜ 本次注入：${injected}</div>
+          <div class="sg-wb-sub">条目�?{entries} �?tokens�?{tokens} �?本次注入�?{injected}</div>
         </div>
         <button class="menu_button sg-btn sg-sex-wb-remove">移除</button>
       </div>
@@ -17858,19 +17852,19 @@ function updateSexGuideWorldbookInfoLabel() {
   }
 
   if (!s.sexGuideWorldbookEnabled) {
-    $info.text(`已导入世界书：${stats.totalWorldbooks} 本（未启用注入）`);
+    $info.text(`已导入世界书�?{stats.totalWorldbooks} 本（未启用注入）`);
     return;
   }
 
-  const dirs = enabledNames.length ? enabledNames.join(' / ') : '无';
-  $info.text(`读取目录：${dirs} ｜ 条目：${stats.injectedEntries}/${stats.importedEntries} ｜ tokens：${stats.injectedTokens}`);
+  const dirs = enabledNames.length ? enabledNames.join(' / ') : '�?;
+  $info.text(`读取目录�?{dirs} �?条目�?{stats.injectedEntries}/${stats.importedEntries} �?tokens�?{stats.injectedTokens}`);
 }
 
 function formatSummaryMetaHint(meta) {
   const last = Number(meta?.lastFloor || 0);
   const count = Array.isArray(meta?.history) ? meta.history.length : 0;
-  if (!last && !count) return '（未生成）';
-  return `已生成 ${count} 次｜上次触发层：${last}`;
+  if (!last && !count) return '（未生成�?;
+  return `已生�?${count} 次｜上次触发层：${last}`;
 }
 
 function updateSummaryInfoLabel() {
@@ -17911,9 +17905,9 @@ function updateSummaryManualRangeHint(setDefaults = false) {
         const b = clampInt(toN, 1, floorNow, floorNow);
         const len = Math.abs(b - a) + 1;
         const pieces = Math.max(1, Math.ceil(len / every));
-        extra = `｜分段：${pieces} 条（每${every}层）`;
+        extra = `｜分段：${pieces} 条（�?{every}层）`;
       } else {
-        extra = `｜分段：每${every}层一条`;
+        extra = `｜分段：�?{every}层一条`;
       }
     }
 
@@ -17929,7 +17923,7 @@ function updateSummaryManualRangeHint(setDefaults = false) {
       $to.val(floorNow);
     }
   } catch {
-    $hint.text('（可选范围：?）');
+    $hint.text('（可选范围：?�?);
   }
 }
 
@@ -17956,9 +17950,9 @@ function renderSummaryPaneFromMeta() {
     const displayTitle = buildSummaryCoreTitle(h.title, h.indexId, ensureSettings(), h.commentPrefix, true);
     const kws = Array.isArray(h.keywords) ? h.keywords : [];
     const when = h.createdAt ? new Date(h.createdAt).toLocaleString() : '';
-    const range = h?.range ? `（${h.range.fromFloor}-${h.range.toFloor}）` : '';
-    return `### ${displayTitle} ${range}\n\n- 时间：${when}\n- 关键词：${kws.join('、') || '（无）'}\n\n${h.summary || ''}`;
-  }).join('\n\n---\n\n');
+    const range = h?.range ? `�?{h.range.fromFloor}-${h.range.toFloor}）` : '';
+    return `### ${displayTitle} ${range}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n- 时间�?{when}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n- 关键词：${kws.join('�?) || '（无�?}        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n${h.summary || ''}`;
+  }).join('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n---        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;n');
 
   const mdText = String(md || '');
   renderMarkdownInto($el, mdText);
@@ -18063,12 +18057,12 @@ function pullUiToSettings() {
   s.conquestEntriesEnabled = $('#sg_conquestEntriesEnabled').is(':checked');
   s.characterEntryPrefix = String($('#sg_characterEntryPrefix').val() || '人物').trim() || '人物';
   s.equipmentEntryPrefix = String($('#sg_equipmentEntryPrefix').val() || '装备').trim() || '装备';
-  s.inventoryEntryPrefix = String($('#sg_inventoryEntryPrefix').val() || '物品栏').trim() || '物品栏';
+  s.inventoryEntryPrefix = String($('#sg_inventoryEntryPrefix').val() || '物品�?).trim() || '物品�?;
   s.factionEntryPrefix = String($('#sg_factionEntryPrefix').val() || '势力').trim() || '势力';
   s.achievementEntryPrefix = String($('#sg_achievementEntryPrefix').val() || '成就').trim() || '成就';
-  s.subProfessionEntryPrefix = String($('#sg_subProfessionEntryPrefix').val() || '副职业').trim() || '副职业';
+  s.subProfessionEntryPrefix = String($('#sg_subProfessionEntryPrefix').val() || '副职�?).trim() || '副职�?;
   s.questEntryPrefix = String($('#sg_questEntryPrefix').val() || '任务').trim() || '任务';
-  s.conquestEntryPrefix = String($('#sg_conquestEntryPrefix').val() || '猎艳录').trim() || '猎艳录';
+  s.conquestEntryPrefix = String($('#sg_conquestEntryPrefix').val() || '猎艳�?).trim() || '猎艳�?;
   s.structuredEntriesSystemPrompt = String($('#sg_structuredEntriesSystemPrompt').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_SYSTEM_PROMPT;
   s.structuredEntriesUserTemplate = String($('#sg_structuredEntriesUserTemplate').val() || '').trim() || DEFAULT_STRUCTURED_ENTRIES_USER_TEMPLATE;
   s.structuredCharacterPrompt = String($('#sg_structuredCharacterPrompt').val() || '').trim() || DEFAULT_STRUCTURED_CHARACTER_PROMPT;
@@ -18190,7 +18184,7 @@ function pullUiToSettings() {
   s.imageGalleryEnabled = $('#sg_imageGalleryEnabled').is(':checked');
   s.imageGalleryUrl = String($('#sg_imageGalleryUrl').val() || '').trim();
 
-  // 自定义角色设置
+  // 自定义角色设�?
   s.characterProvider = String($('#sg_char_provider').val() || 'st');
   s.characterTemperature = clampFloat($('#sg_char_temperature').val(), 0, 2, s.characterTemperature ?? 0.7);
   s.characterCustomEndpoint = String($('#sg_char_customEndpoint').val() || '').trim();
@@ -18215,7 +18209,7 @@ function pullUiToSettings() {
   s.characterRandomLLM = $('#sg_char_random_llm').is(':checked');
   s.characterAttributes = getCharacterAttributes();
 
-  // 角色标签世界书设置
+  // 角色标签世界书设�?
   s.imageGenCharacterProfilesEnabled = $('#sg_imageGenProfilesEnabled').is(':checked');
   s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
   s.imageGenCharacterProfiles = s.imageGenCharacterProfiles || [];
@@ -18267,7 +18261,7 @@ function openModal() {
   pullSettingsToUi();
   updateWorldbookInfoLabel();
   updateSummaryManualRangeHint(true);
-  // 打开面板时尝试刷新一次蓝灯索引（不阻塞 UI）
+  // 打开面板时尝试刷新一次蓝灯索引（不阻�?UI�?
   ensureBlueIndexLive(false).catch(() => void 0);
   ensureStructuredWorldbookLive(false).catch(() => void 0);
   setStatus('', '');
@@ -18287,7 +18281,7 @@ function injectMinimalSettingsPanel() {
         <div class="sg-min-title">剧情指导 StoryGuide <span class="sg-sub">v${SG_VERSION}</span></div>
         <button class="menu_button sg-btn" id="sg_open_from_settings">打开面板</button>
       </div>
-      <div class="sg-min-hint">支持自定义输出模块（JSON），并且自动追加框会缓存+监听重渲染，尽量不被变量更新覆盖。</div>
+      <div class="sg-min-hint">支持自定义输出模块（JSON），并且自动追加框会缓存+监听重渲染，尽量不被变量更新覆盖�?/div>
     </div>
   `);
   $('#sg_open_from_settings').on('click', () => openModal());
@@ -18388,7 +18382,7 @@ function setupEventListeners() {
           const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
           const floorNow = computeFloorCount(chatNow, mode, true, true);
           const meta = getSummaryMeta();
-          // 如果 lastStructuredFloor 为 0 且已有聊天历史，初始化为当前楼层
+          // 如果 lastStructuredFloor �?0 且已有聊天历史，初始化为当前楼层
           if (floorNow > 0 && !meta.lastStructuredFloor) {
             meta.lastStructuredFloor = floorNow;
             meta.lastStructuredChatLen = chatNow.length;
@@ -18409,7 +18403,7 @@ function setupEventListeners() {
     eventSource.on(event_types.MESSAGE_RECEIVED, () => {
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
-      // 回复生成结束后再触发总结/结构化
+      // 回复生成结束后再触发总结/结构�?
       schedulePostGenerationAuto('msg_received');
       // 平行世界自动推演
       maybeAutoRunParallelWorld().catch(e => console.warn('[StoryGuide] 平行世界自动推演异常:', e));
@@ -18419,9 +18413,9 @@ function setupEventListeners() {
       // 禁止自动生成：不在发送消息时自动刷新面板
       // ROLL 判定（尽量在生成前完成）
       maybeInjectRollResult('msg_sent').catch(() => void 0);
-      // 蓝灯索引 → 绿灯触发（尽量在生成前完成）
+      // 蓝灯索引 �?绿灯触发（尽量在生成前完成）
       maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
-      // 记录生成活动，最终在回复完成后触发
+      // 记录生成活动，最终在回复完成后触�?
       schedulePostGenerationAuto('msg_sent');
     });
 
@@ -18431,7 +18425,7 @@ function setupEventListeners() {
   });
 }
 
-// -------------------- 悬浮按钮和面板 --------------------
+// -------------------- 悬浮按钮和面�?--------------------
 
 let floatingPanelVisible = false;
 let lastFloatingContent = null;
@@ -18469,7 +18463,7 @@ window.addEventListener('resize', updateSgVh);
 window.addEventListener('orientationchange', updateSgVh);
 window.visualViewport?.addEventListener('resize', updateSgVh);
 
-// 检测移动端/平板竖屏模式（禁用自定义定位，使用 CSS 底部弹出样式）
+// 检测移动端/平板竖屏模式（禁用自定义定位，使�?CSS 底部弹出样式�?
 // 匹配 CSS 媒体查询: (max-width: 768px), (max-aspect-ratio: 1/1)
 function isMobilePortrait() {
   if (window.matchMedia) {
@@ -18613,13 +18607,13 @@ function createFloatingPanel() {
       <span class="sg-floating-title">📘 剧情指导</span>
         <div class="sg-floating-actions">
           <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
-          <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺️</button>
-          <button class="sg-floating-action-btn" id="sg_floating_show_image" title="图像生成">🖼️</button>
+          <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺�?/button>
+          <button class="sg-floating-action-btn" id="sg_floating_show_image" title="图像生成">🖼�?/button>
           <button class="sg-floating-action-btn" id="sg_floating_show_sex" title="性爱指导">❤️</button>
           <button class="sg-floating-action-btn" id="sg_floating_structured" title="手动结构化条目总结">🧩</button>
           <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
           <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
-          <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
+          <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">�?/button>
         </div>
     </div>
     <div class="sg-floating-body" id="sg_floating_body">
@@ -18755,7 +18749,7 @@ function createFloatingPanel() {
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     if (imageGenBatchBusy) return;
     imageGenBatchBusy = true;
-    imageGenBatchStatus = '正在生成提示词…';
+    imageGenBatchStatus = '正在生成提示词�?;
     renderImageGenBatchPreview();
     try {
       imageGenBatchPrompts = await generateImagePromptBatch();
@@ -18763,7 +18757,7 @@ function createFloatingPanel() {
       imageGenPreviewIndex = 0;
       imageGenBatchStatus = '提示词已生成';
     } catch (err) {
-      imageGenBatchStatus = `生成失败：${err?.message || err}`;
+      imageGenBatchStatus = `生成失败�?{err?.message || err}`;
     } finally {
       imageGenBatchBusy = false;
       renderImageGenBatchPreview();
@@ -18781,36 +18775,36 @@ function createFloatingPanel() {
     let bdsmCustom = '';
     let poseCustom = '';
     let outfitCustom = '';
-    if (bdsmMode === 'custom') bdsmCustom = String(prompt('BDSM (\u81ea\u5b9a\u4e49):') || '').trim();
-    if (poseMode === 'custom') poseCustom = String(prompt('\u4f53\u4f4d (\u81ea\u5b9a\u4e49):') || '').trim();
-    if (outfitMode === 'custom') outfitCustom = String(prompt('\u670d\u88c5 (\u81ea\u5b9a\u4e49):') || '').trim();
+    if (bdsmMode === 'custom') bdsmCustom = String(prompt('BDSM (        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u81ea        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5b9a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e49):') || '').trim();
+    if (poseMode === 'custom') poseCustom = String(prompt('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f53        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f4d (        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u81ea        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5b9a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e49):') || '').trim();
+    if (outfitMode === 'custom') outfitCustom = String(prompt('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u670d        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u88c5 (        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u81ea        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5b9a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e49):') || '').trim();
     const extras = [];
-    if (bdsmMode === 'none') extras.push('BDSM: \u4e0d\u4f7f\u7528');
-    if (bdsmMode === 'random') extras.push('BDSM: \u968f\u673a');
+    if (bdsmMode === 'none') extras.push('BDSM:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e0d        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f7f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u7528');
+    if (bdsmMode === 'random') extras.push('BDSM:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u968f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u673a');
     if (bdsmMode === 'custom' && bdsmCustom) extras.push(`BDSM: ${bdsmCustom}`);
-    if (poseMode === 'random') extras.push('\u4f53\u4f4d: \u968f\u673a');
-    if (poseMode === 'custom' && poseCustom) extras.push(`\u4f53\u4f4d: ${poseCustom}`);
-    if (ejaculateMode === 'yes') extras.push('\u5c04\u7cbe: \u662f');
-    if (ejaculateMode === 'no') extras.push('\u5c04\u7cbe: \u5426');
-    if (ejaculateMode === 'random') extras.push('\u5c04\u7cbe: \u968f\u673a');
-    if (outfitMode === 'yes') extras.push('\u670d\u88c5: \u662f');
-    if (outfitMode === 'no') extras.push('\u670d\u88c5: \u5426');
-    if (outfitMode === 'random') extras.push('\u670d\u88c5: \u968f\u673a');
-    if (outfitMode === 'custom' && outfitCustom) extras.push(`\u670d\u88c5: ${outfitCustom}`);
+    if (poseMode === 'random') extras.push('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f53        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f4d:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u968f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u673a');
+    if (poseMode === 'custom' && poseCustom) extras.push(`        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f53        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f4d: ${poseCustom}`);
+    if (ejaculateMode === 'yes') extras.push('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5c04        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u7cbe:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u662f');
+    if (ejaculateMode === 'no') extras.push('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5c04        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u7cbe:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5426');
+    if (ejaculateMode === 'random') extras.push('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5c04        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u7cbe:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u968f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u673a');
+    if (outfitMode === 'yes') extras.push('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u670d        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u88c5:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u662f');
+    if (outfitMode === 'no') extras.push('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u670d        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u88c5:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5426');
+    if (outfitMode === 'random') extras.push('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u670d        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u88c5:         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u968f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u673a');
+    if (outfitMode === 'custom' && outfitCustom) extras.push(`        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u670d        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u88c5: ${outfitCustom}`);
     if (extras.length) {
       const extraText = extras.join('; ');
       need = need ? `${need}
 ${extraText}` : extraText;
     }
     $('#sg_floating_sex_generate').prop('disabled', true);
-    $('#sg_floating_sex_status').text('\u6b63\u5728\u751f\u6210...');
+    $('#sg_floating_sex_status').text('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6b63        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5728        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u751f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6210...');
     try {
       await runSexGuide({ userNeedOverride: need });
       $('#sg_floating_sex_output').val(lastSexGuideText || '');
       $('#sg_floating_sex_send').prop('disabled', !lastSexGuideText);
-      $('#sg_floating_sex_status').text('\u751f\u6210\u5b8c\u6210');
+      $('#sg_floating_sex_status').text('        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u751f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6210        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5b8c        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6210');
     } catch (err) {
-      $('#sg_floating_sex_status').text(`\u751f\u6210\u5931\u8d25: ${err?.message ?? err}`);
+      $('#sg_floating_sex_status').text(`        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u751f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6210        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5931        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u8d25: ${err?.message ?? err}`);
     } finally {
       $('#sg_floating_sex_generate').prop('disabled', false);
     }
@@ -18820,7 +18814,7 @@ ${extraText}` : extraText;
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     const text = String($('#sg_floating_sex_output').val() || '').trim();
     if (!text) {
-      $('#sg_floating_sex_status').text('暂无可发送内容');
+      $('#sg_floating_sex_status').text('暂无可发送内�?);
       return;
     }
     const ok = injectToUserInput(text);
@@ -18864,7 +18858,7 @@ ${extraText}` : extraText;
     if (!current || !current.positive) return;
     try {
       imageGenBatchBusy = true;
-      imageGenBatchStatus = `重新生成：${current.label || '当前'}`;
+      imageGenBatchStatus = `重新生成�?{current.label || '当前'}`;
       renderImageGenBatchPreview();
       const url = await generateImageWithNovelAI(current.positive, current.negative || '');
       imageGenImageUrls[imageGenPreviewIndex] = url;
@@ -18886,9 +18880,9 @@ ${extraText}` : extraText;
     }
     try {
       await navigator.clipboard.writeText(JSON.stringify(lastNovelaiPayload, null, 2));
-      imageGenBatchStatus = '已复制请求参数';
+      imageGenBatchStatus = '已复制请求参�?;
     } catch (err) {
-      imageGenBatchStatus = `复制失败：${err?.message || err}`;
+      imageGenBatchStatus = `复制失败�?{err?.message || err}`;
     }
     renderImageGenBatchPreview();
   });
@@ -18903,7 +18897,7 @@ ${extraText}` : extraText;
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     const url = imageGenImageUrls[imageGenPreviewIndex];
     if (!url) {
-      imageGenBatchStatus = '暂无可下载图像';
+      imageGenBatchStatus = '暂无可下载图�?;
       renderImageGenBatchPreview();
       return;
     }
@@ -18918,9 +18912,9 @@ ${extraText}` : extraText;
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-      imageGenBatchStatus = '图像已下载';
+      imageGenBatchStatus = '图像已下�?;
     } catch (err) {
-      imageGenBatchStatus = `下载失败：${err?.message || err}`;
+      imageGenBatchStatus = `下载失败�?{err?.message || err}`;
     }
     renderImageGenBatchPreview();
   });
@@ -19022,13 +19016,13 @@ function ensureFloatingPanelInViewport(panel) {
   try {
     if (!panel || !panel.getBoundingClientRect) return;
 
-    // 移动端竖屏使用 CSS 底部弹出，不需要 JS 定位
+    // 移动端竖屏使�?CSS 底部弹出，不需�?JS 定位
     if (isMobilePortrait()) return;
 
     // Remove viewport size guard to ensure panel is always kept reachable
     // if (!shouldGuardFloatingPanelViewport()) return;
 
-    // 与 clampToViewport 保持一致的边界逻辑（允许 50% 越界）
+    // �?clampToViewport 保持一致的边界逻辑（允�?50% 越界�?
     const minVisibleRatio = 0.5;
     const minVisiblePx = 40;
 
@@ -19046,8 +19040,8 @@ function ensureFloatingPanelInViewport(panel) {
     // Clamp current on-screen position into viewport.
     const clamped = clampToViewport(rect.left, rect.top, w, h);
 
-    // 检查是否需要调整位置（使用放宽的边界逻辑）
-    // 如果可见部分少于 minVisible，则需要调整
+    // 检查是否需要调整位置（使用放宽的边界逻辑�?
+    // 如果可见部分少于 minVisible，则需要调�?
     const visibleLeft = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(0, rect.left));
     const visibleTop = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(0, rect.top));
 
@@ -19129,12 +19123,12 @@ function showFloatingPanel() {
   createFloatingPanel();
   const panel = document.getElementById('sg_floating_panel');
   if (panel) {
-    // 移动端/平板：强制使用底部弹出样式
+    // 移动�?平板：强制使用底部弹出样�?
     if (isMobilePortrait()) {
       applyMobileFloatingPanelStyles(panel);
     } else if (window.innerWidth < 1200) {
       clearMobileFloatingPanelStyles(panel);
-      // 桌面端小窗口：清除可能的内联样式，使用 CSS
+      // 桌面端小窗口：清除可能的内联样式，使�?CSS
       panel.style.left = '';
       panel.style.top = '';
       panel.style.bottom = '';
@@ -19161,7 +19155,7 @@ function showFloatingPanel() {
       updateFloatingPanelBody(lastFloatingContent);
     }
 
-    // 非移动端才运行视口检测
+    // 非移动端才运行视口检�?
     if (!isMobilePortrait()) {
       bindFloatingPanelResizeGuard();
       requestAnimationFrame(() => ensureFloatingPanelInViewport(panel));
@@ -19174,7 +19168,7 @@ function hideFloatingPanel() {
   if (panel) {
     panel.classList.remove('visible');
     floatingPanelVisible = false;
-    // 始终清除内联 display 样式以确保面板隐藏
+    // 始终清除内联 display 样式以确保面板隐�?
     panel.style.display = 'none';
   }
 }
@@ -19212,7 +19206,7 @@ async function refreshFloatingPanelContent() {
       return;
     }
 
-    // 合并静态模块
+    // 合并静态模�?
     const mergedParsed = mergeStaticModulesIntoResult(parsed, modules);
     updateStaticModulesCache(mergedParsed, modules).catch(() => void 0);
 
@@ -19256,7 +19250,7 @@ function showFloatingImageGen() {
   if (!$body.length) return;
   const s = ensureSettings();
   if (!s.imageGenEnabled) {
-    $body.html('<div class="sg-floating-loading">图像生成功能未启用</div>');
+    $body.html('<div class="sg-floating-loading">图像生成功能未启�?/div>');
     return;
   }
 
@@ -19266,7 +19260,7 @@ function showFloatingImageGen() {
       <div class="sg-floating-actions-mini">
         <button class="sg-floating-mini-btn" id="sg_imagegen_build_batch">生成12组提示词</button>
 
-        <button class="sg-floating-mini-btn" id="sg_imagegen_generate">生成当前图</button>
+        <button class="sg-floating-mini-btn" id="sg_imagegen_generate">生成当前�?/button>
         <button class="sg-floating-mini-btn" id="sg_imagegen_generate_all">生成全部</button>
 
       </div>
@@ -19309,11 +19303,11 @@ function showFloatingRollLogs() {
     const userShort = String(l?.userText || '').trim().slice(0, 160);
 
     const detailsLines = [];
-    if (userShort) detailsLines.push(`<div><b>用户输入</b>：${escapeHtml(userShort)}</div>`);
-    if (summary) detailsLines.push(`<div><b>摘要</b>：${escapeHtml(summary)}</div>`);
+    if (userShort) detailsLines.push(`<div><b>用户输入</b>�?{escapeHtml(userShort)}</div>`);
+    if (summary) detailsLines.push(`<div><b>摘要</b>�?{escapeHtml(summary)}</div>`);
     return `
       <details style="margin-bottom:4px; padding:4px; border-bottom:1px solid rgba(128,128,128,0.3);">
-        <summary style="font-size:0.9em; cursor:pointer; outline:none;">${escapeHtml(`${ts}｜${action || 'ROLL'}｜${outcome}${finalVal ? `｜最终=${finalVal}` : ''}`)}</summary>
+        <summary style="font-size:0.9em; cursor:pointer; outline:none;">${escapeHtml(`${ts}�?{action || 'ROLL'}�?{outcome}${finalVal ? `｜最�?${finalVal}` : ''}`)}</summary>
         <div class="sg-log-body" style="padding-left:1em; opacity:0.9; font-size:0.85em; margin-top:4px;">${detailsLines.join('')}</div>
       </details>
     `;
@@ -19327,7 +19321,7 @@ function showFloatingMap() {
   if (!$body.length) return;
   const s = ensureSettings();
   if (!s.mapEnabled) {
-    $body.html('<div class="sg-floating-loading">地图功能未启用</div>');
+    $body.html('<div class="sg-floating-loading">地图功能未启�?/div>');
     return;
   }
   const mapData = getMapData();
@@ -19363,55 +19357,55 @@ function showFloatingSexGuide() {
   if (!$body.length) return;
   const s = ensureSettings();
   if (!s.sexGuideEnabled) {
-    $body.html('<div class="sg-floating-loading">性爱指导未启用</div>');
+    $body.html('<div class="sg-floating-loading">性爱指导未启�?/div>');
     return;
   }
 
   const html = `
     <div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">
-      <div style="font-weight:700; margin-bottom:8px;">\u6027\u7231\u6307\u5bfc</div>
+      <div style="font-weight:700; margin-bottom:8px;">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6027        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u7231        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6307        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5bfc</div>
       <div class="sg-field" style="margin-top:6px;">
-        <label>\u7528\u6237\u9700\u6c42</label>
-        <textarea id="sg_floating_sex_need" rows="3" placeholder="\u4f8b\u5982\uff1a\u66f4\u6e29\u67d4 / \u66f4\u4e3b\u52a8 / \u66f4\u6162\u8282\u594f / \u5f3a\u8c03\u6c9f\u901a\u4e0e\u5b89\u5168"></textarea>
+        <label>        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u7528        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6237        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9700        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6c42</label>
+        <textarea id="sg_floating_sex_need" rows="3" placeholder="        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f8b        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5982        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;uff1a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u66f4        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6e29        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u67d4 /         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u66f4        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e3b        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u52a8 /         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u66f4        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6162        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u8282        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u594f /         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5f3a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u8c03        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6c9f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u901a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e0e        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5b89        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5168"></textarea>
       </div>
       <div class="sg-row sg-inline" style="margin-top:6px; gap:8px; flex-wrap:wrap;">
         <label style="margin-right:4px;">BDSM</label>
         <select id="sg_floating_sex_bdsm_mode" style="min-width:90px;">
-          <option value="default">\u9ed8\u8ba4</option>
-          <option value="none">\u4e0d\u4f7f\u7528</option>
-          <option value="random">\u968f\u673a</option>
-          <option value="custom">\u81ea\u5b9a\u4e49</option>
+          <option value="default">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9ed8        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u8ba4</option>
+          <option value="none">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e0d        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f7f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u7528</option>
+          <option value="random">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u968f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u673a</option>
+          <option value="custom">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u81ea        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5b9a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e49</option>
         </select>
-        <label style="margin-right:4px;">\u4f53\u4f4d</label>
+        <label style="margin-right:4px;">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f53        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4f4d</label>
         <select id="sg_floating_sex_pose_mode" style="min-width:90px;">
-          <option value="default">\u9ed8\u8ba4</option>
-          <option value="random">\u968f\u673a</option>
-          <option value="custom">\u81ea\u5b9a\u4e49</option>
+          <option value="default">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9ed8        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u8ba4</option>
+          <option value="random">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u968f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u673a</option>
+          <option value="custom">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u81ea        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5b9a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e49</option>
         </select>
-        <label style="margin-right:4px;">\u5c04\u7cbe</label>
+        <label style="margin-right:4px;">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5c04        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u7cbe</label>
         <select id="sg_floating_sex_ejaculate" style="min-width:80px;">
-          <option value="default">\u9ed8\u8ba4</option>
-          <option value="yes">\u662f</option>
-          <option value="no">\u5426</option>
-          <option value="random">\u968f\u673a</option>
+          <option value="default">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9ed8        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u8ba4</option>
+          <option value="yes">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u662f</option>
+          <option value="no">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5426</option>
+          <option value="random">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u968f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u673a</option>
         </select>
-        <label style="margin-right:4px;">\u670d\u88c5</label>
+        <label style="margin-right:4px;">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u670d        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u88c5</label>
         <select id="sg_floating_sex_outfit_random" style="min-width:90px;">
-          <option value="default">\u9ed8\u8ba4</option>
-          <option value="yes">\u662f</option>
-          <option value="no">\u5426</option>
-          <option value="random">\u968f\u673a</option>
-          <option value="custom">\u81ea\u5b9a\u4e49</option>
+          <option value="default">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9ed8        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u8ba4</option>
+          <option value="yes">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u662f</option>
+          <option value="no">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5426</option>
+          <option value="random">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u968f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u673a</option>
+          <option value="custom">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u81ea        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5b9a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u4e49</option>
         </select>
       </div>
       <div class="sg-actions-row" style="justify-content:flex-end;">
-        <button class="menu_button sg-btn" id="sg_floating_sex_generate">\u751f\u6210</button>
-        <button class="menu_button sg-btn" id="sg_floating_sex_send" ${lastSexGuideText ? '' : 'disabled'}>\u53d1\u9001\u5230\u804a\u5929</button>
+        <button class="menu_button sg-btn" id="sg_floating_sex_generate">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u751f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6210</button>
+        <button class="menu_button sg-btn" id="sg_floating_sex_send" ${lastSexGuideText ? '' : 'disabled'}>        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u53d1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9001        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5230        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u804a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5929</button>
       </div>
       <div class="sg-field" style="margin-top:8px;">
-        <label>\u8f93\u51fa</label>
+        <label>        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u8f93        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u51fa</label>
         <textarea id="sg_floating_sex_output" rows="10" spellcheck="false">${escapeHtml(lastSexGuideText || '')}</textarea>
-        <div class="sg-hint" id="sg_floating_sex_status">\u00b7 \u751f\u6210\u540e\u53ef\u53d1\u9001\u5230\u804a\u5929 \u00b7</div>
+        <div class="sg-hint" id="sg_floating_sex_status">        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u00b7         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u751f        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u6210        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u540e        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u53ef        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u53d1        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u9001        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5230        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u804a        const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u5929         const stableComment = String(cached?.comment || '').trim() || `${prefix}�?{commentName}${indexSuffix}`;u00b7</div>
       </div>
     </div>
   `
@@ -19458,7 +19452,7 @@ function injectFixedInputButton() {
     btn.style.padding = '5px 10px';
     btn.style.userSelect = 'none';
     btn.innerHTML = '📘 剧情';
-    btn.title = '打开剧情指导悬浮窗';
+    btn.title = '打开剧情指导悬浮�?;
     // Ensure height consistency
     btn.style.height = 'var(--input-height, auto)';
 
@@ -19515,7 +19509,7 @@ function init() {
   const { eventSource, event_types } = ctx;
 
   eventSource.on(event_types.APP_READY, () => {
-    // 不再在顶栏显示📘按钮（避免占位/重复入口）
+    // 不再在顶栏显示📘按钮（避免占位/重复入口�?
     const oldBtn = document.getElementById('sg_topbar_btn');
     if (oldBtn) oldBtn.remove();
 
@@ -19527,7 +19521,7 @@ function init() {
     injectFixedInputButton();
     installRollPreSendHook();
 
-    // 浮动面板图像点击放大（使用 document 级别事件委托确保动态元素可响应）
+    // 浮动面板图像点击放大（使�?document 级别事件委托确保动态元素可响应�?
     $(document).on('click', '#sg_floating_panel .sg-image-zoom, #sg_floating_panel .sg-floating-image', (e) => {
       const $img = $(e.currentTarget);
       const src = String($img.attr('data-full') || $img.attr('src') || '').trim();
