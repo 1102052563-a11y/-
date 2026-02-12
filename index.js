@@ -7764,9 +7764,10 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
       let foundUid = null;
       for (const searchPattern of searchPatterns) {
         // 构建查找脚本
+        const uniqueSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         let findParts = [];
-        const findUidVar = '__sg_find_uid';
-        const findFileVar = '__sg_find_file';
+        const findUidVar = `__sg_find_uid${uniqueSuffix}`;
+        const findFileVar = `__sg_find_file${uniqueSuffix}`;
 
         if (target === 'chatbook') {
           findParts.push('/getchatbook');
@@ -7797,8 +7798,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
 
       if (foundUid) {
         // 找到条目，更新内容
+        const uniqueSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         let updateParts = [];
-        const updateFileVar = '__sg_update_file';
+        const updateFileVar = `__sg_update_file${uniqueSuffix}`;
 
         const shouldReenable = !!settings.structuredReenableEntriesEnabled;
         const commentName = String(cached?.name || entryName).trim() || entryName;
@@ -7876,8 +7878,9 @@ async function writeOrUpdateStructuredEntry(entryType, entryData, meta, settings
   const keyValue = buildStructuredEntryKey(prefix, entryName, indexId);
   const comment = `${prefix}｜${entryName}｜${indexId}`;
 
-  const uidVar = '__sg_struct_uid';
-  const fileVar = '__sg_struct_wbfile';
+  const uniqueSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const uidVar = `__sg_struct_uid${uniqueSuffix}`;
+  const fileVar = `__sg_struct_wbfile${uniqueSuffix}`;
   const createFileExpr = (target === 'chatbook') ? `{{getvar::${fileVar}}}` : file;
 
   const parts = [];
@@ -8203,8 +8206,11 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
 
   // 使用 /findentry 查找条目 UID
   try {
+    // 使用 /findentry 查找条目 UID
+    const uniqueSuffix = `_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     let findExpr;
-    const findFileVar = 'sgTmpFindFile';
+    const findFileVar = `sgTmpFindFile${uniqueSuffix}`;
+
     if (target === 'chatbook') {
       // 使用 setvar/getvar 管道获取 chatbook 文件名
       await execSlash(`/getchatbook | /setvar key=${findFileVar}`);
@@ -8261,7 +8267,7 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
 
     // 构建文件表达式（chatbook 需要特殊处理）
     let fileExpr;
-    const fileVar = 'sgTmpDeleteFile';
+    const fileVar = `sgTmpDeleteFile${uniqueSuffix}`;
     if (target === 'chatbook') {
       // 使用 setvar/getvar 管道获取 chatbook 文件名
       await execSlash(`/getchatbook | /setvar key=${fileVar}`);
