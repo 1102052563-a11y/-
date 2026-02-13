@@ -11927,6 +11927,46 @@ function fillSexGuideModelSelect(modelIds, selected) {
   });
 }
 
+function extractModelIdsFromResponse(data) {
+  const ids = new Set();
+  const maxDepth = 6;
+  const idKeys = new Set(['id', 'name', 'model', 'model_id', 'modelid', 'slug']);
+
+  const add = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return;
+    if (s.length > 200) return;
+    if (/^https?:\/\//i.test(s)) return;
+    ids.add(s);
+  };
+
+  const walk = (node, depth = 0) => {
+    if (depth > maxDepth || node === null || node === undefined) return;
+    if (typeof node === 'string') return;
+    if (typeof node === 'number' || typeof node === 'boolean') return;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (typeof item === 'string') add(item);
+        else walk(item, depth + 1);
+      }
+      return;
+    }
+    if (typeof node !== 'object') return;
+    for (const [k, v] of Object.entries(node)) {
+      const key = String(k || '').toLowerCase();
+      if (idKeys.has(key) && (typeof v === 'string' || typeof v === 'number')) {
+        add(v);
+      }
+      if (v && (typeof v === 'object' || Array.isArray(v))) {
+        walk(v, depth + 1);
+      }
+    }
+  };
+
+  walk(data, 0);
+  return Array.from(ids).sort((a, b) => String(a).localeCompare(String(b)));
+}
+
 
 async function refreshSummaryModels() {
   const s = ensureSettings();
@@ -11960,15 +12000,7 @@ async function refreshSummaryModels() {
 
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) {
       setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
@@ -12005,15 +12037,7 @@ async function refreshSummaryModels() {
     }
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
 
@@ -12076,15 +12100,7 @@ async function refreshSexGuideModels() {
 
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) {
       setSexGuideStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
@@ -12120,15 +12136,7 @@ async function refreshSexGuideModels() {
     }
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) { setSexGuideStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
 
@@ -12173,15 +12181,7 @@ async function refreshIndexModels() {
 
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) {
       setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
@@ -12217,15 +12217,7 @@ async function refreshIndexModels() {
     }
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
 
@@ -12271,15 +12263,7 @@ async function refreshRollModels() {
 
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) {
       setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
@@ -12315,15 +12299,7 @@ async function refreshRollModels() {
     }
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
 
@@ -12426,10 +12402,7 @@ async function refreshImageGenModels() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
-    const models = (data.data || data.models || data || [])
-      .map(m => typeof m === 'string' ? m : (m.id || m.name || ''))
-      .filter(Boolean)
-      .sort();
+    const models = extractModelIdsFromResponse(data);
 
     if (!models.length) { setImageGenStatus('未找到可用模型', 'warn'); return; }
 
@@ -13317,15 +13290,7 @@ async function refreshModels() {
 
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) {
       setStatus('刷新成功，但未解析到模型列表（返回格式不兼容）', 'warn');
@@ -13370,15 +13335,7 @@ async function refreshModels() {
     }
     const data = await res.json().catch(() => ({}));
 
-    let modelsList = [];
-    if (Array.isArray(data?.models)) modelsList = data.models;
-    else if (Array.isArray(data?.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-
-    let ids = [];
-    if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-
-    ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+    const ids = extractModelIdsFromResponse(data);
 
     if (!ids.length) { setStatus('直连刷新失败：未解析到模型列表', 'warn'); return; }
 
@@ -13414,14 +13371,7 @@ async function refreshModels() {
       }
 
       const data = await res.json().catch(() => ({}));
-      let modelsList = [];
-      if (Array.isArray(data?.models)) modelsList = data.models;
-      else if (Array.isArray(data?.data)) modelsList = data.data;
-      else if (Array.isArray(data)) modelsList = data;
-
-      let ids = [];
-      if (modelsList.length) ids = modelsList.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
-      ids = Array.from(new Set(ids)).sort((a, b) => String(a).localeCompare(String(b)));
+      const ids = extractModelIdsFromResponse(data);
 
       if (!ids.length) {
         setStatus('刷新成功，但未解析到模型列表', 'warn');
