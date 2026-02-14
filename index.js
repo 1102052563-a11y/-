@@ -2230,8 +2230,11 @@ async function runParallelWorldSimulation() {
 
   const pwData = getParallelWorldData();
 
-  const trackedNpcs = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
-  const trackedFactions = (s.parallelWorldTrackedFactions || []).filter(t => t.enabled);
+  s.parallelWorldTrackedNpcs = normalizeParallelWorldTrackedList(s.parallelWorldTrackedNpcs);
+  s.parallelWorldTrackedFactions = normalizeParallelWorldTrackedList(s.parallelWorldTrackedFactions);
+  saveSettings();
+  const trackedNpcs = s.parallelWorldTrackedNpcs.filter(t => t.enabled);
+  const trackedFactions = s.parallelWorldTrackedFactions.filter(t => t.enabled);
 
   if (trackedNpcs.length === 0 && trackedFactions.length === 0) {
     setParallelWorldStatus('没有被追踪的NPC或势力，请刷新列表并勾选', 'warn');
@@ -2413,8 +2416,8 @@ async function runParallelWorldSimulation() {
 async function writeParallelEventsEntry(pwData, settings) {
   const s = settings || ensureSettings();
   const prefix = String(s.characterEntryPrefix || '人物').replace(/\[[^\]]*\]\s*/g, '').trim();
-  const trackedNpcs = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
-  const trackedFactions = (s.parallelWorldTrackedFactions || []).filter(t => t.enabled);
+  const trackedNpcs = normalizeParallelWorldTrackedList(s.parallelWorldTrackedNpcs).filter(t => t.enabled);
+  const trackedFactions = normalizeParallelWorldTrackedList(s.parallelWorldTrackedFactions).filter(t => t.enabled);
 
   if (trackedNpcs.length === 0 && trackedFactions.length === 0) return;
 
@@ -2622,7 +2625,7 @@ function buildParallelWorldContextInjection() {
   if (!s.parallelWorldEnabled || !s.parallelWorldInjectContext) return '';
 
   const pwData = getParallelWorldData();
-  const tracked = (s.parallelWorldTrackedNpcs || []).filter(t => t.enabled);
+  const tracked = normalizeParallelWorldTrackedList(s.parallelWorldTrackedNpcs).filter(t => t.enabled);
   if (tracked.length === 0) return '';
 
   const parts = [];
@@ -2729,6 +2732,18 @@ function updateParallelWorldClockDisplay(clockText) {
   if ($el.length) $el.text(clockText || '第1天');
 }
 
+function normalizeParallelWorldTrackedList(list) {
+  const arr = Array.isArray(list) ? list : [];
+  const map = new Map();
+  for (const item of arr) {
+    const name = String(item?.name || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    map.set(key, { name, enabled: item?.enabled !== false });
+  }
+  return Array.from(map.values());
+}
+
 /**
  * 刷新 NPC 和 势力 追踪列表（从蓝灯世界书中获取）
  */
@@ -2740,6 +2755,9 @@ async function refreshParallelWorldTrackedLists() {
     if (!$npcList.length && !$factionList.length) return;
 
     const s = ensureSettings();
+    s.parallelWorldTrackedNpcs = normalizeParallelWorldTrackedList(s.parallelWorldTrackedNpcs);
+    s.parallelWorldTrackedFactions = normalizeParallelWorldTrackedList(s.parallelWorldTrackedFactions);
+    saveSettings();
     $npcList.html('<div class="sg-hint">正在读取蓝灯世界书…</div>');
     $factionList.html('<div class="sg-hint">正在读取蓝灯世界书…</div>');
 
@@ -2765,7 +2783,7 @@ async function refreshParallelWorldTrackedLists() {
         $npcList.html('<div class="sg-hint">暂无角色条目。</div>');
       } else {
         const trackedMap = {};
-        for (const t of (s.parallelWorldTrackedNpcs || [])) {
+        for (const t of s.parallelWorldTrackedNpcs) {
           trackedMap[String(t.name || '').trim()] = t.enabled !== false;
         }
 
@@ -2797,7 +2815,7 @@ async function refreshParallelWorldTrackedLists() {
         $factionList.html('<div class="sg-hint">暂无势力条目。</div>');
       } else {
         const trackedMap = {};
-        for (const t of (s.parallelWorldTrackedFactions || [])) {
+        for (const t of s.parallelWorldTrackedFactions) {
           trackedMap[String(t.name || '').trim()] = t.enabled !== false;
         }
 
@@ -2815,33 +2833,31 @@ async function refreshParallelWorldTrackedLists() {
 
     // 绑定事件：NPC Checkbox
     $npcList.off('change', '.sg-pw-check-npc').on('change', '.sg-pw-check-npc', function () {
-      const name = $(this).data('name');
+      const name = String($(this).data('name') || '').trim();
       const enabled = $(this).prop('checked');
+      if (!name) return;
       const s2 = ensureSettings();
-      if (!s2.parallelWorldTrackedNpcs) s2.parallelWorldTrackedNpcs = [];
-
-      const existing = s2.parallelWorldTrackedNpcs.find(t => t.name === name);
-      if (existing) {
-        existing.enabled = enabled;
-      } else {
-        s2.parallelWorldTrackedNpcs.push({ name, enabled });
-      }
+      s2.parallelWorldTrackedNpcs = normalizeParallelWorldTrackedList(s2.parallelWorldTrackedNpcs);
+      const key = name.toLowerCase();
+      const existing = s2.parallelWorldTrackedNpcs.find(t => String(t.name || '').trim().toLowerCase() === key);
+      if (existing) existing.enabled = enabled;
+      else s2.parallelWorldTrackedNpcs.push({ name, enabled });
+      s2.parallelWorldTrackedNpcs = normalizeParallelWorldTrackedList(s2.parallelWorldTrackedNpcs);
       saveSettings();
     });
 
     // 绑定事件：Faction Checkbox
     $factionList.off('change', '.sg-pw-check-faction').on('change', '.sg-pw-check-faction', function () {
-      const name = $(this).data('name');
+      const name = String($(this).data('name') || '').trim();
       const enabled = $(this).prop('checked');
+      if (!name) return;
       const s2 = ensureSettings();
-      if (!s2.parallelWorldTrackedFactions) s2.parallelWorldTrackedFactions = [];
-
-      const existing = s2.parallelWorldTrackedFactions.find(t => t.name === name);
-      if (existing) {
-        existing.enabled = enabled;
-      } else {
-        s2.parallelWorldTrackedFactions.push({ name, enabled });
-      }
+      s2.parallelWorldTrackedFactions = normalizeParallelWorldTrackedList(s2.parallelWorldTrackedFactions);
+      const key = name.toLowerCase();
+      const existing = s2.parallelWorldTrackedFactions.find(t => String(t.name || '').trim().toLowerCase() === key);
+      if (existing) existing.enabled = enabled;
+      else s2.parallelWorldTrackedFactions.push({ name, enabled });
+      s2.parallelWorldTrackedFactions = normalizeParallelWorldTrackedList(s2.parallelWorldTrackedFactions);
       saveSettings();
     });
   } catch (e) {
@@ -17073,13 +17089,13 @@ function setupParallelWorldPage() {
     const name = String($('#sg_pwManualNpcName').val() || '').trim();
     if (!name) return;
     const s = ensureSettings();
-    let list = s.parallelWorldTrackedNpcs || [];
-    if (list.some(t => t.name === name)) {
+    let list = normalizeParallelWorldTrackedList(s.parallelWorldTrackedNpcs);
+    if (list.some(t => String(t.name || '').trim().toLowerCase() === name.toLowerCase())) {
       setParallelWorldStatus(`${name} 已在列表中`, 'warn');
       return;
     }
     list.push({ name, enabled: true });
-    s.parallelWorldTrackedNpcs = list;
+    s.parallelWorldTrackedNpcs = normalizeParallelWorldTrackedList(list);
     saveSettings();
     $('#sg_pwManualNpcName').val('');
     refreshParallelWorldTrackedLists();
