@@ -9606,13 +9606,14 @@ function scheduleAutoSummary(reason = '') {
 function schedulePostGenerationAuto(reason = '') {
   const s = ensureSettings();
   if (!s.enabled) return;
-  if (!s.summaryEnabled && !s.structuredEntriesEnabled) return;
+  if (!s.summaryEnabled && !s.structuredEntriesEnabled && !(s.parallelWorldEnabled && s.parallelWorldAutoTrigger)) return;
   const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
   if (generationIdleTimer) clearTimeout(generationIdleTimer);
   generationIdleTimer = setTimeout(() => {
     generationIdleTimer = null;
     maybeAutoSummary(reason).catch(() => void 0);
     maybeAutoStructuredEntries(reason).catch(() => void 0);
+    maybeAutoRunParallelWorld().catch(e => console.warn('[StoryGuide] 平行世界自动推演异常:', e));
   }, delay);
 }
 
@@ -18353,8 +18354,19 @@ function setupEventListeners() {
             console.log('[StoryGuide] Initialized lastStructuredFloor to', floorNow, 'for existing chat');
           }
         }
+        if (s.parallelWorldEnabled && s.parallelWorldAutoTrigger) {
+          const ctxNow = SillyTavern.getContext();
+          const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
+          const floorNow = computeFloorCount(chatNow, 'assistant');
+          const pwData = getParallelWorldData();
+          if (floorNow > 0 && !Number(pwData.lastRunFloor || 0)) {
+            pwData.lastRunFloor = floorNow;
+            await setParallelWorldData(pwData);
+            console.log('[StoryGuide] Initialized parallel world lastRunFloor to', floorNow, 'for existing chat');
+          }
+        }
       } catch (e) {
-        console.warn('[StoryGuide] Failed to init structured progress on chat change:', e);
+        console.warn('[StoryGuide] Failed to init auto-run progress on chat change:', e);
       }
 
       if (document.getElementById('sg_modal_backdrop') && $('#sg_modal_backdrop').is(':visible')) {
@@ -18369,7 +18381,7 @@ function setupEventListeners() {
       // 回复生成结束后再触发总结/结构化
       schedulePostGenerationAuto('msg_received');
       // 平行世界自动推演
-      maybeAutoRunParallelWorld().catch(e => console.warn('[StoryGuide] 平行世界自动推演异常:', e));
+      // handled by schedulePostGenerationAuto after generation becomes idle
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
