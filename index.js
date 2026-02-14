@@ -9605,7 +9605,6 @@ function scheduleAutoSummary(reason = '') {
 
 function schedulePostGenerationAuto(reason = '') {
   const s = ensureSettings();
-  if (!s.enabled) return;
   if (!s.summaryEnabled && !s.structuredEntriesEnabled && !(s.parallelWorldEnabled && s.parallelWorldAutoTrigger)) return;
   const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
   if (generationIdleTimer) clearTimeout(generationIdleTimer);
