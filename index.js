@@ -998,6 +998,7 @@ const inlineCache = new Map();
 const panelCache = new Map(); // <mesKey, { htmlInner, collapsed, createdAt }>
 let chatDomObserver = null;
 let generationIdleTimer = null;
+let postGenerationPending = false;
 let bodyDomObserver = null;
 let reapplyTimer = null;
 
@@ -18332,6 +18333,7 @@ function setupEventListeners() {
 
     eventSource.on(event_types.CHAT_CHANGED, async () => {
       inlineCache.clear();
+      postGenerationPending = false;
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
       ensureBlueIndexLive(true).catch(() => void 0);
@@ -18377,6 +18379,8 @@ function setupEventListeners() {
     eventSource.on(event_types.MESSAGE_RECEIVED, () => {
       // 禁止自动生成：不在收到消息时自动分析/追加
       scheduleReapplyAll('msg_received');
+      if (!postGenerationPending) return;
+      postGenerationPending = false;
       // 回复生成结束后再触发总结/结构化
       schedulePostGenerationAuto('msg_received');
       // 平行世界自动推演
@@ -18384,13 +18388,14 @@ function setupEventListeners() {
     });
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
+      postGenerationPending = true;
       // 禁止自动生成：不在发送消息时自动刷新面板
       // ROLL 判定（尽量在生成前完成）
       maybeInjectRollResult('msg_sent').catch(() => void 0);
       // 蓝灯索引 → 绿灯触发（尽量在生成前完成）
       maybeInjectWorldInfoTriggers('msg_sent').catch(() => void 0);
       // 记录生成活动，最终在回复完成后触发
-      schedulePostGenerationAuto('msg_sent');
+      // auto actions are scheduled on MESSAGE_RECEIVED after content lands
     });
 
     eventSource.on(event_types.MESSAGE_DELETED, async (data) => {
