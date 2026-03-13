@@ -20113,13 +20113,13 @@ function showFloatingCharacterArchive() {
       <div style="font-weight:700; margin-bottom:8px;">人物修正</div>
       <div class="sg-field">
         <label>目标人物</label>
-        <div class="sg-row sg-inline" style="gap:6px;">
-          <input id="sg_floating_char_archive_target" type="text" value="${escapeHtml(String(s.characterArchiveTargetName || ''))}" placeholder="例如：苏晓" style="flex:1;">
-          <select id="sg_floating_char_archive_entrySelect" style="min-width:160px;">
+        <div class="sg-row sg-inline" style="gap:6px; flex-wrap:nowrap; align-items:center;">
+          <input id="sg_floating_char_archive_target" type="text" value="${escapeHtml(String(s.characterArchiveTargetName || ''))}" placeholder="例如：苏晓" style="flex:1; min-width:0;">
+          <select id="sg_floating_char_archive_entrySelect" style="width:140px; min-width:140px; flex:0 0 140px;">
             <option value="">(选择人物)</option>
             ${optionHtml}
           </select>
-          <button class="menu_button sg-btn" id="sg_floating_char_archive_refresh_entries">刷新人物</button>
+          <button class="menu_button sg-btn" id="sg_floating_char_archive_refresh_entries" style="flex:0 0 auto; white-space:nowrap;">刷新人物</button>
         </div>
       </div>
       <div class="sg-actions-row" style="justify-content:flex-end;">
