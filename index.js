@@ -19205,6 +19205,7 @@ function createFloatingPanel() {
           <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺️</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_image" title="图像生成">🖼️</button>
+          <button class="sg-floating-action-btn" id="sg_floating_show_char_archive" title="人物修正">🧾</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_sex" title="性爱指导">❤️</button>
           <button class="sg-floating-action-btn" id="sg_floating_structured" title="手动结构化条目总结">🧩</button>
           <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
@@ -19253,6 +19254,10 @@ function createFloatingPanel() {
 
   $('#sg_floating_show_image').on('click', () => {
     showFloatingImageGen();
+  });
+
+  $('#sg_floating_show_char_archive').on('click', () => {
+    showFloatingCharacterArchive();
   });
 
   $('#sg_floating_show_sex').on('click', () => {
@@ -19415,6 +19420,95 @@ ${extraText}` : extraText;
     }
     const ok = injectToUserInput(text);
     $('#sg_floating_sex_status').text(ok ? '已填入输入框（未发送）' : '未找到聊天输入框');
+  });
+
+  $(document).on('click', '#sg_floating_char_archive_refresh_entries', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const file = normalizeWorldInfoFileName($('#sg_floating_char_archive_worldbook').val());
+    const prefix = String($('#sg_floating_char_archive_prefix').val() || '人物').trim() || '人物';
+    $('#sg_floating_char_archive_status').text('正在读取人物列表...');
+    try {
+      const names = await loadCharacterArchiveTargetOptions(file, prefix);
+      const s = ensureSettings();
+      s.characterArchiveTargetOptions = names;
+      saveSettings();
+      fillCharacterArchiveTargetSelect(names, String($('#sg_floating_char_archive_target').val() || '').trim());
+      const $sel = $('#sg_floating_char_archive_entrySelect');
+      $sel.empty().append('<option value="">(选择人物)</option>');
+      for (const name of names) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        $sel.append(opt);
+      }
+      $('#sg_floating_char_archive_status').text(`已读取人物列表：${names.length} 个`);
+    } catch (err) {
+      $('#sg_floating_char_archive_status').text(`读取人物列表失败: ${err?.message ?? err}`);
+    }
+  });
+
+  $(document).on('change', '#sg_floating_char_archive_entrySelect', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const val = String($('#sg_floating_char_archive_entrySelect').val() || '').trim();
+    if (val) $('#sg_floating_char_archive_target').val(val);
+  });
+
+  $(document).on('change', '#sg_floating_char_archive_worldbook_select', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const val = String($('#sg_floating_char_archive_worldbook_select').val() || '').trim();
+    if (val) $('#sg_floating_char_archive_worldbook').val(val);
+  });
+
+  $(document).on('click', '#sg_floating_char_archive_generate', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const s = ensureSettings();
+    s.characterArchiveEnabled = true;
+    s.characterArchiveProvider = String($('#sg_floating_char_archive_provider').val() || 'st');
+    s.characterArchiveTemperature = clampFloat($('#sg_floating_char_archive_temperature').val(), 0, 2, s.characterArchiveTemperature ?? 0.5);
+    s.characterArchiveWorldbookFile = normalizeWorldInfoFileName($('#sg_floating_char_archive_worldbook').val());
+    s.characterArchiveEntryPrefix = String($('#sg_floating_char_archive_prefix').val() || '人物').trim() || '人物';
+    s.characterArchiveTargetName = String($('#sg_floating_char_archive_target').val() || '').trim();
+    s.characterArchiveRecentMessages = clampInt($('#sg_floating_char_archive_recent').val(), 1, 30, s.characterArchiveRecentMessages || 8);
+    s.characterArchiveIncludeUserInput = $('#sg_floating_char_archive_includeUser').is(':checked');
+    saveSettings();
+    $('#sg_floating_char_archive_generate').prop('disabled', true);
+    $('#sg_floating_char_archive_status').text('正在生成人物修正...');
+    try {
+      await generateCharacterArchive();
+      $('#sg_floating_char_archive_output').val(lastCharacterArchiveText || '');
+      $('#sg_floating_char_archive_copy, #sg_floating_char_archive_send').prop('disabled', !lastCharacterArchiveText);
+      $('#sg_floating_char_archive_status').text('生成人物修正完成');
+    } catch (err) {
+      $('#sg_floating_char_archive_status').text(`生成失败: ${err?.message ?? err}`);
+    } finally {
+      $('#sg_floating_char_archive_generate').prop('disabled', false);
+    }
+  });
+
+  $(document).on('click', '#sg_floating_char_archive_copy', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const text = String($('#sg_floating_char_archive_output').val() || '').trim();
+    if (!text) {
+      $('#sg_floating_char_archive_status').text('暂无可复制内容');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      $('#sg_floating_char_archive_status').text('已复制到剪贴板');
+    } catch (err) {
+      $('#sg_floating_char_archive_status').text(`复制失败: ${err?.message ?? err}`);
+    }
+  });
+
+  $(document).on('click', '#sg_floating_char_archive_send', (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    const text = String($('#sg_floating_char_archive_output').val() || '').trim();
+    if (!text) {
+      $('#sg_floating_char_archive_status').text('暂无可填入内容');
+      return;
+    }
+    const ok = injectToUserInput(text);
+    $('#sg_floating_char_archive_status').text(ok ? '已填入聊天输入框（未发送）' : '未找到聊天输入框');
   });
 
   $(document).on('click', '#sg_imagegen_clear', (e) => {
@@ -20006,6 +20100,84 @@ function showFloatingSexGuide() {
     </div>
   `
   $body.html(html);
+}
+
+function showFloatingCharacterArchive() {
+  const $body = $('#sg_floating_body');
+  if (!$body.length) return;
+  const s = ensureSettings();
+  const targetOptions = Array.isArray(s.characterArchiveTargetOptions) ? s.characterArchiveTargetOptions : [];
+  const optionHtml = targetOptions.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  const worldbookOptions = Array.isArray(s.summaryWorldInfoFilesCache) ? s.summaryWorldInfoFilesCache : [];
+  const worldbookOptionHtml = worldbookOptions.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  const html = `
+    <div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">
+      <div style="font-weight:700; margin-bottom:8px;">人物修正</div>
+      <div class="sg-grid2">
+        <div class="sg-field">
+          <label>Provider</label>
+          <select id="sg_floating_char_archive_provider">
+            <option value="st" ${String(s.characterArchiveProvider || 'st') === 'st' ? 'selected' : ''}>使用当前 SillyTavern API</option>
+            <option value="custom" ${String(s.characterArchiveProvider || 'st') === 'custom' ? 'selected' : ''}>独立 API</option>
+          </select>
+        </div>
+        <div class="sg-field">
+          <label>temperature</label>
+          <input id="sg_floating_char_archive_temperature" type="number" step="0.05" min="0" max="2" value="${escapeHtml(String(s.characterArchiveTemperature ?? 0.5))}">
+        </div>
+      </div>
+      <div class="sg-field">
+        <label>世界书</label>
+        <div class="sg-row sg-inline" style="gap:6px;">
+          <input id="sg_floating_char_archive_worldbook" type="text" value="${escapeHtml(String(s.characterArchiveWorldbookFile || ''))}" placeholder="世界书文件名" style="flex:1;">
+          <select id="sg_floating_char_archive_worldbook_select" style="min-width:140px;">
+            <option value="">(选择世界书)</option>
+            ${worldbookOptionHtml}
+          </select>
+        </div>
+      </div>
+      <div class="sg-grid2">
+        <div class="sg-field">
+          <label>条目前缀</label>
+          <input id="sg_floating_char_archive_prefix" type="text" value="${escapeHtml(String(s.characterArchiveEntryPrefix || '人物'))}">
+        </div>
+        <div class="sg-field">
+          <label>读取最近消息数</label>
+          <input id="sg_floating_char_archive_recent" type="number" min="1" max="30" value="${escapeHtml(String(s.characterArchiveRecentMessages || 8))}">
+        </div>
+      </div>
+      <div class="sg-field">
+        <label>目标人物</label>
+        <div class="sg-row sg-inline" style="gap:6px;">
+          <input id="sg_floating_char_archive_target" type="text" value="${escapeHtml(String(s.characterArchiveTargetName || ''))}" placeholder="例如：苏晓" style="flex:1;">
+          <select id="sg_floating_char_archive_entrySelect" style="min-width:160px;">
+            <option value="">(选择人物)</option>
+            ${optionHtml}
+          </select>
+          <button class="menu_button sg-btn" id="sg_floating_char_archive_refresh_entries">刷新人物</button>
+        </div>
+      </div>
+      <div class="sg-row sg-inline" style="margin-top:6px;">
+        <label class="sg-check"><input type="checkbox" id="sg_floating_char_archive_includeUser" ${s.characterArchiveIncludeUserInput !== false ? 'checked' : ''}>包含最近用户输入</label>
+      </div>
+      <div class="sg-actions-row" style="justify-content:flex-end;">
+        <button class="menu_button sg-btn" id="sg_floating_char_archive_generate">生成</button>
+        <button class="menu_button sg-btn" id="sg_floating_char_archive_copy" ${lastCharacterArchiveText ? '' : 'disabled'}>复制</button>
+        <button class="menu_button sg-btn" id="sg_floating_char_archive_send" ${lastCharacterArchiveText ? '' : 'disabled'}>填入聊天</button>
+      </div>
+      <div class="sg-field" style="margin-top:8px;">
+        <label>输出</label>
+        <textarea id="sg_floating_char_archive_output" rows="12" spellcheck="false">${escapeHtml(lastCharacterArchiveText || '')}</textarea>
+        <div class="sg-hint" id="sg_floating_char_archive_status">· 生成后可复制或填入聊天输入框 ·</div>
+      </div>
+    </div>
+  `;
+  $body.html(html);
+
+  const wb = String(s.characterArchiveWorldbookFile || '').trim();
+  if (wb) $('#sg_floating_char_archive_worldbook_select').val(wb);
+  const target = String(s.characterArchiveTargetName || '').trim();
+  if (target) $('#sg_floating_char_archive_entrySelect').val(target);
 }
 
 // -------------------- init --------------------
