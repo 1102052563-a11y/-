@@ -20108,6 +20108,41 @@ function showFloatingCharacterArchive() {
   const s = ensureSettings();
   const targetOptions = Array.isArray(s.characterArchiveTargetOptions) ? s.characterArchiveTargetOptions : [];
   const optionHtml = targetOptions.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  const compactHtml = `
+    <div style="padding:10px; overflow:auto; max-height:100%; box-sizing:border-box;">
+      <div style="font-weight:700; margin-bottom:8px;">人物修正</div>
+      <div class="sg-field">
+        <label>目标人物</label>
+        <div class="sg-row sg-inline" style="gap:6px;">
+          <input id="sg_floating_char_archive_target" type="text" value="${escapeHtml(String(s.characterArchiveTargetName || ''))}" placeholder="例如：苏晓" style="flex:1;">
+          <select id="sg_floating_char_archive_entrySelect" style="min-width:160px;">
+            <option value="">(选择人物)</option>
+            ${optionHtml}
+          </select>
+          <button class="menu_button sg-btn" id="sg_floating_char_archive_refresh_entries">刷新人物</button>
+        </div>
+      </div>
+      <div class="sg-actions-row" style="justify-content:flex-end;">
+        <button class="menu_button sg-btn" id="sg_floating_char_archive_generate">生成</button>
+        <button class="menu_button sg-btn" id="sg_floating_char_archive_send" ${lastCharacterArchiveText ? '' : 'disabled'}>填入聊天</button>
+      </div>
+      <div class="sg-field" style="margin-top:8px;">
+        <label>输出</label>
+        <textarea id="sg_floating_char_archive_output" rows="12" spellcheck="false">${escapeHtml(lastCharacterArchiveText || '')}</textarea>
+        <div class="sg-hint" id="sg_floating_char_archive_status">· 生成后可填入聊天输入框 ·</div>
+      </div>
+      <input id="sg_floating_char_archive_provider" type="hidden" value="${escapeHtml(String(s.characterArchiveProvider || 'st'))}">
+      <input id="sg_floating_char_archive_temperature" type="hidden" value="${escapeHtml(String(s.characterArchiveTemperature ?? 0.5))}">
+      <input id="sg_floating_char_archive_worldbook" type="hidden" value="${escapeHtml(String(s.characterArchiveWorldbookFile || ''))}">
+      <input id="sg_floating_char_archive_prefix" type="hidden" value="${escapeHtml(String(s.characterArchiveEntryPrefix || '人物'))}">
+      <input id="sg_floating_char_archive_recent" type="hidden" value="${escapeHtml(String(s.characterArchiveRecentMessages || 8))}">
+      <input id="sg_floating_char_archive_includeUser" type="checkbox" ${s.characterArchiveIncludeUserInput !== false ? 'checked' : ''} style="display:none;">
+    </div>
+  `;
+  $body.html(compactHtml);
+  const selectedTarget = String(s.characterArchiveTargetName || '').trim();
+  if (selectedTarget) $('#sg_floating_char_archive_entrySelect').val(selectedTarget);
+  return;
   const worldbookOptions = Array.isArray(s.summaryWorldInfoFilesCache) ? s.summaryWorldInfoFilesCache : [];
   const worldbookOptionHtml = worldbookOptions.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
   const html = `
