@@ -5525,9 +5525,19 @@ function buildRecentChatTextSexGuide(chat, maxMessages = 6, maxCharsPerMessage =
 
 function extractCharacterArchiveCandidateName(entry, prefix = '') {
   const content = String(entry?.content || '').trim();
-  const firstLine = content.split(/\r?\n/, 1)[0] || '';
-  const lineMatch = firstLine.match(/^[【\[]?人物[】\]]?\s*[:：]?\s*(.+)$/);
-  if (lineMatch && lineMatch[1]) return String(lineMatch[1]).trim();
+  const lines = content.split(/\r?\n/).map(x => String(x || '').trim()).filter(Boolean);
+  for (const line of lines.slice(0, 4)) {
+    const patterns = [
+      /^[【\[]?人物[】\]]?\s*[:：]?\s*(.+)$/,
+      /^姓名\s*[:：]\s*(.+)$/,
+      /^名字\s*[:：]\s*(.+)$/,
+      /^名称\s*[:：]\s*(.+)$/,
+    ];
+    for (const re of patterns) {
+      const m = line.match(re);
+      if (m && m[1]) return String(m[1]).trim();
+    }
+  }
 
   let label = String(getWorldInfoEntryLabel(entry) || '').trim();
   label = label.replace(/\[[^\]]*\]\s*/g, '').trim();
@@ -5538,7 +5548,12 @@ function extractCharacterArchiveCandidateName(entry, prefix = '') {
   }
   label = label.replace(/^[｜|:：\-—\s]+/, '').trim();
   const parts = label.split(/[｜|:：]/).map(x => String(x || '').trim()).filter(Boolean);
-  if (parts.length) return parts[parts.length - 1];
+  if (parts.length >= 2) {
+    const nonCodeParts = parts.filter(part => !/^[A-Z]{2,5}[-_]\d+$/i.test(part) && !/^\d+$/.test(part));
+    if (nonCodeParts.length >= 2) return nonCodeParts[1];
+    if (nonCodeParts.length >= 1) return nonCodeParts[0];
+  }
+  if (parts.length === 1) return parts[0];
   return label || String(entry?.keys?.[0] || '').trim();
 }
 
@@ -5547,6 +5562,20 @@ function fillCharacterArchiveTargetSelect(options, selected) {
   if (!$sel.length) return;
   $sel.empty();
   $sel.append('<option value="">(选择人物)</option>');
+  (options || []).forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (selected && name === selected) opt.selected = true;
+    $sel.append(opt);
+  });
+}
+
+function fillCharacterArchiveModelSelect(options, selected) {
+  const $sel = $('#sg_char_archive_modelSelect');
+  if (!$sel.length) return;
+  $sel.empty();
+  $sel.append('<option value="">(选择模型)</option>');
   (options || []).forEach((name) => {
     const opt = document.createElement('option');
     opt.value = name;
@@ -5756,7 +5785,7 @@ async function refreshCharacterArchiveModels() {
     }
     s.characterArchiveCustomModelsCache = ids;
     saveSettings();
-    fillWorldbookSelect($('#sg_char_archive_modelSelect'), ids, s.characterArchiveCustomModel);
+    fillCharacterArchiveModelSelect(ids, s.characterArchiveCustomModel);
     setCharacterArchiveStatus(`· 已刷新模型：${ids.length} 个 ·`, 'ok');
     return;
   } catch (e) {
@@ -5787,7 +5816,7 @@ async function refreshCharacterArchiveModels() {
     }
     s.characterArchiveCustomModelsCache = ids;
     saveSettings();
-    fillWorldbookSelect($('#sg_char_archive_modelSelect'), ids, s.characterArchiveCustomModel);
+    fillCharacterArchiveModelSelect(ids, s.characterArchiveCustomModel);
     setCharacterArchiveStatus(`· 已刷新模型：${ids.length} 个 ·`, 'ok');
   } catch (e) {
     setCharacterArchiveStatus(`· 刷新模型失败：${e?.message ?? e} ·`, 'err');
@@ -18039,8 +18068,7 @@ function pullSettingsToUi() {
   $('#sg_char_archive_customMaxTokens').val(s.characterArchiveCustomMaxTokens || 3072);
   $('#sg_char_archive_customStream').prop('checked', !!s.characterArchiveCustomStream);
   $('#sg_char_archive_custom_block').toggle(String(s.characterArchiveProvider || 'st') === 'custom');
-  fillWorldbookSelect(
-    $('#sg_char_archive_modelSelect'),
+  fillCharacterArchiveModelSelect(
     Array.isArray(s.characterArchiveCustomModelsCache) ? s.characterArchiveCustomModelsCache : [],
     String(s.characterArchiveCustomModel || 'gpt-4o-mini')
   );
