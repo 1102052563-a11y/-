@@ -113,6 +113,16 @@ const DEFAULT_CHARACTER_ARCHIVE_USER_TEMPLATE = `【目标人物】
 
 请基于以上内容生成一份人物档案。`;
 
+const DEFAULT_CHARACTER_ARCHIVE_OUTPUT_TEMPLATE = `【人物档案】
+姓名：{{name}}
+阵营/身份：{{faction}}
+六维属性：{{stats}}
+技能/天赋：{{skills}}
+装备：{{equipment}}
+与主角关系：{{relationship}}
+近期变化：{{recentChanges}}
+备注：{{notes}}`;
+
 // 无论用户怎么自定义提示词，仍会强制追加 JSON 输出结构要求，避免写入世界书失败
 const SUMMARY_JSON_REQUIREMENT = `输出要求：\n- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何多余文字。\n- JSON 结构必须为：{"title": string, "summary": string, "keywords": string[]}。\n- keywords 为 6~14 个词/短语，尽量去重、避免泛词。`;
 
@@ -590,15 +600,18 @@ const DEFAULT_SETTINGS = Object.freeze({
   characterArchiveCustomEndpoint: '',
   characterArchiveCustomApiKey: '',
   characterArchiveCustomModel: 'gpt-4o-mini',
+  characterArchiveCustomModelsCache: [],
   characterArchiveCustomMaxTokens: 3072,
   characterArchiveCustomStream: false,
   characterArchiveWorldbookFile: '',
   characterArchiveEntryPrefix: '人物',
   characterArchiveTargetName: '',
+  characterArchiveTargetOptions: [],
   characterArchiveRecentMessages: 8,
   characterArchiveIncludeUserInput: true,
   characterArchiveSystemPrompt: DEFAULT_CHARACTER_ARCHIVE_SYSTEM_PROMPT,
   characterArchiveUserTemplate: DEFAULT_CHARACTER_ARCHIVE_USER_TEMPLATE,
+  characterArchiveOutputTemplate: DEFAULT_CHARACTER_ARCHIVE_OUTPUT_TEMPLATE,
 
   // ===== 总结功能（独立于剧情提示的 API 设置） =====
   summaryEnabled: false,
@@ -5510,6 +5523,39 @@ function buildRecentChatTextSexGuide(chat, maxMessages = 6, maxCharsPerMessage =
   return picked.reverse().join('\n');
 }
 
+function extractCharacterArchiveCandidateName(entry, prefix = '') {
+  const content = String(entry?.content || '').trim();
+  const firstLine = content.split(/\r?\n/, 1)[0] || '';
+  const lineMatch = firstLine.match(/^[【\[]?人物[】\]]?\s*[:：]?\s*(.+)$/);
+  if (lineMatch && lineMatch[1]) return String(lineMatch[1]).trim();
+
+  let label = String(getWorldInfoEntryLabel(entry) || '').trim();
+  label = label.replace(/\[[^\]]*\]\s*/g, '').trim();
+  const cleanPrefix = String(prefix || '').trim();
+  if (cleanPrefix) {
+    const idx = label.indexOf(cleanPrefix);
+    if (idx >= 0) label = label.slice(idx + cleanPrefix.length).trim();
+  }
+  label = label.replace(/^[｜|:：\-—\s]+/, '').trim();
+  const parts = label.split(/[｜|:：]/).map(x => String(x || '').trim()).filter(Boolean);
+  if (parts.length) return parts[parts.length - 1];
+  return label || String(entry?.keys?.[0] || '').trim();
+}
+
+function fillCharacterArchiveTargetSelect(options, selected) {
+  const $sel = $('#sg_char_archive_entrySelect');
+  if (!$sel.length) return;
+  $sel.empty();
+  $sel.append('<option value="">(选择人物)</option>');
+  (options || []).forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (selected && name === selected) opt.selected = true;
+    $sel.append(opt);
+  });
+}
+
 function buildSexGuidePromptMessages(snapshotText, worldbookText, settings, options = {}) {
   const s = settings || ensureSettings();
   const ctx = SillyTavern.getContext();
@@ -5586,6 +5632,21 @@ async function buildCharacterArchiveWorldbookText(fileName, prefix, targetName) 
   }).join('\n\n');
 }
 
+async function loadCharacterArchiveTargetOptions(fileName, prefix) {
+  const file = normalizeWorldInfoFileName(fileName);
+  if (!file) return [];
+  const json = await fetchWorldInfoFileJsonCompat(file);
+  const entries = parseWorldbookJson(JSON.stringify(json || {}));
+  const filtered = filterWorldInfoEntriesByPrefix(entries, prefix).filter(e => e && !e.disabled);
+  const names = Array.from(new Set(
+    filtered
+      .map(entry => extractCharacterArchiveCandidateName(entry, prefix))
+      .map(name => String(name || '').trim())
+      .filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+  return names;
+}
+
 function buildCharacterArchivePromptMessages(settings, worldbookText, targetName) {
   const s = settings || ensureSettings();
   const ctx = SillyTavern.getContext();
@@ -5595,13 +5656,14 @@ function buildCharacterArchivePromptMessages(settings, worldbookText, targetName
   const recentText = buildRecentChatTextSexGuide(chat, recentCount, 1000) || '(无可用上下文)';
   const lastUser = s.characterArchiveIncludeUserInput ? (getLastUserMessageText(chat) || '') : '';
   const tpl = String(s.characterArchiveUserTemplate || DEFAULT_CHARACTER_ARCHIVE_USER_TEMPLATE).trim() || DEFAULT_CHARACTER_ARCHIVE_USER_TEMPLATE;
+  const outputTemplate = String(s.characterArchiveOutputTemplate || DEFAULT_CHARACTER_ARCHIVE_OUTPUT_TEMPLATE).trim() || DEFAULT_CHARACTER_ARCHIVE_OUTPUT_TEMPLATE;
   const user = renderTemplate(tpl, {
     characterName: String(targetName || '').trim() || '待指定',
     recentText,
     snapshot: snapshotText,
     worldbook: String(worldbookText || '').trim(),
     lastUser,
-  });
+  }) + `\n\n【固定输出模板】\n请严格按照以下模板输出，不得增删字段标题，可在字段值内填写“待确认”。\n${outputTemplate}`;
   const system = String(s.characterArchiveSystemPrompt || DEFAULT_CHARACTER_ARCHIVE_SYSTEM_PROMPT).trim() || DEFAULT_CHARACTER_ARCHIVE_SYSTEM_PROMPT;
   return [
     { role: 'system', content: system },
@@ -5657,6 +5719,78 @@ async function generateCharacterArchive() {
   } catch (e) {
     console.error('[StoryGuide] character archive generation failed:', e);
     setCharacterArchiveStatus(`· 生成人物档案失败：${e?.message ?? e} ·`, 'err');
+  }
+}
+
+async function refreshCharacterArchiveModels() {
+  const s = ensureSettings();
+  const raw = String($('#sg_char_archive_customEndpoint').val() || s.characterArchiveCustomEndpoint || '').trim();
+  const apiBase = normalizeBaseUrl(raw);
+  if (!apiBase) { setCharacterArchiveStatus('· 请先填写独立 API 基础 URL ·', 'warn'); return; }
+
+  setCharacterArchiveStatus('· 正在刷新人物档案模型列表… ·', 'warn');
+
+  const apiKey = String($('#sg_char_archive_customApiKey').val() || s.characterArchiveCustomApiKey || '');
+  const statusUrl = '/api/backends/chat-completions/status';
+  const body = {
+    reverse_proxy: apiBase,
+    chat_completion_source: 'custom',
+    custom_url: apiBase,
+    custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : ''
+  };
+
+  try {
+    const headers = { ...getStRequestHeadersCompat(), 'Content-Type': 'application/json' };
+    const res = await fetch(statusUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err = new Error(`HTTP ${res.status} ${res.statusText}\n${txt}`);
+      err.status = res.status;
+      throw err;
+    }
+    const data = await res.json().catch(() => ({}));
+    const ids = extractModelIdsFromResponse(data);
+    if (!ids.length) {
+      setCharacterArchiveStatus('· 已连接，但未解析到模型列表 ·', 'warn');
+      return;
+    }
+    s.characterArchiveCustomModelsCache = ids;
+    saveSettings();
+    fillWorldbookSelect($('#sg_char_archive_modelSelect'), ids, s.characterArchiveCustomModel);
+    setCharacterArchiveStatus(`· 已刷新模型：${ids.length} 个 ·`, 'ok');
+    return;
+  } catch (e) {
+    const status = e?.status;
+    if (!(status === 404 || status === 405)) console.warn('[StoryGuide] character archive status check failed; fallback to direct /models', e);
+  }
+
+  try {
+    const modelsUrl = (function (base) {
+      const u = normalizeBaseUrl(base);
+      if (!u) return '';
+      if (/\/v1$/.test(u)) return u + '/models';
+      if (/\/v1\b/i.test(u)) return u.replace(/\/+$/, '') + '/models';
+      return u + '/v1/models';
+    })(apiBase);
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    const res = await fetch(modelsUrl, { method: 'GET', headers });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${res.statusText}\n${txt}`);
+    }
+    const data = await res.json().catch(() => ({}));
+    const ids = extractModelIdsFromResponse(data);
+    if (!ids.length) {
+      setCharacterArchiveStatus('· 直连成功，但未解析到模型列表 ·', 'warn');
+      return;
+    }
+    s.characterArchiveCustomModelsCache = ids;
+    saveSettings();
+    fillWorldbookSelect($('#sg_char_archive_modelSelect'), ids, s.characterArchiveCustomModel);
+    setCharacterArchiveStatus(`· 已刷新模型：${ids.length} 个 ·`, 'ok');
+  } catch (e) {
+    setCharacterArchiveStatus(`· 刷新模型失败：${e?.message ?? e} ·`, 'err');
   }
 }
 
@@ -15567,7 +15701,13 @@ function buildModalHtml() {
                   </div>
                   <div class="sg-field">
                     <label>模型</label>
-                    <input id="sg_char_archive_customModel" type="text" placeholder="gpt-4o-mini">
+                    <div class="sg-row sg-inline" style="gap:4px;">
+                      <input id="sg_char_archive_customModel" type="text" placeholder="gpt-4o-mini" style="flex:1;">
+                      <select id="sg_char_archive_modelSelect" class="sg-model-select" style="min-width:140px;">
+                        <option value="">(选择模型)</option>
+                      </select>
+                      <button class="menu_button sg-btn sg-character-mini" id="sg_char_archive_refreshModels">刷新模型</button>
+                    </div>
                   </div>
                 </div>
                 <div class="sg-row">
@@ -15605,6 +15745,13 @@ function buildModalHtml() {
               </div>
 
               <div class="sg-row sg-inline" style="margin-top:6px;">
+                <select id="sg_char_archive_entrySelect" class="sg-model-select" style="flex:1; min-width:180px;">
+                  <option value="">(选择人物)</option>
+                </select>
+                <button class="menu_button sg-btn" id="sg_char_archive_refreshEntries">刷新人物列表</button>
+              </div>
+
+              <div class="sg-row sg-inline" style="margin-top:6px;">
                 <label class="sg-check"><input type="checkbox" id="sg_char_archive_includeUserInput">包含最近用户输入</label>
               </div>
             </div>
@@ -15619,6 +15766,11 @@ function buildModalHtml() {
                 <label>User Template</label>
                 <textarea id="sg_char_archive_userTemplate" rows="6" placeholder="支持：{{characterName}} {{recentText}} {{snapshot}} {{worldbook}} {{lastUser}}"></textarea>
                 <div class="sg-hint">占位符：{{characterName}} {{recentText}} {{snapshot}} {{worldbook}} {{lastUser}}</div>
+              </div>
+              <div class="sg-field">
+                <label>固定输出模板</label>
+                <textarea id="sg_char_archive_outputTemplate" rows="8" placeholder="可编辑固定模板，模型会强制按此结构输出"></textarea>
+                <div class="sg-hint">占位符建议：{{name}} {{faction}} {{stats}} {{skills}} {{equipment}} {{relationship}} {{recentChanges}} {{notes}}</div>
               </div>
             </div>
 
@@ -17122,14 +17274,41 @@ function setupCharacterArchivePage() {
     saveSettings();
   };
 
+  const refreshEntries = async () => {
+    pullUiToSettings();
+    saveSettings();
+    const s = ensureSettings();
+    setCharacterArchiveStatus('· 正在读取人物条目列表… ·', 'warn');
+    try {
+      const names = await loadCharacterArchiveTargetOptions(s.characterArchiveWorldbookFile, s.characterArchiveEntryPrefix);
+      s.characterArchiveTargetOptions = names;
+      saveSettings();
+      fillCharacterArchiveTargetSelect(names, s.characterArchiveTargetName);
+      setCharacterArchiveStatus(`· 已读取人物条目：${names.length} 个 ·`, names.length ? 'ok' : 'warn');
+    } catch (e) {
+      setCharacterArchiveStatus(`· 读取人物条目失败：${e?.message ?? e} ·`, 'err');
+    }
+  };
+
   $('#sg_char_archive_provider').on('change', () => {
     const provider = String($('#sg_char_archive_provider').val() || 'st');
     $('#sg_char_archive_custom_block').toggle(provider === 'custom');
     autoSave();
   });
 
-  $('#sg_char_archive_enabled, #sg_char_archive_temperature, #sg_char_archive_customEndpoint, #sg_char_archive_customApiKey, #sg_char_archive_customModel, #sg_char_archive_customMaxTokens, #sg_char_archive_customStream, #sg_char_archive_worldbookFile, #sg_char_archive_prefix, #sg_char_archive_target, #sg_char_archive_recent, #sg_char_archive_includeUserInput, #sg_char_archive_systemPrompt, #sg_char_archive_userTemplate')
+  $('#sg_char_archive_enabled, #sg_char_archive_temperature, #sg_char_archive_customEndpoint, #sg_char_archive_customApiKey, #sg_char_archive_customModel, #sg_char_archive_customMaxTokens, #sg_char_archive_customStream, #sg_char_archive_worldbookFile, #sg_char_archive_prefix, #sg_char_archive_target, #sg_char_archive_recent, #sg_char_archive_includeUserInput, #sg_char_archive_systemPrompt, #sg_char_archive_userTemplate, #sg_char_archive_outputTemplate')
     .on('input change', autoSave);
+
+  $('#sg_char_archive_modelSelect').on('change', () => {
+    const val = String($('#sg_char_archive_modelSelect').val() || '').trim();
+    if (val) $('#sg_char_archive_customModel').val(val);
+    autoSave();
+  });
+
+  $('#sg_char_archive_refreshModels').on('click', async () => {
+    autoSave();
+    await refreshCharacterArchiveModels();
+  });
 
   $('#sg_char_archive_worldbookSelect').on('change', () => {
     const val = String($('#sg_char_archive_worldbookSelect').val() || '').trim();
@@ -17149,6 +17328,14 @@ function setupCharacterArchivePage() {
     } catch (e) {
       setCharacterArchiveStatus(`· 刷新世界书列表失败：${e?.message ?? e} ·`, 'err');
     }
+  });
+
+  $('#sg_char_archive_refreshEntries').on('click', refreshEntries);
+
+  $('#sg_char_archive_entrySelect').on('change', () => {
+    const val = String($('#sg_char_archive_entrySelect').val() || '').trim();
+    if (val) $('#sg_char_archive_target').val(val);
+    autoSave();
   });
 
   $('#sg_char_archive_generate').on('click', async () => {
@@ -17852,6 +18039,11 @@ function pullSettingsToUi() {
   $('#sg_char_archive_customMaxTokens').val(s.characterArchiveCustomMaxTokens || 3072);
   $('#sg_char_archive_customStream').prop('checked', !!s.characterArchiveCustomStream);
   $('#sg_char_archive_custom_block').toggle(String(s.characterArchiveProvider || 'st') === 'custom');
+  fillWorldbookSelect(
+    $('#sg_char_archive_modelSelect'),
+    Array.isArray(s.characterArchiveCustomModelsCache) ? s.characterArchiveCustomModelsCache : [],
+    String(s.characterArchiveCustomModel || 'gpt-4o-mini')
+  );
   $('#sg_char_archive_worldbookFile').val(String(s.characterArchiveWorldbookFile || ''));
   fillWorldbookSelect(
     $('#sg_char_archive_worldbookSelect'),
@@ -17860,10 +18052,12 @@ function pullSettingsToUi() {
   );
   $('#sg_char_archive_prefix').val(String(s.characterArchiveEntryPrefix || '人物'));
   $('#sg_char_archive_target').val(String(s.characterArchiveTargetName || ''));
+  fillCharacterArchiveTargetSelect(Array.isArray(s.characterArchiveTargetOptions) ? s.characterArchiveTargetOptions : [], String(s.characterArchiveTargetName || ''));
   $('#sg_char_archive_recent').val(s.characterArchiveRecentMessages || 8);
   $('#sg_char_archive_includeUserInput').prop('checked', s.characterArchiveIncludeUserInput !== false);
   $('#sg_char_archive_systemPrompt').val(String(s.characterArchiveSystemPrompt || DEFAULT_CHARACTER_ARCHIVE_SYSTEM_PROMPT));
   $('#sg_char_archive_userTemplate').val(String(s.characterArchiveUserTemplate || DEFAULT_CHARACTER_ARCHIVE_USER_TEMPLATE));
+  $('#sg_char_archive_outputTemplate').val(String(s.characterArchiveOutputTemplate || DEFAULT_CHARACTER_ARCHIVE_OUTPUT_TEMPLATE));
   $('#sg_char_archive_output').val(String(lastCharacterArchiveText || ''));
   $('#sg_char_archive_copy, #sg_char_archive_insert').prop('disabled', !String(lastCharacterArchiveText || '').trim());
 
@@ -18566,6 +18760,7 @@ function pullUiToSettings() {
   s.characterArchiveIncludeUserInput = $('#sg_char_archive_includeUserInput').is(':checked');
   s.characterArchiveSystemPrompt = String($('#sg_char_archive_systemPrompt').val() || '').trim() || DEFAULT_CHARACTER_ARCHIVE_SYSTEM_PROMPT;
   s.characterArchiveUserTemplate = String($('#sg_char_archive_userTemplate').val() || '').trim() || DEFAULT_CHARACTER_ARCHIVE_USER_TEMPLATE;
+  s.characterArchiveOutputTemplate = String($('#sg_char_archive_outputTemplate').val() || '').trim() || DEFAULT_CHARACTER_ARCHIVE_OUTPUT_TEMPLATE;
 
   // 角色标签世界书设置
   s.imageGenCharacterProfilesEnabled = $('#sg_imageGenProfilesEnabled').is(':checked');
