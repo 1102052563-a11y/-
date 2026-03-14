@@ -19235,6 +19235,7 @@ function createFloatingPanel() {
           <button class="sg-floating-action-btn" id="sg_floating_show_char_archive" title="人物修正">🧾</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_sex" title="性爱指导">❤️</button>
           <button class="sg-floating-action-btn" id="sg_floating_structured" title="手动结构化条目总结">🧩</button>
+          <button class="sg-floating-action-btn" id="sg_floating_parallel_world" title="手动更新平行事件">🌐</button>
           <button class="sg-floating-action-btn" id="sg_floating_roll_logs" title="ROLL日志">🎲</button>
           <button class="sg-floating-action-btn" id="sg_floating_settings" title="打开设置">⚙️</button>
           <button class="sg-floating-action-btn" id="sg_floating_close" title="关闭">✕</button>
@@ -19307,6 +19308,23 @@ function createFloatingPanel() {
     $btn.prop('disabled', true);
     try {
       await runStructuredEntries({ reason: 'manual' });
+    } finally {
+      $btn.prop('disabled', false);
+    }
+  });
+
+
+  $('#sg_floating_parallel_world').on('click', async () => {
+    const s = ensureSettings();
+    if (!s.parallelWorldEnabled) {
+      setStatus('平行世界未启用', 'warn');
+      showToast('请先在设置中启用平行世界', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
+      return;
+    }
+    const $btn = $('#sg_floating_parallel_world');
+    $btn.prop('disabled', true);
+    try {
+      await runParallelWorldSimulation();
     } finally {
       $btn.prop('disabled', false);
     }
