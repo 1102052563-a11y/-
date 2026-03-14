@@ -1512,42 +1512,20 @@ body.sg-zoom-lock {
   position: fixed;
   bottom: 80px;
   right: 20px;
-  width: 74px;
-  height: 62px;
-  border-radius: 16px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
   background: linear-gradient(135deg, rgba(40, 60, 80, 0.95) 0%, rgba(25, 40, 55, 0.98) 100%);
   border: 1px solid rgba(100, 140, 180, 0.4);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  font-size: 24px;
   cursor: pointer;
   z-index: 2147483640;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   transition: all 0.2s ease;
   user-select: none;
-  padding: 6px 6px 7px;
-  box-sizing: border-box;
-  white-space: nowrap;
-}
-
-.sg-floating-btn-label {
-  display: block;
-  max-width: 100%;
-  font-size: 11px;
-  line-height: 1;
-  font-weight: 700;
-  color: rgba(226, 235, 244, 0.96);
-  white-space: nowrap;
-  writing-mode: horizontal-tb;
-  letter-spacing: 0.02em;
-}
-
-.sg-floating-btn-icon {
-  display: block;
-  font-size: 24px;
-  line-height: 1;
 }
 
 .sg-floating-btn:hover {
@@ -1811,7 +1789,6 @@ body.sg-image-preview-open {
 .sg-floating-title {
   font-size: 15px;
   font-weight: 600;
-  line-height: 1.2;
   color: rgba(220, 230, 240, 0.95);
 }
 
@@ -1871,18 +1848,10 @@ body.sg-image-preview-open {
     bottom: 90px;
     /* Little higher to avoid bottom bars */
     right: 16px;
-    width: 70px;
-    height: 58px;
-    padding: 6px;
-    z-index: 2147483640;
-  }
-
-  .sg-floating-btn-label {
-    font-size: 10px;
-  }
-
-  .sg-floating-btn-icon {
+    width: 48px;
+    height: 48px;
     font-size: 22px;
+    z-index: 2147483640;
   }
 
   .sg-floating-panel {
@@ -2250,8 +2219,9 @@ body.sg-image-preview-open {
   .sg-floating-btn {
     bottom: max(90px, calc(env(safe-area-inset-bottom) + 80px)) !important;
     right: 12px !important;
-    width: 72px;
-    height: 60px;
+    width: 52px;
+    height: 52px;
+    font-size: 24px;
   }
 
   /* 数据库视图头部 */
@@ -2323,8 +2293,8 @@ body.sg-image-preview-open {
   }
 
   .sg-floating-btn {
-    width: 66px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
     right: 10px !important;
   }
 }
@@ -2430,8 +2400,8 @@ body.sg-image-preview-open {
   .sg-floating-btn {
     bottom: 10px !important;
     right: 10px !important;
-    width: 62px;
-    height: 52px;
+    width: 44px;
+    height: 44px;
   }
 
   .sg-modal {
