@@ -17736,6 +17736,23 @@ function setupParallelWorldPage() {
   $('#sg_parallelWorldSystemPrompt, #sg_parallelWorldUserTemplate').on('change', autoSave);
 }
 
+async function runParallelWorldSimulationFromFloating($btn) {
+  const s = ensureSettings();
+  if (!s.parallelWorldEnabled) {
+    setParallelWorldStatus('平行世界未启用', 'warn');
+    showToast('请先启用平行世界功能', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
+    return;
+  }
+
+  const $target = $btn && $btn.length ? $btn : $('#sg_floating_parallel_update');
+  $target.prop('disabled', true);
+  try {
+    await runParallelWorldSimulation();
+  } finally {
+    $target.prop('disabled', false);
+  }
+}
+
 function pullSettingsToUi() {
   const s = ensureSettings();
 
@@ -19249,6 +19266,16 @@ function createFloatingPanel() {
   `;
 
   document.body.appendChild(panel);
+  const floatingActions = panel.querySelector('.sg-floating-actions');
+  const floatingSettingsBtn = panel.querySelector('#sg_floating_settings');
+  if (floatingActions && floatingSettingsBtn && !panel.querySelector('#sg_floating_parallel_update')) {
+    const parallelBtn = document.createElement('button');
+    parallelBtn.className = 'sg-floating-action-btn';
+    parallelBtn.id = 'sg_floating_parallel_update';
+    parallelBtn.title = '手动更新平行事件';
+    parallelBtn.textContent = '平';
+    floatingActions.insertBefore(parallelBtn, floatingSettingsBtn);
+  }
 
   // Restore position (Only on Desktop/Large screens, NOT in mobile portrait)
   // On mobile portrait, we rely on CSS defaults (bottom sheet style) to ensure visibility
@@ -19291,6 +19318,10 @@ function createFloatingPanel() {
     showFloatingSexGuide();
   });
 
+  $('#sg_floating_parallel_update').on('click', async () => {
+    await runParallelWorldSimulationFromFloating($('#sg_floating_parallel_update'));
+  });
+
   $('#sg_floating_structured').on('click', async () => {
     const s = ensureSettings();
     if (!s.structuredEntriesEnabled) {
@@ -19318,6 +19349,11 @@ function createFloatingPanel() {
     // Only handle if inside our panel
     if (!$(e.target).closest('#sg_floating_panel').length) return;
     await refreshFloatingPanelContent();
+  });
+
+  $(document).on('click', '.sg-inner-parallel-update-btn', async (e) => {
+    if (!$(e.target).closest('#sg_floating_panel').length) return;
+    await runParallelWorldSimulationFromFloating($(e.currentTarget));
   });
 
   $(document).on('click', '.sg-inner-structured-btn', async (e) => {
@@ -19959,6 +19995,11 @@ function updateFloatingPanelBody(html) {
   const $body = $('#sg_floating_body');
   if ($body.length) {
     $body.html(html);
+    const toolbar = $body.find('.sg-inner-refresh-btn').first().parent();
+    if (toolbar.length && !$body.find('.sg-inner-parallel-update-btn').length) {
+      $('<button class="sg-inner-parallel-update-btn" title="手动更新平行事件" style="background:none; border:none; cursor:pointer; font-size:0.95em; opacity:0.85;">平行事件</button>')
+        .insertAfter(toolbar.find('.sg-inner-refresh-btn').first());
+    }
   }
 }
 
