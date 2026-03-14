@@ -15976,6 +15976,7 @@ function buildModalHtml() {
 
                 <div style="margin-top:10px;">
                   <button id="sg_pwRefreshNpcList" class="menu_button sg-btn">刷新追踪列表</button>
+                  <button id="sg_pwClearTrackedAll" class="menu_button sg-btn">清空追踪</button>
                 </div>
                 <div class="sg-field" style="margin-top:8px;">
                 <label>手动添加NPC名称</label>
@@ -17728,6 +17729,15 @@ function setupParallelWorldPage() {
   // 刷新追踪列表
   $('#sg_pwRefreshNpcList').on('click', () => {
     refreshParallelWorldTrackedLists();
+  });
+
+  $('#sg_pwClearTrackedAll').on('click', async () => {
+    const s = ensureSettings();
+    s.parallelWorldTrackedNpcs = [];
+    s.parallelWorldTrackedFactions = [];
+    saveSettings();
+    renderParallelWorldTrackedLists();
+    setParallelWorldStatus('已清空追踪 NPC 和势力', 'ok');
   });
 
   // 手动添加NPC
