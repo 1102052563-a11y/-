@@ -1058,7 +1058,6 @@ let chatDomObserver = null;
 let generationIdleTimer = null;
 let postGenerationPending = false;
 let postGenerationAssistantFloor = 0;
-let postGenerationPollTimer = null;
 let bodyDomObserver = null;
 let reapplyTimer = null;
 
@@ -2008,12 +2007,6 @@ function setParallelWorldStatus(text, kind = '') {
   $el.attr('class', 'sg-status' + (kind ? ` sg-status-${kind}` : ''));
 }
 
-function logParallelWorldAutoDebug(stage, details = '') {
-  const text = `[平行事件][自动] ${stage}${details ? ` | ${details}` : ''}`;
-  console.log(`[StoryGuide] ${text}`);
-  setParallelWorldStatus(text, 'warn');
-}
-
 /**
  * 收集被追踪NPC的档案信息（从结构化条目缓存中获取）
  */
@@ -2304,7 +2297,6 @@ async function runParallelWorldSimulation() {
   const trackedFactions = s.parallelWorldTrackedFactions.filter(t => t.enabled);
 
   if (trackedNpcs.length === 0 && trackedFactions.length === 0) {
-    logParallelWorldAutoDebug('skip-no-tracked', 'no tracked npc/faction enabled');
     setParallelWorldStatus('没有被追踪的NPC或势力，请刷新列表并勾选', 'warn');
     return false;
   }
@@ -2671,17 +2663,13 @@ async function writeWorldInfoEntryDirect({ file, comment, content, keys, constan
  */
 async function maybeAutoRunParallelWorld() {
   const s = ensureSettings();
-  if (!s.parallelWorldEnabled || !s.parallelWorldAutoTrigger) {
-    logParallelWorldAutoDebug('skip-disabled', `enabled=${!!s.parallelWorldEnabled} auto=${!!s.parallelWorldAutoTrigger}`);
-    return;
-  }
+  if (!s.parallelWorldEnabled || !s.parallelWorldAutoTrigger) return;
 
   const chat = (typeof SillyTavern !== 'undefined' && SillyTavern?.getContext?.()?.chat) || [];
   const currentFloor = computeFloorCount(chat, 'assistant');
   const pwData = getParallelWorldData();
   const lastFloor = pwData.lastRunFloor || 0;
   const every = Math.max(1, s.parallelWorldAutoEvery || 5);
-  logParallelWorldAutoDebug('check', `current=${currentFloor} last=${lastFloor} every=${every} diff=${currentFloor - lastFloor}`);
   const autoParallelHint = () => {
     setParallelWorldStatus('正在生成平行事件...', 'warn');
     showToast('正在生成平行事件...', { kind: 'info', spinner: true, sticky: true });
@@ -2691,8 +2679,6 @@ async function maybeAutoRunParallelWorld() {
     autoParallelHint();
     console.log(`[StoryGuide] 平行世界: 自动推演触发 (楼层 ${lastFloor} → ${currentFloor}, 间隔 ${every})`);
     await runParallelWorldSimulation();
-  } else {
-    logParallelWorldAutoDebug('skip-interval', `current=${currentFloor} last=${lastFloor} every=${every}`);
   }
 }
 
@@ -9958,54 +9944,13 @@ function schedulePostGenerationAuto(reason = '') {
   const s = ensureSettings();
   if (!s.summaryEnabled && !s.structuredEntriesEnabled && !(s.parallelWorldEnabled && s.parallelWorldAutoTrigger)) return;
   const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
-  logParallelWorldAutoDebug('schedule', `reason=${reason || 'unknown'} delay=${delay}`);
   if (generationIdleTimer) clearTimeout(generationIdleTimer);
   generationIdleTimer = setTimeout(() => {
     generationIdleTimer = null;
-    logParallelWorldAutoDebug('run-scheduled', `reason=${reason || 'unknown'}`);
     maybeAutoSummary(reason).catch(() => void 0);
     maybeAutoStructuredEntries(reason).catch(() => void 0);
     maybeAutoRunParallelWorld().catch(e => console.warn('[StoryGuide] 平行世界自动推演异常:', e));
   }, delay);
-}
-
-function startPostGenerationPoll() {
-  if (postGenerationPollTimer) clearInterval(postGenerationPollTimer);
-
-  const startedAt = Date.now();
-  logParallelWorldAutoDebug('poll-start', `assistantFloor=${postGenerationAssistantFloor}`);
-  postGenerationPollTimer = setInterval(() => {
-    try {
-      if (!postGenerationPending) {
-        clearInterval(postGenerationPollTimer);
-        postGenerationPollTimer = null;
-        return;
-      }
-
-      const ctx = SillyTavern.getContext();
-      const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-      const assistantFloorNow = computeFloorCount(chat, 'assistant');
-      if (assistantFloorNow > Number(postGenerationAssistantFloor || 0)) {
-        logParallelWorldAutoDebug('poll-hit', `assistantFloor=${assistantFloorNow} prev=${postGenerationAssistantFloor}`);
-        postGenerationPending = false;
-        postGenerationAssistantFloor = assistantFloorNow;
-        clearInterval(postGenerationPollTimer);
-        postGenerationPollTimer = null;
-        schedulePostGenerationAuto('poll_after_generation');
-        return;
-      }
-
-      if (Date.now() - startedAt > 90000) {
-        logParallelWorldAutoDebug('poll-timeout', `assistantFloor=${assistantFloorNow} prev=${postGenerationAssistantFloor}`);
-        clearInterval(postGenerationPollTimer);
-        postGenerationPollTimer = null;
-      }
-    } catch (e) {
-      console.warn('[StoryGuide] post-generation poll failed:', e);
-      clearInterval(postGenerationPollTimer);
-      postGenerationPollTimer = null;
-    }
-  }, 800);
 }
 
 async function maybeAutoSummary(reason = '') {
@@ -11928,6 +11873,20 @@ function attachToggleHandler(boxEl, mesKey) {
         (mesEl || boxEl).scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
+      try {
+        if (postGenerationPending) {
+          const ctxNow = SillyTavern.getContext();
+          const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
+          const assistantFloorNow = computeFloorCount(chatNow, 'assistant');
+          if (assistantFloorNow > Number(postGenerationAssistantFloor || 0)) {
+            postGenerationPending = false;
+            postGenerationAssistantFloor = assistantFloorNow;
+            schedulePostGenerationAuto('chat_changed_after_generation');
+          }
+        }
+      } catch (e) {
+        console.warn('[StoryGuide] CHAT_CHANGED post-generation auto scheduling failed:', e);
+      }
     });
   };
 
@@ -11994,20 +11953,6 @@ function attachPanelToggleHandler(boxEl, mesKey) {
       if (isFooter && next) {
         const mesEl = boxEl.closest('.mes');
         (mesEl || boxEl).scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      try {
-        if (postGenerationPending) {
-          const ctxNow = SillyTavern.getContext();
-          const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
-          const assistantFloorNow = computeFloorCount(chatNow, 'assistant');
-          if (assistantFloorNow > Number(postGenerationAssistantFloor || 0)) {
-            postGenerationPending = false;
-            postGenerationAssistantFloor = assistantFloorNow;
-            schedulePostGenerationAuto('chat_changed_after_generation');
-          }
-        }
-      } catch (e) {
-        console.warn('[StoryGuide] CHAT_CHANGED post-generation auto scheduling failed:', e);
       }
     });
   };
@@ -15976,7 +15921,6 @@ function buildModalHtml() {
 
                 <div style="margin-top:10px;">
                   <button id="sg_pwRefreshNpcList" class="menu_button sg-btn">刷新追踪列表</button>
-                  <button id="sg_pwClearTrackedAll" class="menu_button sg-btn">清空追踪</button>
                 </div>
                 <div class="sg-field" style="margin-top:8px;">
                 <label>手动添加NPC名称</label>
@@ -17731,15 +17675,6 @@ function setupParallelWorldPage() {
     refreshParallelWorldTrackedLists();
   });
 
-  $('#sg_pwClearTrackedAll').on('click', async () => {
-    const s = ensureSettings();
-    s.parallelWorldTrackedNpcs = [];
-    s.parallelWorldTrackedFactions = [];
-    saveSettings();
-    renderParallelWorldTrackedLists();
-    setParallelWorldStatus('已清空追踪 NPC 和势力', 'ok');
-  });
-
   // 手动添加NPC
   $('#sg_pwAddManualNpc').on('click', () => {
     const name = String($('#sg_pwManualNpcName').val() || '').trim();
@@ -19098,7 +19033,6 @@ function setupEventListeners() {
       } catch {
         postGenerationAssistantFloor = 0;
       }
-      startPostGenerationPoll();
       // 禁止自动生成：不在发送消息时自动刷新面板
       // ROLL 判定（尽量在生成前完成）
       maybeInjectRollResult('msg_sent').catch(() => void 0);
