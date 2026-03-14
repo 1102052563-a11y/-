@@ -19227,7 +19227,10 @@ function createFloatingPanel() {
   panel.className = 'sg-floating-panel';
   panel.innerHTML = `
     <div class="sg-floating-header" style="cursor: move; touch-action: none;">
-      <span class="sg-floating-title">📘 剧情指导</span>
+      <div class="sg-floating-header-main">
+        <span class="sg-floating-title">📘 剧情指导</span>
+        <span class="sg-floating-subtitle">快捷操作</span>
+      </div>
         <div class="sg-floating-actions">
           <button class="sg-floating-action-btn" id="sg_floating_show_report" title="查看分析">📖</button>
           <button class="sg-floating-action-btn" id="sg_floating_show_map" title="查看地图">🗺️</button>
