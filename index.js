@@ -1057,6 +1057,7 @@ const panelCache = new Map(); // <mesKey, { htmlInner, collapsed, createdAt }>
 let chatDomObserver = null;
 let generationIdleTimer = null;
 let postGenerationPending = false;
+let postGenerationAssistantFloor = 0;
 let bodyDomObserver = null;
 let reapplyTimer = null;
 
@@ -11871,6 +11872,21 @@ function attachToggleHandler(boxEl, mesKey) {
         const mesEl = boxEl.closest('.mes');
         (mesEl || boxEl).scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+
+      try {
+        if (postGenerationPending) {
+          const ctxNow = SillyTavern.getContext();
+          const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
+          const assistantFloorNow = computeFloorCount(chatNow, 'assistant');
+          if (assistantFloorNow > Number(postGenerationAssistantFloor || 0)) {
+            postGenerationPending = false;
+            postGenerationAssistantFloor = assistantFloorNow;
+            schedulePostGenerationAuto('chat_changed_after_generation');
+          }
+        }
+      } catch (e) {
+        console.warn('[StoryGuide] CHAT_CHANGED post-generation auto scheduling failed:', e);
+      }
     });
   };
 
@@ -18955,7 +18971,6 @@ function setupEventListeners() {
 
     eventSource.on(event_types.CHAT_CHANGED, async () => {
       inlineCache.clear();
-      postGenerationPending = false;
       scheduleReapplyAll('chat_changed');
       ensureChatActionButtons();
       ensureBlueIndexLive(true).catch(() => void 0);
@@ -19011,6 +19026,13 @@ function setupEventListeners() {
 
     eventSource.on(event_types.MESSAGE_SENT, () => {
       postGenerationPending = true;
+      try {
+        const ctxNow = SillyTavern.getContext();
+        const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
+        postGenerationAssistantFloor = computeFloorCount(chatNow, 'assistant');
+      } catch {
+        postGenerationAssistantFloor = 0;
+      }
       // 禁止自动生成：不在发送消息时自动刷新面板
       // ROLL 判定（尽量在生成前完成）
       maybeInjectRollResult('msg_sent').catch(() => void 0);
