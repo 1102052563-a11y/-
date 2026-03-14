@@ -19101,7 +19101,7 @@ function createFloatingButton() {
   const btn = document.createElement('div');
   btn.id = 'sg_floating_btn';
   btn.className = 'sg-floating-btn';
-  btn.innerHTML = '📘';
+  btn.innerHTML = '<span class="sg-floating-btn-label">剧情指导</span><span class="sg-floating-btn-icon">📘</span>';
   btn.title = '剧情指导';
   // Allow dragging but also clicking. We need to distinguish click from drag.
   btn.style.touchAction = 'none';
