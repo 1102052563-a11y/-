@@ -2669,8 +2669,13 @@ async function maybeAutoRunParallelWorld() {
   const pwData = getParallelWorldData();
   const lastFloor = pwData.lastRunFloor || 0;
   const every = Math.max(1, s.parallelWorldAutoEvery || 5);
+  const autoParallelHint = () => {
+    setParallelWorldStatus('正在生成平行事件...', 'warn');
+    showToast('正在生成平行事件...', { kind: 'info', spinner: true, sticky: true });
+  };
 
   if (currentFloor - lastFloor >= every) {
+    autoParallelHint();
     console.log(`[StoryGuide] 平行世界: 自动推演触发 (楼层 ${lastFloor} → ${currentFloor}, 间隔 ${every})`);
     await runParallelWorldSimulation();
   }
