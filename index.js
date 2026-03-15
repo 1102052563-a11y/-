@@ -17654,6 +17654,12 @@ function setupParallelWorldPage() {
     saveSettings();
   };
 
+  const $refreshBtn = $('#sg_pwRefreshNpcList');
+  if ($refreshBtn.length && !$('#sg_pwClearTrackedLists').length) {
+    $('<button id="sg_pwClearTrackedLists" class="menu_button sg-btn" style="margin-left:8px;">清空追踪列表</button>')
+      .insertAfter($refreshBtn);
+  }
+
   // 推演按钮
   $('#sg_pwRunSimulation').on('click', async () => {
     pullUiToSettings(); saveSettings();
@@ -17673,6 +17679,15 @@ function setupParallelWorldPage() {
   // 刷新追踪列表
   $('#sg_pwRefreshNpcList').on('click', () => {
     refreshParallelWorldTrackedLists();
+  });
+  $('#sg_pwClearTrackedLists').on('click', async () => {
+    const s = ensureSettings();
+    s.parallelWorldTrackedNpcs = [];
+    s.parallelWorldTrackedFactions = [];
+    saveSettings();
+    $('#sg_pwManualNpcName').val('');
+    await refreshParallelWorldTrackedLists();
+    setParallelWorldStatus('已清空之前的 NPC 和势力追踪列表', 'ok');
   });
 
   // 手动添加NPC
