@@ -1115,6 +1115,15 @@ const DEFAULT_SETTINGS = Object.freeze({
   publicChannelReadFloors: 5,
   publicChannelMaxMessages: 40,
   publicChannelStyle: 'funny',
+  publicChannelProvider: 'st',
+  publicChannelTemperature: 0.9,
+  publicChannelCustomEndpoint: '',
+  publicChannelCustomApiKey: '',
+  publicChannelCustomModel: 'gpt-4o-mini',
+  publicChannelCustomModelsCache: [],
+  publicChannelCustomMaxTokens: 2048,
+  publicChannelCustomTopP: 0.95,
+  publicChannelCustomStream: false,
   publicChannelSystemPrompt: DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT,
   publicChannelUserTemplate: DEFAULT_PUBLIC_CHANNEL_USER_TEMPLATE,
 
@@ -2518,19 +2527,19 @@ async function runPublicChannelSimulation() {
     const messages = buildPublicChannelPromptMessages(chatContext, worldClock, historyText);
 
     let responseText = '';
-    if (s.parallelWorldProvider === 'custom') {
+    if (s.publicChannelProvider === 'custom') {
       responseText = await callViaCustom(
-        s.parallelWorldCustomEndpoint,
-        s.parallelWorldCustomApiKey,
-        s.parallelWorldCustomModel,
+        s.publicChannelCustomEndpoint,
+        s.publicChannelCustomApiKey,
+        s.publicChannelCustomModel,
         messages,
-        s.parallelWorldTemperature,
-        s.parallelWorldCustomMaxTokens,
-        s.parallelWorldCustomTopP,
-        s.parallelWorldCustomStream
+        s.publicChannelTemperature,
+        s.publicChannelCustomMaxTokens,
+        s.publicChannelCustomTopP,
+        s.publicChannelCustomStream
       );
     } else {
-      responseText = await callViaSillyTavern(messages, null, s.parallelWorldTemperature);
+      responseText = await callViaSillyTavern(messages, null, s.publicChannelTemperature);
     }
 
     const parsed = safeJsonParse(responseText);
@@ -3108,6 +3117,73 @@ function renderPublicChannelLog(pcDataOverride) {
     html += `</div>`;
   }
   $container.html(html);
+}
+
+async function refreshPublicChannelModels() {
+  const s = ensureSettings();
+  const $btn = $('#sg_refreshPublicChannelModels');
+  const base = normalizeBaseUrl(s.publicChannelCustomEndpoint);
+  if (!base) {
+    setPublicChannelStatus('请先填写 API 基础URL', 'warn');
+    return;
+  }
+  $btn.prop('disabled', true);
+  setPublicChannelStatus('正在刷新公共频道模型列表...', 'warn');
+  try {
+    const modelsUrl = base.replace(/\/$/, '') + '/models';
+    const headers = {};
+    if (s.publicChannelCustomApiKey) headers['Authorization'] = `Bearer ${s.publicChannelCustomApiKey}`;
+
+    let modelIds = [];
+    try {
+      const res = await fetchJsonCompat(modelsUrl, { method: 'GET', headers });
+      if (res && Array.isArray(res.data)) {
+        modelIds = res.data.map(m => m.id || m.name).filter(Boolean);
+      }
+    } catch {
+      const proxyRes = await fetchJsonCompat('/api/oai/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getStRequestHeadersCompat() },
+        body: JSON.stringify({ api_url: base, api_key_openai: s.publicChannelCustomApiKey }),
+      });
+      if (proxyRes && Array.isArray(proxyRes.data)) {
+        modelIds = proxyRes.data.map(m => m.id || m.name).filter(Boolean);
+      }
+    }
+
+    if (!modelIds.length) {
+      setPublicChannelStatus('未获取到模型', 'warn');
+    } else {
+      s.publicChannelCustomModelsCache = modelIds;
+      saveSettings();
+      fillPublicChannelModelSelect(modelIds, s.publicChannelCustomModel);
+      setPublicChannelStatus(`已获取到 ${modelIds.length} 个公共频道模型`, 'ok');
+    }
+  } catch (e) {
+    setPublicChannelStatus(`刷新失败: ${e?.message || e}`, 'err');
+  } finally {
+    $btn.prop('disabled', false);
+  }
+}
+
+function fillPublicChannelModelSelect(modelIds, selected) {
+  const $sel = $('#sg_publicChannelCustomModel');
+  if (!$sel.length) return;
+  $sel.empty();
+  for (const id of modelIds) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    if (id === selected) opt.selected = true;
+    $sel.append(opt);
+  }
+  if (modelIds.length && selected && !modelIds.includes(selected)) {
+    const opt = document.createElement('option');
+    opt.value = selected;
+    opt.textContent = selected + ' (当前)';
+    opt.selected = true;
+    $sel.prepend(opt);
+  }
 }
 
 /**
@@ -14483,6 +14559,7 @@ function buildModalHtml() {
             <button class="sg-pgtab" id="sg_pgtab_character">自定义角色</button>
             <button class="sg-pgtab" id="sg_pgtab_char_archive">人物档案</button>
             <button class="sg-pgtab" id="sg_pgtab_parallel">平行世界</button>
+            <button class="sg-pgtab" id="sg_pgtab_public_channel">公共频道</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
@@ -14784,74 +14861,6 @@ function buildModalHtml() {
                   <input id="sg_summaryStatVarName" type="text" placeholder="stat_data" style="width:120px">
                 </div>
                 <div class="sg-hint" style="margin-left:8px">AI 可看到变量中的角色属性数据（类似 ROLL 点模块）</div>
-              </div>
-            </div>
-
-            <div class="sg-card">
-              <div class="sg-card-title">公共频道模拟</div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>启用</label>
-                  <label class="sg-switch">
-                    <input type="checkbox" id="sg_publicChannelEnabled">
-                    <span class="sg-slider"></span>
-                  </label>
-                </div>
-                <div class="sg-field">
-                  <label>注入正文/主角可见</label>
-                  <label class="sg-switch">
-                    <input type="checkbox" id="sg_publicChannelInjectContext">
-                    <span class="sg-slider"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>自动模拟</label>
-                  <label class="sg-switch">
-                    <input type="checkbox" id="sg_publicChannelAutoTrigger">
-                    <span class="sg-slider"></span>
-                  </label>
-                </div>
-                <div class="sg-field">
-                  <label>每隔N条AI回复</label>
-                  <input id="sg_publicChannelAutoEvery" type="number" min="1" max="50">
-                </div>
-              </div>
-              <div class="sg-grid2">
-                <div class="sg-field">
-                  <label>读取正文楼层数</label>
-                  <input id="sg_publicChannelReadFloors" type="number" min="1" max="50">
-                </div>
-                <div class="sg-field">
-                  <label>最大缓存消息数</label>
-                  <input id="sg_publicChannelMaxMessages" type="number" min="10" max="200">
-                </div>
-              </div>
-              <div class="sg-field">
-                <label>频道风格</label>
-                <select id="sg_publicChannelStyle">
-                  <option value="serious">严肃</option>
-                  <option value="balanced">均衡</option>
-                  <option value="funny">乐子人偏多</option>
-                  <option value="tieba">贴吧模式</option>
-                </select>
-              </div>
-              <div class="sg-actions-row" style="margin-top:10px;">
-                <button class="menu_button sg-btn-primary" id="sg_publicChannelRun">立即模拟</button>
-                <button class="menu_button sg-btn" id="sg_publicChannelClear">清空频道记录</button>
-              </div>
-              <div class="sg-status" id="sg_publicChannelStatus"></div>
-              <div class="sg-field" style="margin-top:10px;">
-                <label>System Prompt</label>
-                <textarea id="sg_publicChannelSystemPrompt" rows="5" spellcheck="false"></textarea>
-              </div>
-              <div class="sg-field">
-                <label>User Template（支持 {{worldTime}} {{recentContext}} {{worldState}} {{channelHistory}}）</label>
-                <textarea id="sg_publicChannelUserTemplate" rows="4" spellcheck="false"></textarea>
-              </div>
-              <div id="sg_publicChannelLog" class="sg-pw-event-log">
-                <div class="sg-hint">暂无公共频道记录。点击“立即模拟”开始生成。</div>
               </div>
             </div>
 
@@ -16494,6 +16503,134 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_parallel -->
 
+          <div class="sg-page" id="sg_page_public_channel">
+            <div class="sg-card">
+              <div class="sg-card-title">公共频道</div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>启用</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_publicChannelEnabled">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+                <div class="sg-field">
+                  <label>注入正文/主角可见</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_publicChannelInjectContext">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>自动模拟</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_publicChannelAutoTrigger">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+                <div class="sg-field">
+                  <label>每隔N条AI回复</label>
+                  <input id="sg_publicChannelAutoEvery" type="number" min="1" max="50">
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>读取正文楼层数</label>
+                  <input id="sg_publicChannelReadFloors" type="number" min="1" max="50">
+                </div>
+                <div class="sg-field">
+                  <label>最大缓存消息数</label>
+                  <input id="sg_publicChannelMaxMessages" type="number" min="10" max="200">
+                </div>
+              </div>
+
+              <div class="sg-field">
+                <label>频道风格</label>
+                <select id="sg_publicChannelStyle">
+                  <option value="serious">严肃</option>
+                  <option value="balanced">均衡</option>
+                  <option value="funny">乐子人偏多</option>
+                  <option value="tieba">贴吧模式</option>
+                </select>
+              </div>
+
+              <div class="sg-actions-row" style="margin-top:10px;">
+                <button class="menu_button sg-btn-primary" id="sg_publicChannelRun">立即模拟</button>
+                <button class="menu_button sg-btn" id="sg_publicChannelClear">清空频道记录</button>
+              </div>
+              <div class="sg-status" id="sg_publicChannelStatus"></div>
+            </div>
+
+            <div class="sg-card sg-subcard">
+              <div class="sg-card-title">API 设置</div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>Provider</label>
+                  <select id="sg_publicChannelProvider">
+                    <option value="st">使用当前 SillyTavern API</option>
+                    <option value="custom">独立API</option>
+                  </select>
+                </div>
+                <div class="sg-field">
+                  <label>temperature</label>
+                  <input id="sg_publicChannelTemperature" type="number" step="0.05" min="0" max="2">
+                </div>
+              </div>
+
+              <div class="sg-card sg-subcard" id="sg_publicChannelCustomBlock" style="display:none;">
+                <div class="sg-field">
+                  <label>API 基础URL</label>
+                  <input id="sg_publicChannelCustomEndpoint" type="text" placeholder="https://api.example.com/v1">
+                </div>
+                <div class="sg-field">
+                  <label>API Key</label>
+                  <input id="sg_publicChannelCustomApiKey" type="password" placeholder="sk-...">
+                </div>
+                <div class="sg-field">
+                  <label>模型</label>
+                  <div style="display:flex;gap:4px;">
+                    <select id="sg_publicChannelCustomModel" style="flex:1;"></select>
+                    <button class="menu_button sg-btn" id="sg_refreshPublicChannelModels">刷新</button>
+                  </div>
+                </div>
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>Max Tokens</label>
+                    <input id="sg_publicChannelCustomMaxTokens" type="number" min="128" max="200000">
+                  </div>
+                  <div class="sg-field">
+                    <label>top_p</label>
+                    <input id="sg_publicChannelCustomTopP" type="number" step="0.01" min="0" max="1">
+                  </div>
+                </div>
+                <label class="sg-check"><input type="checkbox" id="sg_publicChannelCustomStream"> 流式返回</label>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">提示词</div>
+              <div class="sg-field">
+                <label>System Prompt</label>
+                <textarea id="sg_publicChannelSystemPrompt" rows="6" spellcheck="false"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>User Template（支持 {{worldTime}} {{recentContext}} {{worldState}} {{channelHistory}}）</label>
+                <textarea id="sg_publicChannelUserTemplate" rows="4" spellcheck="false"></textarea>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">频道记录</div>
+              <div id="sg_publicChannelLog" class="sg-pw-event-log">
+                <div class="sg-hint">暂无公共频道记录。点击“立即模拟”开始生成。</div>
+              </div>
+            </div>
+          </div> <!-- sg_page_public_channel -->
+
           <div class="sg-status" id="sg_status"></div>
         </div>
 
@@ -17565,8 +17702,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image, #sg_pgtab_sex, #sg_pgtab_character, #sg_pgtab_char_archive, #sg_pgtab_parallel').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image, #sg_page_sex, #sg_page_character, #sg_page_char_archive, #sg_page_parallel').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image, #sg_pgtab_sex, #sg_pgtab_character, #sg_pgtab_char_archive, #sg_pgtab_parallel, #sg_pgtab_public_channel').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image, #sg_page_sex, #sg_page_character, #sg_page_char_archive, #sg_page_parallel, #sg_page_public_channel').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -17594,6 +17731,10 @@ function showSettingsPage(page) {
     $('#sg_page_parallel').addClass('active');
     // 切到平行世界页时刷新数据
     try { refreshParallelWorldTrackedLists(); renderParallelWorldEventLog(); } catch { }
+  } else if (p === 'public_channel') {
+    $('#sg_pgtab_public_channel').addClass('active');
+    $('#sg_page_public_channel').addClass('active');
+    try { renderPublicChannelLog(); } catch { }
   } else {
     $('#sg_pgtab_guide').addClass('active');
     $('#sg_page_guide').addClass('active');
@@ -17626,6 +17767,7 @@ function setupSettingsPages() {
   $('#sg_pgtab_character').on('click', () => showSettingsPage('character'));
   $('#sg_pgtab_char_archive').on('click', () => showSettingsPage('char_archive'));
   $('#sg_pgtab_parallel').on('click', () => showSettingsPage('parallel'));
+  $('#sg_pgtab_public_channel').on('click', () => showSettingsPage('public_channel'));
 
   try { setupSexGuidePage(); } catch (e) { console.error('[StoryGuide] setupSexGuidePage failed:', e); }
   setupCharacterPage();
@@ -18232,6 +18374,17 @@ function setupParallelWorldPage() {
     setPublicChannelStatus('公共频道记录已清空', 'ok');
   });
 
+  $('#sg_publicChannelProvider').on('change', function () {
+    const isCustom = $(this).val() === 'custom';
+    $('#sg_publicChannelCustomBlock').toggle(isCustom);
+    autoSave();
+  });
+
+  $('#sg_refreshPublicChannelModels').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await refreshPublicChannelModels();
+  });
+
   // auto-save for inputs
   $('#sg_parallelWorldEnabled, #sg_parallelWorldAutoTrigger, #sg_parallelWorldWriteToWorldbook, #sg_parallelWorldInjectContext, #sg_parallelWorldCustomStream').on('change', autoSave);
   $('#sg_parallelWorldAutoEvery, #sg_parallelWorldTemperature, #sg_parallelWorldMaxEventsPerNpc, #sg_parallelWorldCustomMaxTokens, #sg_parallelWorldCustomTopP').on('change', autoSave);
@@ -18241,6 +18394,10 @@ function setupParallelWorldPage() {
   $('#sg_publicChannelEnabled, #sg_publicChannelAutoTrigger, #sg_publicChannelInjectContext').on('change', autoSave);
   $('#sg_publicChannelAutoEvery, #sg_publicChannelReadFloors, #sg_publicChannelMaxMessages').on('change', autoSave);
   $('#sg_publicChannelStyle').on('change', autoSave);
+  $('#sg_publicChannelProvider, #sg_publicChannelCustomStream').on('change', autoSave);
+  $('#sg_publicChannelTemperature, #sg_publicChannelCustomMaxTokens, #sg_publicChannelCustomTopP').on('change', autoSave);
+  $('#sg_publicChannelCustomEndpoint, #sg_publicChannelCustomApiKey').on('change', autoSave);
+  $('#sg_publicChannelCustomModel').on('change', autoSave);
   $('#sg_publicChannelSystemPrompt, #sg_publicChannelUserTemplate').on('change', autoSave);
 }
 
@@ -18710,8 +18867,19 @@ function pullSettingsToUi() {
   $('#sg_publicChannelReadFloors').val(s.publicChannelReadFloors || 5);
   $('#sg_publicChannelMaxMessages').val(s.publicChannelMaxMessages || 40);
   $('#sg_publicChannelStyle').val(String(s.publicChannelStyle || 'funny'));
+  $('#sg_publicChannelProvider').val(String(s.publicChannelProvider || 'st'));
+  $('#sg_publicChannelTemperature').val(s.publicChannelTemperature ?? 0.9);
+  $('#sg_publicChannelCustomEndpoint').val(String(s.publicChannelCustomEndpoint || ''));
+  $('#sg_publicChannelCustomApiKey').val(String(s.publicChannelCustomApiKey || ''));
+  $('#sg_publicChannelCustomMaxTokens').val(s.publicChannelCustomMaxTokens || 2048);
+  $('#sg_publicChannelCustomTopP').val(s.publicChannelCustomTopP ?? 0.95);
+  $('#sg_publicChannelCustomStream').prop('checked', !!s.publicChannelCustomStream);
   $('#sg_publicChannelSystemPrompt').val(String(s.publicChannelSystemPrompt || DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT));
   $('#sg_publicChannelUserTemplate').val(String(s.publicChannelUserTemplate || DEFAULT_PUBLIC_CHANNEL_USER_TEMPLATE));
+  $('#sg_publicChannelCustomBlock').toggle(String(s.publicChannelProvider || 'st') === 'custom');
+  if (Array.isArray(s.publicChannelCustomModelsCache) && s.publicChannelCustomModelsCache.length) {
+    fillPublicChannelModelSelect(s.publicChannelCustomModelsCache, s.publicChannelCustomModel);
+  }
   $('#sg_parallelCustomBlock').toggle(s.parallelWorldProvider === 'custom');
   if (Array.isArray(s.parallelWorldCustomModelsCache) && s.parallelWorldCustomModelsCache.length) {
     fillParallelWorldModelSelect(s.parallelWorldCustomModelsCache, s.parallelWorldCustomModel);
@@ -19401,6 +19569,14 @@ function pullUiToSettings() {
   s.publicChannelReadFloors = clampInt($('#sg_publicChannelReadFloors').val(), 1, 50, s.publicChannelReadFloors || 5);
   s.publicChannelMaxMessages = clampInt($('#sg_publicChannelMaxMessages').val(), 10, 200, s.publicChannelMaxMessages || 40);
   s.publicChannelStyle = String($('#sg_publicChannelStyle').val() || s.publicChannelStyle || 'funny');
+  s.publicChannelProvider = String($('#sg_publicChannelProvider').val() || s.publicChannelProvider || 'st');
+  s.publicChannelTemperature = clampFloat($('#sg_publicChannelTemperature').val(), 0, 2, s.publicChannelTemperature ?? 0.9);
+  s.publicChannelCustomEndpoint = String($('#sg_publicChannelCustomEndpoint').val() || '').trim();
+  s.publicChannelCustomApiKey = String($('#sg_publicChannelCustomApiKey').val() || '').trim();
+  s.publicChannelCustomModel = String($('#sg_publicChannelCustomModel').val() || s.publicChannelCustomModel || 'gpt-4o-mini');
+  s.publicChannelCustomMaxTokens = clampInt($('#sg_publicChannelCustomMaxTokens').val(), 128, 200000, s.publicChannelCustomMaxTokens || 2048);
+  s.publicChannelCustomTopP = clampFloat($('#sg_publicChannelCustomTopP').val(), 0, 1, s.publicChannelCustomTopP ?? 0.95);
+  s.publicChannelCustomStream = $('#sg_publicChannelCustomStream').is(':checked');
   s.publicChannelSystemPrompt = String($('#sg_publicChannelSystemPrompt').val() || DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT);
   s.publicChannelUserTemplate = String($('#sg_publicChannelUserTemplate').val() || DEFAULT_PUBLIC_CHANNEL_USER_TEMPLATE);
 }
