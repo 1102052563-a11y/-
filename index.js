@@ -1113,7 +1113,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   parallelWorldPresetActive: '',
   publicChannelEnabled: false,
   publicChannelAutoTrigger: false,
-  publicChannelAutoEvery: 1,
+  publicChannelAutoEvery: 3,
   publicChannelInjectContext: false,
   publicChannelReadFloors: 5,
   publicChannelMaxMessages: 40,
@@ -3161,31 +3161,6 @@ function buildParallelWorldContextInjection() {
 
   if (parts.length === 0) return '';
   return `<!-- SG_PARALLEL_WORLD -->${parts.join(' ')}<!-- /SG_PARALLEL_WORLD -->`;
-}
-
-// Override to align public channel auto-run semantics with structured entries:
-// trigger on exact assistant-floor cadence and only once per processed floor.
-async function maybeAutoRunPublicChannel() {
-  const s = ensureSettings();
-  if (!s.enabled) return;
-  if (!s.publicChannelEnabled || !s.publicChannelAutoTrigger) return;
-
-  const ctx = SillyTavern.getContext();
-  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-  const floorNow = computeFloorCount(chat, 'assistant');
-  if (floorNow <= 0) return;
-
-  const every = clampInt(s.publicChannelAutoEvery, 1, 50, 1);
-  if (floorNow % every !== 0) return;
-
-  const pcData = getPublicChannelData();
-  const last = Number(pcData.lastRunFloor || 0);
-  if (floorNow <= last) return;
-
-  setPublicChannelStatus('姝ｅ湪鐢熸垚鍏叡棰戦亾...', 'warn');
-  showToast('姝ｅ湪鐢熸垚鍏叡棰戦亾...', { kind: 'info', spinner: true, sticky: true });
-  console.log(`[StoryGuide] 鍏叡棰戦亾: 鑷姩瑙﹀彂 (妤煎眰 ${last} -> ${floorNow}, 闂撮殧 ${every})`);
-  await runPublicChannelSimulation();
 }
 
 function buildPublicChannelContextInjection() {
@@ -16660,7 +16635,7 @@ function buildModalHtml() {
                   </label>
                 </div>
                 <div class="sg-field">
-                  <label>每隔N条AI回复（1=每次正文结束）</label>
+                  <label>每隔N条AI回复</label>
                   <input id="sg_publicChannelAutoEvery" type="number" min="1" max="50">
                 </div>
               </div>
@@ -19016,7 +18991,7 @@ function pullSettingsToUi() {
   $('#sg_publicChannelEnabled').prop('checked', !!s.publicChannelEnabled);
   $('#sg_publicChannelAutoTrigger').prop('checked', !!s.publicChannelAutoTrigger);
   $('#sg_publicChannelInjectContext').prop('checked', s.publicChannelInjectContext !== false);
-  $('#sg_publicChannelAutoEvery').val(s.publicChannelAutoEvery || 1);
+  $('#sg_publicChannelAutoEvery').val(s.publicChannelAutoEvery || 3);
   $('#sg_publicChannelReadFloors').val(s.publicChannelReadFloors || 5);
   $('#sg_publicChannelBatchSize').val(s.publicChannelBatchSize || DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
   $('#sg_publicChannelHistoryLimit').val(s.publicChannelHistoryLimit || DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT);
@@ -19721,7 +19696,7 @@ function pullUiToSettings() {
   s.publicChannelEnabled = $('#sg_publicChannelEnabled').is(':checked');
   s.publicChannelAutoTrigger = $('#sg_publicChannelAutoTrigger').is(':checked');
   s.publicChannelInjectContext = $('#sg_publicChannelInjectContext').is(':checked');
-  s.publicChannelAutoEvery = clampInt($('#sg_publicChannelAutoEvery').val(), 1, 50, s.publicChannelAutoEvery || 1);
+  s.publicChannelAutoEvery = clampInt($('#sg_publicChannelAutoEvery').val(), 1, 50, s.publicChannelAutoEvery || 3);
   s.publicChannelReadFloors = clampInt($('#sg_publicChannelReadFloors').val(), 1, 50, s.publicChannelReadFloors || 5);
   s.publicChannelBatchSize = clampInt($('#sg_publicChannelBatchSize').val(), 1, 50, s.publicChannelBatchSize || DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
   s.publicChannelHistoryLimit = clampInt($('#sg_publicChannelHistoryLimit').val(), 20, 500, s.publicChannelHistoryLimit || DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT);
@@ -19851,12 +19826,11 @@ function setupEventListeners() {
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
     ensureBlueIndexLive(true).catch(() => void 0);
 
-      eventSource.on(event_types.CHAT_CHANGED, async () => {
-        inlineCache.clear();
-        scheduleReapplyAll('chat_changed');
-        ensureLaunchEntrances();
-        ensureChatActionButtons();
-        ensureBlueIndexLive(true).catch(() => void 0);
+    eventSource.on(event_types.CHAT_CHANGED, async () => {
+      inlineCache.clear();
+      scheduleReapplyAll('chat_changed');
+      ensureChatActionButtons();
+      ensureBlueIndexLive(true).catch(() => void 0);
 
       // 切换聊天时，初始化结构化条目进度，避免自动触发已有历史的总结
       try {
@@ -21248,155 +21222,6 @@ function injectFixedInputButton() {
   }
 }
 
-// Override icon rendering with ASCII labels to avoid mojibake hiding the entry button.
-function createTopbarButton() {
-  if (document.getElementById('sg_topbar_btn')) return;
-  const container = findTopbarContainer();
-  const btn = document.createElement('button');
-  btn.id = 'sg_topbar_btn';
-  btn.type = 'button';
-  btn.className = 'sg-topbar-btn';
-  btn.title = 'StoryGuide';
-  btn.innerHTML = '<span class="sg-topbar-icon">SG</span>';
-  btn.addEventListener('click', () => openModal());
-
-  if (container) {
-    const sample = container.querySelector('button');
-    if (sample && sample.className) btn.className = sample.className + ' sg-topbar-btn';
-    container.appendChild(btn);
-  } else {
-    btn.className += ' sg-topbar-fallback';
-    document.body.appendChild(btn);
-  }
-}
-
-function createFloatingButton() {
-  if (document.getElementById('sg_floating_btn')) return;
-
-  const btn = document.createElement('div');
-  btn.id = 'sg_floating_btn';
-  btn.className = 'sg-floating-btn';
-  btn.textContent = 'SG';
-  btn.title = 'StoryGuide';
-  btn.style.touchAction = 'none';
-
-  document.body.appendChild(btn);
-
-  loadBtnPos();
-  if (sgBtnPos) {
-    const w = 50;
-    const h = 50;
-    const clamped = clampToViewport(Number(sgBtnPos.left) || 0, Number(sgBtnPos.top) || 0, w, h);
-    btn.style.left = `${Math.round(clamped.left)}px`;
-    btn.style.top = `${Math.round(clamped.top)}px`;
-    btn.style.bottom = 'auto';
-    btn.style.right = 'auto';
-  }
-
-  let dragging = false;
-  let moved = false;
-  let startX = 0;
-  let startY = 0;
-  let startLeft = 0;
-  let startTop = 0;
-
-  if (isMobilePortrait()) {
-    btn.addEventListener('click', () => {
-      toggleFloatingPanel();
-    });
-    return;
-  }
-
-  const onDown = (ev) => {
-    dragging = true;
-    moved = false;
-    startX = ev.clientX;
-    startY = ev.clientY;
-
-    const rect = btn.getBoundingClientRect();
-    startLeft = rect.left;
-    startTop = rect.top;
-
-    btn.style.transition = 'none';
-    btn.setPointerCapture(ev.pointerId);
-  };
-
-  const onMove = (ev) => {
-    if (!dragging) return;
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
-
-    if (!moved && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
-      moved = true;
-      btn.style.bottom = 'auto';
-      btn.style.right = 'auto';
-    }
-
-    if (moved) {
-      const newLeft = startLeft + dx;
-      const newTop = startTop + dy;
-      const w = btn.offsetWidth;
-      const h = btn.offsetHeight;
-      const clamped = clampToViewport(newLeft, newTop, w, h);
-      btn.style.left = `${Math.round(clamped.left)}px`;
-      btn.style.top = `${Math.round(clamped.top)}px`;
-    }
-  };
-
-  const onUp = (ev) => {
-    if (!dragging) return;
-    dragging = false;
-    btn.releasePointerCapture(ev.pointerId);
-    btn.style.transition = '';
-
-    if (moved) {
-      const left = parseInt(btn.style.left || '0', 10);
-      const top = parseInt(btn.style.top || '0', 10);
-      saveBtnPos(left, top);
-    }
-  };
-
-  btn.addEventListener('pointerdown', onDown);
-  btn.addEventListener('pointermove', onMove);
-  btn.addEventListener('pointerup', onUp);
-  btn.addEventListener('pointercancel', onUp);
-  btn.addEventListener('click', (e) => {
-    if (moved) {
-      e.stopPropagation();
-      e.preventDefault();
-      return;
-    }
-    toggleFloatingPanel();
-  });
-}
-
-let sgLaunchGuardInstalled = false;
-function ensureLaunchEntrances() {
-  try { createTopbarButton(); } catch (e) { console.warn('[StoryGuide] createTopbarButton failed:', e); }
-  try { createFloatingButton(); } catch (e) { console.warn('[StoryGuide] createFloatingButton failed:', e); }
-  try { injectFixedInputButton(); } catch (e) { console.warn('[StoryGuide] injectFixedInputButton failed:', e); }
-}
-
-function installLaunchEntranceGuard() {
-  if (sgLaunchGuardInstalled) return;
-  sgLaunchGuardInstalled = true;
-
-  ensureLaunchEntrances();
-  setTimeout(() => ensureLaunchEntrances(), 300);
-  setTimeout(() => ensureLaunchEntrances(), 1200);
-  setTimeout(() => ensureLaunchEntrances(), 3000);
-
-  const observer = new MutationObserver(() => {
-    if (!document.getElementById('sg_topbar_btn') || !document.getElementById('sg_floating_btn') || !document.getElementById('sg_fixed_input_btn')) {
-      ensureLaunchEntrances();
-    }
-  });
-
-  if (document.body) {
-    observer.observe(document.body, { childList: true, subtree: true });
-  }
-}
-
 function init() {
   ensureSettings();
   bindMapEventPanelHandler();
@@ -21407,13 +21232,16 @@ function init() {
 
   eventSource.on(event_types.APP_READY, () => {
     // 不再在顶栏显示📘按钮（避免占位/重复入口）
+    const oldBtn = document.getElementById('sg_topbar_btn');
+    if (oldBtn) oldBtn.remove();
+
     injectMinimalSettingsPanel();
     ensureChatActionButtons();
     installCardZoomDelegation();
     installQuickOptionsClickHandler();
-      ensureLaunchEntrances();
-      installLaunchEntranceGuard();
-      installRollPreSendHook();
+    createFloatingButton();
+    injectFixedInputButton();
+    installRollPreSendHook();
 
     // 浮动面板图像点击放大（使用 document 级别事件委托确保动态元素可响应）
     $(document).on('click', '#sg_floating_panel .sg-image-zoom, #sg_floating_panel .sg-floating-image', (e) => {
