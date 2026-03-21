@@ -21247,6 +21247,128 @@ function injectFixedInputButton() {
   }
 }
 
+// Override icon rendering with ASCII labels to avoid mojibake hiding the entry button.
+function createTopbarButton() {
+  if (document.getElementById('sg_topbar_btn')) return;
+  const container = findTopbarContainer();
+  const btn = document.createElement('button');
+  btn.id = 'sg_topbar_btn';
+  btn.type = 'button';
+  btn.className = 'sg-topbar-btn';
+  btn.title = 'StoryGuide';
+  btn.innerHTML = '<span class="sg-topbar-icon">SG</span>';
+  btn.addEventListener('click', () => openModal());
+
+  if (container) {
+    const sample = container.querySelector('button');
+    if (sample && sample.className) btn.className = sample.className + ' sg-topbar-btn';
+    container.appendChild(btn);
+  } else {
+    btn.className += ' sg-topbar-fallback';
+    document.body.appendChild(btn);
+  }
+}
+
+function createFloatingButton() {
+  if (document.getElementById('sg_floating_btn')) return;
+
+  const btn = document.createElement('div');
+  btn.id = 'sg_floating_btn';
+  btn.className = 'sg-floating-btn';
+  btn.textContent = 'SG';
+  btn.title = 'StoryGuide';
+  btn.style.touchAction = 'none';
+
+  document.body.appendChild(btn);
+
+  loadBtnPos();
+  if (sgBtnPos) {
+    const w = 50;
+    const h = 50;
+    const clamped = clampToViewport(Number(sgBtnPos.left) || 0, Number(sgBtnPos.top) || 0, w, h);
+    btn.style.left = `${Math.round(clamped.left)}px`;
+    btn.style.top = `${Math.round(clamped.top)}px`;
+    btn.style.bottom = 'auto';
+    btn.style.right = 'auto';
+  }
+
+  let dragging = false;
+  let moved = false;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+
+  if (isMobilePortrait()) {
+    btn.addEventListener('click', () => {
+      toggleFloatingPanel();
+    });
+    return;
+  }
+
+  const onDown = (ev) => {
+    dragging = true;
+    moved = false;
+    startX = ev.clientX;
+    startY = ev.clientY;
+
+    const rect = btn.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+
+    btn.style.transition = 'none';
+    btn.setPointerCapture(ev.pointerId);
+  };
+
+  const onMove = (ev) => {
+    if (!dragging) return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+
+    if (!moved && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      moved = true;
+      btn.style.bottom = 'auto';
+      btn.style.right = 'auto';
+    }
+
+    if (moved) {
+      const newLeft = startLeft + dx;
+      const newTop = startTop + dy;
+      const w = btn.offsetWidth;
+      const h = btn.offsetHeight;
+      const clamped = clampToViewport(newLeft, newTop, w, h);
+      btn.style.left = `${Math.round(clamped.left)}px`;
+      btn.style.top = `${Math.round(clamped.top)}px`;
+    }
+  };
+
+  const onUp = (ev) => {
+    if (!dragging) return;
+    dragging = false;
+    btn.releasePointerCapture(ev.pointerId);
+    btn.style.transition = '';
+
+    if (moved) {
+      const left = parseInt(btn.style.left || '0', 10);
+      const top = parseInt(btn.style.top || '0', 10);
+      saveBtnPos(left, top);
+    }
+  };
+
+  btn.addEventListener('pointerdown', onDown);
+  btn.addEventListener('pointermove', onMove);
+  btn.addEventListener('pointerup', onUp);
+  btn.addEventListener('pointercancel', onUp);
+  btn.addEventListener('click', (e) => {
+    if (moved) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    toggleFloatingPanel();
+  });
+}
+
 function init() {
   ensureSettings();
   bindMapEventPanelHandler();
@@ -21257,13 +21379,11 @@ function init() {
 
   eventSource.on(event_types.APP_READY, () => {
     // 不再在顶栏显示📘按钮（避免占位/重复入口）
-    const oldBtn = document.getElementById('sg_topbar_btn');
-    if (oldBtn) oldBtn.remove();
-
     injectMinimalSettingsPanel();
     ensureChatActionButtons();
     installCardZoomDelegation();
     installQuickOptionsClickHandler();
+    createTopbarButton();
     createFloatingButton();
     injectFixedInputButton();
     installRollPreSendHook();
