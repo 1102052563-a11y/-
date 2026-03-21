@@ -444,7 +444,7 @@ const DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT = `你要模拟“无限流/契约者
 - 不要把所有消息都写得特别有用，允许存在 1 条价值一般但有氛围感的消息
 
 【输出原则】
-- 只生成 2~5 条新消息，宁少勿滥
+- 消息数量以系统额外要求为准
 - 每条消息都要像真实频道发言，短、碎、直接
 - 同一轮消息之间可以互相回应，但不要全部串成完整对话
 - 尽量让频道呈现“世界在运转”的感觉`;
@@ -488,7 +488,7 @@ const PUBLIC_CHANNEL_JSON_REQUIREMENT = `输出要求：
     }
   ]
 }
-- messages 数量为 2~5 条。
+- messages 数量必须严格符合系统额外要求。
 - importance 为 1~5，数值越高代表越值得让主角注意。
 - type 尽量覆盖不同类别，不要整轮全是同一种。
 - text 必须像频道发言，不要写成叙述句或旁白。
@@ -514,6 +514,9 @@ const PUBLIC_CHANNEL_STYLE_PROMPTS = Object.freeze({
 - 吐槽和乐子人比例可提高到约 45%~60%
 - 仍然要夹杂真实可用的信息、交易和警告，否则频道会失真`,
 });
+
+const DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE = 20;
+const DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT = 100;
 
 const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。
 对于【已知条目】（已出现在已知列表中）：你只需要输出有变化或新增的字段，未变内容无需输出。对于【新条目】：必须输出完整字段。
@@ -1114,6 +1117,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   publicChannelInjectContext: false,
   publicChannelReadFloors: 5,
   publicChannelMaxMessages: 40,
+  publicChannelBatchSize: DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE,
+  publicChannelHistoryLimit: DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT,
   publicChannelStyle: 'funny',
   publicChannelProvider: 'st',
   publicChannelTemperature: 0.9,
@@ -1124,6 +1129,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   publicChannelCustomMaxTokens: 2048,
   publicChannelCustomTopP: 0.95,
   publicChannelCustomStream: false,
+  publicChannelWriteToWorldbook: true,
+  publicChannelWorldInfoFile: '',
+  publicChannelBlueWorldInfoFile: '',
+  publicChannelWorldInfoComment: '[mvu_plot]公共频道',
   publicChannelSystemPrompt: DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT,
   publicChannelUserTemplate: DEFAULT_PUBLIC_CHANNEL_USER_TEMPLATE,
 
@@ -2142,6 +2151,7 @@ function getDefaultPublicChannelData() {
     summary: '',
     roster: [],     // [{ name, contractId, faction, persona }]
     messages: [],   // [{ id, ts, time, speaker, contractId, faction, tone, type, text, importance, simRunId }]
+    lastBatchRunId: 0,
     lastRunFloor: 0,
     runCount: 0,
   };
@@ -2489,9 +2499,85 @@ function buildPublicChannelPromptMessages(snapshotText, worldClock, channelHisto
   });
 
   return [
-    { role: 'system', content: sysTpl + '\n\n' + stylePrompt + '\n\n' + PUBLIC_CHANNEL_JSON_REQUIREMENT },
+    { role: 'system', content: sysTpl + '\n\n' + stylePrompt + '\n\n' + buildPublicChannelBatchInstruction() + '\n\n' + PUBLIC_CHANNEL_JSON_REQUIREMENT },
     { role: 'user', content: userContent },
   ];
+}
+
+function buildPublicChannelBatchInstruction() {
+  const s = ensureSettings();
+  const batchSize = clampInt(s.publicChannelBatchSize, 1, 50, DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
+  return [
+    `【硬性生成要求】`,
+    `- 本轮必须生成恰好 ${batchSize} 条 messages，不多不少。`,
+    `- 本轮消息应体现公共频道的连续性。若历史里出现某条情报、争议、谣言或骂战，本轮允许出现证实、反驳、补充、隔空互喷、围观起哄。`,
+    `- 不要把 20 条都写成独立无关短句，至少保留 4~8 条与历史消息或同轮其他消息形成承接关系。`,
+    `- 允许出现同一说话者在本轮里多次发言，但不要过密刷屏。`,
+  ].join('\n');
+}
+
+function buildPublicChannelWorldbookContent(pcData, runId) {
+  const arr = (Array.isArray(pcData?.messages) ? pcData.messages : []).filter(m => Number(m.simRunId || 0) === Number(runId || 0));
+  const lines = ['[公共频道]', `世界时间: ${String(pcData?.worldClock || '').trim() || '未知时间'}`];
+  if (pcData?.summary) lines.push(`频道风向: ${String(pcData.summary).trim()}`);
+  lines.push('');
+  for (const msg of arr) {
+    const speaker = String(msg.speaker || '匿名').trim();
+    const contractId = String(msg.contractId || '').trim();
+    const faction = String(msg.faction || '').trim();
+    const tone = String(msg.tone || '').trim();
+    const type = String(msg.type || '').trim();
+    const tags = [contractId, faction, tone, type].filter(Boolean).join(' / ');
+    const head = `[${String(msg.time || '').trim() || '未知时间'}] ${speaker}${tags ? ` (${tags})` : ''}`;
+    lines.push(`${head}`);
+    lines.push(`- ${String(msg.text || '').trim()}`);
+  }
+  return lines.join('\n');
+}
+
+async function writePublicChannelWorldbookEntry(pcData, settings) {
+  const s = settings || ensureSettings();
+  if (!s.publicChannelWriteToWorldbook) return;
+
+  const runId = Number(pcData?.lastBatchRunId || 0);
+  if (!runId) return;
+  const content = buildPublicChannelWorldbookContent(pcData, runId);
+  if (!content.trim()) return;
+
+  const comment = ensureMvuPlotPrefix(String(s.publicChannelWorldInfoComment || '公共频道').trim() || '公共频道');
+  const keys = ['公共频道', '__SG_PUBLIC_CHANNEL__'];
+
+  try {
+    const greenFile = normalizeWorldInfoFileName(String(s.summaryWorldInfoFile || '').trim());
+    if (greenFile) {
+      await writeWorldInfoEntryDirect({
+        file: greenFile,
+        comment,
+        content,
+        keys,
+        constant: 1,
+        searchKey: '__SG_PUBLIC_CHANNEL__',
+      });
+    }
+  } catch (e) {
+    console.warn('[StoryGuide] 写入公共频道绿灯世界书失败:', e);
+  }
+
+  try {
+    const blueFile = normalizeWorldInfoFileName(String(s.summaryBlueWorldInfoFile || '').trim());
+    if (blueFile) {
+      await writeWorldInfoEntryDirect({
+        file: blueFile,
+        comment,
+        content,
+        keys,
+        constant: 1,
+        searchKey: '__SG_PUBLIC_CHANNEL__',
+      });
+    }
+  } catch (e) {
+    console.warn('[StoryGuide] 写入公共频道蓝灯世界书失败:', e);
+  }
 }
 
 function buildPublicChannelHistoryText(pcData, limit = 8) {
@@ -2523,7 +2609,7 @@ async function runPublicChannelSimulation() {
     const extractedTime = extractTimeFromChat(chatContext);
     if (extractedTime) pcData.worldClock = extractedTime;
     const worldClock = pcData.worldClock || getParallelWorldData().worldClock || s.parallelWorldClock || '第1天';
-    const historyText = buildPublicChannelHistoryText(pcData, 8);
+    const historyText = buildPublicChannelHistoryText(pcData, 20);
     const messages = buildPublicChannelPromptMessages(chatContext, worldClock, historyText);
 
     let responseText = '';
@@ -2565,9 +2651,16 @@ async function runPublicChannelSimulation() {
     }
     pcData.roster = Array.from(rosterMap.values()).filter(x => x && x.name);
 
+    const batchSize = clampInt(s.publicChannelBatchSize, 1, 50, DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
+    if (parsed.messages.length < batchSize) {
+      setPublicChannelStatus(`公共频道结果不足 ${batchSize} 条，已拒绝写入`, 'err');
+      hideToast();
+      return false;
+    }
+
     const simRunId = Date.now();
     const nowTs = Date.now();
-    for (let i = 0; i < parsed.messages.length; i++) {
+    for (let i = 0; i < parsed.messages.length && i < batchSize; i++) {
       const item = parsed.messages[i];
       const text = String(item?.text || '').trim();
       const speaker = String(item?.speaker || '').trim();
@@ -2587,9 +2680,11 @@ async function runPublicChannelSimulation() {
       });
     }
 
-    const maxMessages = clampInt(s.publicChannelMaxMessages, 10, 200, 40);
-    if (pcData.messages.length > maxMessages) {
-      pcData.messages = pcData.messages.slice(-maxMessages);
+    pcData.lastBatchRunId = simRunId;
+
+    const historyLimit = clampInt(s.publicChannelHistoryLimit, 20, 500, DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT);
+    if (pcData.messages.length > historyLimit) {
+      pcData.messages = pcData.messages.slice(-historyLimit);
     }
 
     pcData.lastRunFloor = computeFloorCount(
@@ -2599,8 +2694,10 @@ async function runPublicChannelSimulation() {
     pcData.runCount = Number(pcData.runCount || 0) + 1;
 
     await setPublicChannelData(pcData);
+    await writePublicChannelWorldbookEntry(pcData, s);
     renderPublicChannelLog(pcData);
-    setPublicChannelStatus(`已生成 ${parsed.messages.length} 条公共频道消息`, 'ok');
+    const writtenCount = pcData.messages.filter(m => Number(m.simRunId || 0) === simRunId).length;
+    setPublicChannelStatus(`已生成 ${writtenCount} 条公共频道消息`, 'ok');
     hideToast();
     return true;
   } catch (e) {
@@ -3094,7 +3191,13 @@ function renderPublicChannelLog(pcDataOverride) {
   if (!$container.length) return;
 
   const pcData = pcDataOverride || getPublicChannelData();
-  const messages = Array.isArray(pcData.messages) ? pcData.messages.slice(-20).reverse() : [];
+  const s = ensureSettings();
+  const lastBatchRunId = Number(pcData.lastBatchRunId || 0);
+  const batchSize = clampInt(s.publicChannelBatchSize, 1, 50, DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
+  const messages = (Array.isArray(pcData.messages) ? pcData.messages : [])
+    .filter(m => !lastBatchRunId || Number(m.simRunId || 0) === lastBatchRunId)
+    .slice(-batchSize)
+    .reverse();
   if (!messages.length) {
     $container.html('<div class="sg-hint">暂无公共频道记录。点击“立即模拟”开始生成。</div>');
     return;
@@ -16543,8 +16646,19 @@ function buildModalHtml() {
                   <input id="sg_publicChannelReadFloors" type="number" min="1" max="50">
                 </div>
                 <div class="sg-field">
-                  <label>最大缓存消息数</label>
-                  <input id="sg_publicChannelMaxMessages" type="number" min="10" max="200">
+                  <label>每轮生成条数</label>
+                  <input id="sg_publicChannelBatchSize" type="number" min="1" max="50">
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>后台保留历史条数</label>
+                  <input id="sg_publicChannelHistoryLimit" type="number" min="20" max="500">
+                </div>
+                <div class="sg-field">
+                  <label>面板只显示</label>
+                  <input type="text" value="本轮生成消息" disabled>
                 </div>
               </div>
 
@@ -16563,6 +16677,18 @@ function buildModalHtml() {
                 <button class="menu_button sg-btn" id="sg_publicChannelClear">清空频道记录</button>
               </div>
               <div class="sg-status" id="sg_publicChannelStatus"></div>
+            </div>
+
+            <div class="sg-card sg-subcard">
+              <div class="sg-card-title">世界书写回</div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_publicChannelWriteToWorldbook">写入蓝绿世界书</label>
+              </div>
+              <div class="sg-field">
+                <label>频道消息书条目名</label>
+                <input id="sg_publicChannelWorldInfoComment" type="text" placeholder="[mvu_plot]公共频道">
+              </div>
+              <div class="sg-hint">蓝绿世界书文件跟随“总结设置”中的绑定；公共频道只覆写本轮生成消息到相同目标文件。</div>
             </div>
 
             <div class="sg-card sg-subcard">
@@ -18369,6 +18495,7 @@ function setupParallelWorldPage() {
     const pcData = getPublicChannelData();
     pcData.messages = [];
     pcData.summary = '';
+    pcData.lastBatchRunId = 0;
     await setPublicChannelData(pcData);
     renderPublicChannelLog(pcData);
     setPublicChannelStatus('公共频道记录已清空', 'ok');
@@ -18392,12 +18519,13 @@ function setupParallelWorldPage() {
   $('#sg_parallelWorldCustomModel').on('change', autoSave);
   $('#sg_parallelWorldSystemPrompt, #sg_parallelWorldUserTemplate').on('change', autoSave);
   $('#sg_publicChannelEnabled, #sg_publicChannelAutoTrigger, #sg_publicChannelInjectContext').on('change', autoSave);
-  $('#sg_publicChannelAutoEvery, #sg_publicChannelReadFloors, #sg_publicChannelMaxMessages').on('change', autoSave);
+  $('#sg_publicChannelAutoEvery, #sg_publicChannelReadFloors, #sg_publicChannelBatchSize, #sg_publicChannelHistoryLimit').on('change', autoSave);
   $('#sg_publicChannelStyle').on('change', autoSave);
   $('#sg_publicChannelProvider, #sg_publicChannelCustomStream').on('change', autoSave);
   $('#sg_publicChannelTemperature, #sg_publicChannelCustomMaxTokens, #sg_publicChannelCustomTopP').on('change', autoSave);
   $('#sg_publicChannelCustomEndpoint, #sg_publicChannelCustomApiKey').on('change', autoSave);
   $('#sg_publicChannelCustomModel').on('change', autoSave);
+  $('#sg_publicChannelWriteToWorldbook, #sg_publicChannelWorldInfoComment').on('change input', autoSave);
   $('#sg_publicChannelSystemPrompt, #sg_publicChannelUserTemplate').on('change', autoSave);
 }
 
@@ -18865,7 +18993,8 @@ function pullSettingsToUi() {
   $('#sg_publicChannelInjectContext').prop('checked', s.publicChannelInjectContext !== false);
   $('#sg_publicChannelAutoEvery').val(s.publicChannelAutoEvery || 3);
   $('#sg_publicChannelReadFloors').val(s.publicChannelReadFloors || 5);
-  $('#sg_publicChannelMaxMessages').val(s.publicChannelMaxMessages || 40);
+  $('#sg_publicChannelBatchSize').val(s.publicChannelBatchSize || DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
+  $('#sg_publicChannelHistoryLimit').val(s.publicChannelHistoryLimit || DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT);
   $('#sg_publicChannelStyle').val(String(s.publicChannelStyle || 'funny'));
   $('#sg_publicChannelProvider').val(String(s.publicChannelProvider || 'st'));
   $('#sg_publicChannelTemperature').val(s.publicChannelTemperature ?? 0.9);
@@ -18874,6 +19003,8 @@ function pullSettingsToUi() {
   $('#sg_publicChannelCustomMaxTokens').val(s.publicChannelCustomMaxTokens || 2048);
   $('#sg_publicChannelCustomTopP').val(s.publicChannelCustomTopP ?? 0.95);
   $('#sg_publicChannelCustomStream').prop('checked', !!s.publicChannelCustomStream);
+  $('#sg_publicChannelWriteToWorldbook').prop('checked', s.publicChannelWriteToWorldbook !== false);
+  $('#sg_publicChannelWorldInfoComment').val(String(s.publicChannelWorldInfoComment || '[mvu_plot]公共频道'));
   $('#sg_publicChannelSystemPrompt').val(String(s.publicChannelSystemPrompt || DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT));
   $('#sg_publicChannelUserTemplate').val(String(s.publicChannelUserTemplate || DEFAULT_PUBLIC_CHANNEL_USER_TEMPLATE));
   $('#sg_publicChannelCustomBlock').toggle(String(s.publicChannelProvider || 'st') === 'custom');
@@ -19567,7 +19698,8 @@ function pullUiToSettings() {
   s.publicChannelInjectContext = $('#sg_publicChannelInjectContext').is(':checked');
   s.publicChannelAutoEvery = clampInt($('#sg_publicChannelAutoEvery').val(), 1, 50, s.publicChannelAutoEvery || 3);
   s.publicChannelReadFloors = clampInt($('#sg_publicChannelReadFloors').val(), 1, 50, s.publicChannelReadFloors || 5);
-  s.publicChannelMaxMessages = clampInt($('#sg_publicChannelMaxMessages').val(), 10, 200, s.publicChannelMaxMessages || 40);
+  s.publicChannelBatchSize = clampInt($('#sg_publicChannelBatchSize').val(), 1, 50, s.publicChannelBatchSize || DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
+  s.publicChannelHistoryLimit = clampInt($('#sg_publicChannelHistoryLimit').val(), 20, 500, s.publicChannelHistoryLimit || DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT);
   s.publicChannelStyle = String($('#sg_publicChannelStyle').val() || s.publicChannelStyle || 'funny');
   s.publicChannelProvider = String($('#sg_publicChannelProvider').val() || s.publicChannelProvider || 'st');
   s.publicChannelTemperature = clampFloat($('#sg_publicChannelTemperature').val(), 0, 2, s.publicChannelTemperature ?? 0.9);
@@ -19577,6 +19709,8 @@ function pullUiToSettings() {
   s.publicChannelCustomMaxTokens = clampInt($('#sg_publicChannelCustomMaxTokens').val(), 128, 200000, s.publicChannelCustomMaxTokens || 2048);
   s.publicChannelCustomTopP = clampFloat($('#sg_publicChannelCustomTopP').val(), 0, 1, s.publicChannelCustomTopP ?? 0.95);
   s.publicChannelCustomStream = $('#sg_publicChannelCustomStream').is(':checked');
+  s.publicChannelWriteToWorldbook = $('#sg_publicChannelWriteToWorldbook').is(':checked');
+  s.publicChannelWorldInfoComment = String($('#sg_publicChannelWorldInfoComment').val() || '[mvu_plot]公共频道').trim() || '[mvu_plot]公共频道';
   s.publicChannelSystemPrompt = String($('#sg_publicChannelSystemPrompt').val() || DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT);
   s.publicChannelUserTemplate = String($('#sg_publicChannelUserTemplate').val() || DEFAULT_PUBLIC_CHANNEL_USER_TEMPLATE);
 }
