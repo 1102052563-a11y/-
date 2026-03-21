@@ -1549,7 +1549,7 @@ body.sg-zoom-lock {
   position: fixed;
   right: 22px;
   bottom: 22px;
-  width: min(430px, 92vw);
+  width: min(460px, 92vw);
   max-height: 78vh;
   background: rgba(18, 18, 22, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1771,9 +1771,11 @@ body.sg-image-preview-open {
 
 
 .sg-floating-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 14px;
+  row-gap: 10px;
   padding: 12px 16px;
   background: rgba(255, 255, 255, 0.05);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -1790,11 +1792,25 @@ body.sg-image-preview-open {
   font-size: 15px;
   font-weight: 600;
   color: rgba(220, 230, 240, 0.95);
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+  line-height: 1.15;
+  min-width: max-content;
+  padding-top: 2px;
 }
 
 .sg-floating-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-content: flex-start;
   gap: 8px;
+  row-gap: 10px;
+  width: min(232px, 100%);
+  margin-left: auto;
 }
 
 .sg-floating-action-btn {
@@ -2191,6 +2207,8 @@ body.sg-image-preview-open {
   .sg-floating-header {
     padding: 10px 12px;
     border-radius: 16px 16px 0 0;
+    column-gap: 12px;
+    row-gap: 8px;
   }
 
   .sg-floating-title {
@@ -2199,6 +2217,8 @@ body.sg-image-preview-open {
 
   .sg-floating-actions {
     gap: 6px;
+    row-gap: 8px;
+    width: min(246px, 100%);
   }
 
   .sg-floating-action-btn {
@@ -2276,10 +2296,18 @@ body.sg-image-preview-open {
 
   .sg-floating-header {
     padding: 8px 10px;
+    column-gap: 10px;
+    row-gap: 8px;
   }
 
   .sg-floating-title {
     font-size: 13px;
+  }
+
+  .sg-floating-actions {
+    gap: 6px;
+    row-gap: 8px;
+    width: min(222px, 100%);
   }
 
   .sg-floating-action-btn {
