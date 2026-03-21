@@ -1113,7 +1113,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   parallelWorldPresetActive: '',
   publicChannelEnabled: false,
   publicChannelAutoTrigger: false,
-  publicChannelAutoEvery: 3,
+  publicChannelAutoEvery: 1,
   publicChannelInjectContext: false,
   publicChannelReadFloors: 5,
   publicChannelMaxMessages: 40,
@@ -3161,6 +3161,31 @@ function buildParallelWorldContextInjection() {
 
   if (parts.length === 0) return '';
   return `<!-- SG_PARALLEL_WORLD -->${parts.join(' ')}<!-- /SG_PARALLEL_WORLD -->`;
+}
+
+// Override to align public channel auto-run semantics with structured entries:
+// trigger on exact assistant-floor cadence and only once per processed floor.
+async function maybeAutoRunPublicChannel() {
+  const s = ensureSettings();
+  if (!s.enabled) return;
+  if (!s.publicChannelEnabled || !s.publicChannelAutoTrigger) return;
+
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const floorNow = computeFloorCount(chat, 'assistant');
+  if (floorNow <= 0) return;
+
+  const every = clampInt(s.publicChannelAutoEvery, 1, 50, 1);
+  if (floorNow % every !== 0) return;
+
+  const pcData = getPublicChannelData();
+  const last = Number(pcData.lastRunFloor || 0);
+  if (floorNow <= last) return;
+
+  setPublicChannelStatus('姝ｅ湪鐢熸垚鍏叡棰戦亾...', 'warn');
+  showToast('姝ｅ湪鐢熸垚鍏叡棰戦亾...', { kind: 'info', spinner: true, sticky: true });
+  console.log(`[StoryGuide] 鍏叡棰戦亾: 鑷姩瑙﹀彂 (妤煎眰 ${last} -> ${floorNow}, 闂撮殧 ${every})`);
+  await runPublicChannelSimulation();
 }
 
 function buildPublicChannelContextInjection() {
@@ -16635,7 +16660,7 @@ function buildModalHtml() {
                   </label>
                 </div>
                 <div class="sg-field">
-                  <label>每隔N条AI回复</label>
+                  <label>每隔N条AI回复（1=每次正文结束）</label>
                   <input id="sg_publicChannelAutoEvery" type="number" min="1" max="50">
                 </div>
               </div>
@@ -18991,7 +19016,7 @@ function pullSettingsToUi() {
   $('#sg_publicChannelEnabled').prop('checked', !!s.publicChannelEnabled);
   $('#sg_publicChannelAutoTrigger').prop('checked', !!s.publicChannelAutoTrigger);
   $('#sg_publicChannelInjectContext').prop('checked', s.publicChannelInjectContext !== false);
-  $('#sg_publicChannelAutoEvery').val(s.publicChannelAutoEvery || 3);
+  $('#sg_publicChannelAutoEvery').val(s.publicChannelAutoEvery || 1);
   $('#sg_publicChannelReadFloors').val(s.publicChannelReadFloors || 5);
   $('#sg_publicChannelBatchSize').val(s.publicChannelBatchSize || DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
   $('#sg_publicChannelHistoryLimit').val(s.publicChannelHistoryLimit || DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT);
@@ -19696,7 +19721,7 @@ function pullUiToSettings() {
   s.publicChannelEnabled = $('#sg_publicChannelEnabled').is(':checked');
   s.publicChannelAutoTrigger = $('#sg_publicChannelAutoTrigger').is(':checked');
   s.publicChannelInjectContext = $('#sg_publicChannelInjectContext').is(':checked');
-  s.publicChannelAutoEvery = clampInt($('#sg_publicChannelAutoEvery').val(), 1, 50, s.publicChannelAutoEvery || 3);
+  s.publicChannelAutoEvery = clampInt($('#sg_publicChannelAutoEvery').val(), 1, 50, s.publicChannelAutoEvery || 1);
   s.publicChannelReadFloors = clampInt($('#sg_publicChannelReadFloors').val(), 1, 50, s.publicChannelReadFloors || 5);
   s.publicChannelBatchSize = clampInt($('#sg_publicChannelBatchSize').val(), 1, 50, s.publicChannelBatchSize || DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE);
   s.publicChannelHistoryLimit = clampInt($('#sg_publicChannelHistoryLimit').val(), 20, 500, s.publicChannelHistoryLimit || DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT);
