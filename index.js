@@ -595,6 +595,141 @@ const REINCARNATION_DAILY_STYLE_PROMPTS = Object.freeze({
 - 但仍要保留一部分真正有用的情报，不要完全变成灌水`,
 });
 
+const REINCARNATION_DAILY_DEFAULT_SYSTEM_PROMPT_V2 = `你是“轮回日报”的编辑部，本期任务是根据系统提供的参考素材，并结合当前轮回世界的整体氛围，编写一份像真实存在的日报/小报。
+
+【核心定位】
+这份日报不是“正文摘要”，也不是“公共频道整理”，而是一份由报社主动编辑、主动发散、主动补充的刊物。
+参考素材只是锚点，不是边界。你需要让日报同时具备：
+1. 一部分明显和最近正文/参考素材有关
+2. 一部分是报社基于当前世界局势、风向、黑市生态、契约者生态、街头流言、记者观察，自由延展出的内容
+
+【硬性要求】
+1. 整期日报必须属于同一家固定报社/发行机构
+2. 每条消息都要有：
+   - 标题
+   - 正文
+   - 记者名
+   - 记者身份
+   - 一句结尾评论/短评
+3. 全部消息总数不少于10条
+4. 允许自由命名栏目，但整体要像一期刊物，而不是流水账
+5. 记者名字可以自由生成，不需要固定名单
+6. 但记者的人设不能乱，必须从固定“记者原型”中派生出来，让读者一眼能看出这条是谁那一路的写法
+
+【记者原型】
+请只从下面这些原型中派生记者，不要写成毫无辨识度的路人记者。
+
+1. 冷面情报型
+- 偏务实、冷静、少废话
+- 擅长写局势、势力动向、交易风向、利益变化
+- 句子短，判断硬，像在划重点
+- 评论往往像结论或风险提示
+
+2. 毒舌评论型
+- 爱吐槽、爱阴阳怪气、爱拆台
+- 适合写街谈巷议、舆论、看热闹、翻车、荒唐事件
+- 哪怕写正经新闻，也容易夹一句嘲讽
+- 评论通常最有辨识度
+
+3. 战地现场型
+- 擅长写冲突、竞技场、任务现场、前线见闻
+- 有现场感、节奏快、画面感强
+- 语气干脆，偶尔带冷幽默
+- 评论像从死人堆里爬出来后说的话
+
+4. 黑市老油条型
+- 擅长交易、行情、资源价格、委托报酬、灰色买卖
+- 写法市侩、老练、懂门道
+- 喜欢从价格、回报、亏损、溢价角度看问题
+- 评论常带“值不值”“亏不亏”“这单干不干”的味道
+
+5. 菜鸟实习型
+- 负责边角料、委托、小道线索、街头听来的风声
+- 观察细，但没那么老练，语气偏谨慎
+- 偶尔显得紧张、青涩、过分认真
+- 评论常带“还要再核实”“感觉不太对劲”这种味道
+
+6. 神秘传闻型
+- 像匿名撰稿人、地下供稿者、半遮半掩的放风人
+- 爱留白、爱暗示、爱说半句藏半句
+- 适合写秘闻、旧账、脏活、不能摆上台面的东西
+- 评论有一种“我知道但我不全说”的感觉
+
+【记者使用规则】
+1. 同一期里可以有多个记者
+2. 记者名可以自由起，但要和其原型气质匹配
+3. 同一类记者即使换名字，文风也要稳定
+4. 如果用了化名/马甲，也要让读者从行文习惯里认出来这是哪一路记者
+5. 不要所有记者都写成一个腔调
+6. 每条消息最后的评论，要明显体现该记者原型的个性
+
+【内容构成要求】
+整期日报请主动混合两类内容：
+
+A. 锚点内容
+- 来自最近正文、平行事件、公共频道、任务、角色、势力、交易信息等参考源
+- 这些内容负责让日报和当前剧情保持联系
+- 至少要占整期内容的 30%~50%
+
+B. 自由发散内容
+- 基于当前世界观合理延展出来的街谈巷议、黑市闲话、市场波动、契约者传闻、编辑部猜测、后续影响、旁支事件、匿名投稿、报社自己打听到的风声
+- 不要求在正文里直接出现，但必须“像这个世界里真的会发生的事”
+- 至少要占整期内容的 50%~70%
+
+【自由发散原则】
+你可以自由创作，但必须满足以下条件：
+1. 与当前世界观一致
+2. 与参考素材的气氛、势力格局、危险等级、利益结构不冲突
+3. 不要硬编主角已经明确没做过的事
+4. 不要把自由发散写成玄幻上帝视角全知播报
+5. 更像报社自己拼凑、挖掘、推测、捕风捉影、追加采访后形成的刊物内容
+
+【允许重点发散的方向】
+- 黑市交易波动
+- 契约者之间的悬赏、委托、组队、暗中雇佣
+- 某片区域突然变危险后的街头反应
+- 某个势力近期动作带来的市场余波
+- 竞技场排名、战绩风声、榜单变动
+- 小人物视角的见闻
+- 乐子人围观、吐槽、唱衰、嘲讽
+- 编辑部锐评
+- 真假难辨但很有味道的流言
+- 记者根据现象做出的短判断
+
+【风格要求】
+- 像一份轮回世界里的刊物，而不是系统公告
+- 可以冷酷、辛辣、黑色幽默、标题党、务实、街头小报化
+- 内容要短促、密度高、可阅读
+- 同一期内部要有统一风格
+- 记者人设必须稳定，不能漂移
+
+【非常重要】
+不要把整期日报都写成“根据正文整理出的摘要”。
+你必须主动写出一部分不直接来自正文、但在当前世界中高度合理、像报社真实会刊登的内容。
+如果整期看起来只是剧情概括，说明你失败了。
+
+【额外要求】
+整期至少有4条消息不能直接从正文逐句对应出来，而应体现报社的自由延展、采访补白、市场观察或街头风声。
+
+【输出原则】
+只输出严格 JSON，不要 Markdown，不要代码块，不要解释，不要额外说明。`;
+
+const REINCARNATION_DAILY_DEFAULT_USER_TEMPLATE_V2 = `【世界时间】{{worldTime}}
+
+【最近正文（可为空）】
+{{recentContext}}
+
+【附加参考资料（可为空）】
+{{optionalSources}}
+
+请基于以上内容，编写一期“轮回日报”。
+要求：
+1. 不要只概括正文
+2. 必须同时包含“锚点内容”和“自由发散内容”
+3. 至少有4条消息体现报社自己的延展、观察、风闻或后续推测
+4. 每条消息都要有记者名、记者身份和末尾评论
+5. 整体像一份真实刊物，而不是剧情总结`;
+
 
 const PUBLIC_CHANNEL_STYLE_PROMPTS = Object.freeze({
   serious: `【公共频道风格】
@@ -1259,8 +1394,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   reincarnationDailyCustomStream: false,
   reincarnationDailyWriteToWorldbook: true,
   reincarnationDailyWorldInfoComment: '[mvu_plot]轮回日报',
-  reincarnationDailySystemPrompt: DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT,
-  reincarnationDailyUserTemplate: DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE,
+  reincarnationDailySystemPrompt: REINCARNATION_DAILY_DEFAULT_SYSTEM_PROMPT_V2,
+  reincarnationDailyUserTemplate: REINCARNATION_DAILY_DEFAULT_USER_TEMPLATE_V2,
   reincarnationDailyUseRecentContext: true,
   reincarnationDailyUseParallelWorld: false,
   reincarnationDailyUsePublicChannel: false,
@@ -2488,8 +2623,8 @@ async function buildReincarnationDailyOptionalSourcesText() {
 
 async function buildReincarnationDailyPromptMessages(snapshotText, worldClock) {
   const s = ensureSettings();
-  const sysTpl = String(s.reincarnationDailySystemPrompt || DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT);
-  const usrTpl = String(s.reincarnationDailyUserTemplate || DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE);
+  const sysTpl = String(s.reincarnationDailySystemPrompt || REINCARNATION_DAILY_DEFAULT_SYSTEM_PROMPT_V2);
+  const usrTpl = String(s.reincarnationDailyUserTemplate || REINCARNATION_DAILY_DEFAULT_USER_TEMPLATE_V2);
   const styleKey = String(s.reincarnationDailyStyle || 'clickbait').trim();
   const stylePrompt = String(REINCARNATION_DAILY_STYLE_PROMPTS[styleKey] || REINCARNATION_DAILY_STYLE_PROMPTS.clickbait);
   const optionalSources = await buildReincarnationDailyOptionalSourcesText();
@@ -17640,6 +17775,7 @@ function buildModalHtml() {
                 <label>User Template（支持 {{worldTime}} {{recentContext}} {{optionalSources}}）</label>
                 <textarea id="sg_reincarnationDailyUserTemplate" rows="4" spellcheck="false"></textarea>
               </div>
+              <button class="menu_button sg-btn" id="sg_reincarnationDailyResetPrompts" style="margin-top:6px;">恢复默认提示词</button>
             </div>
 
             <div class="sg-card">
@@ -19455,6 +19591,13 @@ function setupReincarnationDailyPage() {
     await refreshReincarnationDailyModels();
   });
 
+  $('#sg_reincarnationDailyResetPrompts').on('click', () => {
+    $('#sg_reincarnationDailySystemPrompt').val(REINCARNATION_DAILY_DEFAULT_SYSTEM_PROMPT_V2);
+    $('#sg_reincarnationDailyUserTemplate').val(REINCARNATION_DAILY_DEFAULT_USER_TEMPLATE_V2);
+    autoSave();
+    setReincarnationDailyStatus('已恢复默认提示词', 'ok');
+  });
+
   $('#sg_reincarnationDailyEnabled, #sg_reincarnationDailyAutoTrigger, #sg_reincarnationDailyInjectContext, #sg_reincarnationDailyWriteToWorldbook, #sg_reincarnationDailyUseRecentContext, #sg_reincarnationDailyUseParallelWorld, #sg_reincarnationDailyUsePublicChannel, #sg_reincarnationDailyUseCharacterEntries, #sg_reincarnationDailyUseFactionEntries, #sg_reincarnationDailyUseQuestEntries, #sg_reincarnationDailyUseInventoryEntries, #sg_reincarnationDailyCustomStream').on('change', autoSave);
   $('#sg_reincarnationDailyAutoEvery, #sg_reincarnationDailyReadFloors, #sg_reincarnationDailyHistoryLimit, #sg_reincarnationDailyMaxSections, #sg_reincarnationDailyMaxItemsPerSection, #sg_reincarnationDailyTemperature, #sg_reincarnationDailyCustomMaxTokens, #sg_reincarnationDailyCustomTopP, #sg_reincarnationDailyStyle, #sg_reincarnationDailyPublisher').on('change input', autoSave);
   $('#sg_reincarnationDailyProvider, #sg_reincarnationDailyCustomEndpoint, #sg_reincarnationDailyCustomApiKey, #sg_reincarnationDailyCustomModel').on('change', autoSave);
@@ -19979,8 +20122,8 @@ function pullSettingsToUi() {
   $('#sg_reincarnationDailyCustomStream').prop('checked', !!s.reincarnationDailyCustomStream);
   $('#sg_reincarnationDailyWriteToWorldbook').prop('checked', s.reincarnationDailyWriteToWorldbook !== false);
   $('#sg_reincarnationDailyWorldInfoComment').val(String(s.reincarnationDailyWorldInfoComment || '[mvu_plot]轮回日报'));
-  $('#sg_reincarnationDailySystemPrompt').val(String(s.reincarnationDailySystemPrompt || DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT));
-  $('#sg_reincarnationDailyUserTemplate').val(String(s.reincarnationDailyUserTemplate || DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE));
+  $('#sg_reincarnationDailySystemPrompt').val(String(s.reincarnationDailySystemPrompt || REINCARNATION_DAILY_DEFAULT_SYSTEM_PROMPT_V2));
+  $('#sg_reincarnationDailyUserTemplate').val(String(s.reincarnationDailyUserTemplate || REINCARNATION_DAILY_DEFAULT_USER_TEMPLATE_V2));
   $('#sg_reincarnationDailyUseRecentContext').prop('checked', s.reincarnationDailyUseRecentContext !== false);
   $('#sg_reincarnationDailyUseParallelWorld').prop('checked', !!s.reincarnationDailyUseParallelWorld);
   $('#sg_reincarnationDailyUsePublicChannel').prop('checked', !!s.reincarnationDailyUsePublicChannel);
@@ -20714,8 +20857,8 @@ function pullUiToSettings() {
   s.reincarnationDailyCustomStream = $('#sg_reincarnationDailyCustomStream').is(':checked');
   s.reincarnationDailyWriteToWorldbook = $('#sg_reincarnationDailyWriteToWorldbook').is(':checked');
   s.reincarnationDailyWorldInfoComment = String($('#sg_reincarnationDailyWorldInfoComment').val() || '[mvu_plot]轮回日报').trim() || '[mvu_plot]轮回日报';
-  s.reincarnationDailySystemPrompt = String($('#sg_reincarnationDailySystemPrompt').val() || DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT);
-  s.reincarnationDailyUserTemplate = String($('#sg_reincarnationDailyUserTemplate').val() || DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE);
+  s.reincarnationDailySystemPrompt = String($('#sg_reincarnationDailySystemPrompt').val() || REINCARNATION_DAILY_DEFAULT_SYSTEM_PROMPT_V2);
+  s.reincarnationDailyUserTemplate = String($('#sg_reincarnationDailyUserTemplate').val() || REINCARNATION_DAILY_DEFAULT_USER_TEMPLATE_V2);
   s.reincarnationDailyUseRecentContext = $('#sg_reincarnationDailyUseRecentContext').is(':checked');
   s.reincarnationDailyUseParallelWorld = $('#sg_reincarnationDailyUseParallelWorld').is(':checked');
   s.reincarnationDailyUsePublicChannel = $('#sg_reincarnationDailyUsePublicChannel').is(':checked');
