@@ -18558,6 +18558,23 @@ async function runParallelWorldSimulationFromFloating($btn) {
   }
 }
 
+async function runPublicChannelSimulationFromFloating($btn) {
+  const s = ensureSettings();
+  if (!s.publicChannelEnabled) {
+    setPublicChannelStatus('公共频道未启用', 'warn');
+    showToast('请先启用公共频道功能', { kind: 'warn', spinner: false, sticky: false, duration: 2200 });
+    return;
+  }
+
+  const $target = $btn && $btn.length ? $btn : $('#sg_floating_public_channel_update');
+  $target.prop('disabled', true);
+  try {
+    await runPublicChannelSimulation();
+  } finally {
+    $target.prop('disabled', false);
+  }
+}
+
 function pullSettingsToUi() {
   const s = ensureSettings();
 
@@ -20133,6 +20150,14 @@ function createFloatingPanel() {
   document.body.appendChild(panel);
   const floatingActions = panel.querySelector('.sg-floating-actions');
   const floatingSettingsBtn = panel.querySelector('#sg_floating_settings');
+  if (floatingActions && floatingSettingsBtn && !panel.querySelector('#sg_floating_public_channel_update')) {
+    const publicChannelBtn = document.createElement('button');
+    publicChannelBtn.className = 'sg-floating-action-btn';
+    publicChannelBtn.id = 'sg_floating_public_channel_update';
+    publicChannelBtn.title = '手动更新公共频道';
+    publicChannelBtn.textContent = '公';
+    floatingActions.insertBefore(publicChannelBtn, floatingSettingsBtn);
+  }
   if (floatingActions && floatingSettingsBtn && !panel.querySelector('#sg_floating_parallel_update')) {
     const parallelBtn = document.createElement('button');
     parallelBtn.className = 'sg-floating-action-btn';
@@ -20181,6 +20206,10 @@ function createFloatingPanel() {
 
   $('#sg_floating_show_sex').on('click', () => {
     showFloatingSexGuide();
+  });
+
+  $('#sg_floating_public_channel_update').on('click', async () => {
+    await runPublicChannelSimulationFromFloating($('#sg_floating_public_channel_update'));
   });
 
   $('#sg_floating_parallel_update').on('click', async () => {
