@@ -3690,13 +3690,13 @@ async function writeWorldInfoEntryDirect({ file, comment, content, keys, constan
     } catch { }
   }
 
-  // 2. 如果没找到，再尝试按 comment 查找 (兼容旧数据)
-  if (!uid && comment) {
-    try {
-      const findScript = `/findentry file=${qFile} field=comment ${qComment} | /setvar key=${uidVar}`;
-      const findResult = await execSlash(findScript);
-      uid = parseFindEntryUid(findResult);
-    } catch { }
+    // 2. 如果没找到，再尝试按 comment 查找 (仅用于没有唯一 searchKey 的旧逻辑，避免不同模块互相覆盖)
+    if (!uid && !searchKey && comment) {
+      try {
+        const findScript = `/findentry file=${qFile} field=comment ${qComment} | /setvar key=${uidVar}`;
+        const findResult = await execSlash(findScript);
+        uid = parseFindEntryUid(findResult);
+      } catch { }
   }
 
   if (uid) {
