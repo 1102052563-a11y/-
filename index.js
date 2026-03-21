@@ -2689,7 +2689,9 @@ async function runPublicChannelSimulation() {
 
     pcData.lastRunFloor = computeFloorCount(
       (typeof SillyTavern !== 'undefined' && SillyTavern?.getContext?.()?.chat) || [],
-      'assistant'
+      String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant'),
+      true,
+      true
     );
     pcData.runCount = Number(pcData.runCount || 0) + 1;
 
@@ -2874,7 +2876,9 @@ async function runParallelWorldSimulation() {
 
     pwData.lastRunFloor = computeFloorCount(
       (typeof SillyTavern !== 'undefined' && SillyTavern?.getContext?.()?.chat) || [],
-      'assistant'
+      String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant'),
+      true,
+      true
     );
     pwData.runCount = (pwData.runCount || 0) + 1;
 
@@ -3096,18 +3100,23 @@ async function maybeAutoRunParallelWorld() {
   if (!s.parallelWorldEnabled || !s.parallelWorldAutoTrigger) return;
 
   const chat = (typeof SillyTavern !== 'undefined' && SillyTavern?.getContext?.()?.chat) || [];
-  const currentFloor = computeFloorCount(chat, 'assistant');
+  const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+  const currentFloor = computeFloorCount(chat, mode, true, true);
   const pwData = getParallelWorldData();
-  const lastFloor = pwData.lastRunFloor || 0;
-  const every = Math.max(1, s.parallelWorldAutoEvery || 5);
+  const lastFloor = Number(pwData.lastRunFloor || 0);
+  const every = clampInt(s.parallelWorldAutoEvery, 1, 50, 5);
   const autoParallelHint = () => {
     setParallelWorldStatus('正在生成平行事件...', 'warn');
     showToast('正在生成平行事件...', { kind: 'info', spinner: true, sticky: true });
   };
 
-  if (currentFloor - lastFloor >= every) {
+  if (currentFloor <= 0) return;
+  if (currentFloor % every !== 0) return;
+  if (currentFloor <= lastFloor) return;
+
+  if (currentFloor > lastFloor) {
     autoParallelHint();
-    console.log(`[StoryGuide] 平行世界: 自动推演触发 (楼层 ${lastFloor} → ${currentFloor}, 间隔 ${every})`);
+    console.log(`[StoryGuide] 平行世界: 自动推演触发 (楼层 ${lastFloor} -> ${currentFloor}, 间隔 ${every})`);
     await runParallelWorldSimulation();
   }
 }
@@ -3117,17 +3126,20 @@ async function maybeAutoRunPublicChannel() {
   if (!s.publicChannelEnabled || !s.publicChannelAutoTrigger) return;
 
   const chat = (typeof SillyTavern !== 'undefined' && SillyTavern?.getContext?.()?.chat) || [];
-  const currentFloor = computeFloorCount(chat, 'assistant');
+  const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+  const currentFloor = computeFloorCount(chat, mode, true, true);
   const pcData = getPublicChannelData();
   const lastFloor = Number(pcData.lastRunFloor || 0);
-  const every = Math.max(1, s.publicChannelAutoEvery || 3);
+  const every = clampInt(s.publicChannelAutoEvery, 1, 50, 3);
 
-  if (currentFloor - lastFloor >= every) {
-    setPublicChannelStatus('正在生成公共频道...', 'warn');
-    showToast('正在生成公共频道...', { kind: 'info', spinner: true, sticky: true });
-    console.log(`[StoryGuide] 公共频道: 自动触发 (楼层 ${lastFloor} -> ${currentFloor}, 间隔 ${every})`);
-    await runPublicChannelSimulation();
-  }
+  if (currentFloor <= 0) return;
+  if (currentFloor % every !== 0) return;
+  if (currentFloor <= lastFloor) return;
+
+  setPublicChannelStatus('正在生成公共频道...', 'warn');
+  showToast('正在生成公共频道...', { kind: 'info', spinner: true, sticky: true });
+  console.log(`[StoryGuide] 公共频道: 自动触发 (楼层 ${lastFloor} -> ${currentFloor}, 间隔 ${every})`);
+  await runPublicChannelSimulation();
 }
 
 /**
@@ -19852,7 +19864,8 @@ function setupEventListeners() {
         if (s.parallelWorldEnabled && s.parallelWorldAutoTrigger) {
           const ctxNow = SillyTavern.getContext();
           const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
-          const floorNow = computeFloorCount(chatNow, 'assistant');
+          const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+          const floorNow = computeFloorCount(chatNow, mode, true, true);
           const pwData = getParallelWorldData();
           if (floorNow > 0 && !Number(pwData.lastRunFloor || 0)) {
             pwData.lastRunFloor = floorNow;
@@ -19863,7 +19876,8 @@ function setupEventListeners() {
         if (s.publicChannelEnabled && s.publicChannelAutoTrigger) {
           const ctxNow = SillyTavern.getContext();
           const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
-          const floorNow = computeFloorCount(chatNow, 'assistant');
+          const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+          const floorNow = computeFloorCount(chatNow, mode, true, true);
           const pcData = getPublicChannelData();
           if (floorNow > 0 && !Number(pcData.lastRunFloor || 0)) {
             pcData.lastRunFloor = floorNow;
