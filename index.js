@@ -494,6 +494,161 @@ const PUBLIC_CHANNEL_JSON_REQUIREMENT = `输出要求：
 - text 必须像频道发言，不要写成叙述句或旁白。
 - 如果 rosterUpdates 没有新增信息，可返回空数组。`;
 
+const DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT = `你是“轮回日报”的编辑部，本期任务是根据系统提供的参考素材，并结合当前轮回世界的气氛自由发散，整理出一份轮回世界里的日报/小报。
+【核心原则】
+1. 参考素材只是锚点，不是硬边界；你可以围绕它们自由发散，补出更完整的日报版面
+2. 如果最近正文、平行事件、公共频道、任务、角色、势力、物品等参考资料存在，应优先吸收其中的信息，但不要被它们束缚
+3. 允许自由发挥、归纳、锐评、补白、延展风闻、街头议论、黑市小道消息和记者个人观察，让日报更像真实刊物
+4. 这不是群聊记录，也不是流水账，要有“版面感”“栏目感”“编辑口吻”
+5. 不强制固定栏目；如果信息不足，可以只做 2~3 个栏目；如果信息丰富，可以扩展更多栏目
+6. 整期日报必须属于同一家固定报社/发行机构，但每条消息的记者可以不同
+7. 所有记者都必须来自系统提供的固定记者池；允许使用其马甲/别名，但文风和特点必须明显，让人一眼能认出来
+
+【允许的栏目方向】
+- 头版 / 本期焦点
+- 近期事件
+- 契约者委托 / 招募
+- 线索 / 悬赏 / 风闻
+- 交易版 / 黑市消息
+- 吐槽 / 街谈巷议 / 乐园锐评
+- 榜单 / 战绩播报 / 风云人物
+
+【风格要求】
+- 像一份轮回世界里的刊物，而不是系统公告
+- 可以冷酷、辛辣、阴阳怪气、黑色幽默，也可以偏情报简报
+- 内容要短促、密度高、可阅读
+- 同一期内部应保留一定统一风格
+- 每条消息都要像是由具体记者署名写出的短讯，带一点观察角度
+- 记者的人设要稳定，不能这一期像老手、下一期像完全不同的人
+- 可以出现“参考素材里没直接写明、但在当前世界里高度合理”的扩展消息
+- 允许报社自己补充风闻、旁证、后续猜测、市场反应、围观评价，但要保持世界观一致，不要胡乱跨世界乱编
+
+【输出原则】
+- 只输出严格 JSON，不要 Markdown，不要代码块，不要解释
+- sections 可以自由发挥，但必须可渲染、可阅读`;
+
+const DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE = `【世界时间】{{worldTime}}
+
+【最近正文】
+{{recentContext}}
+
+【附加参考资料】
+{{optionalSources}}
+
+【固定记者池】
+{{reporterRoster}}
+
+请基于以上内容，编写一期“轮回日报”。
+参考素材可以作为起点，但不要被它们束死；如果世界观允许，请像真实报社一样自然补充相关风闻、后续反应、市场余波、围观评论和记者观察。`;
+
+const REINCARNATION_DAILY_JSON_REQUIREMENT = `输出要求：
+- 只输出严格 JSON，不要 Markdown、不要代码块、不要任何额外说明
+- JSON 结构必须为：
+{
+  "worldTime": "更新后的世界时间",
+  "publisher": "固定报社/发行机构名称",
+  "issueTitle": "本期标题，如 轮回日报·第3期 / 血色晚报 / 黑市简讯",
+  "lead": "1~2句本期导语",
+  "tone": "本期整体风格，如 冷酷/辛辣/黑色幽默/情报化/八卦",
+  "sections": [
+    {
+      "title": "栏目标题",
+      "style": "news/gossip/trade/commission/clue/ranking/editorial/other",
+      "items": [
+        {
+          "title": "条目标题，可为空字符串",
+          "text": "条目正文，像报纸短讯/简报/小道消息",
+          "reporter": "记者名",
+          "reporterTitle": "记者身份，如 资深记者/实习记者/战地通讯员/特约撰稿人",
+          "comment": "该记者在消息末尾附上的一句评论/点评/吐槽",
+          "importance": 1
+        }
+      ]
+    }
+  ]
+}
+- sections 数量 2~6 个
+- 每个 section 的 items 数量 1~4 条
+- 全部 section 合计的 items 总数不少于 10 条
+- publisher 必须为同一家固定报社名，整期统一
+- 每条 item 都要带 reporter、reporterTitle、comment 三个字段
+- importance 为 1~5
+- 允许自由命名栏目，但整体要像一期刊物
+- 如果素材不足，减少栏目数量，不要硬凑`;
+
+const REINCARNATION_DAILY_STYLE_PROMPTS = Object.freeze({
+  practical: `【轮回日报风格】
+- 整体偏务实、冷静、信息导向
+- 标题不要太浮夸，优先保证信息密度和可读性
+- 吐槽和阴阳怪气可以有，但控制在少量点缀
+- 更像战地简报、情报汇编、黑市晨报`,
+  clickbait: `【轮回日报风格】
+- 整体偏标题党、小报、吸睛风格
+- 标题允许更抓眼球、更尖锐、更带情绪
+- 可以适度加入夸张修辞、阴阳怪气、看热闹语气
+- 但正文仍需建立在参考素材之上，不能完全胡编`,
+  serious: `【轮回日报风格】
+- 整体偏严肃公报、纪要、观察简报
+- 少玩梗，少八卦，优先突出事件、风险、利益、动向
+- 标题克制，正文简洁，像一份高风险世界里的内部刊物`,
+  gossip: `【轮回日报风格】
+- 整体偏街头小报、风闻合集、乐子人观察
+- 允许更多吐槽、揶揄、流言、围观口吻
+- 可以明显增强“街谈巷议”和“编辑部锐评”感
+- 但仍要保留一部分真正有用的情报，不要完全变成灌水`,
+});
+
+const DEFAULT_REINCARNATION_DAILY_REPORTERS = Object.freeze([
+  {
+    name: '魏缺口',
+    title: '资深调查记者',
+    aliases: ['老魏', '缺口', 'W.Q.K'],
+    beat: '黑市交易、灰色产业、势力内幕',
+    style: '句子短，判断狠，喜欢用“价高得离谱”“这事不干净”这类定性；哪怕换马甲也总会顺手补一刀',
+    signature: '习惯在结尾给出冷酷判断，像在给读者划重点',
+  },
+  {
+    name: '白荇',
+    title: '战地通讯员',
+    aliases: ['小白', '荇记者'],
+    beat: '前线冲突、任务现场、竞技场播报',
+    style: '画面感强，喜欢写现场惨状和胜负转折，说话利落，偶尔带一点压抑的冷幽默',
+    signature: '常用“现场比传闻更难看”“活下来的才有资格上头条”一类句式',
+  },
+  {
+    name: '沈刻薄',
+    title: '专栏评论员',
+    aliases: ['沈老师', '刻薄君'],
+    beat: '吐槽、锐评、街头风向、舆论观察',
+    style: '阴阳怪气，喜欢讥讽、拆台、补刀，评价味很重，但总能说到点子上',
+    signature: '哪怕写新闻也会忍不住夹一句嘲讽，读者一眼就能认出来',
+  },
+  {
+    name: '祁见习',
+    title: '实习记者',
+    aliases: ['小祁', 'Q实习', '祁同学'],
+    beat: '委托版、招募、小道线索、跑腿消息',
+    style: '信息收得杂，偶尔不够老练，但观察细，容易紧张，常写“我再去核实一下”这种尾句',
+    signature: '有点菜鸟气，但能挖到边角料，语气偏谨慎',
+  },
+  {
+    name: '顾十三',
+    title: '匿名特约撰稿人',
+    aliases: ['十三', '顾某', '第十三署名'],
+    beat: '传闻、秘闻、见不得光的委托和旧账',
+    style: '神神叨叨、半真半假，爱用留白和暗示，像总知道别人不该知道的东西',
+    signature: '经常故意说半句留半句，但细看会发现信息量很高',
+  },
+  {
+    name: '唐铁算盘',
+    title: '行情记者',
+    aliases: ['老唐', '算盘', 'TTS'],
+    beat: '价格、交易、收益、损耗、资源行情',
+    style: '报数字、算成本、比收益，写法像在记账，情绪少，但一开口就是利润和亏损',
+    signature: '句子里经常出现价格、折损、回本、溢价这些词',
+  },
+]);
+
 const PUBLIC_CHANNEL_STYLE_PROMPTS = Object.freeze({
   serious: `【公共频道风格】
 - 整体偏严肃、务实、紧绷
@@ -517,6 +672,7 @@ const PUBLIC_CHANNEL_STYLE_PROMPTS = Object.freeze({
 
 const DEFAULT_PUBLIC_CHANNEL_BATCH_SIZE = 20;
 const DEFAULT_PUBLIC_CHANNEL_HISTORY_LIMIT = 100;
+const DEFAULT_REINCARNATION_DAILY_HISTORY_LIMIT = 20;
 
 const STRUCTURED_ENTRIES_JSON_REQUIREMENT = `输出要求：只输出严格 JSON。
 对于【已知条目】（已出现在已知列表中）：你只需要输出有变化或新增的字段，未变内容无需输出。对于【新条目】：必须输出完整字段。
@@ -1135,6 +1291,37 @@ const DEFAULT_SETTINGS = Object.freeze({
   publicChannelWorldInfoComment: '[mvu_plot]公共频道',
   publicChannelSystemPrompt: DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT,
   publicChannelUserTemplate: DEFAULT_PUBLIC_CHANNEL_USER_TEMPLATE,
+  reincarnationDailyEnabled: false,
+  reincarnationDailyAutoTrigger: false,
+  reincarnationDailyAutoEvery: 6,
+  reincarnationDailyInjectContext: false,
+  reincarnationDailyReadFloors: 6,
+  reincarnationDailyMaxSections: 4,
+  reincarnationDailyMaxItemsPerSection: 3,
+  reincarnationDailyHistoryLimit: DEFAULT_REINCARNATION_DAILY_HISTORY_LIMIT,
+  reincarnationDailyStyle: 'clickbait',
+  reincarnationDailyPublisher: '轮回日报社',
+  reincarnationDailyReporterRosterJson: JSON.stringify(DEFAULT_REINCARNATION_DAILY_REPORTERS, null, 2),
+  reincarnationDailyProvider: 'custom',
+  reincarnationDailyTemperature: 0.95,
+  reincarnationDailyCustomEndpoint: '',
+  reincarnationDailyCustomApiKey: '',
+  reincarnationDailyCustomModel: 'gpt-4o-mini',
+  reincarnationDailyCustomModelsCache: [],
+  reincarnationDailyCustomMaxTokens: 4096,
+  reincarnationDailyCustomTopP: 0.95,
+  reincarnationDailyCustomStream: false,
+  reincarnationDailyWriteToWorldbook: true,
+  reincarnationDailyWorldInfoComment: '[mvu_plot]轮回日报',
+  reincarnationDailySystemPrompt: DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT,
+  reincarnationDailyUserTemplate: DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE,
+  reincarnationDailyUseRecentContext: true,
+  reincarnationDailyUseParallelWorld: false,
+  reincarnationDailyUsePublicChannel: false,
+  reincarnationDailyUseCharacterEntries: false,
+  reincarnationDailyUseFactionEntries: false,
+  reincarnationDailyUseQuestEntries: false,
+  reincarnationDailyUseInventoryEntries: false,
 
 });
 
@@ -1146,6 +1333,7 @@ const META_KEYS = Object.freeze({
   mapData: 'storyguide_map_data',
   parallelWorldData: 'storyguide_parallel_world_data',
   publicChannelData: 'storyguide_public_channel_data',
+  reincarnationDailyData: 'storyguide_reincarnation_daily_data',
 });
 
 const SG_SUMMARY_WI_FILE_KEY = 'storyguide_summary_worldinfo_file_v1';
@@ -2185,6 +2373,457 @@ function setPublicChannelStatus(text, kind = '') {
   $el.attr('class', 'sg-status' + (kind ? ` sg-status-${kind}` : ''));
 }
 
+function getDefaultReincarnationDailyData() {
+  return {
+    worldClock: '',
+    issues: [],
+    lastIssueNo: 0,
+    lastBatchRunId: 0,
+    lastRunFloor: 0,
+    runCount: 0,
+  };
+}
+
+function getReincarnationDailyData() {
+  const raw = String(getChatMetaValue(META_KEYS.reincarnationDailyData) || '').trim();
+  if (!raw) return getDefaultReincarnationDailyData();
+  try {
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return getDefaultReincarnationDailyData();
+    return {
+      ...getDefaultReincarnationDailyData(),
+      ...data,
+      issues: Array.isArray(data.issues) ? data.issues : [],
+    };
+  } catch {
+    return getDefaultReincarnationDailyData();
+  }
+}
+
+async function setReincarnationDailyData(data) {
+  await setChatMetaValue(META_KEYS.reincarnationDailyData, JSON.stringify(data ?? getDefaultReincarnationDailyData()));
+}
+
+function setReincarnationDailyStatus(text, kind = '') {
+  const $el = $('#sg_reincarnationDailyStatus');
+  if (!$el.length) return;
+  $el.text(text || '');
+  $el.attr('class', 'sg-status' + (kind ? ` sg-status-${kind}` : ''));
+}
+
+function buildReincarnationDailyIssueInstruction() {
+  const s = ensureSettings();
+  const maxSections = clampInt(s.reincarnationDailyMaxSections, 1, 8, 4);
+  const maxItemsPerSection = clampInt(s.reincarnationDailyMaxItemsPerSection, 1, 6, 3);
+  const minTotalItems = 10;
+  const requiredSections = Math.max(2, Math.ceil(minTotalItems / Math.max(1, maxItemsPerSection)));
+  const sourceBits = [];
+  if (s.reincarnationDailyUseRecentContext) sourceBits.push('最近正文');
+  if (s.reincarnationDailyUseParallelWorld) sourceBits.push('平行世界');
+  if (s.reincarnationDailyUsePublicChannel) sourceBits.push('公共频道');
+  if (s.reincarnationDailyUseCharacterEntries) sourceBits.push('角色档案');
+  if (s.reincarnationDailyUseFactionEntries) sourceBits.push('势力档案');
+  if (s.reincarnationDailyUseQuestEntries) sourceBits.push('任务委托');
+  if (s.reincarnationDailyUseInventoryEntries) sourceBits.push('交易物品');
+  return [
+    '【本期编排限制】',
+    `- sections 总数建议控制在 ${requiredSections}~${Math.max(requiredSections, maxSections)} 个`,
+    `- 每个 section 的 items 不要超过 ${maxItemsPerSection} 条`,
+    `- 全部 section 合计至少输出 ${minTotalItems} 条消息/短讯`,
+    `- 本期固定发行机构/报社名: ${String(s.reincarnationDailyPublisher || '轮回日报社').trim() || '轮回日报社'}`,
+    '- 每条短讯都要有署名记者、记者身份，并在结尾补一条短评',
+    '- 记者只能从固定记者池中选择；允许用其马甲，但文风和气质必须对得上',
+    '- 参考源只是基础锚点；在不违背当前世界观的前提下，允许自然发散出更多报纸内容',
+    '- 允许补充合理的风闻、交易余波、街头议论、后续影响和记者观察',
+    `- 当前启用的参考源: ${sourceBits.length ? sourceBits.join(' / ') : '无'}`,
+    '- 允许自由决定栏目名和口吻，但要像一期能读的日报',
+  ].join('\n');
+}
+
+function formatReincarnationDailyEntryList(entries, label, limit = 6) {
+  const arr = Object.values(entries || {}).filter(Boolean).slice(0, Math.max(1, limit));
+  if (!arr.length) return '';
+  const lines = [`【${label}】`];
+  for (const item of arr) {
+    const name = String(item?.name || '').trim();
+    if (!name) continue;
+    const bits = [];
+    if (item.status) bits.push(`状态: ${String(item.status).trim()}`);
+    if (item.goal) bits.push(`目标: ${String(item.goal).trim()}`);
+    if (item.progress) bits.push(`进度: ${String(item.progress).trim()}`);
+    if (item.reward) bits.push(`报酬: ${String(item.reward).trim()}`);
+    if (item.location) bits.push(`地点: ${String(item.location).trim()}`);
+    if (item.leader) bits.push(`首领: ${String(item.leader).trim()}`);
+    if (item.relationToProtagonist) bits.push(`与主角关系: ${String(item.relationToProtagonist).trim()}`);
+    if (!bits.length && item.background) bits.push(String(item.background).trim());
+    if (!bits.length && item.currentState) bits.push(String(item.currentState).trim());
+    if (!bits.length && item.statInfo) bits.push(String(item.statInfo).trim());
+    lines.push(`- ${name}${bits.length ? ` | ${bits.join('；')}` : ''}`);
+  }
+  return lines.length > 1 ? lines.join('\n') : '';
+}
+
+function getReincarnationDailyReporterRoster(settings = null) {
+  const s = settings || ensureSettings();
+  const raw = String(s.reincarnationDailyReporterRosterJson || '').trim();
+  if (!raw) return DEFAULT_REINCARNATION_DAILY_REPORTERS;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) return DEFAULT_REINCARNATION_DAILY_REPORTERS;
+    return parsed
+      .map((item) => ({
+        name: String(item?.name || '').trim(),
+        title: String(item?.title || '').trim(),
+        aliases: Array.isArray(item?.aliases) ? item.aliases.map(x => String(x || '').trim()).filter(Boolean) : [],
+        beat: String(item?.beat || '').trim(),
+        style: String(item?.style || '').trim(),
+        signature: String(item?.signature || '').trim(),
+      }))
+      .filter(x => x.name);
+  } catch {
+    return DEFAULT_REINCARNATION_DAILY_REPORTERS;
+  }
+}
+
+function buildReincarnationDailyReporterRosterText(settings = null) {
+  const roster = getReincarnationDailyReporterRoster(settings);
+  const lines = [];
+  for (const r of roster) {
+    lines.push(`- ${r.name} | 身份: ${r.title || '记者'} | 马甲: ${(r.aliases || []).join(' / ') || '无'}`);
+    if (r.beat) lines.push(`  关注线: ${r.beat}`);
+    if (r.style) lines.push(`  写法: ${r.style}`);
+    if (r.signature) lines.push(`  识别点: ${r.signature}`);
+  }
+  return lines.join('\n') || '（未配置记者池）';
+}
+
+function resolveReincarnationDailyReporterIdentity(reporterName, reporterTitle, settings = null) {
+  const roster = getReincarnationDailyReporterRoster(settings);
+  const rawName = String(reporterName || '').trim();
+  const rawTitle = String(reporterTitle || '').trim();
+  const lower = rawName.toLowerCase();
+  let matched = null;
+  for (const r of roster) {
+    const names = [r.name, ...(Array.isArray(r.aliases) ? r.aliases : [])].map(x => String(x || '').trim()).filter(Boolean);
+    if (names.some(n => n.toLowerCase() === lower)) {
+      matched = r;
+      break;
+    }
+  }
+  if (!matched) matched = roster[0] || { name: '匿名记者', title: '见习记者', aliases: [] };
+  return {
+    reporter: rawName || String(matched.name || '匿名记者').trim() || '匿名记者',
+    reporterTitle: rawTitle || String(matched.title || '见习记者').trim() || '见习记者',
+  };
+}
+
+async function buildReincarnationDailyOptionalSourcesText() {
+  const s = ensureSettings();
+  const blocks = [];
+
+  if (s.reincarnationDailyUseParallelWorld) {
+    const pwData = getParallelWorldData();
+    const recentEvents = Array.isArray(pwData.eventLog) ? pwData.eventLog.slice(-8) : [];
+    const recentFactionEvents = Array.isArray(pwData.factionEventLog) ? pwData.factionEventLog.slice(-6) : [];
+    if (recentEvents.length || recentFactionEvents.length) {
+      const lines = ['【平行世界近期动态】'];
+      for (const ev of recentEvents) {
+        const who = String(ev.npcName || '未知人物').trim();
+        const text = String(ev.event || '').trim();
+        if (!text) continue;
+        lines.push(`- [${String(ev.time || '').trim() || '未知时间'}] ${who}: ${text}`);
+      }
+      for (const ev of recentFactionEvents) {
+        const who = String(ev.factionName || '未知势力').trim();
+        const text = String(ev.event || '').trim();
+        if (!text) continue;
+        lines.push(`- [${String(ev.time || '').trim() || '未知时间'}] ${who}: ${text}`);
+      }
+      if (lines.length > 1) blocks.push(lines.join('\n'));
+    }
+  }
+
+  if (s.reincarnationDailyUsePublicChannel) {
+    const pcData = getPublicChannelData();
+    const recent = (Array.isArray(pcData.messages) ? pcData.messages : []).slice(-10);
+    if (recent.length) {
+      const lines = ['【公共频道近期记录】'];
+      for (const msg of recent) {
+        const speaker = String(msg.speaker || '匿名').trim();
+        const text = String(msg.text || '').trim();
+        if (!text) continue;
+        lines.push(`- [${String(msg.time || '').trim() || '未知时间'}] ${speaker}: ${text}`);
+      }
+      blocks.push(lines.join('\n'));
+    }
+  }
+
+  if (s.reincarnationDailyUseCharacterEntries) {
+    const entries = await collectBlueWorldbookCharacterEntries().catch(() => ({}));
+    const text = formatReincarnationDailyEntryList(entries, '角色档案摘录', 6);
+    if (text) blocks.push(text);
+  }
+
+  if (s.reincarnationDailyUseFactionEntries) {
+    const entries = await collectBlueWorldbookFactionEntries().catch(() => ({}));
+    const text = formatReincarnationDailyEntryList(entries, '势力档案摘录', 6);
+    if (text) blocks.push(text);
+  }
+
+  if (s.reincarnationDailyUseQuestEntries) {
+    const entries = await collectBlueWorldbookEntriesByPrefix(
+      String(s.questEntryPrefix || '任务').trim(),
+      'questEntries',
+      '任务'
+    ).catch(() => ({}));
+    const text = formatReincarnationDailyEntryList(entries, '任务/委托摘录', 8);
+    if (text) blocks.push(text);
+  }
+
+  if (s.reincarnationDailyUseInventoryEntries) {
+    const entries = await collectBlueWorldbookEntriesByPrefix(
+      String(s.inventoryEntryPrefix || '物品栏').trim(),
+      'inventoryEntries',
+      '物品'
+    ).catch(() => ({}));
+    const text = formatReincarnationDailyEntryList(entries, '交易/物品摘录', 8);
+    if (text) blocks.push(text);
+  }
+
+  return blocks.length ? blocks.join('\n\n') : '（未启用附加参考资料）';
+}
+
+async function buildReincarnationDailyPromptMessages(snapshotText, worldClock) {
+  const s = ensureSettings();
+  const sysTpl = String(s.reincarnationDailySystemPrompt || DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT);
+  const usrTpl = String(s.reincarnationDailyUserTemplate || DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE);
+  const styleKey = String(s.reincarnationDailyStyle || 'clickbait').trim();
+  const stylePrompt = String(REINCARNATION_DAILY_STYLE_PROMPTS[styleKey] || REINCARNATION_DAILY_STYLE_PROMPTS.clickbait);
+  const optionalSources = await buildReincarnationDailyOptionalSourcesText();
+  const recentContext = s.reincarnationDailyUseRecentContext ? (snapshotText || '(无可用正文)') : '（未启用最近正文）';
+  const reporterRoster = buildReincarnationDailyReporterRosterText(s);
+  const userContent = renderTemplate(usrTpl, {
+    worldTime: worldClock || '第1天',
+    recentContext,
+    optionalSources,
+    reporterRoster,
+  });
+
+  return [
+    { role: 'system', content: sysTpl + '\n\n' + `【固定发行机构】\n- 本期日报由“${String(s.reincarnationDailyPublisher || '轮回日报社').trim() || '轮回日报社'}”发行\n- 整期只能有这一家报社，不得出现第二家媒体名称\n` + '\n' + stylePrompt + '\n\n' + buildReincarnationDailyIssueInstruction() + '\n\n' + REINCARNATION_DAILY_JSON_REQUIREMENT },
+    { role: 'user', content: userContent },
+  ];
+}
+
+function normalizeReincarnationDailyIssue(parsed, fallbackClock, issueNo) {
+  const sectionsRaw = Array.isArray(parsed?.sections) ? parsed.sections : [];
+  const sections = [];
+  for (const sec of sectionsRaw) {
+    const title = String(sec?.title || '').trim();
+    const style = String(sec?.style || 'other').trim() || 'other';
+    const itemsRaw = Array.isArray(sec?.items) ? sec.items : [];
+    const items = [];
+    for (const item of itemsRaw) {
+      const text = String(item?.text || '').trim();
+      const titleText = String(item?.title || '').trim();
+      if (!text && !titleText) continue;
+      const reporterMeta = resolveReincarnationDailyReporterIdentity(item?.reporter, item?.reporterTitle);
+      items.push({
+        title: titleText,
+        text,
+        reporter: reporterMeta.reporter,
+        reporterTitle: reporterMeta.reporterTitle,
+        comment: String(item?.comment || '').trim() || '这条线还值得继续盯。',
+        importance: clampInt(item?.importance, 1, 5, 2),
+      });
+    }
+    if (!title || !items.length) continue;
+    sections.push({ title, style, items });
+  }
+
+  return {
+    worldTime: String(parsed?.worldTime || fallbackClock || '').trim() || '第1天',
+    publisher: String(parsed?.publisher || ensureSettings().reincarnationDailyPublisher || '轮回日报社').trim() || '轮回日报社',
+    issueTitle: String(parsed?.issueTitle || `轮回日报·第${issueNo}期`).trim() || `轮回日报·第${issueNo}期`,
+    lead: String(parsed?.lead || '').trim(),
+    tone: String(parsed?.tone || '').trim(),
+    sections,
+  };
+}
+
+function countReincarnationDailyItems(issue) {
+  let total = 0;
+  for (const section of (Array.isArray(issue?.sections) ? issue.sections : [])) {
+    total += Array.isArray(section?.items) ? section.items.length : 0;
+  }
+  return total;
+}
+
+function buildReincarnationDailyWorldbookContent(rdData, runId) {
+  const issue = (Array.isArray(rdData?.issues) ? rdData.issues : []).find(x => Number(x.runId || 0) === Number(runId || 0));
+  if (!issue) return '';
+  const lines = ['[轮回日报]', `发行机构: ${String(issue.publisher || '').trim() || '轮回日报社'}`, `世界时间: ${String(issue.worldTime || '').trim() || '未知时间'}`, `标题: ${String(issue.issueTitle || '').trim() || '未命名期刊'}`];
+  if (issue.lead) lines.push(`导语: ${String(issue.lead).trim()}`);
+  if (issue.tone) lines.push(`风格: ${String(issue.tone).trim()}`);
+  lines.push('');
+  for (const section of (Array.isArray(issue.sections) ? issue.sections : [])) {
+    lines.push(`【${String(section.title || '').trim() || '栏目'}】`);
+    for (const item of (Array.isArray(section.items) ? section.items : [])) {
+      const title = String(item.title || '').trim();
+      const text = String(item.text || '').trim();
+      const reporter = String(item.reporter || '').trim();
+      const reporterTitle = String(item.reporterTitle || '').trim();
+      const comment = String(item.comment || '').trim();
+      const signature = [reporter, reporterTitle].filter(Boolean).join(' / ');
+      const line = `${title ? `${title}：` : ''}${text}`.trim();
+      if (line) lines.push(`- ${line}`);
+      if (signature) lines.push(`  记者: ${signature}`);
+      if (comment) lines.push(`  评论: ${comment}`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n').trim();
+}
+
+async function writeReincarnationDailyWorldbookEntry(rdData, settings) {
+  const s = settings || ensureSettings();
+  if (!s.reincarnationDailyWriteToWorldbook) return;
+  const runId = Number(rdData?.lastBatchRunId || 0);
+  if (!runId) return;
+  const content = buildReincarnationDailyWorldbookContent(rdData, runId);
+  if (!content.trim()) return;
+
+  const comment = ensureMvuPlotPrefix(String(s.reincarnationDailyWorldInfoComment || '轮回日报').trim() || '轮回日报');
+  const keys = ['轮回日报', '__SG_REINCARNATION_DAILY__'];
+
+  try {
+    const greenFile = normalizeWorldInfoFileName(String(s.summaryWorldInfoFile || '').trim());
+    if (greenFile) {
+      await writeWorldInfoEntryDirect({
+        file: greenFile,
+        comment,
+        content,
+        keys,
+        constant: 1,
+        searchKey: '__SG_REINCARNATION_DAILY__',
+      });
+    }
+  } catch (e) {
+    console.warn('[StoryGuide] 写入轮回日报绿灯世界书失败:', e);
+  }
+
+  try {
+    const blueFile = normalizeWorldInfoFileName(String(s.summaryBlueWorldInfoFile || '').trim());
+    if (blueFile) {
+      await writeWorldInfoEntryDirect({
+        file: blueFile,
+        comment,
+        content,
+        keys,
+        constant: 1,
+        searchKey: '__SG_REINCARNATION_DAILY__',
+      });
+    }
+  } catch (e) {
+    console.warn('[StoryGuide] 写入轮回日报蓝灯世界书失败:', e);
+  }
+}
+
+async function runReincarnationDailySimulation() {
+  const s = ensureSettings();
+  if (!s.reincarnationDailyEnabled) {
+    setReincarnationDailyStatus('轮回日报未启用', 'warn');
+    return false;
+  }
+
+  setReincarnationDailyStatus('正在生成轮回日报...', 'warn');
+  showToast('正在生成轮回日报...', { kind: 'info', spinner: true, sticky: true });
+
+  try {
+    const rdData = getReincarnationDailyData();
+    const hasAnySource = !!(
+      s.reincarnationDailyUseRecentContext ||
+      s.reincarnationDailyUseParallelWorld ||
+      s.reincarnationDailyUsePublicChannel ||
+      s.reincarnationDailyUseCharacterEntries ||
+      s.reincarnationDailyUseFactionEntries ||
+      s.reincarnationDailyUseQuestEntries ||
+      s.reincarnationDailyUseInventoryEntries
+    );
+    if (!hasAnySource) {
+      setReincarnationDailyStatus('至少启用一个参考源', 'warn');
+      hideToast();
+      return false;
+    }
+    const readFloors = clampInt(s.reincarnationDailyReadFloors, 1, 50, 6);
+    const chatContext = readRecentChatForParallelWorld(readFloors);
+    const extractedTime = extractTimeFromChat(chatContext);
+    if (extractedTime) rdData.worldClock = extractedTime;
+    const worldClock = rdData.worldClock || getParallelWorldData().worldClock || s.parallelWorldClock || '第1天';
+    const messages = await buildReincarnationDailyPromptMessages(chatContext, worldClock);
+
+    let responseText = '';
+    if (s.reincarnationDailyProvider === 'custom') {
+      responseText = await callViaCustom(
+        s.reincarnationDailyCustomEndpoint,
+        s.reincarnationDailyCustomApiKey,
+        s.reincarnationDailyCustomModel,
+        messages,
+        s.reincarnationDailyTemperature,
+        s.reincarnationDailyCustomMaxTokens,
+        s.reincarnationDailyCustomTopP,
+        s.reincarnationDailyCustomStream
+      );
+    } else {
+      responseText = await callViaSillyTavern(messages, null, s.reincarnationDailyTemperature);
+    }
+
+    const parsed = safeJsonParse(responseText);
+    const nextIssueNo = Number(rdData.lastIssueNo || 0) + 1;
+    const issue = normalizeReincarnationDailyIssue(parsed, worldClock, nextIssueNo);
+    const totalItems = countReincarnationDailyItems(issue);
+    if (!issue.sections.length || totalItems < 10) {
+      setReincarnationDailyStatus(`轮回日报结果不足 10 条，已拒绝写入`, 'err');
+      hideToast();
+      return false;
+    }
+
+    rdData.worldClock = issue.worldTime;
+    const simRunId = Date.now();
+    issue.issueNo = nextIssueNo;
+    issue.runId = simRunId;
+    issue.ts = Date.now();
+    rdData.issues.push(issue);
+    rdData.lastIssueNo = nextIssueNo;
+    rdData.lastBatchRunId = simRunId;
+
+    const historyLimit = clampInt(s.reincarnationDailyHistoryLimit, 1, 100, DEFAULT_REINCARNATION_DAILY_HISTORY_LIMIT);
+    if (rdData.issues.length > historyLimit) {
+      rdData.issues = rdData.issues.slice(-historyLimit);
+    }
+
+    rdData.lastRunFloor = computeFloorCount(
+      (typeof SillyTavern !== 'undefined' && SillyTavern?.getContext?.()?.chat) || [],
+      String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant'),
+      true,
+      true
+    );
+    rdData.runCount = Number(rdData.runCount || 0) + 1;
+
+    await setReincarnationDailyData(rdData);
+    await writeReincarnationDailyWorldbookEntry(rdData, s);
+    renderReincarnationDailyLog(rdData);
+    setReincarnationDailyStatus(`已生成第 ${nextIssueNo} 期轮回日报`, 'ok');
+    hideToast();
+    return true;
+  } catch (e) {
+    console.error('[StoryGuide] 轮回日报生成失败:', e);
+    setReincarnationDailyStatus(`轮回日报生成失败: ${e?.message || e}`, 'err');
+    hideToast();
+    return false;
+  }
+}
+
 /**
  * 收集被追踪NPC的档案信息（从结构化条目缓存中获取）
  */
@@ -3142,6 +3781,26 @@ async function maybeAutoRunPublicChannel() {
   await runPublicChannelSimulation();
 }
 
+async function maybeAutoRunReincarnationDaily() {
+  const s = ensureSettings();
+  if (!s.reincarnationDailyEnabled || !s.reincarnationDailyAutoTrigger) return;
+
+  const ctx = SillyTavern.getContext();
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const currentFloor = computeFloorCount(chat, String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant'), true, true);
+  if (currentFloor <= 0) return;
+
+  const rdData = getReincarnationDailyData();
+  const lastFloor = Number(rdData.lastRunFloor || 0);
+  const every = clampInt(s.reincarnationDailyAutoEvery, 1, 50, 6);
+  if (currentFloor - lastFloor < every) return;
+
+  setReincarnationDailyStatus('正在生成轮回日报...', 'warn');
+  showToast('正在生成轮回日报...', { kind: 'info', spinner: true, sticky: true });
+  console.log(`[StoryGuide] 轮回日报: 自动触发 (楼层 ${lastFloor} -> ${currentFloor}, 间隔 ${every})`);
+  await runReincarnationDailySimulation();
+}
+
 /**
  * 构建平行世界上下文注入（注入到 AI 回复前的消息中）
  */
@@ -3196,6 +3855,164 @@ function buildPublicChannelContextInjection() {
   }
   if (pcData.summary) lines.push(`- 风向: ${String(pcData.summary).trim()}`);
   return lines.length > 1 ? `<!-- SG_PUBLIC_CHANNEL\n${lines.join('\n')}\n-->` : '';
+}
+
+function buildReincarnationDailyContextInjection() {
+  const s = ensureSettings();
+  if (!s.reincarnationDailyEnabled || !s.reincarnationDailyInjectContext) return '';
+
+  const rdData = getReincarnationDailyData();
+  const issue = (Array.isArray(rdData.issues) ? rdData.issues : []).slice(-1)[0];
+  if (!issue) return '';
+
+  const lines = ['[轮回日报]'];
+  if (issue.issueTitle) lines.push(`- 标题: ${String(issue.issueTitle).trim()}`);
+  if (issue.lead) lines.push(`- 导语: ${String(issue.lead).trim()}`);
+
+  const topItems = [];
+  for (const section of (Array.isArray(issue.sections) ? issue.sections : [])) {
+    for (const item of (Array.isArray(section.items) ? section.items : [])) {
+      topItems.push({
+        section: String(section.title || '').trim(),
+        title: String(item.title || '').trim(),
+        text: String(item.text || '').trim(),
+        importance: clampInt(item.importance, 1, 5, 2),
+      });
+    }
+  }
+
+  topItems
+    .sort((a, b) => Number(b.importance || 0) - Number(a.importance || 0))
+    .slice(0, 3)
+    .forEach((item) => {
+      const body = `${item.title ? `${item.title}：` : ''}${item.text}`.trim();
+      if (body) lines.push(`- ${item.section || '栏目'}: ${body}`);
+    });
+
+  return lines.length > 1 ? `<!-- SG_REINCARNATION_DAILY\n${lines.join('\n')}\n-->` : '';
+}
+
+function renderReincarnationDailyLog(rdDataOverride) {
+  const $container = $('#sg_reincarnationDailyLog');
+  if (!$container.length) return;
+
+  const rdData = rdDataOverride || getReincarnationDailyData();
+  const issues = Array.isArray(rdData.issues) ? rdData.issues : [];
+  const issue = issues.slice(-1)[0];
+  if (!issue) {
+    $container.html('<div class="sg-hint">暂无轮回日报。点击“立即生成”开始生成。</div>');
+    return;
+  }
+
+  let html = `<div class="sg-rd-issue">`;
+  html += `<div class="sg-rd-head">`;
+  html += `<div class="sg-rd-title">${escapeHtml(String(issue.issueTitle || `轮回日报·第${issue.issueNo || 1}期`).trim())}</div>`;
+  html += `<div class="sg-rd-meta">${escapeHtml(String(issue.worldTime || '').trim() || '未知时间')}${issue.tone ? ` · ${escapeHtml(String(issue.tone).trim())}` : ''}</div>`;
+  html += `</div>`;
+  html += `<div class="sg-rd-publisher">${escapeHtml(String(issue.publisher || '').trim() || '轮回日报社')}</div>`;
+  if (issue.lead) html += `<div class="sg-rd-lead">${escapeHtml(String(issue.lead).trim())}</div>`;
+
+  for (const section of (Array.isArray(issue.sections) ? issue.sections : [])) {
+    const title = String(section.title || '').trim();
+    const items = Array.isArray(section.items) ? section.items : [];
+    if (!title || !items.length) continue;
+    html += `<div class="sg-rd-section">`;
+    html += `<div class="sg-rd-section-title">${escapeHtml(title)}</div>`;
+    html += `<div class="sg-rd-items">`;
+    for (const item of items) {
+      const itemTitle = String(item.title || '').trim();
+      const text = String(item.text || '').trim();
+      const reporter = String(item.reporter || '').trim();
+      const reporterTitle = String(item.reporterTitle || '').trim();
+      const comment = String(item.comment || '').trim();
+      if (!itemTitle && !text) continue;
+      html += `<div class="sg-rd-item">`;
+      if (itemTitle) html += `<div class="sg-rd-item-title">${escapeHtml(itemTitle)}</div>`;
+      if (text) html += `<div class="sg-rd-item-text">${escapeHtml(text)}</div>`;
+      if (reporter || reporterTitle) {
+        html += `<div class="sg-rd-item-reporter">${escapeHtml([reporter, reporterTitle].filter(Boolean).join(' · '))}</div>`;
+      }
+      if (comment) {
+        html += `<div class="sg-rd-item-comment">评：${escapeHtml(comment)}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  html += `</div>`;
+  $container.html(html);
+}
+
+async function refreshReincarnationDailyModels() {
+  const s = ensureSettings();
+  const $btn = $('#sg_refreshReincarnationDailyModels');
+  const base = normalizeBaseUrl(s.reincarnationDailyCustomEndpoint);
+  if (!base) {
+    setReincarnationDailyStatus('请先填写 API 基础URL', 'warn');
+    return;
+  }
+  $btn.prop('disabled', true);
+  setReincarnationDailyStatus('正在刷新轮回日报模型列表...', 'warn');
+  try {
+    const modelsUrl = base.replace(/\/$/, '') + '/models';
+    const headers = {};
+    if (s.reincarnationDailyCustomApiKey) headers['Authorization'] = `Bearer ${s.reincarnationDailyCustomApiKey}`;
+
+    let modelIds = [];
+    try {
+      const res = await fetchJsonCompat(modelsUrl, { method: 'GET', headers });
+      if (res && Array.isArray(res.data)) modelIds = res.data.map(m => m.id || m.name).filter(Boolean);
+    } catch {
+      const proxyRes = await fetchJsonCompat('/api/oai/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getStRequestHeadersCompat() },
+        body: JSON.stringify({ api_url: base, api_key_openai: s.reincarnationDailyCustomApiKey }),
+      });
+      if (proxyRes && Array.isArray(proxyRes.data)) modelIds = proxyRes.data.map(m => m.id || m.name).filter(Boolean);
+    }
+
+    if (!modelIds.length) {
+      setReincarnationDailyStatus('未获取到模型', 'warn');
+    } else {
+      s.reincarnationDailyCustomModelsCache = modelIds;
+      saveSettings();
+      fillReincarnationDailyModelSelect(modelIds, s.reincarnationDailyCustomModel);
+      setReincarnationDailyStatus(`已获取到 ${modelIds.length} 个轮回日报模型`, 'ok');
+    }
+  } catch (e) {
+    setReincarnationDailyStatus(`刷新失败: ${e?.message || e}`, 'err');
+  } finally {
+    $btn.prop('disabled', false);
+  }
+}
+
+function fillReincarnationDailyModelSelect(modelIds, selected) {
+  const $sel = $('#sg_reincarnationDailyCustomModel');
+  if (!$sel.length) return;
+  $sel.empty();
+  if ((!Array.isArray(modelIds) || !modelIds.length) && selected) {
+    const opt = document.createElement('option');
+    opt.value = selected;
+    opt.textContent = selected;
+    opt.selected = true;
+    $sel.append(opt);
+    return;
+  }
+  for (const id of modelIds) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    if (id === selected) opt.selected = true;
+    $sel.append(opt);
+  }
+  if (modelIds.length && selected && !modelIds.includes(selected)) {
+    const opt = document.createElement('option');
+    opt.value = selected;
+    opt.textContent = selected + ' (当前)';
+    opt.selected = true;
+    $sel.prepend(opt);
+  }
 }
 
 function renderPublicChannelLog(pcDataOverride) {
@@ -10528,7 +11345,7 @@ function scheduleAutoSummary(reason = '') {
 
 function schedulePostGenerationAuto(reason = '') {
   const s = ensureSettings();
-  if (!s.summaryEnabled && !s.structuredEntriesEnabled && !(s.parallelWorldEnabled && s.parallelWorldAutoTrigger) && !(s.publicChannelEnabled && s.publicChannelAutoTrigger)) return;
+  if (!s.summaryEnabled && !s.structuredEntriesEnabled && !(s.parallelWorldEnabled && s.parallelWorldAutoTrigger) && !(s.publicChannelEnabled && s.publicChannelAutoTrigger) && !(s.reincarnationDailyEnabled && s.reincarnationDailyAutoTrigger)) return;
   const delay = clampInt(s.debounceMs, 300, 10000, DEFAULT_SETTINGS.debounceMs);
   if (generationIdleTimer) clearTimeout(generationIdleTimer);
   generationIdleTimer = setTimeout(() => {
@@ -10537,6 +11354,7 @@ function schedulePostGenerationAuto(reason = '') {
     maybeAutoStructuredEntries(reason).catch(() => void 0);
     maybeAutoRunPublicChannel().catch(() => void 0);
     maybeAutoRunParallelWorld().catch(e => console.warn('[StoryGuide] 平行世界自动推演异常:', e));
+    maybeAutoRunReincarnationDaily().catch(e => console.warn('[StoryGuide] 轮回日报自动生成异常:', e));
   }, delay);
 }
 
@@ -11618,13 +12436,15 @@ function installRollPreSendHook() {
     const triggerText = s.wiTriggerEnabled ? await buildTriggerInjectionForText(text, chat, s, logStatus) : null;
     const parallelText = buildParallelWorldContextInjection();
     const publicChannelText = buildPublicChannelContextInjection();
-    if (!rollText && !triggerText && !parallelText && !publicChannelText) return null;
+    const reincarnationDailyText = buildReincarnationDailyContextInjection();
+    if (!rollText && !triggerText && !parallelText && !publicChannelText && !reincarnationDailyText) return null;
 
     let cleaned = stripTriggerInjection(text, String(s.wiRollTag || 'SG_ROLL').trim() || 'SG_ROLL');
     cleaned = stripTriggerInjection(cleaned, String(s.wiTriggerTag || 'SG_WI_TRIGGERS').trim() || 'SG_WI_TRIGGERS');
     cleaned = stripTriggerInjection(cleaned, 'SG_PARALLEL_WORLD');
     cleaned = stripTriggerInjection(cleaned, 'SG_PUBLIC_CHANNEL');
-    return cleaned + (parallelText || '') + (publicChannelText || '') + (rollText || '') + (triggerText || '');
+    cleaned = stripTriggerInjection(cleaned, 'SG_REINCARNATION_DAILY');
+    return cleaned + (parallelText || '') + (publicChannelText || '') + (reincarnationDailyText || '') + (rollText || '') + (triggerText || '');
   }
 
   function findMessageArg(args) {
@@ -11651,7 +12471,7 @@ function installRollPreSendHook() {
 
   async function runPreSendInjections(textarea) {
     const s = ensureSettings();
-    if (!s.wiRollEnabled && !s.wiTriggerEnabled) return false;
+    if (!s.wiRollEnabled && !s.wiTriggerEnabled && !s.parallelWorldInjectContext && !s.publicChannelInjectContext && !s.reincarnationDailyInjectContext) return false;
     const raw = String(textarea?.value ?? '');
     const logStatus = buildPreSendLogger(s);
     const ctx = SillyTavern.getContext();
@@ -11698,7 +12518,7 @@ function installRollPreSendHook() {
     if (!form || !textarea || !form.contains(textarea)) return;
     if (guard) return;
     const s = ensureSettings();
-    if (!s.wiRollEnabled && !s.wiTriggerEnabled) return;
+    if (!s.wiRollEnabled && !s.wiTriggerEnabled && !s.parallelWorldInjectContext && !s.publicChannelInjectContext && !s.reincarnationDailyInjectContext) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -11723,7 +12543,7 @@ function installRollPreSendHook() {
     if (e.key !== 'Enter') return;
     if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
     const s = ensureSettings();
-    if (!s.wiRollEnabled && !s.wiTriggerEnabled) return;
+    if (!s.wiRollEnabled && !s.wiTriggerEnabled && !s.parallelWorldInjectContext && !s.publicChannelInjectContext && !s.reincarnationDailyInjectContext) return;
     if (guard) return;
 
     e.preventDefault();
@@ -11751,7 +12571,7 @@ function installRollPreSendHook() {
     if (!btn) return;
     if (guard || window.__storyguide_presend_guard) return;
     const s = ensureSettings();
-    if (!s.wiRollEnabled && !s.wiTriggerEnabled) return;
+    if (!s.wiRollEnabled && !s.wiTriggerEnabled && !s.parallelWorldInjectContext && !s.publicChannelInjectContext && !s.reincarnationDailyInjectContext) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -11780,7 +12600,7 @@ function installRollPreSendHook() {
     obj[key] = async function (...args) {
       if (window.__storyguide_presend_guard) return original.apply(this, args);
       const s = ensureSettings();
-      if (!s.wiRollEnabled && !s.wiTriggerEnabled) return original.apply(this, args);
+      if (!s.wiRollEnabled && !s.wiTriggerEnabled && !s.parallelWorldInjectContext && !s.publicChannelInjectContext && !s.reincarnationDailyInjectContext) return original.apply(this, args);
       const textarea = findTextarea();
       if (textarea) {
         await ensurePreSend(textarea);
@@ -14675,6 +15495,7 @@ function buildModalHtml() {
             <button class="sg-pgtab" id="sg_pgtab_char_archive">人物档案</button>
             <button class="sg-pgtab" id="sg_pgtab_parallel">平行世界</button>
             <button class="sg-pgtab" id="sg_pgtab_public_channel">公共频道</button>
+            <button class="sg-pgtab" id="sg_pgtab_reincarnation_daily">轮回日报</button>
           </div>
 
           <div class="sg-page active" id="sg_page_guide">
@@ -16769,6 +17590,184 @@ function buildModalHtml() {
             </div>
           </div> <!-- sg_page_public_channel -->
 
+          <div class="sg-page" id="sg_page_reincarnation_daily">
+            <div class="sg-card">
+              <div class="sg-card-title">轮回日报</div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>启用</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_reincarnationDailyEnabled">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+                <div class="sg-field">
+                  <label>注入正文/主角可见</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_reincarnationDailyInjectContext">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>自动生成</label>
+                  <label class="sg-switch">
+                    <input type="checkbox" id="sg_reincarnationDailyAutoTrigger">
+                    <span class="sg-slider"></span>
+                  </label>
+                </div>
+                <div class="sg-field">
+                  <label>每隔 N 条 AI 回复</label>
+                  <input id="sg_reincarnationDailyAutoEvery" type="number" min="1" max="50">
+                </div>
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>读取正文楼层数</label>
+                  <input id="sg_reincarnationDailyReadFloors" type="number" min="1" max="50">
+                </div>
+                <div class="sg-field">
+                  <label>历史期数保留</label>
+                  <input id="sg_reincarnationDailyHistoryLimit" type="number" min="1" max="100">
+                </div>
+              </div>
+
+              <div class="sg-field">
+                <label>日报风格</label>
+                <select id="sg_reincarnationDailyStyle">
+                  <option value="clickbait">标题党版</option>
+                  <option value="practical">务实版</option>
+                  <option value="serious">严肃简报版</option>
+                  <option value="gossip">街头小报版</option>
+                </select>
+              </div>
+
+              <div class="sg-field">
+                <label>固定发行机构 / 报社名</label>
+                <input id="sg_reincarnationDailyPublisher" type="text" placeholder="轮回日报社">
+              </div>
+
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>每期最大栏目数</label>
+                  <input id="sg_reincarnationDailyMaxSections" type="number" min="1" max="8">
+                </div>
+                <div class="sg-field">
+                  <label>每栏最大条数</label>
+                  <input id="sg_reincarnationDailyMaxItemsPerSection" type="number" min="1" max="6">
+                </div>
+              </div>
+
+              <div class="sg-actions-row" style="margin-top:10px;">
+                <button class="menu_button sg-btn-primary" id="sg_reincarnationDailyRun">立即生成</button>
+                <button class="menu_button sg-btn" id="sg_reincarnationDailyClear">清空历史</button>
+              </div>
+              <div class="sg-status" id="sg_reincarnationDailyStatus"></div>
+            </div>
+
+            <div class="sg-card sg-subcard">
+              <div class="sg-card-title">附加参考源</div>
+              <div class="sg-hint">所有参考源都可单独勾选；至少启用一个后才能生成日报。</div>
+              <div class="sg-grid2" style="margin-top:8px;">
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyUseRecentContext">参考最近正文</label>
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyUseParallelWorld">参考平行世界</label>
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyUsePublicChannel">参考公共频道</label>
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyUseCharacterEntries">参考角色档案</label>
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyUseFactionEntries">参考势力档案</label>
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyUseQuestEntries">参考任务/委托</label>
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyUseInventoryEntries">参考交易/物品</label>
+              </div>
+            </div>
+
+            <div class="sg-card sg-subcard">
+              <div class="sg-card-title">世界书写回</div>
+              <div class="sg-row sg-inline">
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyWriteToWorldbook">写入蓝绿世界书</label>
+              </div>
+              <div class="sg-field">
+                <label>日报条目名</label>
+                <input id="sg_reincarnationDailyWorldInfoComment" type="text" placeholder="[mvu_plot]轮回日报">
+              </div>
+              <div class="sg-hint">蓝绿世界书文件跟随“总结设置”中的绑定；这里只覆写最新一期日报。</div>
+            </div>
+
+            <div class="sg-card sg-subcard">
+              <div class="sg-card-title">独立 API 设置</div>
+              <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>Provider</label>
+                  <select id="sg_reincarnationDailyProvider">
+                    <option value="custom">独立API</option>
+                    <option value="st">使用当前 SillyTavern API</option>
+                  </select>
+                </div>
+                <div class="sg-field">
+                  <label>temperature</label>
+                  <input id="sg_reincarnationDailyTemperature" type="number" step="0.05" min="0" max="2">
+                </div>
+              </div>
+
+              <div class="sg-card sg-subcard" id="sg_reincarnationDailyCustomBlock">
+                <div class="sg-field">
+                  <label>API 基础URL</label>
+                  <input id="sg_reincarnationDailyCustomEndpoint" type="text" placeholder="https://api.example.com/v1">
+                </div>
+                <div class="sg-field">
+                  <label>API Key</label>
+                  <input id="sg_reincarnationDailyCustomApiKey" type="password" placeholder="sk-...">
+                </div>
+                <div class="sg-field">
+                  <label>模型</label>
+                  <div style="display:flex;gap:4px;">
+                    <select id="sg_reincarnationDailyCustomModel" style="flex:1;"></select>
+                    <button class="menu_button sg-btn" id="sg_refreshReincarnationDailyModels">刷新</button>
+                  </div>
+                </div>
+                <div class="sg-grid2">
+                  <div class="sg-field">
+                    <label>Max Tokens</label>
+                    <input id="sg_reincarnationDailyCustomMaxTokens" type="number" min="128" max="200000">
+                  </div>
+                  <div class="sg-field">
+                    <label>top_p</label>
+                    <input id="sg_reincarnationDailyCustomTopP" type="number" step="0.01" min="0" max="1">
+                  </div>
+                </div>
+                <label class="sg-check"><input type="checkbox" id="sg_reincarnationDailyCustomStream">流式返回</label>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">提示词</div>
+              <div class="sg-field">
+                <label>System Prompt</label>
+                <textarea id="sg_reincarnationDailySystemPrompt" rows="7" spellcheck="false"></textarea>
+              </div>
+              <div class="sg-field">
+                <label>User Template（支持 {{worldTime}} {{recentContext}} {{optionalSources}}）</label>
+                <textarea id="sg_reincarnationDailyUserTemplate" rows="4" spellcheck="false"></textarea>
+              </div>
+            </div>
+
+            <div class="sg-card sg-subcard">
+              <div class="sg-card-title">固定记者池</div>
+              <div class="sg-hint">JSON 数组。每个记者建议包含 name/title/aliases/beat/style/signature。允许有马甲，但文风要能认出来。</div>
+              <div class="sg-field" style="margin-top:8px;">
+                <textarea id="sg_reincarnationDailyReporterRosterJson" rows="14" spellcheck="false"></textarea>
+              </div>
+            </div>
+
+            <div class="sg-card">
+              <div class="sg-card-title">最新一期</div>
+              <div id="sg_reincarnationDailyLog" class="sg-rd-log">
+                <div class="sg-hint">暂无轮回日报。点击“立即生成”开始生成。</div>
+              </div>
+            </div>
+          </div> <!-- sg_page_reincarnation_daily -->
+
           <div class="sg-status" id="sg_status"></div>
         </div>
 
@@ -17840,8 +18839,8 @@ function ensureModal() {
 
 function showSettingsPage(page) {
   const p = String(page || 'guide');
-  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image, #sg_pgtab_sex, #sg_pgtab_character, #sg_pgtab_char_archive, #sg_pgtab_parallel, #sg_pgtab_public_channel').removeClass('active');
-  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image, #sg_page_sex, #sg_page_character, #sg_page_char_archive, #sg_page_parallel, #sg_page_public_channel').removeClass('active');
+  $('#sg_pgtab_guide, #sg_pgtab_summary, #sg_pgtab_index, #sg_pgtab_roll, #sg_pgtab_image, #sg_pgtab_sex, #sg_pgtab_character, #sg_pgtab_char_archive, #sg_pgtab_parallel, #sg_pgtab_public_channel, #sg_pgtab_reincarnation_daily').removeClass('active');
+  $('#sg_page_guide, #sg_page_summary, #sg_page_index, #sg_page_roll, #sg_page_image, #sg_page_sex, #sg_page_character, #sg_page_char_archive, #sg_page_parallel, #sg_page_public_channel, #sg_page_reincarnation_daily').removeClass('active');
 
   if (p === 'summary') {
     $('#sg_pgtab_summary').addClass('active');
@@ -17873,6 +18872,10 @@ function showSettingsPage(page) {
     $('#sg_pgtab_public_channel').addClass('active');
     $('#sg_page_public_channel').addClass('active');
     try { renderPublicChannelLog(); } catch { }
+  } else if (p === 'reincarnation_daily') {
+    $('#sg_pgtab_reincarnation_daily').addClass('active');
+    $('#sg_page_reincarnation_daily').addClass('active');
+    try { renderReincarnationDailyLog(); } catch { }
   } else {
     $('#sg_pgtab_guide').addClass('active');
     $('#sg_page_guide').addClass('active');
@@ -17906,11 +18909,13 @@ function setupSettingsPages() {
   $('#sg_pgtab_char_archive').on('click', () => showSettingsPage('char_archive'));
   $('#sg_pgtab_parallel').on('click', () => showSettingsPage('parallel'));
   $('#sg_pgtab_public_channel').on('click', () => showSettingsPage('public_channel'));
+  $('#sg_pgtab_reincarnation_daily').on('click', () => showSettingsPage('reincarnation_daily'));
 
   try { setupSexGuidePage(); } catch (e) { console.error('[StoryGuide] setupSexGuidePage failed:', e); }
   setupCharacterPage();
   try { setupCharacterArchivePage(); } catch (e) { console.error('[StoryGuide] setupCharacterArchivePage failed:', e); }
   try { setupParallelWorldPage(); } catch (e) { console.error('[StoryGuide] setupParallelWorldPage failed:', e); }
+  try { setupReincarnationDailyPage(); } catch (e) { console.error('[StoryGuide] setupReincarnationDailyPage failed:', e); }
 
   // quick jump
   $('#sg_gotoIndexPage').on('click', () => showSettingsPage('index'));
@@ -18541,6 +19546,39 @@ function setupParallelWorldPage() {
   $('#sg_publicChannelSystemPrompt, #sg_publicChannelUserTemplate').on('change', autoSave);
 }
 
+function setupReincarnationDailyPage() {
+  $('#sg_reincarnationDailyRun').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await runReincarnationDailySimulation();
+  });
+
+  $('#sg_reincarnationDailyClear').on('click', async () => {
+    const rdData = getReincarnationDailyData();
+    rdData.issues = [];
+    rdData.lastBatchRunId = 0;
+    rdData.lastIssueNo = 0;
+    await setReincarnationDailyData(rdData);
+    renderReincarnationDailyLog(rdData);
+    setReincarnationDailyStatus('轮回日报历史已清空', 'ok');
+  });
+
+  $('#sg_reincarnationDailyProvider').on('change', function () {
+    const isCustom = $(this).val() === 'custom';
+    $('#sg_reincarnationDailyCustomBlock').toggle(isCustom);
+    autoSave();
+  });
+
+  $('#sg_refreshReincarnationDailyModels').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await refreshReincarnationDailyModels();
+  });
+
+  $('#sg_reincarnationDailyEnabled, #sg_reincarnationDailyAutoTrigger, #sg_reincarnationDailyInjectContext, #sg_reincarnationDailyWriteToWorldbook, #sg_reincarnationDailyUseRecentContext, #sg_reincarnationDailyUseParallelWorld, #sg_reincarnationDailyUsePublicChannel, #sg_reincarnationDailyUseCharacterEntries, #sg_reincarnationDailyUseFactionEntries, #sg_reincarnationDailyUseQuestEntries, #sg_reincarnationDailyUseInventoryEntries, #sg_reincarnationDailyCustomStream').on('change', autoSave);
+  $('#sg_reincarnationDailyAutoEvery, #sg_reincarnationDailyReadFloors, #sg_reincarnationDailyHistoryLimit, #sg_reincarnationDailyMaxSections, #sg_reincarnationDailyMaxItemsPerSection, #sg_reincarnationDailyTemperature, #sg_reincarnationDailyCustomMaxTokens, #sg_reincarnationDailyCustomTopP, #sg_reincarnationDailyStyle, #sg_reincarnationDailyPublisher').on('change input', autoSave);
+  $('#sg_reincarnationDailyProvider, #sg_reincarnationDailyCustomEndpoint, #sg_reincarnationDailyCustomApiKey, #sg_reincarnationDailyCustomModel').on('change', autoSave);
+  $('#sg_reincarnationDailyWorldInfoComment, #sg_reincarnationDailySystemPrompt, #sg_reincarnationDailyUserTemplate, #sg_reincarnationDailyReporterRosterJson').on('change input', autoSave);
+}
+
 async function runParallelWorldSimulationFromFloating($btn) {
   const s = ensureSettings();
   if (!s.parallelWorldEnabled) {
@@ -19039,6 +20077,39 @@ function pullSettingsToUi() {
   $('#sg_publicChannelCustomBlock').toggle(String(s.publicChannelProvider || 'st') === 'custom');
   if (Array.isArray(s.publicChannelCustomModelsCache) && s.publicChannelCustomModelsCache.length) {
     fillPublicChannelModelSelect(s.publicChannelCustomModelsCache, s.publicChannelCustomModel);
+  }
+  $('#sg_reincarnationDailyEnabled').prop('checked', !!s.reincarnationDailyEnabled);
+  $('#sg_reincarnationDailyAutoTrigger').prop('checked', !!s.reincarnationDailyAutoTrigger);
+  $('#sg_reincarnationDailyInjectContext').prop('checked', !!s.reincarnationDailyInjectContext);
+  $('#sg_reincarnationDailyAutoEvery').val(s.reincarnationDailyAutoEvery || 6);
+  $('#sg_reincarnationDailyReadFloors').val(s.reincarnationDailyReadFloors || 6);
+  $('#sg_reincarnationDailyHistoryLimit').val(s.reincarnationDailyHistoryLimit || DEFAULT_REINCARNATION_DAILY_HISTORY_LIMIT);
+  $('#sg_reincarnationDailyStyle').val(String(s.reincarnationDailyStyle || 'clickbait'));
+  $('#sg_reincarnationDailyPublisher').val(String(s.reincarnationDailyPublisher || '轮回日报社'));
+  $('#sg_reincarnationDailyMaxSections').val(s.reincarnationDailyMaxSections || 4);
+  $('#sg_reincarnationDailyMaxItemsPerSection').val(s.reincarnationDailyMaxItemsPerSection || 3);
+  $('#sg_reincarnationDailyProvider').val(String(s.reincarnationDailyProvider || 'custom'));
+  $('#sg_reincarnationDailyTemperature').val(s.reincarnationDailyTemperature ?? 0.95);
+  $('#sg_reincarnationDailyCustomEndpoint').val(String(s.reincarnationDailyCustomEndpoint || ''));
+  $('#sg_reincarnationDailyCustomApiKey').val(String(s.reincarnationDailyCustomApiKey || ''));
+  $('#sg_reincarnationDailyCustomMaxTokens').val(s.reincarnationDailyCustomMaxTokens || 4096);
+  $('#sg_reincarnationDailyCustomTopP').val(s.reincarnationDailyCustomTopP ?? 0.95);
+  $('#sg_reincarnationDailyCustomStream').prop('checked', !!s.reincarnationDailyCustomStream);
+  $('#sg_reincarnationDailyWriteToWorldbook').prop('checked', s.reincarnationDailyWriteToWorldbook !== false);
+  $('#sg_reincarnationDailyWorldInfoComment').val(String(s.reincarnationDailyWorldInfoComment || '[mvu_plot]轮回日报'));
+  $('#sg_reincarnationDailySystemPrompt').val(String(s.reincarnationDailySystemPrompt || DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT));
+  $('#sg_reincarnationDailyUserTemplate').val(String(s.reincarnationDailyUserTemplate || DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE));
+  $('#sg_reincarnationDailyReporterRosterJson').val(String(s.reincarnationDailyReporterRosterJson || JSON.stringify(DEFAULT_REINCARNATION_DAILY_REPORTERS, null, 2)));
+  $('#sg_reincarnationDailyUseRecentContext').prop('checked', s.reincarnationDailyUseRecentContext !== false);
+  $('#sg_reincarnationDailyUseParallelWorld').prop('checked', !!s.reincarnationDailyUseParallelWorld);
+  $('#sg_reincarnationDailyUsePublicChannel').prop('checked', !!s.reincarnationDailyUsePublicChannel);
+  $('#sg_reincarnationDailyUseCharacterEntries').prop('checked', !!s.reincarnationDailyUseCharacterEntries);
+  $('#sg_reincarnationDailyUseFactionEntries').prop('checked', !!s.reincarnationDailyUseFactionEntries);
+  $('#sg_reincarnationDailyUseQuestEntries').prop('checked', !!s.reincarnationDailyUseQuestEntries);
+  $('#sg_reincarnationDailyUseInventoryEntries').prop('checked', !!s.reincarnationDailyUseInventoryEntries);
+  $('#sg_reincarnationDailyCustomBlock').toggle(String(s.reincarnationDailyProvider || 'custom') === 'custom');
+  if (Array.isArray(s.reincarnationDailyCustomModelsCache) && s.reincarnationDailyCustomModelsCache.length) {
+    fillReincarnationDailyModelSelect(s.reincarnationDailyCustomModelsCache, s.reincarnationDailyCustomModel);
   }
   $('#sg_parallelCustomBlock').toggle(s.parallelWorldProvider === 'custom');
   if (Array.isArray(s.parallelWorldCustomModelsCache) && s.parallelWorldCustomModelsCache.length) {
@@ -19742,6 +20813,36 @@ function pullUiToSettings() {
   s.publicChannelWorldInfoComment = String($('#sg_publicChannelWorldInfoComment').val() || '[mvu_plot]公共频道').trim() || '[mvu_plot]公共频道';
   s.publicChannelSystemPrompt = String($('#sg_publicChannelSystemPrompt').val() || DEFAULT_PUBLIC_CHANNEL_SYSTEM_PROMPT);
   s.publicChannelUserTemplate = String($('#sg_publicChannelUserTemplate').val() || DEFAULT_PUBLIC_CHANNEL_USER_TEMPLATE);
+  s.reincarnationDailyEnabled = $('#sg_reincarnationDailyEnabled').is(':checked');
+  s.reincarnationDailyAutoTrigger = $('#sg_reincarnationDailyAutoTrigger').is(':checked');
+  s.reincarnationDailyInjectContext = $('#sg_reincarnationDailyInjectContext').is(':checked');
+  s.reincarnationDailyAutoEvery = clampInt($('#sg_reincarnationDailyAutoEvery').val(), 1, 50, s.reincarnationDailyAutoEvery || 6);
+  s.reincarnationDailyReadFloors = clampInt($('#sg_reincarnationDailyReadFloors').val(), 1, 50, s.reincarnationDailyReadFloors || 6);
+  s.reincarnationDailyHistoryLimit = clampInt($('#sg_reincarnationDailyHistoryLimit').val(), 1, 100, s.reincarnationDailyHistoryLimit || DEFAULT_REINCARNATION_DAILY_HISTORY_LIMIT);
+  s.reincarnationDailyStyle = String($('#sg_reincarnationDailyStyle').val() || s.reincarnationDailyStyle || 'clickbait');
+  s.reincarnationDailyPublisher = String($('#sg_reincarnationDailyPublisher').val() || '轮回日报社').trim() || '轮回日报社';
+  s.reincarnationDailyMaxSections = clampInt($('#sg_reincarnationDailyMaxSections').val(), 1, 8, s.reincarnationDailyMaxSections || 4);
+  s.reincarnationDailyMaxItemsPerSection = clampInt($('#sg_reincarnationDailyMaxItemsPerSection').val(), 1, 6, s.reincarnationDailyMaxItemsPerSection || 3);
+  s.reincarnationDailyProvider = String($('#sg_reincarnationDailyProvider').val() || s.reincarnationDailyProvider || 'custom');
+  s.reincarnationDailyTemperature = clampFloat($('#sg_reincarnationDailyTemperature').val(), 0, 2, s.reincarnationDailyTemperature ?? 0.95);
+  s.reincarnationDailyCustomEndpoint = String($('#sg_reincarnationDailyCustomEndpoint').val() || '').trim();
+  s.reincarnationDailyCustomApiKey = String($('#sg_reincarnationDailyCustomApiKey').val() || '').trim();
+  s.reincarnationDailyCustomModel = String($('#sg_reincarnationDailyCustomModel').val() || s.reincarnationDailyCustomModel || 'gpt-4o-mini');
+  s.reincarnationDailyCustomMaxTokens = clampInt($('#sg_reincarnationDailyCustomMaxTokens').val(), 128, 200000, s.reincarnationDailyCustomMaxTokens || 4096);
+  s.reincarnationDailyCustomTopP = clampFloat($('#sg_reincarnationDailyCustomTopP').val(), 0, 1, s.reincarnationDailyCustomTopP ?? 0.95);
+  s.reincarnationDailyCustomStream = $('#sg_reincarnationDailyCustomStream').is(':checked');
+  s.reincarnationDailyWriteToWorldbook = $('#sg_reincarnationDailyWriteToWorldbook').is(':checked');
+  s.reincarnationDailyWorldInfoComment = String($('#sg_reincarnationDailyWorldInfoComment').val() || '[mvu_plot]轮回日报').trim() || '[mvu_plot]轮回日报';
+  s.reincarnationDailySystemPrompt = String($('#sg_reincarnationDailySystemPrompt').val() || DEFAULT_REINCARNATION_DAILY_SYSTEM_PROMPT);
+  s.reincarnationDailyUserTemplate = String($('#sg_reincarnationDailyUserTemplate').val() || DEFAULT_REINCARNATION_DAILY_USER_TEMPLATE);
+  s.reincarnationDailyReporterRosterJson = String($('#sg_reincarnationDailyReporterRosterJson').val() || JSON.stringify(DEFAULT_REINCARNATION_DAILY_REPORTERS, null, 2)).trim() || JSON.stringify(DEFAULT_REINCARNATION_DAILY_REPORTERS, null, 2);
+  s.reincarnationDailyUseRecentContext = $('#sg_reincarnationDailyUseRecentContext').is(':checked');
+  s.reincarnationDailyUseParallelWorld = $('#sg_reincarnationDailyUseParallelWorld').is(':checked');
+  s.reincarnationDailyUsePublicChannel = $('#sg_reincarnationDailyUsePublicChannel').is(':checked');
+  s.reincarnationDailyUseCharacterEntries = $('#sg_reincarnationDailyUseCharacterEntries').is(':checked');
+  s.reincarnationDailyUseFactionEntries = $('#sg_reincarnationDailyUseFactionEntries').is(':checked');
+  s.reincarnationDailyUseQuestEntries = $('#sg_reincarnationDailyUseQuestEntries').is(':checked');
+  s.reincarnationDailyUseInventoryEntries = $('#sg_reincarnationDailyUseInventoryEntries').is(':checked');
 }
 
 function openModal() {
@@ -19890,19 +20991,31 @@ function setupEventListeners() {
             console.log('[StoryGuide] Initialized parallel world lastRunFloor to', floorNow, 'for existing chat');
           }
         }
-        if (s.publicChannelEnabled && s.publicChannelAutoTrigger) {
-          const ctxNow = SillyTavern.getContext();
-          const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
-          const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
-          const floorNow = computeFloorCount(chatNow, mode, true, true);
-          const pcData = getPublicChannelData();
-          if (floorNow > 0 && !Number(pcData.lastRunFloor || 0)) {
-            pcData.lastRunFloor = floorNow;
-            await setPublicChannelData(pcData);
-            console.log('[StoryGuide] Initialized public channel lastRunFloor to', floorNow, 'for existing chat');
+          if (s.publicChannelEnabled && s.publicChannelAutoTrigger) {
+            const ctxNow = SillyTavern.getContext();
+            const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
+            const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+            const floorNow = computeFloorCount(chatNow, mode, true, true);
+            const pcData = getPublicChannelData();
+            if (floorNow > 0 && !Number(pcData.lastRunFloor || 0)) {
+              pcData.lastRunFloor = floorNow;
+              await setPublicChannelData(pcData);
+              console.log('[StoryGuide] Initialized public channel lastRunFloor to', floorNow, 'for existing chat');
+            }
           }
-        }
-      } catch (e) {
+          if (s.reincarnationDailyEnabled && s.reincarnationDailyAutoTrigger) {
+            const ctxNow = SillyTavern.getContext();
+            const chatNow = Array.isArray(ctxNow.chat) ? ctxNow.chat : [];
+            const mode = String(s.structuredEntriesCountMode || s.summaryCountMode || 'assistant');
+            const floorNow = computeFloorCount(chatNow, mode, true, true);
+            const rdData = getReincarnationDailyData();
+            if (floorNow > 0 && !Number(rdData.lastRunFloor || 0)) {
+              rdData.lastRunFloor = floorNow;
+              await setReincarnationDailyData(rdData);
+              console.log('[StoryGuide] Initialized reincarnation daily lastRunFloor to', floorNow, 'for existing chat');
+            }
+          }
+        } catch (e) {
         console.warn('[StoryGuide] Failed to init auto-run progress on chat change:', e);
       }
 
