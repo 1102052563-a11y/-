@@ -19851,11 +19851,12 @@ function setupEventListeners() {
     // 预热蓝灯索引（实时读取模式下），尽量避免第一次发送消息时还没索引
     ensureBlueIndexLive(true).catch(() => void 0);
 
-    eventSource.on(event_types.CHAT_CHANGED, async () => {
-      inlineCache.clear();
-      scheduleReapplyAll('chat_changed');
-      ensureChatActionButtons();
-      ensureBlueIndexLive(true).catch(() => void 0);
+      eventSource.on(event_types.CHAT_CHANGED, async () => {
+        inlineCache.clear();
+        scheduleReapplyAll('chat_changed');
+        ensureLaunchEntrances();
+        ensureChatActionButtons();
+        ensureBlueIndexLive(true).catch(() => void 0);
 
       // 切换聊天时，初始化结构化条目进度，避免自动触发已有历史的总结
       try {
@@ -21369,6 +21370,33 @@ function createFloatingButton() {
   });
 }
 
+let sgLaunchGuardInstalled = false;
+function ensureLaunchEntrances() {
+  try { createTopbarButton(); } catch (e) { console.warn('[StoryGuide] createTopbarButton failed:', e); }
+  try { createFloatingButton(); } catch (e) { console.warn('[StoryGuide] createFloatingButton failed:', e); }
+  try { injectFixedInputButton(); } catch (e) { console.warn('[StoryGuide] injectFixedInputButton failed:', e); }
+}
+
+function installLaunchEntranceGuard() {
+  if (sgLaunchGuardInstalled) return;
+  sgLaunchGuardInstalled = true;
+
+  ensureLaunchEntrances();
+  setTimeout(() => ensureLaunchEntrances(), 300);
+  setTimeout(() => ensureLaunchEntrances(), 1200);
+  setTimeout(() => ensureLaunchEntrances(), 3000);
+
+  const observer = new MutationObserver(() => {
+    if (!document.getElementById('sg_topbar_btn') || !document.getElementById('sg_floating_btn') || !document.getElementById('sg_fixed_input_btn')) {
+      ensureLaunchEntrances();
+    }
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+}
+
 function init() {
   ensureSettings();
   bindMapEventPanelHandler();
@@ -21383,10 +21411,9 @@ function init() {
     ensureChatActionButtons();
     installCardZoomDelegation();
     installQuickOptionsClickHandler();
-    createTopbarButton();
-    createFloatingButton();
-    injectFixedInputButton();
-    installRollPreSendHook();
+      ensureLaunchEntrances();
+      installLaunchEntranceGuard();
+      installRollPreSendHook();
 
     // 浮动面板图像点击放大（使用 document 级别事件委托确保动态元素可响应）
     $(document).on('click', '#sg_floating_panel .sg-image-zoom, #sg_floating_panel .sg-floating-image', (e) => {
