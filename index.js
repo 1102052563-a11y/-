@@ -8019,7 +8019,38 @@ async function fetchBlueSummarySourceEntries(settings) {
         sourceComment: String(e.comment || e.title || '').trim(),
         sourcePrefix: prefix,
       };
-    });
+      });
+}
+
+function excludeArchivedMegaSummaryCandidates(items, meta, settings) {
+  const s = settings || ensureSettings();
+  const sourcePrefix = String(s.summaryWorldInfoCommentPrefix || '剧情总结').trim() || '剧情总结';
+  const history = Array.isArray(meta?.history) ? meta.history : [];
+  const archivedIndexIds = new Set();
+  const archivedComments = new Set();
+
+  for (const h of history) {
+    if (!h || h.isMega || !h.megaArchived) continue;
+    if (String(h.commentPrefix || '').trim() !== sourcePrefix) continue;
+    const indexId = String(h.indexId || '').trim();
+    const comment = buildSummaryComment(h, s, h.commentPrefix || sourcePrefix);
+    if (indexId) archivedIndexIds.add(indexId);
+    if (comment) {
+      archivedComments.add(comment);
+      archivedComments.add(`[已汇总] ${comment}`);
+      archivedComments.add(`[已删除] ${comment}`);
+      archivedComments.add(`[已删除] [已汇总] ${comment}`);
+    }
+  }
+
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    if (!item || item.isMega) return false;
+    const indexId = String(item.indexId || '').trim();
+    const sourceComment = String(item.sourceComment || '').trim();
+    if (indexId && archivedIndexIds.has(indexId)) return false;
+    if (sourceComment && archivedComments.has(sourceComment)) return false;
+    return true;
+  });
 }
 
 function filterMegaSummaryCandidates(meta, settings) {
@@ -8067,7 +8098,6 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
   if (!parsed || !parsed.summary) return false;
 
   const megaPrefix = String(s.megaSummaryCommentPrefix || '大总结').trim() || '大总结';
-  const rawTitle = String(parsed.title || '').trim();
   const summary = String(parsed.summary || '').trim();
   const modelKeywords = sanitizeKeywords(parsed.keywords);
   let indexId = '';
@@ -8099,11 +8129,12 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
     toFloor: slice[slice.length - 1]?.range?.toFloor ?? 0,
   };
   const rec = {
-    title: rawTitle || megaPrefix,
+    title: '',
     summary,
     keywords,
     indexId: indexId || undefined,
     modelKeywords: (String(s.summaryWorldInfoKeyMode || 'keywords') === 'indexId') ? modelKeywords : undefined,
+    modelTitle: String(parsed.title || '').trim() || undefined,
     createdAt: Date.now(),
     range,
     isMega: true,
@@ -8203,7 +8234,7 @@ async function runMegaSummaryManual(fromIndex, toIndex) {
 
   let candidates = [];
   try {
-    candidates = await fetchBlueSummarySourceEntries(s);
+    candidates = excludeArchivedMegaSummaryCandidates(await fetchBlueSummarySourceEntries(s), meta, s);
   } catch (e) {
     setStatus(`读取蓝灯世界书失败：${e?.message ?? e}`, 'err');
     return 0;
@@ -8616,12 +8647,14 @@ async function maybeGenerateMegaSummary(meta, settings) {
   const every = clampInt(s.megaSummaryEvery, 5, 5000, 40);
   let created = 0;
   while (true) {
-    let pending = [];
-    try {
-      pending = await fetchBlueSummarySourceEntries(s);
-    } catch (e) {
-      console.warn('[StoryGuide] read blue world info for mega summary failed:', e);
-      break;
+    let pending = filterMegaSummaryCandidates(meta, s);
+    if (pending.length < every) {
+      try {
+        pending = excludeArchivedMegaSummaryCandidates(await fetchBlueSummarySourceEntries(s), meta, s);
+      } catch (e) {
+        console.warn('[StoryGuide] read blue world info for mega summary failed:', e);
+        break;
+      }
     }
     if (pending.length < every) break;
 
