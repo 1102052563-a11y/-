@@ -8179,6 +8179,9 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
   }
 
   const hist = Array.isArray(meta.history) ? meta.history : [];
+  let disabledBlueCount = 0;
+  let disabledGreenCount = 0;
+  let archivedCount = 0;
   for (const h of slice) {
     const histHit = h.indexId ? hist.find(x => x && x.indexId === h.indexId && !x.isMega) : null;
     if (histHit) {
@@ -8197,10 +8200,11 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
     const blueFile = String(s.summaryBlueWorldInfoFile || '').trim();
     if (blueComment && blueFile) {
       try {
-        await disableWorldInfoEntryByComment(blueComment, s, {
+        const blueDisabled = await disableWorldInfoEntryByComment(blueComment, s, {
           target: 'file',
           file: blueFile,
         });
+        if (blueDisabled) disabledBlueCount += 1;
       } catch (e) {
         console.warn('[StoryGuide] disable summary entry (blue) failed:', e);
       }
@@ -8208,18 +8212,26 @@ async function createMegaSummaryForSlice(slice, meta, settings) {
     if (greenComment) {
       try {
         const greenTarget = resolveGreenWorldInfoTarget(s);
-        await disableWorldInfoEntryByComment(greenComment, s, {
+        const greenDisabled = await disableWorldInfoEntryByComment(greenComment, s, {
           target: greenTarget.target,
           file: greenTarget.file,
         });
+        if (greenDisabled) disabledGreenCount += 1;
       } catch (e) {
         console.warn('[StoryGuide] disable summary entry failed:', e);
       }
     }
+    if (histHit) archivedCount += 1;
   }
 
   await setSummaryMeta(meta);
-  return true;
+  return {
+    created: true,
+    sourceCount: slice.length,
+    archivedCount,
+    disabledBlueCount,
+    disabledGreenCount,
+  };
 }
 
 async function runMegaSummaryManual(fromIndex, toIndex) {
@@ -8250,16 +8262,26 @@ async function runMegaSummaryManual(fromIndex, toIndex) {
 
   const every = clampInt(s.megaSummaryEvery, 5, 5000, 40);
   let created = 0;
+  let disabledBlueCount = 0;
+  let disabledGreenCount = 0;
+  let archivedCount = 0;
   for (let i = 0; i < candidates.length; i += every) {
     const slice = candidates.slice(i, i + every);
-    const ok = await createMegaSummaryForSlice(slice, meta, s);
-    if (!ok) break;
+    const result = await createMegaSummaryForSlice(slice, meta, s);
+    if (!result || !result.created) break;
     created += 1;
+    disabledBlueCount += Number(result.disabledBlueCount || 0);
+    disabledGreenCount += Number(result.disabledGreenCount || 0);
+    archivedCount += Number(result.archivedCount || 0);
   }
 
   renderSummaryPaneFromMeta();
   if (created > 0) {
-    setStatus(`已生成大总结 ${created} 条 ✅`, 'ok');
+    const details = [];
+    if (archivedCount > 0) details.push(`标记已汇总 ${archivedCount} 条`);
+    if (s.summaryToWorldInfo) details.push(`绿灯失效 ${disabledGreenCount}`);
+    if (s.summaryToBlueWorldInfo) details.push(`蓝灯失效 ${disabledBlueCount}`);
+    setStatus(`已生成大总结 ${created} 条${details.length ? `，${details.join('，')}` : ''} ✅`, 'ok');
   }
   return created;
 }
@@ -8323,12 +8345,7 @@ async function disableWorldInfoEntryByComment(comment, settings, {
     await execSlash(`/flushvar ${findFileVar}`);
   }
 
-  let uid = null;
-  if (findText && findText !== 'null' && findText !== 'undefined') {
-    const parsed = safeJsonParse(findText);
-    if (parsed && parsed.uid) uid = parsed.uid;
-    else if (/^\d+$/.test(findText.trim())) uid = findText.trim();
-  }
+  const uid = parseFindEntryUid(findResult);
   if (!uid) return null;
 
   let fileExpr;
@@ -8377,12 +8394,7 @@ async function deleteWorldInfoEntryByComment(comment, settings, {
     await execSlash(`/flushvar ${findFileVar}`);
   }
 
-  let uid = null;
-  if (findText && findText !== 'null' && findText !== 'undefined') {
-    const parsed = safeJsonParse(findText);
-    if (parsed && parsed.uid) uid = parsed.uid;
-    else if (/^\d+$/.test(findText.trim())) uid = findText.trim();
-  }
+  const uid = parseFindEntryUid(findResult);
   if (!uid) return null;
 
   let fileExpr;
@@ -8646,6 +8658,9 @@ async function maybeGenerateMegaSummary(meta, settings) {
 
   const every = clampInt(s.megaSummaryEvery, 5, 5000, 40);
   let created = 0;
+  let disabledBlueCount = 0;
+  let disabledGreenCount = 0;
+  let archivedCount = 0;
   while (true) {
     let pending = filterMegaSummaryCandidates(meta, s);
     if (pending.length < every) {
@@ -8665,9 +8680,12 @@ async function maybeGenerateMegaSummary(meta, settings) {
       return String(a.title || '').localeCompare(String(b.title || ''));
     });
     const slice = sorted.slice(0, every);
-    const ok = await createMegaSummaryForSlice(slice, meta, s);
-    if (!ok) break;
+    const result = await createMegaSummaryForSlice(slice, meta, s);
+    if (!result || !result.created) break;
     created += 1;
+    disabledBlueCount += Number(result.disabledBlueCount || 0);
+    disabledGreenCount += Number(result.disabledGreenCount || 0);
+    archivedCount += Number(result.archivedCount || 0);
   }
 
   return created;
@@ -10036,17 +10054,9 @@ async function deleteStructuredEntry(entryType, entryName, meta, settings, {
     }
 
     // 解析 UID
-    let uid = null;
-    if (findText && findText !== 'null' && findText !== 'undefined') {
-      const parsed = safeJsonParse(findText);
-      if (parsed && parsed.uid) {
-        uid = parsed.uid;
-      } else if (/^\d+$/.test(findText.trim())) {
-        uid = findText.trim();
-      }
-    }
+      const uid = parseFindEntryUid(findResult);
 
-    console.log(`[StoryGuide] DEBUG Delete Target: UID="${uid}"`);
+      console.log(`[StoryGuide] DEBUG Delete Target: UID="${uid}"`);
 
     if (!uid) {
       console.log(`[StoryGuide] Delete ${entryType} (${targetType}): ${entryName} not found in world book`);
@@ -16375,8 +16385,8 @@ function buildModalHtml() {
               <input id="sg_megaSummaryFrom" type="text" style="width:120px" placeholder="A-001">
               <span> - </span>
               <input id="sg_megaSummaryTo" type="text" style="width:120px" placeholder="A-080">
-              <button class="menu_button sg-btn" id="sg_megaSummarizeRange">生成大总结</button>
-              <div class="sg-hint" style="margin-left:auto">按索引号范围汇总，步长=大总结阈值</div>
+                <button class="menu_button sg-btn" id="sg_megaSummarizeRange">生成大总结</button>
+                <div class="sg-hint" id="sg_megaSummaryManualHint" style="margin-left:auto">（可选范围：A-001-A-000，可生成 0 条）</div>
             </div>
 
             <div class="sg-row sg-inline" style="margin-top:6px;">
@@ -20458,7 +20468,8 @@ function updateSummaryInfoLabel() {
 
 function updateSummaryManualRangeHint(setDefaults = false) {
   const $hint = $('#sg_summaryManualHint');
-  if (!$hint.length) return;
+  const $megaHint = $('#sg_megaSummaryManualHint');
+  if (!$hint.length && !$megaHint.length) return;
 
   try {
     const s = ensureSettings();
@@ -20489,6 +20500,35 @@ function updateSummaryManualRangeHint(setDefaults = false) {
     }
 
     $hint.text(`（可选范围：1-${floorNow || 0}${extra}）`);
+    if ($megaHint.length) {
+      const meta = getSummaryMeta();
+      const megaCandidates = filterMegaSummaryCandidates(meta, s);
+      const megaEvery = clampInt(s.megaSummaryEvery, 5, 5000, 40);
+      const prefix = String(s.summaryIndexPrefix || 'A-').trim() || 'A-';
+      const indexed = megaCandidates
+        .map((h) => ({ raw: String(h?.indexId || '').trim(), num: parseSummaryIndexInput(h?.indexId, s) }))
+        .filter((x) => x.num > 0)
+        .sort((a, b) => a.num - b.num);
+      const fallbackIndex = `${prefix}000`;
+      const minIndex = indexed.length ? indexed[0].raw : fallbackIndex;
+      const maxIndex = indexed.length ? indexed[indexed.length - 1].raw : fallbackIndex;
+      const $megaFrom = $('#sg_megaSummaryFrom');
+      const $megaTo = $('#sg_megaSummaryTo');
+      const megaFromVal = String($megaFrom.val() ?? '').trim();
+      const megaToVal = String($megaTo.val() ?? '').trim();
+      if (setDefaults && indexed.length && (!megaFromVal || !megaToVal)) {
+        $megaFrom.val(minIndex);
+        $megaTo.val(maxIndex);
+      }
+      let megaCount = 0;
+      const megaFromNum = parseSummaryIndexInput(String($megaFrom.val() ?? '').trim(), s);
+      const megaToNum = parseSummaryIndexInput(String($megaTo.val() ?? '').trim(), s);
+      if (megaFromNum > 0 && megaToNum > 0 && megaFromNum <= megaToNum) {
+        const matched = indexed.filter((x) => x.num >= megaFromNum && x.num <= megaToNum).length;
+        megaCount = matched > 0 ? Math.ceil(matched / megaEvery) : 0;
+      }
+      $megaHint.text(`（可选范围：${minIndex}-${maxIndex}，可生成 ${megaCount} 条）`);
+    }
     if (!$from.length || !$to.length) return;
 
     const fromVal = String($from.val() ?? '').trim();
@@ -20500,7 +20540,8 @@ function updateSummaryManualRangeHint(setDefaults = false) {
       $to.val(floorNow);
     }
   } catch {
-    $hint.text('（可选范围：?）');
+    if ($hint.length) $hint.text('（可选范围：?）');
+    if ($megaHint.length) $megaHint.text('（可选范围：?，可生成 0 条）');
   }
 }
 
