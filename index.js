@@ -1280,6 +1280,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenPromptRules: '',
   imageGenCharacterProfilesEnabled: false,
   imageGenCharacterProfiles: [],
+  imageGenCharacterMemoryEnabled: true,
   imageGenProfilesExpanded: false,
   imageGenBatchEnabled: true,
   imageGenBatchPatterns: JSON.stringify([
@@ -5545,6 +5546,7 @@ function getImageGenPresetSnapshot() {
     imageGenCustomMaxTokens: s.imageGenCustomMaxTokens,
     imageGenCharacterProfilesEnabled: s.imageGenCharacterProfilesEnabled,
     imageGenCharacterProfiles: s.imageGenCharacterProfiles,
+    imageGenCharacterMemoryEnabled: s.imageGenCharacterMemoryEnabled,
     imageGenCustomFemalePrompt1: s.imageGenCustomFemalePrompt1,
     imageGenCustomFemalePrompt2: s.imageGenCustomFemalePrompt2,
     imageGenProfilesExpanded: s.imageGenProfilesExpanded
@@ -14339,10 +14341,16 @@ function getCharacterProfilesFromSettings(options = {}) {
     name: String(entry?.name || '').trim(),
     keys: Array.isArray(entry?.keys) ? entry.keys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean) : [],
     tags: String(entry?.tags || '').trim(),
-    enabled: entry?.enabled !== false
+    enabled: entry?.enabled !== false,
+    outfits: Array.isArray(entry?.outfits) ? entry.outfits.map((outfit) => ({
+      name: String(outfit?.name || '').trim(),
+      keys: Array.isArray(outfit?.keys) ? outfit.keys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean) : [],
+      tags: String(outfit?.tags || '').trim(),
+      enabled: outfit?.enabled !== false
+    })).filter(outfit => outfit.name || outfit.tags || (outfit.keys && outfit.keys.length)) : []
   }));
   if (options.includeEmpty) {
-    return mapped.filter(entry => entry.name || entry.tags || (entry.keys && entry.keys.length));
+    return mapped.filter(entry => entry.name || entry.tags || (entry.keys && entry.keys.length) || (entry.outfits && entry.outfits.length));
   }
   return mapped.filter(entry => entry.name && entry.tags);
 }
@@ -14359,6 +14367,32 @@ function renderCharacterProfilesUi() {
 
   const rows = list.map((entry, idx) => {
     const keys = (entry.keys || []).join(', ');
+    const outfits = Array.isArray(entry.outfits) ? entry.outfits : [];
+    const outfitRows = outfits.map((outfit, outfitIdx) => {
+      const outfitKeys = (outfit.keys || []).join(', ');
+      return `
+        <div class="sg-profile-outfit-row" data-outfit-index="${outfitIdx}" style="border-left:2px solid var(--SmartThemeQuoteColor); padding-left:8px; margin-top:6px;">
+          <div class="sg-grid2">
+            <div class="sg-field">
+              <label>Outfit name</label>
+              <input type="text" class="sg-profile-outfit-name" value="${escapeHtml(outfit.name || '')}" placeholder="sailor uniform / casual">
+            </div>
+            <div class="sg-field">
+              <label>Outfit keys</label>
+              <input type="text" class="sg-profile-outfit-keys" value="${escapeHtml(outfitKeys)}" placeholder="sailor, uniform">
+            </div>
+          </div>
+          <div class="sg-field" style="margin-top:6px;">
+            <label>Outfit tags</label>
+            <textarea rows="2" class="sg-profile-outfit-tags" placeholder="sailor uniform, pleated skirt, ...">${escapeHtml(outfit.tags || '')}</textarea>
+          </div>
+          <div class="sg-row sg-inline" style="margin-top:6px; gap:12px;">
+            <label class="sg-check"><input type="checkbox" class="sg-profile-outfit-enabled" ${outfit.enabled !== false ? 'checked' : ''}>Enable outfit</label>
+            <button class="menu_button sg-btn sg-profile-outfit-delete" type="button">Delete outfit</button>
+          </div>
+        </div>
+      `;
+    }).join('');
     return `
       <div class="sg-profile-row" data-index="${idx}">
         <div class="sg-grid2">
@@ -14375,8 +14409,13 @@ function renderCharacterProfilesUi() {
           <label>形象标签</label>
           <textarea rows="3" class="sg-profile-tags" placeholder="1girl, silver hair, ...">${escapeHtml(entry.tags)}</textarea>
         </div>
+        <div class="sg-field" style="margin-top:8px;">
+          <label>Outfits</label>
+          <div class="sg-profile-outfits">${outfitRows || '<div class="sg-hint">No outfits yet.</div>'}</div>
+        </div>
         <div class="sg-row sg-inline" style="margin-top:6px; gap:12px;">
           <label class="sg-check"><input type="checkbox" class="sg-profile-enabled" ${entry.enabled ? 'checked' : ''}>启用</label>
+          <button class="menu_button sg-btn sg-profile-outfit-add" type="button">Add outfit</button>
           <button class="menu_button sg-btn sg-profile-delete" type="button">删除</button>
         </div>
       </div>
@@ -14393,19 +14432,148 @@ function collectCharacterProfilesFromUi() {
     const keysRaw = String($row.find('.sg-profile-keys').val() || '').trim();
     const tags = String($row.find('.sg-profile-tags').val() || '').trim();
     const enabled = $row.find('.sg-profile-enabled').is(':checked');
-    if (!name && !tags && !keysRaw) return;
     const keys = keysRaw
       .split(',')
       .map(k => String(k || '').toLowerCase().trim())
       .filter(Boolean);
-    list.push({ name, keys, tags, enabled });
+    const outfits = [];
+    $row.find('.sg-profile-outfit-row').each((__, outfitEl) => {
+      const $outfit = $(outfitEl);
+      const outfitName = String($outfit.find('.sg-profile-outfit-name').val() || '').trim();
+      const outfitKeysRaw = String($outfit.find('.sg-profile-outfit-keys').val() || '').trim();
+      const outfitTags = String($outfit.find('.sg-profile-outfit-tags').val() || '').trim();
+      const outfitEnabled = $outfit.find('.sg-profile-outfit-enabled').is(':checked');
+      if (!outfitName && !outfitKeysRaw && !outfitTags) return;
+      const outfitKeys = outfitKeysRaw
+        .split(',')
+        .map(k => String(k || '').toLowerCase().trim())
+        .filter(Boolean);
+      outfits.push({ name: outfitName, keys: outfitKeys, tags: outfitTags, enabled: outfitEnabled });
+    });
+    if (!name && !tags && !keys.length && !outfits.length) return;
+    list.push({ name, keys, tags, enabled, outfits });
   });
   return list;
 }
 
+function normalizeImageGenMemoryName(subject) {
+  let name = String(subject || '').trim();
+  if (!name) return '';
+  name = name
+    .replace(/^(角色|人物|主题|对象)\s*[:：]\s*/i, '')
+    .replace(/[，,。；;].*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return name.slice(0, 64);
+}
+
+function extractImageGenOutfitTags(tags) {
+  const clothingWords = [
+    'outfit', 'uniform', 'dress', 'shirt', 'blouse', 'skirt', 'pants', 'shorts', 'jacket', 'coat',
+    'hoodie', 'sweater', 'cardigan', 'kimono', 'yukata', 'sailor', 'school uniform', 'maid',
+    'armor', 'robe', 'cape', 'cloak', 'swimsuit', 'bikini', 'lingerie', 'stockings', 'thighhighs',
+    'boots', 'shoes', 'gloves', 'hat', 'ribbon', 'tie', 'necktie', 'bow', 'belt'
+  ];
+  const parts = String(tags || '')
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean);
+  const picked = parts.filter(t => {
+    const lower = t.toLowerCase();
+    return clothingWords.some(word => lower.includes(word));
+  });
+  return Array.from(new Set(picked)).join(', ');
+}
+
+function inferImageGenOutfitName(outfitTags) {
+  const lower = String(outfitTags || '').toLowerCase();
+  const candidates = [
+    ['sailor', 'sailor uniform'],
+    ['school uniform', 'school uniform'],
+    ['maid', 'maid outfit'],
+    ['kimono', 'kimono'],
+    ['yukata', 'yukata'],
+    ['swimsuit', 'swimsuit'],
+    ['bikini', 'bikini'],
+    ['armor', 'armor'],
+    ['dress', 'dress'],
+    ['casual', 'casual outfit']
+  ];
+  const hit = candidates.find(([key]) => lower.includes(key));
+  return hit ? hit[1] : 'generated outfit';
+}
+
+function rememberImageGenCharacterProfile(subject, tags, extraKeys = []) {
+  const s = ensureSettings();
+  if (!s.imageGenCharacterMemoryEnabled) return false;
+
+  const name = normalizeImageGenMemoryName(subject);
+  const cleanTags = String(tags || '').trim();
+  if (!name || !cleanTags) return false;
+
+  const list = getCharacterProfilesFromSettings({ includeEmpty: true });
+  const keySet = new Set([
+    name.toLowerCase(),
+    ...String(name).split(/[\/,，、\s]+/).map(k => k.toLowerCase().trim()).filter(Boolean),
+    ...extraKeys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean)
+  ]);
+  const keys = Array.from(keySet).filter(Boolean).slice(0, 12);
+  const lowerName = name.toLowerCase();
+  const idx = list.findIndex(entry => {
+    const entryName = String(entry?.name || '').toLowerCase();
+    const entryKeys = Array.isArray(entry?.keys) ? entry.keys.map(k => String(k || '').toLowerCase()) : [];
+    return entryName === lowerName || entryKeys.includes(lowerName) || keys.some(k => entryKeys.includes(k));
+  });
+
+  const outfitTags = extractImageGenOutfitTags(cleanTags);
+  const outfitName = inferImageGenOutfitName(outfitTags);
+  const makeOutfit = () => outfitTags ? {
+    name: outfitName,
+    keys: [outfitName.toLowerCase(), ...String(outfitName).split(/[\/,，、\s]+/).map(k => k.toLowerCase().trim()).filter(Boolean)],
+    tags: outfitTags,
+    enabled: true
+  } : null;
+
+  const nextEntry = { name, keys, tags: cleanTags, enabled: true, outfits: [] };
+  const generatedOutfit = makeOutfit();
+  if (generatedOutfit) nextEntry.outfits.push(generatedOutfit);
+  if (idx >= 0) {
+    const prev = list[idx] || {};
+    const outfits = Array.isArray(prev.outfits) ? [...prev.outfits] : [];
+    if (generatedOutfit) {
+      const outfitIdx = outfits.findIndex(o => String(o?.name || '').toLowerCase() === String(generatedOutfit.name || '').toLowerCase());
+      if (outfitIdx >= 0) {
+        outfits[outfitIdx] = {
+          ...outfits[outfitIdx],
+          keys: Array.from(new Set([...(outfits[outfitIdx].keys || []), ...generatedOutfit.keys])).slice(0, 16),
+          tags: generatedOutfit.tags,
+          enabled: outfits[outfitIdx].enabled !== false
+        };
+      } else {
+        outfits.push(generatedOutfit);
+      }
+    }
+    list[idx] = {
+      ...prev,
+      name: prev.name || name,
+      keys: Array.from(new Set([...(prev.keys || []), ...keys])).slice(0, 16),
+      tags: cleanTags,
+      enabled: prev.enabled !== false,
+      outfits
+    };
+  } else {
+    list.push(nextEntry);
+  }
+
+  s.imageGenCharacterProfiles = list;
+  saveSettings();
+  renderCharacterProfilesUi();
+  return true;
+}
+
 function matchCharacterTagsFromProfiles(textOverride = null) {
   const s = ensureSettings();
-  if (!s.imageGenCharacterProfilesEnabled) return '';
+  if (!s.imageGenCharacterProfilesEnabled && !s.imageGenCharacterMemoryEnabled) return '';
   const entries = getCharacterProfilesFromSettings();
   if (!entries.length) return '';
 
@@ -14427,7 +14595,17 @@ function matchCharacterTagsFromProfiles(textOverride = null) {
 
   if (!matched.length) return '';
 
-  const allTags = matched.map(e => e.tags).join(', ');
+  const allTags = matched.map(e => {
+    const tags = [e.tags];
+    const outfits = Array.isArray(e.outfits) ? e.outfits.filter(o => o && o.enabled !== false && o.tags) : [];
+    for (const outfit of outfits) {
+      const outfitName = String(outfit.name || '').toLowerCase();
+      const outfitNameMatch = outfitName && text.includes(outfitName);
+      const outfitKeyMatch = Array.isArray(outfit.keys) && outfit.keys.some(k => text.includes(String(k || '').toLowerCase()));
+      if (outfitNameMatch || outfitKeyMatch || outfits.length === 1) tags.push(outfit.tags);
+    }
+    return tags.filter(Boolean).join(', ');
+  }).join(', ');
   console.log('[ImageGen] Matched profiles:', matched.map(e => e.name));
   return allTags;
 }
@@ -14614,6 +14792,7 @@ async function generateImagePromptBatch() {
 
   batchPrompt += `需要生成 ${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
   batchPrompt += `要求：只输出 JSON 数组，不要其它文字。positive/negative 必须是英文标签串（逗号分隔）。\n`;
+  batchPrompt += `如果能从故事中识别到角色名，subject 必须包含该角色名，便于后续保持同一人物形象一致。\n`;
 
   const patternLines = patterns.map((pattern, idx) => {
     let rule = '';
@@ -14683,6 +14862,10 @@ async function generateImagePromptBatch() {
       }
 
       if (itemProfileTags) finalPositive = `${itemProfileTags}, ${finalPositive}`;
+    }
+
+    if (!isScene) {
+      rememberImageGenCharacterProfile(parsed?.subject || pattern.label, finalPositive || positive || '', [parsed?.subject, pattern.label]);
     }
 
     if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
@@ -14792,7 +14975,7 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
     userPrompt += `【ImageGen Worldbook】\n${worldbookText}\n\n`;
   }
   userPrompt += `【故事内容】：\n${storyContent}\n\n`;
-  userPrompt += `请输出 JSON 格式的提示词。`;
+  userPrompt += `请输出 JSON 格式的提示词。如果能识别到角色名，subject 必须包含该角色名，便于后续保持同一人物形象一致。`;
 
 
   const messages = [
@@ -15040,6 +15223,9 @@ async function runImageGeneration() {
     }
 
     $('#sg_imagePositivePrompt').val(finalPositive);
+    if (!(genType === 'scene' || promptResult.type === 'scene')) {
+      rememberImageGenCharacterProfile(promptResult.subject, normalizePositive(promptResult.positive), [promptResult.subject]);
+    }
 
 
     $('#sg_imagePromptPreview').show();
@@ -16641,7 +16827,9 @@ function buildModalHtml() {
                  <div class="sg-hint">在剧情中匹配角色名/关键词后，会将该人物的标签自动拼到正向提示词前面。</div>
                  <div class="sg-row sg-inline" style="margin-top:8px; gap:12px;">
                    <label class="sg-check"><input type="checkbox" id="sg_imageGenProfilesEnabled">启用人物形象匹配</label>
+                   <label class="sg-check"><input type="checkbox" id="sg_imageGenCharacterMemoryEnabled">自动记忆生成的人物形象</label>
                    <button class="menu_button sg-btn" id="sg_imageGenProfileAdd">添加人物</button>
+                   <button class="menu_button sg-btn" id="sg_imageGenProfilesClear">清空列表</button>
                    <div class="sg-row sg-inline sg-profile-scale-controls" style="gap:6px;">
                      <button class="menu_button sg-btn" id="sg_imageGenProfilesToggle">展开/折叠</button>
                    </div>
@@ -18432,7 +18620,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_imageGenProfilesEnabled, #sg_imageGenCustomFemalePrompt1, #sg_imageGenCustomFemalePrompt2, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt, #sg_imageGenProfiles').on('input change', () => {
+  $('#sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenCustomMaxTokens, #sg_imageGenArtistPromptEnabled, #sg_imageGenArtistPrompt, #sg_imageGenPromptRulesEnabled, #sg_imageGenPromptRules, #sg_imageGenBatchEnabled, #sg_imageGenBatchPatterns, #sg_imageGenPresetSelect, #sg_imageGenProfilesEnabled, #sg_imageGenCharacterMemoryEnabled, #sg_imageGenCustomFemalePrompt1, #sg_imageGenCustomFemalePrompt2, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiSampler, #sg_novelaiFixedSeedEnabled, #sg_novelaiFixedSeed, #sg_novelaiCfgRescale, #sg_novelaiNoiseSchedule, #sg_novelaiLegacy, #sg_novelaiVarietyBoost, #sg_novelaiNegativePrompt, #sg_imageGenProfiles').on('input change', () => {
     pullUiToSettings();
     saveSettings();
   });
@@ -18481,6 +18669,41 @@ function ensureModal() {
     $row.remove();
     const s = ensureSettings();
     s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
+    saveSettings();
+    renderCharacterProfilesUi();
+  });
+
+  $(document).on('click', '#sg_imageGenProfiles .sg-profile-outfit-add', (e) => {
+    e.preventDefault();
+    const $row = $(e.currentTarget).closest('.sg-profile-row');
+    if (!$row.length) return;
+    const s = ensureSettings();
+    const list = collectCharacterProfilesFromUi();
+    const idx = Number($row.attr('data-index'));
+    if (!Number.isFinite(idx) || !list[idx]) return;
+    if (!Array.isArray(list[idx].outfits)) list[idx].outfits = [];
+    list[idx].outfits.push({ name: `outfit ${list[idx].outfits.length + 1}`, keys: [], tags: '', enabled: true });
+    s.imageGenCharacterProfiles = list;
+    saveSettings();
+    renderCharacterProfilesUi();
+  });
+
+  $(document).on('click', '#sg_imageGenProfiles .sg-profile-outfit-delete', (e) => {
+    e.preventDefault();
+    const $outfit = $(e.currentTarget).closest('.sg-profile-outfit-row');
+    if (!$outfit.length) return;
+    $outfit.remove();
+    const s = ensureSettings();
+    s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
+    saveSettings();
+    renderCharacterProfilesUi();
+  });
+
+  $(document).on('click', '#sg_imageGenProfilesClear', (e) => {
+    e.preventDefault();
+    if (!confirm('清空全部人物形象记录？')) return;
+    const s = ensureSettings();
+    s.imageGenCharacterProfiles = [];
     saveSettings();
     renderCharacterProfilesUi();
   });
@@ -20158,6 +20381,7 @@ function pullSettingsToUi() {
 
   // 角色标签世界书设置
   $('#sg_imageGenProfilesEnabled').prop('checked', !!s.imageGenCharacterProfilesEnabled);
+  $('#sg_imageGenCharacterMemoryEnabled').prop('checked', s.imageGenCharacterMemoryEnabled !== false);
   renderCharacterProfilesUi();
   const expanded = !!s.imageGenProfilesExpanded;
   $('#sg_imageGenProfiles').toggleClass('sg-profiles-collapsed', !expanded);
@@ -20950,6 +21174,7 @@ function pullUiToSettings() {
 
   // 角色标签世界书设置
   s.imageGenCharacterProfilesEnabled = $('#sg_imageGenProfilesEnabled').is(':checked');
+  s.imageGenCharacterMemoryEnabled = $('#sg_imageGenCharacterMemoryEnabled').is(':checked');
   s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
   s.imageGenCharacterProfiles = s.imageGenCharacterProfiles || [];
   s.imageGenCustomFemalePrompt1 = String($('#sg_imageGenCustomFemalePrompt1').val() || '').trim();
