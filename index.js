@@ -14548,11 +14548,34 @@ function sanitizeImageGenCharacterMemoryTags(tags) {
     /^近景$/,
     /^全身$/
   ];
+  const appearanceWords = [
+    'hair', 'bangs', 'ponytail', 'twintails', 'braid', 'braids', 'ahoge', 'bob cut', 'hime cut',
+    'eyes', 'pupils', 'skin', 'freckles', 'mole', 'scar', 'tattoo',
+    'breasts', 'chest', 'waist', 'hips', 'thighs', 'legs', 'body', 'curvy', 'slender', 'petite',
+    'tall', 'short', 'muscular', 'abs', 'navel',
+    'ears', 'horns', 'tail', 'wings', 'fangs', 'claws',
+    'glasses', 'earrings', 'piercing', 'necklace', 'choker', 'hair ornament', 'hairpin', 'ribbon',
+    'age', 'young', 'adult', 'mature'
+  ];
+  const blockedWords = [
+    'sex', 'nude', 'naked', 'cum', 'penis', 'vagina', 'nipples', 'pussy', 'breast grab',
+    'standing', 'sitting', 'kneeling', 'lying', 'walking', 'running', 'jumping', 'crouching',
+    'pose', 'posing', 'spread legs', 'arms up', 'hand on', 'holding', 'grabbing', 'looking',
+    'smile', 'crying', 'angry', 'blush',
+    'chair', 'bed', 'sofa', 'table', 'room', 'beach', 'shore', 'sea', 'street', 'forest', 'background',
+    'indoors', 'outdoors', 'scenery', 'landscape', 'close-up', 'full body', 'upper body',
+    'lighting', 'shadow', 'cinematic', 'depth of field', 'camera', 'view', 'angle'
+  ];
   return String(tags || '')
     .split(',')
     .map(t => t.trim())
     .filter(Boolean)
     .filter(t => !blocked.some(re => re.test(t)))
+    .filter(t => {
+      const lower = t.toLowerCase();
+      if (blockedWords.some(word => lower.includes(word))) return false;
+      return appearanceWords.some(word => lower.includes(word));
+    })
     .join(', ');
 }
 
@@ -14852,6 +14875,7 @@ async function generateImagePromptBatch() {
   batchPrompt += `需要生成 ${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
   batchPrompt += `要求：只输出 JSON 数组，不要其它文字。positive/negative 必须是英文标签串（逗号分隔）。\n`;
   batchPrompt += `positive 不要包含角色姓名、人名罗马音或批次名，只写该画面的外观、服装、动作、表情、构图和场景标签。\n`;
+  batchPrompt += `人物稳定形象只包含外貌特征（发色、瞳色、发型、肤色、体型、身高、标志性饰品/身体特征），不要把动作、姿势、性行为、道具、地点、构图、光影或场景当成人物形象。\n`;
   batchPrompt += `subject 只能填写本组画面涉及的人物名；多人用顿号分隔（如“苏沁、林源”）。不要写地点、动作、场景或“苏沁与林源在海岸边”这类描述。\n`;
   batchPrompt += `如果已提供缓存人物形象/服装标签，必须优先参考并保持同一人物外观一致；故事内容只用于补充动作、表情、场景和当前服装变化。\n`;
 
@@ -15036,7 +15060,7 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
     userPrompt += `【ImageGen Worldbook】\n${worldbookText}\n\n`;
   }
   userPrompt += `【故事内容】：\n${storyContent}\n\n`;
-  userPrompt += `请输出 JSON 格式的提示词。subject 只能填写画面涉及的人物名；多人用顿号分隔（如“苏沁、林源”）。不要写地点、动作、场景或“苏沁与林源在海岸边”这类描述。positive 不要包含角色姓名、人名罗马音或批次名，只写外观、服装、动作、表情、构图和场景标签。如果已提供缓存人物形象/服装标签，必须优先参考并保持同一人物外观一致；故事内容只用于补充动作、表情、场景和当前服装变化。`;
+  userPrompt += `请输出 JSON 格式的提示词。subject 只能填写画面涉及的人物名；多人用顿号分隔（如“苏沁、林源”）。不要写地点、动作、场景或“苏沁与林源在海岸边”这类描述。positive 不要包含角色姓名、人名罗马音或批次名，只写外观、服装、动作、表情、构图和场景标签。人物稳定形象只包含外貌特征（发色、瞳色、发型、肤色、体型、身高、标志性饰品/身体特征），不要把动作、姿势、性行为、道具、地点、构图、光影或场景当成人物形象。如果已提供缓存人物形象/服装标签，必须优先参考并保持同一人物外观一致；故事内容只用于补充动作、表情、场景和当前服装变化。`;
 
 
   const messages = [
