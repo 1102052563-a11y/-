@@ -14342,6 +14342,7 @@ function getCharacterProfilesFromSettings(options = {}) {
     keys: Array.isArray(entry?.keys) ? entry.keys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean) : [],
     tags: String(entry?.tags || '').trim(),
     enabled: entry?.enabled !== false,
+    collapsed: !!entry?.collapsed,
     outfits: Array.isArray(entry?.outfits) ? entry.outfits.map((outfit) => ({
       name: String(outfit?.name || '').trim(),
       keys: Array.isArray(outfit?.keys) ? outfit.keys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean) : [],
@@ -14368,6 +14369,10 @@ function renderCharacterProfilesUi() {
   const rows = list.map((entry, idx) => {
     const keys = (entry.keys || []).join(', ');
     const outfits = Array.isArray(entry.outfits) ? entry.outfits : [];
+    const collapsed = !!entry.collapsed;
+    const collapsedClass = collapsed ? ' sg-profile-collapsed' : '';
+    const collapseLabel = collapsed ? 'Expand' : 'Collapse';
+    const titleName = entry.name || `Character ${idx + 1}`;
     const outfitRows = outfits.map((outfit, outfitIdx) => {
       const outfitKeys = (outfit.keys || []).join(', ');
       return `
@@ -14394,7 +14399,16 @@ function renderCharacterProfilesUi() {
       `;
     }).join('');
     return `
-      <div class="sg-profile-row" data-index="${idx}">
+      <div class="sg-profile-row${collapsedClass}" data-index="${idx}">
+        <div class="sg-profile-header sg-row sg-inline" style="gap:10px; margin-bottom:6px;">
+          <b class="sg-profile-title">${escapeHtml(titleName)}</b>
+          <span class="sg-hint">outfits: ${outfits.length}</span>
+          <div class="sg-spacer"></div>
+          <label class="sg-check"><input type="checkbox" class="sg-profile-enabled" ${entry.enabled ? 'checked' : ''}>Enable</label>
+          <button class="menu_button sg-btn sg-profile-toggle" type="button">${collapseLabel}</button>
+          <button class="menu_button sg-btn sg-profile-delete" type="button">Delete</button>
+        </div>
+        <div class="sg-profile-body">
         <div class="sg-grid2">
           <div class="sg-field">
             <label>人物名</label>
@@ -14414,9 +14428,8 @@ function renderCharacterProfilesUi() {
           <div class="sg-profile-outfits">${outfitRows || '<div class="sg-hint">No outfits yet.</div>'}</div>
         </div>
         <div class="sg-row sg-inline" style="margin-top:6px; gap:12px;">
-          <label class="sg-check"><input type="checkbox" class="sg-profile-enabled" ${entry.enabled ? 'checked' : ''}>启用</label>
           <button class="menu_button sg-btn sg-profile-outfit-add" type="button">Add outfit</button>
-          <button class="menu_button sg-btn sg-profile-delete" type="button">删除</button>
+        </div>
         </div>
       </div>
     `;
@@ -14432,6 +14445,7 @@ function collectCharacterProfilesFromUi() {
     const keysRaw = String($row.find('.sg-profile-keys').val() || '').trim();
     const tags = String($row.find('.sg-profile-tags').val() || '').trim();
     const enabled = $row.find('.sg-profile-enabled').is(':checked');
+    const collapsed = $row.hasClass('sg-profile-collapsed');
     const keys = keysRaw
       .split(',')
       .map(k => String(k || '').toLowerCase().trim())
@@ -14451,7 +14465,7 @@ function collectCharacterProfilesFromUi() {
       outfits.push({ name: outfitName, keys: outfitKeys, tags: outfitTags, enabled: outfitEnabled });
     });
     if (!name && !tags && !keys.length && !outfits.length) return;
-    list.push({ name, keys, tags, enabled, outfits });
+    list.push({ name, keys, tags, enabled, collapsed, outfits });
   });
   return list;
 }
@@ -14519,28 +14533,48 @@ function inferImageGenOutfitName(outfitTags) {
   return hit ? hit[1] : 'generated outfit';
 }
 
+function sanitizeImageGenCharacterMemoryTags(tags) {
+  const blocked = [
+    /^(\d+)\s*(girl|girls|boy|boys|other|others)$/i,
+    /^multiple\s+(girls|boys)$/i,
+    /^group$/i,
+    /^duo$/i,
+    /^solo$/i,
+    /^character\s*name$/i,
+    /^story-\d+$/i,
+    /^剧情-\d+$/,
+    /^单人/,
+    /^双人/,
+    /^近景$/,
+    /^全身$/
+  ];
+  return String(tags || '')
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean)
+    .filter(t => !blocked.some(re => re.test(t)))
+    .join(', ');
+}
+
 function rememberImageGenCharacterProfile(subject, tags, extraKeys = []) {
   const s = ensureSettings();
   if (!s.imageGenCharacterMemoryEnabled) return false;
 
   const names = extractImageGenCharacterNames(subject);
-  const cleanTags = String(tags || '').trim();
-  if (!names.length || !cleanTags) return false;
-
-  let changed = false;
-  for (const name of names) {
-    changed = rememberImageGenCharacterProfileSingle(name, cleanTags, [subject, ...extraKeys]) || changed;
+  const cleanTags = sanitizeImageGenCharacterMemoryTags(tags);
+  if (names.length !== 1 || !cleanTags) {
+    if (names.length > 1) console.log('[ImageGen] Skip auto character memory for multi-character subject:', names);
+    return false;
   }
-  return changed;
+
+  return rememberImageGenCharacterProfileSingle(names[0], cleanTags, []);
 }
 
 function rememberImageGenCharacterProfileSingle(name, cleanTags, extraKeys = []) {
   const s = ensureSettings();
   const list = getCharacterProfilesFromSettings({ includeEmpty: true });
   const keySet = new Set([
-    name.toLowerCase(),
-    ...String(name).split(/[\/,，、\s]+/).map(k => k.toLowerCase().trim()).filter(Boolean),
-    ...extraKeys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean)
+    name.toLowerCase()
   ]);
   const keys = Array.from(keySet).filter(Boolean).slice(0, 12);
   const lowerName = name.toLowerCase();
@@ -14817,6 +14851,7 @@ async function generateImagePromptBatch() {
 
   batchPrompt += `需要生成 ${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
   batchPrompt += `要求：只输出 JSON 数组，不要其它文字。positive/negative 必须是英文标签串（逗号分隔）。\n`;
+  batchPrompt += `positive 不要包含角色姓名、人名罗马音或批次名，只写该画面的外观、服装、动作、表情、构图和场景标签。\n`;
   batchPrompt += `subject 只能填写本组画面涉及的人物名；多人用顿号分隔（如“苏沁、林源”）。不要写地点、动作、场景或“苏沁与林源在海岸边”这类描述。\n`;
   batchPrompt += `如果已提供缓存人物形象/服装标签，必须优先参考并保持同一人物外观一致；故事内容只用于补充动作、表情、场景和当前服装变化。\n`;
 
@@ -14891,7 +14926,7 @@ async function generateImagePromptBatch() {
     }
 
     if (!isScene) {
-      rememberImageGenCharacterProfile(parsed?.subject || pattern.label, finalPositive || positive || '', [parsed?.subject, pattern.label]);
+      rememberImageGenCharacterProfile(parsed?.subject || '', positive || '');
     }
 
     if (s.imageGenArtistPromptEnabled && s.imageGenArtistPrompt) {
@@ -15001,7 +15036,7 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
     userPrompt += `【ImageGen Worldbook】\n${worldbookText}\n\n`;
   }
   userPrompt += `【故事内容】：\n${storyContent}\n\n`;
-  userPrompt += `请输出 JSON 格式的提示词。subject 只能填写画面涉及的人物名；多人用顿号分隔（如“苏沁、林源”）。不要写地点、动作、场景或“苏沁与林源在海岸边”这类描述。如果已提供缓存人物形象/服装标签，必须优先参考并保持同一人物外观一致；故事内容只用于补充动作、表情、场景和当前服装变化。`;
+  userPrompt += `请输出 JSON 格式的提示词。subject 只能填写画面涉及的人物名；多人用顿号分隔（如“苏沁、林源”）。不要写地点、动作、场景或“苏沁与林源在海岸边”这类描述。positive 不要包含角色姓名、人名罗马音或批次名，只写外观、服装、动作、表情、构图和场景标签。如果已提供缓存人物形象/服装标签，必须优先参考并保持同一人物外观一致；故事内容只用于补充动作、表情、场景和当前服装变化。`;
 
 
   const messages = [
@@ -15250,7 +15285,7 @@ async function runImageGeneration() {
 
     $('#sg_imagePositivePrompt').val(finalPositive);
     if (!(genType === 'scene' || promptResult.type === 'scene')) {
-      rememberImageGenCharacterProfile(promptResult.subject, normalizePositive(promptResult.positive), [promptResult.subject]);
+      rememberImageGenCharacterProfile(promptResult.subject, normalizePositive(promptResult.positive));
     }
 
 
@@ -18693,6 +18728,17 @@ function ensureModal() {
     const $row = $(e.currentTarget).closest('.sg-profile-row');
     if (!$row.length) return;
     $row.remove();
+    const s = ensureSettings();
+    s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
+    saveSettings();
+    renderCharacterProfilesUi();
+  });
+
+  $(document).on('click', '#sg_imageGenProfiles .sg-profile-toggle', (e) => {
+    e.preventDefault();
+    const $row = $(e.currentTarget).closest('.sg-profile-row');
+    if (!$row.length) return;
+    $row.toggleClass('sg-profile-collapsed');
     const s = ensureSettings();
     s.imageGenCharacterProfiles = collectCharacterProfilesFromUi();
     saveSettings();
