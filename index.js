@@ -1242,6 +1242,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   imageGenLookbackMessages: 5,
   imageGenReadStatData: false,
   imageGenStatVarName: 'stat_data',
+  imageGenWorldBookEnabled: false,
+  imageGenWorldBookFile: '',
+  imageGenWorldBookMaxChars: 12000,
   imageGenLlmProvider: 'custom', // custom
   imageGenCustomEndpoint: '',
   imageGenCustomApiKey: '',
@@ -1453,6 +1456,7 @@ let imageGenPreviewExpanded = true;
 // 蓝灯索引“实时读取”缓存（防止每条消息都请求一次）
 let blueIndexLiveCache = { file: '', loadedAt: 0, entries: [], lastError: '' };
 let structuredWorldbookLiveCache = { file: '', loadedAt: 0, mode: 'active', totalEntries: 0, usedEntries: 0, tokens: 0, text: '', lastError: '' };
+let imageGenWorldbookCache = { file: '', loadedAt: 0, maxChars: 0, text: '', totalEntries: 0, usedEntries: 0, lastError: '' };
 
 // ============== 关键：DOM 追加缓存 & 观察者（抗重渲染） ==============
 /**
@@ -6419,6 +6423,49 @@ function buildStructuredWorldbookText(entries, maxChars) {
     used += 1;
   }
   return { text: acc.trim(), used };
+}
+
+async function buildImageGenWorldbookBlock(force = false) {
+  const s = ensureSettings();
+  if (!s.imageGenWorldBookEnabled) return '';
+  const file = normalizeWorldInfoFileName(s.imageGenWorldBookFile || '');
+  if (!file) return '';
+
+  const maxChars = clampInt(s.imageGenWorldBookMaxChars, 500, 200000, 12000);
+  const now = Date.now();
+  const ageMs = now - Number(imageGenWorldbookCache.loadedAt || 0);
+  const cacheOk = !force
+    && ageMs < 60000
+    && imageGenWorldbookCache.file === file
+    && Number(imageGenWorldbookCache.maxChars || 0) === maxChars
+    && String(imageGenWorldbookCache.text || '').trim();
+  if (cacheOk) return String(imageGenWorldbookCache.text || '').trim();
+
+  try {
+    const json = await fetchWorldInfoFileJsonCompat(file);
+    const entries = parseWorldbookJson(JSON.stringify(json || {})).filter(e => e && !e.disabled);
+    const built = buildStructuredWorldbookText(entries, maxChars);
+    imageGenWorldbookCache = {
+      file,
+      loadedAt: now,
+      maxChars,
+      text: String(built.text || '').trim(),
+      totalEntries: entries.length,
+      usedEntries: built.used || 0,
+      lastError: ''
+    };
+    return imageGenWorldbookCache.text;
+  } catch (e) {
+    imageGenWorldbookCache = {
+      ...imageGenWorldbookCache,
+      file,
+      loadedAt: now,
+      maxChars,
+      lastError: e?.message || String(e || '')
+    };
+    console.warn('[ImageGen] Failed to load worldbook:', e);
+    return '';
+  }
 }
 
 async function ensureStructuredWorldbookLive(force = false) {
@@ -13910,6 +13957,7 @@ async function refreshWorldbookList() {
     saveSettings();
     fillWorldbookSelect($('#sg_summaryWorldbookSelect'), names, normalizeWorldInfoFileName(s.summaryWorldInfoFile));
     fillWorldbookSelect($('#sg_summaryBlueWorldbookSelect'), names, normalizeWorldInfoFileName(s.summaryBlueWorldInfoFile));
+    fillWorldbookSelect($('#sg_imageGenWorldBookSelect'), names, normalizeWorldInfoFileName(s.imageGenWorldBookFile));
     setStatus(`已刷新世界书列表：${names.length} 本`, 'ok');
   } catch (e) {
     setStatus(`刷新世界书列表失败：${e?.message ?? e}`, 'err');
@@ -14547,6 +14595,7 @@ async function generateImagePromptBatch() {
   }
 
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
+  const worldbookText = await buildImageGenWorldbookBlock(false);
   const globalProfileTags = matchCharacterTagsFromProfiles(storyContent);
 
   const patterns = getImageGenBatchPatterns();
@@ -14558,6 +14607,9 @@ async function generateImagePromptBatch() {
   let batchPrompt = `请根据以下故事内容生成一组图像提示词列表（JSON 数组）。\n\n`;
   if (statDataJson) {
     batchPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+  }
+  if (worldbookText) {
+    batchPrompt += `【ImageGen Worldbook】\n${worldbookText}\n\n`;
   }
 
   batchPrompt += `需要生成 ${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
@@ -14724,6 +14776,7 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
   const systemPrompt = s.imageGenSystemPrompt || DEFAULT_SETTINGS.imageGenSystemPrompt;
 
   const statDataJson = statData ? JSON.stringify(statData, null, 2) : '';
+  const worldbookText = await buildImageGenWorldbookBlock(false);
   let userPrompt = `请根据以下故事内容生成图像提示词。\n\n`;
   if (genType === 'character') {
     userPrompt += `【要求】：生成角色立绘的提示词，重点描述角色外观。\n\n`;
@@ -14731,6 +14784,12 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
     userPrompt += `【要求】：生成场景图的提示词，重点描述环境和氛围。\n\n`;
   } else {
     userPrompt += `【要求】：自动判断应该生成角色还是场景。\n\n`;
+  }
+  if (statDataJson) {
+    userPrompt += `【角色状态数据】：\n${statDataJson}\n\n`;
+  }
+  if (worldbookText) {
+    userPrompt += `【ImageGen Worldbook】\n${worldbookText}\n\n`;
   }
   userPrompt += `【故事内容】：\n${storyContent}\n\n`;
   userPrompt += `请输出 JSON 格式的提示词。`;
@@ -16707,6 +16766,25 @@ function buildModalHtml() {
                 <input id="sg_imageGenStatVarName" type="text" placeholder="stat_data" style="width:120px">
               </div>
 
+              <div class="sg-card sg-subcard" style="margin-top:10px;">
+                <div class="sg-card-title" style="font-size:0.95em;">ImageGen Worldbook</div>
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <label class="sg-check"><input type="checkbox" id="sg_imageGenWorldBookEnabled">Read specified worldbook when building prompts</label>
+                </div>
+                <div class="sg-row sg-inline" style="margin-top:6px;">
+                  <input id="sg_imageGenWorldBookFile" type="text" placeholder="worldbook file name" style="min-width:180px; flex:1;">
+                  <select id="sg_imageGenWorldBookSelect" class="sg-model-select" title="Select worldbook" style="min-width:160px;">
+                    <option value="">(select worldbook)</option>
+                  </select>
+                  <button class="menu_button sg-btn" id="sg_imageGenRefreshWorldbooks" title="Refresh worldbook list">Refresh</button>
+                </div>
+                <div class="sg-field" style="margin-top:6px;">
+                  <label>Max injected characters</label>
+                  <input id="sg_imageGenWorldBookMaxChars" type="number" min="500" max="200000">
+                </div>
+                <div class="sg-hint">The selected worldbook is added only to the LLM prompt that creates image tags.</div>
+              </div>
+
               <div class="sg-field">
                 <label>标签生成提示词 (System)</label>
                 <textarea id="sg_imageGenSystemPrompt" rows="8" placeholder="用于让 LLM 生成 Danbooru 风格标签的提示词"></textarea>
@@ -18330,6 +18408,14 @@ function ensureModal() {
     ensureStructuredWorldbookLive(true).catch(() => void 0);
   });
 
+  $('#sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile, #sg_imageGenWorldBookMaxChars, #sg_imageGenWorldBookSelect').on('change input', () => {
+    const selected = String($('#sg_imageGenWorldBookSelect').val() || '').trim();
+    if (selected) $('#sg_imageGenWorldBookFile').val(selected);
+    pullUiToSettings();
+    saveSettings();
+    imageGenWorldbookCache = { file: '', loadedAt: 0, maxChars: 0, text: '', totalEntries: 0, usedEntries: 0, lastError: '' };
+  });
+
   $('#sg_factionEntriesEnabled, #sg_factionEntryPrefix, #sg_structuredFactionPrompt, #sg_structuredFactionEntryTemplate, #sg_structuredReenableEntriesEnabled, #sg_achievementEntriesEnabled, #sg_achievementEntryPrefix, #sg_structuredAchievementPrompt, #sg_structuredAchievementEntryTemplate, #sg_subProfessionEntriesEnabled, #sg_subProfessionEntryPrefix, #sg_structuredSubProfessionPrompt, #sg_structuredSubProfessionEntryTemplate, #sg_questEntriesEnabled, #sg_questEntryPrefix, #sg_structuredQuestPrompt, #sg_structuredQuestEntryTemplate, #sg_conquestEntriesEnabled, #sg_conquestEntryPrefix, #sg_structuredConquestPrompt, #sg_structuredConquestEntryTemplate, #sg_megaSummaryEnabled, #sg_megaSummaryEvery, #sg_megaSummarySystemPrompt, #sg_megaSummaryUserTemplate, #sg_megaSummaryCommentPrefix').on('input change', () => {
     pullUiToSettings();
     saveSettings();
@@ -18556,6 +18642,11 @@ function ensureModal() {
   });
 
   $('#sg_refreshWorldbookList').on('click', async () => {
+    pullUiToSettings(); saveSettings();
+    await refreshWorldbookList();
+  });
+
+  $('#sg_imageGenRefreshWorldbooks').on('click', async () => {
     pullUiToSettings(); saveSettings();
     await refreshWorldbookList();
   });
@@ -19959,6 +20050,14 @@ function pullSettingsToUi() {
   $('#sg_imageGenLookbackMessages').val(s.imageGenLookbackMessages || 5);
   $('#sg_imageGenReadStatData').prop('checked', !!s.imageGenReadStatData);
   $('#sg_imageGenStatVarName').val(String(s.imageGenStatVarName || 'stat_data'));
+  $('#sg_imageGenWorldBookEnabled').prop('checked', !!s.imageGenWorldBookEnabled);
+  $('#sg_imageGenWorldBookFile').val(String(s.imageGenWorldBookFile || ''));
+  $('#sg_imageGenWorldBookMaxChars').val(s.imageGenWorldBookMaxChars || 12000);
+  fillWorldbookSelect(
+    $('#sg_imageGenWorldBookSelect'),
+    Array.isArray(s.summaryWorldInfoFilesCache) ? s.summaryWorldInfoFilesCache : [],
+    normalizeWorldInfoFileName(s.imageGenWorldBookFile)
+  );
   $('#sg_imageGenCustomEndpoint').val(String(s.imageGenCustomEndpoint || ''));
   $('#sg_imageGenCustomApiKey').val(String(s.imageGenCustomApiKey || ''));
   $('#sg_imageGenCustomModel').val(String(s.imageGenCustomModel || 'gpt-4o-mini'));
@@ -20786,6 +20885,9 @@ function pullUiToSettings() {
   s.imageGenLookbackMessages = clampInt($('#sg_imageGenLookbackMessages').val(), 1, 30, s.imageGenLookbackMessages || 5);
   s.imageGenReadStatData = $('#sg_imageGenReadStatData').is(':checked');
   s.imageGenStatVarName = String($('#sg_imageGenStatVarName').val() || 'stat_data').trim() || 'stat_data';
+  s.imageGenWorldBookEnabled = $('#sg_imageGenWorldBookEnabled').is(':checked');
+  s.imageGenWorldBookFile = normalizeWorldInfoFileName($('#sg_imageGenWorldBookFile').val());
+  s.imageGenWorldBookMaxChars = clampInt($('#sg_imageGenWorldBookMaxChars').val(), 500, 200000, s.imageGenWorldBookMaxChars || 12000);
   s.imageGenCustomEndpoint = String($('#sg_imageGenCustomEndpoint').val() || '').trim();
   s.imageGenCustomApiKey = String($('#sg_imageGenCustomApiKey').val() || '').trim();
   s.imageGenCustomModel = String($('#sg_imageGenCustomModel').val() || 'gpt-4o-mini');
