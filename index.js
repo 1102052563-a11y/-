@@ -14535,6 +14535,7 @@ function rememberImageGenCharacterProfile(subject, tags, extraKeys = []) {
 }
 
 function rememberImageGenCharacterProfileSingle(name, cleanTags, extraKeys = []) {
+  const s = ensureSettings();
   const list = getCharacterProfilesFromSettings({ includeEmpty: true });
   const keySet = new Set([
     name.toLowerCase(),
