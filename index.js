@@ -14461,10 +14461,26 @@ function normalizeImageGenMemoryName(subject) {
   if (!name) return '';
   name = name
     .replace(/^(角色|人物|主题|对象)\s*[:：]\s*/i, '')
+    .replace(/(在|于|位于|站在|坐在|来到|前往|身处|靠近|旁边|边|岸边|海岸|街道|房间|室内|室外|场景|背景|画面|构图)[\s\S]*$/g, '')
     .replace(/[，,。；;].*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+  if (name.length > 12 && !/[A-Za-z]/.test(name)) return '';
   return name.slice(0, 64);
+}
+
+function extractImageGenCharacterNames(subject) {
+  const raw = String(subject || '').trim();
+  if (!raw) return [];
+  const cleaned = raw
+    .replace(/^(角色|人物|主题|对象)\s*[:：]\s*/i, '')
+    .replace(/(在|于|位于|站在|坐在|来到|前往|身处|靠近|旁边|边|岸边|海岸|街道|房间|室内|室外|场景|背景|画面|构图)[\s\S]*$/g, '');
+  const parts = cleaned
+    .split(/[、,，/＆&和与及+]|(?:\s+and\s+)/i)
+    .map(normalizeImageGenMemoryName)
+    .filter(Boolean)
+    .filter(name => !/^(少女|少年|女孩|男孩|女人|男人|女性|男性|角色|人物|双人|单人)$/.test(name));
+  return Array.from(new Set(parts)).slice(0, 4);
 }
 
 function extractImageGenOutfitTags(tags) {
@@ -14507,10 +14523,18 @@ function rememberImageGenCharacterProfile(subject, tags, extraKeys = []) {
   const s = ensureSettings();
   if (!s.imageGenCharacterMemoryEnabled) return false;
 
-  const name = normalizeImageGenMemoryName(subject);
+  const names = extractImageGenCharacterNames(subject);
   const cleanTags = String(tags || '').trim();
-  if (!name || !cleanTags) return false;
+  if (!names.length || !cleanTags) return false;
 
+  let changed = false;
+  for (const name of names) {
+    changed = rememberImageGenCharacterProfileSingle(name, cleanTags, [subject, ...extraKeys]) || changed;
+  }
+  return changed;
+}
+
+function rememberImageGenCharacterProfileSingle(name, cleanTags, extraKeys = []) {
   const list = getCharacterProfilesFromSettings({ includeEmpty: true });
   const keySet = new Set([
     name.toLowerCase(),
@@ -14792,7 +14816,8 @@ async function generateImagePromptBatch() {
 
   batchPrompt += `需要生成 ${patterns.length} 组，每组输出 JSON 对象：{ "label":"", "type":"", "subject":"", "positive":"", "negative":"" }。\n`;
   batchPrompt += `要求：只输出 JSON 数组，不要其它文字。positive/negative 必须是英文标签串（逗号分隔）。\n`;
-  batchPrompt += `如果能从故事中识别到角色名，subject 必须包含该角色名，便于后续保持同一人物形象一致。\n`;
+  batchPrompt += `subject 只能填写本组画面涉及的人物名；多人用顿号分隔（如“苏沁、林源”）。不要写地点、动作、场景或“苏沁与林源在海岸边”这类描述。\n`;
+  batchPrompt += `如果已提供缓存人物形象/服装标签，必须优先参考并保持同一人物外观一致；故事内容只用于补充动作、表情、场景和当前服装变化。\n`;
 
   const patternLines = patterns.map((pattern, idx) => {
     let rule = '';
@@ -14975,7 +15000,7 @@ async function generateImagePromptWithLLM(storyContent, genType, statData = null
     userPrompt += `【ImageGen Worldbook】\n${worldbookText}\n\n`;
   }
   userPrompt += `【故事内容】：\n${storyContent}\n\n`;
-  userPrompt += `请输出 JSON 格式的提示词。如果能识别到角色名，subject 必须包含该角色名，便于后续保持同一人物形象一致。`;
+  userPrompt += `请输出 JSON 格式的提示词。subject 只能填写画面涉及的人物名；多人用顿号分隔（如“苏沁、林源”）。不要写地点、动作、场景或“苏沁与林源在海岸边”这类描述。如果已提供缓存人物形象/服装标签，必须优先参考并保持同一人物外观一致；故事内容只用于补充动作、表情、场景和当前服装变化。`;
 
 
   const messages = [
