@@ -1447,6 +1447,10 @@ let imageGenBatchPrompts = [];
 let imageGenBatchIndex = 0;
 let imageGenImageUrls = [];
 let imageGenPreviewIndex = 0;
+let imagePreviewItems = [];
+let imagePreviewIndex = 0;
+let imagePreviewTouchStartX = 0;
+let imagePreviewTouchStartY = 0;
 let imageGenBatchStatus = '';
 let imageGenBatchBusy = false;
 let lastNovelaiPayload = null;
@@ -14229,14 +14233,59 @@ function closeImagePreviewModal() {
   $('body').removeClass('sg-image-preview-open');
 }
 
-function openImagePreviewModal(src, altText = 'Image preview') {
+function normalizeImagePreviewItems(items, fallbackSrc = '', fallbackAlt = 'Image preview') {
+  const out = [];
+  const seen = new Set();
+  (items || []).forEach((item) => {
+    const src = String(item?.src || '').trim();
+    if (!src || seen.has(src)) return;
+    seen.add(src);
+    out.push({ src, alt: String(item?.alt || fallbackAlt || 'Image preview') });
+  });
+  const src = String(fallbackSrc || '').trim();
+  if (src && !seen.has(src)) out.push({ src, alt: String(fallbackAlt || 'Image preview') });
+  return out;
+}
+
+function collectImagePreviewItems($img, $scope) {
+  const items = [];
+  const $images = ($scope && $scope.length ? $scope : $img.parent()).find('img');
+  $images.each((_, el) => {
+    const $el = $(el);
+    const src = String($el.attr('data-full') || $el.attr('src') || '').trim();
+    if (!src) return;
+    items.push({ src, alt: $el.attr('alt') || 'Image preview' });
+  });
+  return items;
+}
+
+function setImagePreviewIndex(nextIndex) {
+  if (!imagePreviewItems.length) return;
+  imagePreviewIndex = (nextIndex + imagePreviewItems.length) % imagePreviewItems.length;
+  const item = imagePreviewItems[imagePreviewIndex] || imagePreviewItems[0];
+  $('#sg_image_preview_img').attr('src', item.src);
+  $('#sg_image_preview_img').attr('alt', item.alt || 'Image preview');
+  $('#sg_image_preview_counter').text(`${imagePreviewIndex + 1}/${imagePreviewItems.length}`);
+  const hasMany = imagePreviewItems.length > 1;
+  $('#sg_image_preview_backdrop .sg-image-preview-nav, #sg_image_preview_counter').toggle(hasMany);
+}
+
+function moveImagePreview(delta) {
+  if (imagePreviewItems.length <= 1) return;
+  setImagePreviewIndex(imagePreviewIndex + delta);
+}
+
+function openImagePreviewModal(src, altText = 'Image preview', items = null) {
   if (!src) return;
   if (!$('#sg_image_preview_backdrop').length) {
     document.body.insertAdjacentHTML('beforeend', `
       <div id="sg_image_preview_backdrop" class="sg-image-preview-backdrop">
         <div class="sg-image-preview-panel">
           <button class="sg-image-preview-close" type="button" aria-label="Close">×</button>
+          <button class="sg-image-preview-nav sg-image-preview-prev" type="button" aria-label="Previous image">‹</button>
           <img id="sg_image_preview_img" alt="${escapeHtml(altText)}">
+          <button class="sg-image-preview-nav sg-image-preview-next" type="button" aria-label="Next image">›</button>
+          <div id="sg_image_preview_counter" class="sg-image-preview-counter"></div>
         </div>
       </div>
     `);
@@ -14247,16 +14296,48 @@ function openImagePreviewModal(src, altText = 'Image preview') {
 
     $(document).on('keydown', (e) => {
       if (e.key === 'Escape') closeImagePreviewModal();
+      if (!$('#sg_image_preview_backdrop').hasClass('show')) return;
+      if (e.key === 'ArrowLeft') moveImagePreview(-1);
+      if (e.key === 'ArrowRight') moveImagePreview(1);
     });
 
     $(document).on('click', '#sg_image_preview_backdrop .sg-image-preview-close', (e) => {
       e.preventDefault();
       closeImagePreviewModal();
     });
+
+    $(document).on('click', '#sg_image_preview_backdrop .sg-image-preview-prev', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      moveImagePreview(-1);
+    });
+
+    $(document).on('click', '#sg_image_preview_backdrop .sg-image-preview-next', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      moveImagePreview(1);
+    });
+
+    $(document).on('touchstart', '#sg_image_preview_backdrop .sg-image-preview-panel', (e) => {
+      const touch = e.originalEvent?.touches?.[0];
+      if (!touch) return;
+      imagePreviewTouchStartX = touch.clientX;
+      imagePreviewTouchStartY = touch.clientY;
+    });
+
+    $(document).on('touchend', '#sg_image_preview_backdrop .sg-image-preview-panel', (e) => {
+      const touch = e.originalEvent?.changedTouches?.[0];
+      if (!touch) return;
+      const dx = touch.clientX - imagePreviewTouchStartX;
+      const dy = touch.clientY - imagePreviewTouchStartY;
+      if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      moveImagePreview(dx < 0 ? 1 : -1);
+    });
   }
 
-  $('#sg_image_preview_img').attr('src', src);
-  $('#sg_image_preview_img').attr('alt', altText || 'Image preview');
+  imagePreviewItems = normalizeImagePreviewItems(items, src, altText);
+  imagePreviewIndex = Math.max(0, imagePreviewItems.findIndex(item => item.src === src));
+  setImagePreviewIndex(imagePreviewIndex);
   $('#sg_image_preview_backdrop').addClass('show');
   $('body').addClass('sg-image-preview-open');
 }
@@ -18878,9 +18959,11 @@ function ensureModal() {
   });
 
   $('#sg_imageResult, #sg_galleryResult, #sg_imagegen_float_preview, #sg_imagegen_batch').on('click', 'img', (e) => {
-    const src = String($(e.currentTarget).attr('data-full') || $(e.currentTarget).attr('src') || '').trim();
+    const $img = $(e.currentTarget);
+    const src = String($img.attr('data-full') || $img.attr('src') || '').trim();
     if (!src) return;
-    openImagePreviewModal(src, $(e.currentTarget).attr('alt') || 'Image preview');
+    const $scope = $img.closest('#sg_imageResult, #sg_galleryResult, #sg_imagegen_float_preview, #sg_imagegen_batch');
+    openImagePreviewModal(src, $img.attr('alt') || 'Image preview', collectImagePreviewItems($img, $scope));
   });
 
   $('#sg_imageGenImportPreset').on('click', async () => {
@@ -22931,7 +23014,11 @@ function init() {
       if (!src) return;
       e.preventDefault();
       e.stopPropagation();
-      openImagePreviewModal(src, $img.attr('alt') || 'Image preview');
+      const batchItems = imageGenImageUrls
+        .map((url, idx) => url ? { src: url, alt: imageGenBatchPrompts[idx]?.label || 'Generated' } : null)
+        .filter(Boolean);
+      const items = batchItems.length ? batchItems : collectImagePreviewItems($img, $img.closest('#sg_floating_panel'));
+      openImagePreviewModal(src, $img.attr('alt') || 'Image preview', items);
     });
   });
 
