@@ -14340,7 +14340,7 @@ function getCharacterProfilesFromSettings(options = {}) {
   const mapped = list.map((entry) => ({
     name: String(entry?.name || '').trim(),
     keys: Array.isArray(entry?.keys) ? entry.keys.map(k => String(k || '').toLowerCase().trim()).filter(Boolean) : [],
-    tags: String(entry?.tags || '').trim(),
+    tags: sanitizeImageGenCharacterMemoryTags(entry?.tags || ''),
     enabled: entry?.enabled !== false,
     collapsed: !!entry?.collapsed,
     outfits: Array.isArray(entry?.outfits) ? entry.outfits.map((outfit) => ({
@@ -14561,7 +14561,12 @@ function sanitizeImageGenCharacterMemoryTags(tags) {
     'sex', 'nude', 'naked', 'cum', 'penis', 'vagina', 'nipples', 'pussy', 'breast grab',
     'standing', 'sitting', 'kneeling', 'lying', 'walking', 'running', 'jumping', 'crouching',
     'pose', 'posing', 'spread legs', 'arms up', 'hand on', 'holding', 'grabbing', 'looking',
-    'smile', 'crying', 'angry', 'blush',
+    'smile', 'smiling', 'grin', 'grinning', 'laughing', 'frown', 'frowning',
+    'cry', 'crying', 'tears', 'tear', 'tearful', 'teary', 'watery eyes', 'teary eyes',
+    'tears streaming', 'streaming tears', 'sobbing', 'weeping',
+    'angry', 'anger', 'sad', 'sadness', 'happy', 'happiness', 'blush', 'blushing',
+    'embarrassed', 'nervous', 'scared', 'afraid', 'fear', 'shy', 'expression',
+    'open mouth', 'closed mouth', 'parted lips', 'pout', 'glaring', 'staring', 'sharp eyes',
     'chair', 'bed', 'sofa', 'table', 'room', 'beach', 'shore', 'sea', 'street', 'forest', 'background',
     'indoors', 'outdoors', 'scenery', 'landscape', 'close-up', 'full body', 'upper body',
     'lighting', 'shadow', 'cinematic', 'depth of field', 'camera', 'view', 'angle'
