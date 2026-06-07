@@ -146,7 +146,7 @@ const DEFAULT_INDEX_SYSTEM_PROMPT = `你是一个"剧情索引匹配"助手。
 
 【返回要求】
 - 返回条目数量应 <= maxPick
-- 分类控制：人物 <= maxCharacters，装备 <= maxEquipments，势力 <= maxFactions，成就 <= maxAchievements，副职业 <= maxSubProfessions，任务 <= maxQuests，剧情 <= maxPlot`;
+- 分类控制：人物 <= maxCharacters，装备 <= maxEquipments，势力 <= maxFactions，能力 <= maxAbilities，成就 <= maxAchievements，副职业 <= maxSubProfessions，任务 <= maxQuests，剧情 <= maxPlot`;
 
 const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】
 {{userMessage}}
@@ -162,6 +162,7 @@ const DEFAULT_INDEX_USER_TEMPLATE = `【用户当前输入】
 - 人物条目不超过 {{maxCharacters}} 条
 - 装备条目不超过 {{maxEquipments}} 条
 - 势力条目不超过 {{maxFactions}} 条
+- 能力条目不超过 {{maxAbilities}} 条
 - 成就条目不超过 {{maxAchievements}} 条
 - 副职业条目不超过 {{maxSubProfessions}} 条
 - 任务条目不超过 {{maxQuests}} 条
@@ -1114,6 +1115,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   wiTriggerMaxCharacters: 2, // 最多索引多少个人物条目
   wiTriggerMaxEquipments: 2, // 最多索引多少个装备条目
   wiTriggerMaxFactions: 2,
+  wiTriggerMaxAbilities: 2,
   wiTriggerMaxAchievements: 2,
   wiTriggerMaxSubProfessions: 2,
   wiTriggerMaxQuests: 2,
@@ -1623,22 +1625,6 @@ function ensureSettings() {
       saveSettingsDebounced();
     }
   }
-
-  // 迁移：结构化条目从“能力”改为“势力”
-  let factionSettingsMigrated = false;
-  if (extensionSettings[MODULE_NAME].factionEntriesEnabled === undefined && extensionSettings[MODULE_NAME].abilityEntriesEnabled !== undefined) {
-    extensionSettings[MODULE_NAME].factionEntriesEnabled = extensionSettings[MODULE_NAME].abilityEntriesEnabled;
-    factionSettingsMigrated = true;
-  }
-  if (extensionSettings[MODULE_NAME].factionEntryPrefix === undefined && extensionSettings[MODULE_NAME].abilityEntryPrefix) {
-    extensionSettings[MODULE_NAME].factionEntryPrefix = extensionSettings[MODULE_NAME].abilityEntryPrefix;
-    factionSettingsMigrated = true;
-  }
-  if (!extensionSettings[MODULE_NAME].structuredFactionPrompt && extensionSettings[MODULE_NAME].structuredAbilityPrompt) {
-    extensionSettings[MODULE_NAME].structuredFactionPrompt = extensionSettings[MODULE_NAME].structuredAbilityPrompt;
-    factionSettingsMigrated = true;
-  }
-  if (factionSettingsMigrated) saveSettingsDebounced();
 
   // 迁移：批量提示词模板更新（仅在仍为旧模板或为空时）
   const batchRaw = String(extensionSettings[MODULE_NAME].imageGenBatchPatterns || '').trim();
@@ -12990,6 +12976,7 @@ function detectIndexEntryTypeByTitle(title, settings) {
     { type: 'character', prefix: String(s.characterEntryPrefix || '人物') },
     { type: 'equipment', prefix: String(s.equipmentEntryPrefix || '装备') },
     { type: 'faction', prefix: String(s.factionEntryPrefix || '势力') },
+    { type: 'ability', prefix: String(s.abilityEntryPrefix || '能力') },
     { type: 'achievement', prefix: String(s.achievementEntryPrefix || '成就') },
     { type: 'subProfession', prefix: String(s.subProfessionEntryPrefix || '副职业') },
     { type: 'quest', prefix: String(s.questEntryPrefix || '任务') },
@@ -13059,6 +13046,7 @@ function getIndexTypeLimits(settings) {
     maxCharacters: clampInt(s.wiTriggerMaxCharacters, 0, 10, 2),
     maxEquipments: clampInt(s.wiTriggerMaxEquipments, 0, 10, 2),
     maxFactions: clampInt(s.wiTriggerMaxFactions, 0, 10, 2),
+    maxAbilities: clampInt(s.wiTriggerMaxAbilities, 0, 10, 2),
     maxAchievements: clampInt(s.wiTriggerMaxAchievements, 0, 10, 2),
     maxSubProfessions: clampInt(s.wiTriggerMaxSubProfessions, 0, 10, 2),
     maxQuests: clampInt(s.wiTriggerMaxQuests, 0, 10, 2),
@@ -13077,6 +13065,7 @@ function applyIndexTypeLimits(picked, settings, maxEntries) {
     character: 0,
     equipment: 0,
     faction: 0,
+    ability: 0,
     achievement: 0,
     subProfession: 0,
     quest: 0,
@@ -13086,6 +13075,7 @@ function applyIndexTypeLimits(picked, settings, maxEntries) {
     character: limits.maxCharacters,
     equipment: limits.maxEquipments,
     faction: limits.maxFactions,
+    ability: limits.maxAbilities,
     achievement: limits.maxAchievements,
     subProfession: limits.maxSubProfessions,
     quest: limits.maxQuests,
@@ -13131,6 +13121,7 @@ function buildIndexPromptMessages(recentText, userText, candidatesForModel, maxP
   const maxCharacters = clampInt(s.wiTriggerMaxCharacters, 0, 10, 2);
   const maxEquipments = clampInt(s.wiTriggerMaxEquipments, 0, 10, 2);
   const maxFactions = clampInt(s.wiTriggerMaxFactions, 0, 10, 2);
+  const maxAbilities = clampInt(s.wiTriggerMaxAbilities, 0, 10, 2);
   const maxAchievements = clampInt(s.wiTriggerMaxAchievements, 0, 10, 2);
   const maxSubProfessions = clampInt(s.wiTriggerMaxSubProfessions, 0, 10, 2);
   const maxQuests = clampInt(s.wiTriggerMaxQuests, 0, 10, 2);
@@ -13148,6 +13139,7 @@ function buildIndexPromptMessages(recentText, userText, candidatesForModel, maxP
     .replaceAll('{{maxCharacters}}', String(maxCharacters))
     .replaceAll('{{maxEquipments}}', String(maxEquipments))
     .replaceAll('{{maxFactions}}', String(maxFactions))
+    .replaceAll('{{maxAbilities}}', String(maxAbilities))
     .replaceAll('{{maxAchievements}}', String(maxAchievements))
     .replaceAll('{{maxSubProfessions}}', String(maxSubProfessions))
     .replaceAll('{{maxQuests}}', String(maxQuests))
@@ -16414,7 +16406,7 @@ function buildModalHtml() {
             </div>
 
             <div class="sg-card sg-subcard">
-              <div class="sg-card-title">结构化条目（人物/装备/物品栏/势力/成就/副职业/任务/猎艳录）</div>
+              <div class="sg-card-title">结构化条目（人物/装备/物品栏/势力/能力/成就/副职业/任务/猎艳录）</div>
               <div class="sg-row sg-inline">
                 <label class="sg-check"><input type="checkbox" id="sg_structuredEntriesEnabled">启用结构化条目</label>
                 <label class="sg-check"><input type="checkbox" id="sg_characterEntriesEnabled">人物</label>
@@ -16742,11 +16734,15 @@ function buildModalHtml() {
                   <input id="sg_wiTriggerMaxFactions" type="number" min="0" max="10" placeholder="2">
                 </div>
                 <div class="sg-field">
-                  <label>最多索引成就数</label>
-                  <input id="sg_wiTriggerMaxAchievements" type="number" min="0" max="10" placeholder="2">
+                  <label>最多索引能力数</label>
+                  <input id="sg_wiTriggerMaxAbilities" type="number" min="0" max="10" placeholder="2">
                 </div>
               </div>
               <div class="sg-grid2">
+                <div class="sg-field">
+                  <label>最多索引成就数</label>
+                  <input id="sg_wiTriggerMaxAchievements" type="number" min="0" max="10" placeholder="2">
+                </div>
                 <div class="sg-field">
                   <label>最多索引副职业数</label>
                   <input id="sg_wiTriggerMaxSubProfessions" type="number" min="0" max="10" placeholder="2">
@@ -16799,11 +16795,11 @@ function buildModalHtml() {
   </div>
   <div class="sg-field">
     <label>索引模板（User，可选）</label>
-    <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="支持占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}"></textarea>
+    <textarea id="sg_wiIndexUserTemplate" rows="6" placeholder="支持占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAbilities}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}"></textarea>
   </div>
   <div class="sg-row sg-inline">
     <button class="menu_button sg-btn" id="sg_wiIndexResetPrompt">恢复默认索引提示词</button>
-    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}。插件会强制要求输出 JSON：{pickedNames:string[]}。</div>
+    <div class="sg-hint" style="margin-left:auto">占位符：{{userMessage}} {{recentText}} {{candidates}} {{maxPick}} {{maxCharacters}} {{maxEquipments}} {{maxFactions}} {{maxAbilities}} {{maxAchievements}} {{maxSubProfessions}} {{maxQuests}} {{maxPlot}}。插件会强制要求输出 JSON：{pickedNames:string[]}。</div>
   </div>
 
   <div class="sg-card sg-subcard" id="sg_index_custom_block" style="display:none">
@@ -18896,7 +18892,7 @@ function ensureModal() {
     updateBlueIndexInfoLabel();
     updateSummaryManualRangeHint(false);
   });
-  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_summaryAutoRollback, #sg_structuredAutoRollback, #sg_structuredEntriesEnabled, #sg_structuredReadStatData, #sg_structuredStatVarName, #sg_structuredWorldbookEnabled, #sg_structuredWorldbookMode, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredCharacterEntryTemplate, #sg_structuredEquipmentPrompt, #sg_structuredEquipmentEntryTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
+  $('#sg_summaryEnabled, #sg_summaryEvery, #sg_summaryCountMode, #sg_summaryTemperature, #sg_summarySystemPrompt, #sg_summaryUserTemplate, #sg_summaryReadStatData, #sg_summaryStatVarName, #sg_summaryAutoRollback, #sg_structuredAutoRollback, #sg_structuredEntriesEnabled, #sg_structuredReadStatData, #sg_structuredStatVarName, #sg_structuredWorldbookEnabled, #sg_structuredWorldbookMode, #sg_characterEntriesEnabled, #sg_equipmentEntriesEnabled, #sg_characterEntryPrefix, #sg_equipmentEntryPrefix, #sg_structuredEntriesSystemPrompt, #sg_structuredEntriesUserTemplate, #sg_structuredCharacterPrompt, #sg_structuredCharacterEntryTemplate, #sg_structuredEquipmentPrompt, #sg_structuredEquipmentEntryTemplate, #sg_summaryCustomEndpoint, #sg_summaryCustomApiKey, #sg_summaryCustomModel, #sg_summaryCustomMaxTokens, #sg_summaryCustomStream, #sg_summaryToWorldInfo, #sg_summaryWorldInfoFile, #sg_summaryWorldInfoCommentPrefix, #sg_summaryWorldInfoKeyMode, #sg_summaryIndexPrefix, #sg_summaryIndexPad, #sg_summaryIndexStart, #sg_summaryIndexInComment, #sg_summaryToBlueWorldInfo, #sg_summaryBlueWorldInfoFile, #sg_wiTriggerEnabled, #sg_wiTriggerLookbackMessages, #sg_wiTriggerIncludeUserMessage, #sg_wiTriggerUserMessageWeight, #sg_wiTriggerStartAfterAssistantMessages, #sg_wiTriggerMaxEntries, #sg_wiTriggerMaxCharacters, #sg_wiTriggerMaxEquipments, #sg_wiTriggerMaxFactions, #sg_wiTriggerMaxAbilities, #sg_wiTriggerMaxAchievements, #sg_wiTriggerMaxSubProfessions, #sg_wiTriggerMaxQuests, #sg_wiTriggerMaxPlot, #sg_wiTriggerMinScore, #sg_wiTriggerMaxKeywords, #sg_wiTriggerInjectStyle, #sg_wiTriggerDebugLog, #sg_wiBlueIndexMode, #sg_wiBlueIndexFile, #sg_summaryMaxChars, #sg_summaryMaxTotalChars, #sg_wiTriggerMatchMode, #sg_wiIndexPrefilterTopK, #sg_wiIndexProvider, #sg_wiIndexTemperature, #sg_wiIndexSystemPrompt, #sg_wiIndexUserTemplate, #sg_wiIndexCustomEndpoint, #sg_wiIndexCustomApiKey, #sg_wiIndexCustomModel, #sg_wiIndexCustomMaxTokens, #sg_wiIndexTopP, #sg_wiIndexCustomStream, #sg_wiRollEnabled, #sg_wiRollStatSource, #sg_wiRollStatVarName, #sg_wiRollRandomWeight, #sg_wiRollDifficulty, #sg_wiRollInjectStyle, #sg_wiRollDebugLog, #sg_wiRollStatParseMode, #sg_wiRollProvider, #sg_wiRollCustomEndpoint, #sg_wiRollCustomApiKey, #sg_wiRollCustomModel, #sg_wiRollCustomMaxTokens, #sg_wiRollCustomTopP, #sg_wiRollCustomTemperature, #sg_wiRollCustomStream, #sg_wiRollSystemPrompt, #sg_imageGenEnabled, #sg_novelaiApiKey, #sg_novelaiModel, #sg_novelaiResolution, #sg_novelaiSteps, #sg_novelaiScale, #sg_novelaiNegativePrompt, #sg_imageGenAutoSave, #sg_imageGenSavePath, #sg_imageGenLookbackMessages, #sg_imageGenReadStatData, #sg_imageGenStatVarName, #sg_imageGenCustomEndpoint, #sg_imageGenCustomApiKey, #sg_imageGenCustomModel, #sg_imageGenSystemPrompt, #sg_imageGalleryEnabled, #sg_imageGalleryUrl, #sg_imageGenWorldBookEnabled, #sg_imageGenWorldBookFile').on('change input', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -18925,7 +18921,7 @@ function ensureModal() {
     updateSummaryManualRangeHint(false);
   });
 
-  $('#sg_wiTriggerMaxFactions, #sg_wiTriggerMaxAchievements, #sg_wiTriggerMaxSubProfessions, #sg_wiTriggerMaxQuests').on('input change', () => {
+  $('#sg_wiTriggerMaxFactions, #sg_wiTriggerMaxAbilities, #sg_wiTriggerMaxAchievements, #sg_wiTriggerMaxSubProfessions, #sg_wiTriggerMaxQuests').on('input change', () => {
     pullUiToSettings();
     saveSettings();
     updateSummaryInfoLabel();
@@ -20553,6 +20549,7 @@ function pullSettingsToUi() {
   $('#sg_wiTriggerMaxCharacters').val(s.wiTriggerMaxCharacters ?? 2);
   $('#sg_wiTriggerMaxEquipments').val(s.wiTriggerMaxEquipments ?? 2);
   $('#sg_wiTriggerMaxFactions').val(s.wiTriggerMaxFactions ?? 2);
+  $('#sg_wiTriggerMaxAbilities').val(s.wiTriggerMaxAbilities ?? 2);
   $('#sg_wiTriggerMaxAchievements').val(s.wiTriggerMaxAchievements ?? 2);
   $('#sg_wiTriggerMaxSubProfessions').val(s.wiTriggerMaxSubProfessions ?? 2);
   $('#sg_wiTriggerMaxQuests').val(s.wiTriggerMaxQuests ?? 2);
@@ -21395,6 +21392,7 @@ function pullUiToSettings() {
   s.wiTriggerMaxCharacters = clampInt($('#sg_wiTriggerMaxCharacters').val(), 0, 10, s.wiTriggerMaxCharacters ?? 2);
   s.wiTriggerMaxEquipments = clampInt($('#sg_wiTriggerMaxEquipments').val(), 0, 10, s.wiTriggerMaxEquipments ?? 2);
   s.wiTriggerMaxFactions = clampInt($('#sg_wiTriggerMaxFactions').val(), 0, 10, s.wiTriggerMaxFactions ?? 2);
+  s.wiTriggerMaxAbilities = clampInt($('#sg_wiTriggerMaxAbilities').val(), 0, 10, s.wiTriggerMaxAbilities ?? 2);
   s.wiTriggerMaxAchievements = clampInt($('#sg_wiTriggerMaxAchievements').val(), 0, 10, s.wiTriggerMaxAchievements ?? 2);
   s.wiTriggerMaxSubProfessions = clampInt($('#sg_wiTriggerMaxSubProfessions').val(), 0, 10, s.wiTriggerMaxSubProfessions ?? 2);
   s.wiTriggerMaxQuests = clampInt($('#sg_wiTriggerMaxQuests').val(), 0, 10, s.wiTriggerMaxQuests ?? 2);
